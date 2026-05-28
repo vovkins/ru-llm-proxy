@@ -1,0 +1,51 @@
+# Dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# NER models (downloaded at setup)
+models/
+*.bin
+*.gguf
+
+# Logs
+*.log
+logs/
+
+# Data
+data/
+pgdata/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
