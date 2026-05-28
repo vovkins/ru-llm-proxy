@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer ===
 FROM base AS analyzer
 
+# Install numpy first (pre-built wheel to avoid build isolation issues)
+RUN pip install --no-cache-dir numpy>=1.26,<2.2
+
 # Install dependencies
 RUN pip install --no-cache-dir \
     presidio-analyzer>=2.2.362 \
