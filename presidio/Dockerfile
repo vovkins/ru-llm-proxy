@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir \
     prometheus-client>=0.13.0 \
     pybind11==2.10.3 \
     tqdm>=4.42.0 \
-    torchcrf>=0.1.0 \
+    pytorch-crf>=0.7.0 \
     requests>=2.19.0 \
     filelock>=3.0.0 \
     pydantic>=1.0
@@ -42,7 +42,7 @@ RUN pip install --no-cache-dir \
     transformers>=4.30
 
 # torchcrf must be installed AFTER torch
-RUN pip install --no-cache-dir torchcrf>=0.1.0
+RUN pip install --no-cache-dir pytorch-crf>=0.7.0
 
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_news_sm
