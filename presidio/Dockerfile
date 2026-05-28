@@ -16,21 +16,31 @@ RUN pip install --no-cache-dir \
     'scikit-learn>=1.3' \
     'scipy>=1.10'
 
-# Install deeppavlov without deps (we handle deps above)
+# Install deeppavlov without deps, then add its missing runtime deps manually
 RUN pip install --no-cache-dir --no-deps deeppavlov>=1.0
 
-# Install remaining dependencies
+# Deeppavlov runtime dependencies (compatible versions)
+RUN pip install --no-cache-dir \
+    nltk>=3.2.4 \
+    pandas>=1.0.0 \
+    prometheus-client>=0.13.0 \
+    pybind11==2.10.3 \
+    tqdm>=4.42.0
+
+# Install remaining service dependencies
 RUN pip install --no-cache-dir \
     presidio-analyzer>=2.2.362 \
     presidio-anonymizer>=2.2.362 \
     spacy>=3.8 \
     fastapi>=0.115 \
-    uvicorn>=0.34
+    uvicorn>=0.34 \
+    torch>=2.0 \
+    transformers>=4.30
 
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_news_sm
 
-# Pre-download DeepPavlov ner_rus_bert model (~700 MB)
+# Pre-download DeepPavlov ner_rus_bert model (~1.4 GB)
 RUN python -c "from deeppavlov import build_model, configs; build_model(configs.ner.ner_rus_bert, download=True); print('DeepPavlov model downloaded')"
 
 WORKDIR /app
