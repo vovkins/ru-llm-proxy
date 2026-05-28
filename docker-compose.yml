@@ -19,6 +19,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ZAI_API_KEY=${ZAI_API_KEY}
       - PRESIDIO_ANALYZER_URL=${PRESIDIO_ANALYZER_URL:-http://presidio-analyzer:5001}
       - PRESIDIO_ANONYMIZER_URL=${PRESIDIO_ANONYMIZER_URL:-http://presidio-anonymizer:5002}
       # Tell LiteLLM to find our guardrail module
