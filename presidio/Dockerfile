@@ -9,17 +9,23 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer ===
 FROM base AS analyzer
 
-# Install scikit-learn & numpy first (binary wheels) to avoid source build
-RUN pip install --no-cache-dir 'numpy>=1.26,<2.2' 'scikit-learn>=1.3'
+# Pre-install binary wheels for numpy, scikit-learn, scipy
+# (deeppavlov pins old versions that fail to build from source)
+RUN pip install --no-cache-dir \
+    'numpy>=1.26,<2.2' \
+    'scikit-learn>=1.3' \
+    'scipy>=1.10'
 
-# Install dependencies
+# Install deeppavlov without deps (we handle deps above)
+RUN pip install --no-cache-dir --no-deps deeppavlov>=1.0
+
+# Install remaining dependencies
 RUN pip install --no-cache-dir \
     presidio-analyzer>=2.2.362 \
     presidio-anonymizer>=2.2.362 \
     spacy>=3.8 \
     fastapi>=0.115 \
-    uvicorn>=0.34 \
-    deeppavlov>=1.0
+    uvicorn>=0.34
 
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_web_sm
