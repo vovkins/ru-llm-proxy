@@ -14,11 +14,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Presidio Analyzer (ru-llm-proxy)")
 # Configure NLP engine with Russian spaCy model
-nlp_engine_provider = NlpEngineProvider()
-nlp_engine = nlp_engine_provider.create_engine({
-    "nlp_engine_name": "spacy",
-    "models": [{"lang_code": "ru", "model_name": "ru_core_news_sm"}],
-})
+nlp_engine_provider = NlpEngineProvider(
+    nlp_configuration={
+        "nlp_engine_name": "spacy",
+        "models": [{"lang_code": "ru", "model_name": "ru_core_news_sm"}],
+    }
+)
+nlp_engine = nlp_engine_provider.create_engine()
 analyzer = AnalyzerEngine(
     registry=RecognizerRegistry(),
     nlp_engine=nlp_engine,
