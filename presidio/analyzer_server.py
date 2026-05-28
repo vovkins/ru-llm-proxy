@@ -3,7 +3,7 @@
 import logging
 from fastapi import FastAPI
 from pydantic import BaseModel
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 from recognizers import ALL_RECOGNIZERS
@@ -21,11 +21,7 @@ nlp_engine_provider = NlpEngineProvider(
     }
 )
 nlp_engine = nlp_engine_provider.create_engine()
-analyzer = AnalyzerEngine(
-    registry=RecognizerRegistry(),
-    nlp_engine=nlp_engine,
-    supported_languages=["ru"],
-)
+analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
 
 # Register custom Russian regex recognizers
 for recognizer_cls in ALL_RECOGNIZERS:
