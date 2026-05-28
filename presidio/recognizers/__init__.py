@@ -1,12 +1,12 @@
 """Russian PII recognizers for Presidio."""
 
-from presidio.recognizers.ru_phone import RuPhoneRecognizer
-from presidio.recognizers.ru_email import RuEmailRecognizer
-from presidio.recognizers.ru_inn import RuInnRecognizer
-from presidio.recognizers.ru_snils import RuSnilsRecognizer
-from presidio.recognizers.ru_passport import RuPassportRecognizer
-from presidio.recognizers.ru_bank_card import RuBankCardRecognizer
-from presidio.recognizers.ru_address import RuAddressRecognizer
+from recognizers.ru_phone import RuPhoneRecognizer
+from recognizers.ru_email import RuEmailRecognizer
+from recognizers.ru_inn import RuInnRecognizer
+from recognizers.ru_snils import RuSnilsRecognizer
+from recognizers.ru_passport import RuPassportRecognizer
+from recognizers.ru_bank_card import RuBankCardRecognizer
+from recognizers.ru_address import RuAddressRecognizer
 
 ALL_RECOGNIZERS = [
     RuPhoneRecognizer,
