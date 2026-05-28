@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir \
     uvicorn>=0.34
 
 # Download spaCy Russian model
-RUN python -m spacy download ru_core_web_sm
+RUN python -m spacy download ru_core_news_sm
 
 # Pre-download DeepPavlov ner_rus_bert model (~700 MB)
 RUN python -c "from deeppavlov import build_model, configs; build_model(configs.ner.ner_rus_bert, download=True); print('DeepPavlov model downloaded')"
