@@ -5,11 +5,19 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine
 
+from recognizers import ALL_RECOGNIZERS
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Presidio Analyzer (ru-llm-proxy)")
 analyzer = AnalyzerEngine()
+
+# Register custom Russian recognizers
+for recognizer_cls in ALL_RECOGNIZERS:
+    recognizer = recognizer_cls()
+    analyzer.registry.add_recognizer(recognizer)
+    logger.info(f"Registered recognizer: {recognizer.name}")
 
 
 class AnalyzeRequest(BaseModel):
