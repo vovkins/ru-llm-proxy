@@ -1,7 +1,7 @@
 # Python 3.11 base (3.12 incompatible with deeppavlov's numpy dependency)
 FROM python:3.11-slim AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
