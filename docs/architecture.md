@@ -45,3 +45,21 @@
 - Имена людей (ФИО)
 - Адреса (улица, дом, квартира)
 - Названия организаций
+
+## Стек версий
+
+| Компонент | Версия | Примечание |
+|-----------|--------|------------|
+| Python | 3.12 | Для Presidio recognizers и тестов |
+| LiteLLM | 1.86+ (latest stable) | Docker-образ `ghcr.io/berriai/litellm:main-latest` |
+| Presidio Analyzer | 2.2.362+ | `pip install presidio-analyzer` |
+| Presidio Anonymizer | 2.2.362+ | `pip install presidio-anonymizer` |
+| spaCy | 3.8+ | NLP-движок для Presidio |
+| Natasha/Slovnet | latest | Лёгкая альтернатива DeepPavlov для NER (~30 MB, на 1-2% хуже BERT SOTA, но в 60 раз меньше) |
+| DeepPavlov | 1.0+ | NER-модель ruBERT (полная точность, ~2 GB) |
+| PostgreSQL | 16-alpine | БД для LiteLLM |
+| Redis | 7-alpine | Кэширование, сессии |
+| Docker | 20.10+ | Контейнеризация |
+| Docker Compose | v2 | Оркестрация |
+
+**Примечание по NER:** Natasha/Slovnet — более лёгкий вариант (30 MB vs 2 GB), качество NER на 1-2% ниже DeepPavlov ruBERT, но значительно быстрее и экономичнее. Для MVP можно начать с Natasha, при необходимости перейти на DeepPavlov.
