@@ -4,6 +4,9 @@ SNILS: 11 digits, format XXX-XXX-XXX YY or XXXXXXXXXYY.
 Checksum validation: last 2 digits are control sum.
 """
 
+import re
+from presidio_analyzer import Pattern, PatternRecognizer
+
 
 def _validate_snils(digits: str) -> bool:
     """Validate SNILS checksum."""
