@@ -41,6 +41,9 @@ RUN pip install --no-cache-dir \
     torch>=2.0 \
     transformers>=4.30
 
+# torchcrf must be installed AFTER torch
+RUN pip install --no-cache-dir torchcrf>=0.1.0
+
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_news_sm
 
