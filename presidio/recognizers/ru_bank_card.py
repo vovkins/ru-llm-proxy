@@ -15,7 +15,7 @@ def _luhn_check(card_number: str) -> bool:
 
 
 class RuBankCardRecognizer(PatternRecognizer):
-    """Recognize bank card numbers with Luhn validation."
+    """Recognize bank card numbers with Luhn validation."""
 
     PATTERNS = [
         # Standard 16-digit cards (Visa, Mastercard, МИР)
