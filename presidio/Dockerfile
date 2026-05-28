@@ -1,5 +1,5 @@
-# Python base (full image for build tools)
-FROM python:3.12 AS base
+# Python 3.11 base (3.12 incompatible with deeppavlov's numpy dependency)
+FROM python:3.11-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
@@ -9,11 +9,8 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer ===
 FROM base AS analyzer
 
-# Install numpy first (pre-built wheel to avoid build isolation issues)
-RUN pip install --no-cache-dir 'numpy>=1.26,<2.2'
-
-# Install dependencies with no build isolation (setuptools already installed)
-RUN pip install --no-cache-dir --no-build-isolation \
+# Install dependencies
+RUN pip install --no-cache-dir \
     presidio-analyzer>=2.2.362 \
     presidio-anonymizer>=2.2.362 \
     spacy>=3.8 \
