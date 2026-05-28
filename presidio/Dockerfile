@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer ===
 FROM base AS analyzer
 
+# Install scikit-learn & numpy first (binary wheels) to avoid source build
+RUN pip install --no-cache-dir 'numpy>=1.26,<2.2' 'scikit-learn>=1.3'
+
 # Install dependencies
 RUN pip install --no-cache-dir \
     presidio-analyzer>=2.2.362 \
