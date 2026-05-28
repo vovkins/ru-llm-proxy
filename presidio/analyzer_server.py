@@ -3,7 +3,8 @@
 import logging
 from fastapi import FastAPI
 from pydantic import BaseModel
-from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 from recognizers import ALL_RECOGNIZERS
 from ner import DeepPavlovRecognizer
@@ -12,7 +13,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Presidio Analyzer (ru-llm-proxy)")
-analyzer = AnalyzerEngine()
+# Configure NLP engine with Russian spaCy model
+nlp_engine_provider = NlpEngineProvider()
+nlp_engine = nlp_engine_provider.create_engine({
+    "nlp_engine_name": "spacy",
+    "models": [{"lang_code": "ru", "model_name": "ru_core_news_sm"}],
+})
+analyzer = AnalyzerEngine(
+    registry=RecognizerRegistry(),
+    nlp_engine=nlp_engine,
+    supported_languages=["ru"],
+)
 
 # Register custom Russian regex recognizers
 for recognizer_cls in ALL_RECOGNIZERS:
