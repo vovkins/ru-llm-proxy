@@ -4,6 +4,7 @@ services:
     image: docker.litellm.ai/berriai/litellm:main-stable
     container_name: ru-llm-proxy
     restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
       - "${LITELLM_PORT:-4000}:4000"
     volumes:
