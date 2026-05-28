@@ -1,7 +1,6 @@
-"""Russian bank card number recognizer.
+"""Russian bank card number recognizer."""
 
-Validates using Luhn algorithm.
-"""
+from presidio_analyzer import Pattern, PatternRecognizer
 
 
 def _luhn_check(card_number: str) -> bool:
@@ -16,9 +15,7 @@ def _luhn_check(card_number: str) -> bool:
 
 
 class RuBankCardRecognizer(PatternRecognizer):
-    """Recognize bank card numbers with Luhn validation."""
-
-    from presidio_analyzer import Pattern
+    """Recognize bank card numbers with Luhn validation."
 
     PATTERNS = [
         # Standard 16-digit cards (Visa, Mastercard, МИР)

@@ -1,16 +1,10 @@
-"""Russian address recognizer (basic patterns).
+"""Russian address recognizer (basic patterns)."""
 
-Detects common Russian address patterns:
-  - ул. / улица / проспект / пр-т / переулок / пер. / бульвар / б-р
-  - д. / дом / корп. / стр. / кв. / офис / оф.
-  - City/town prefixes: г. / гор. / пос. / с. / дер.
-"""
+from presidio_analyzer import Pattern, PatternRecognizer
 
 
 class RuAddressRecognizer(PatternRecognizer):
     """Recognize Russian postal addresses (basic pattern matching)."""
-
-    from presidio_analyzer import Pattern
 
     PATTERNS = [
         # Full address with street, house, apartment

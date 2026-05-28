@@ -1,14 +1,10 @@
-"""Russian passport number recognizer.
+"""Russian passport number recognizer."""
 
-Russian passport: series (2 digits for region + 2 digits for year) + number (6 digits).
-Format: XX XX XXXXXX or XXXX XXXXXX.
-"""
+from presidio_analyzer import Pattern, PatternRecognizer
 
 
 class RuPassportRecognizer(PatternRecognizer):
     """Recognize Russian passport series and numbers."""
-
-    from presidio_analyzer import Pattern
 
     PATTERNS = [
         # Format: XX XX XXXXXX (with spaces)
