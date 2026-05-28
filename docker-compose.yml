@@ -1,0 +1,111 @@
+services:
+  # === LiteLLM Proxy ===
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    container_name: ru-llm-proxy
+    restart: unless-stopped
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY}
+      - DATABASE_URL=${LITELLM_DB_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ru-llm-proxy
+
+  # === Presidio Analyzer ===
+  presidio-analyzer:
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: analyzer
+    container_name: presidio-analyzer
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ru-llm-proxy
+
+  # === Presidio Anonymizer ===
+  presidio-anonymizer:
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: anonymizer
+    container_name: presidio-anonymizer
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ru-llm-proxy
+
+  # === PostgreSQL ===
+  db:
+    image: postgres:16-alpine
+    container_name: ru-llm-proxy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-litellm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-litellm}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-litellm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ru-llm-proxy
+
+  # === Redis ===
+  redis:
+    image: redis:7-alpine
+    container_name: ru-llm-proxy-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - ru-llm-proxy
+
+volumes:
+  pgdata:
+
+networks:
+  ru-llm-proxy:
+    driver: bridge

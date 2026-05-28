@@ -1,0 +1,38 @@
+# === LiteLLM Proxy ===
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-sonnet-4-20250514
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GOOGLE_API_KEY
+
+# Fallback: если основной провайдер недоступен
+router_settings:
+  routing_strategy: fallback
+  fallbacks:
+    - gpt-4o: ["claude-sonnet-4-20250514", "gemini-2.5-pro"]
+    - gpt-4o-mini: ["gpt-4o"]
+
+# General settings
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: false
+
+# Success callbacks (logging, tracking)
+success_callback: ["prometheus"]
+failure_callback: ["prometheus"]
