@@ -48,7 +48,24 @@ RUN pip install --no-cache-dir pytorch-crf>=0.7.0
 RUN python -m spacy download ru_core_news_sm
 
 # Pre-download DeepPavlov ner_rus_bert model (~1.4 GB)
-RUN python -c "from deeppavlov import build_model, configs; build_model(configs.ner.ner_rus_bert, download=True); print('DeepPavlov model downloaded')"
+# Only download files, don't build model (avoids transformers compat issues at build time)
+RUN python -c "
+import os, tarfile, urllib.request
+url = 'http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz'
+dest = '/root/.deeppavlov/models/ner_rus_bert_torch_new.tar.gz'
+out = '/root/.deeppavlov/models/ner_rus_bert_torch'
+os.makedirs(os.path.dirname(dest), exist_ok=True)
+if not os.path.exists(out):
+    print('Downloading model...')
+    urllib.request.urlretrieve(url, dest)
+    print('Extracting model...')
+    with tarfile.open(dest, 'r:gz') as tar:
+        tar.extractall(os.path.dirname(dest))
+    os.remove(dest)
+    print('Model downloaded and extracted')
+else:
+    print('Model already exists')
+"
 
 WORKDIR /app
 COPY analyzer_server.py .
