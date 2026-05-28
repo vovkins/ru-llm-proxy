@@ -25,7 +25,11 @@ RUN pip install --no-cache-dir \
     pandas>=1.0.0 \
     prometheus-client>=0.13.0 \
     pybind11==2.10.3 \
-    tqdm>=4.42.0
+    tqdm>=4.42.0 \
+    torchcrf>=0.1.0 \
+    requests>=2.19.0 \
+    filelock>=3.0.0 \
+    pydantic>=1.0
 
 # Install remaining service dependencies
 RUN pip install --no-cache-dir \
