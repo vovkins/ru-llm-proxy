@@ -1,5 +1,7 @@
 .PHONY: setup build up down restart logs test test-unit test-e2e health clean help
 
+SED_INPLACE = sed -i.bak -e
+
 # Default target
 help:
 	@echo "ru-llm-proxy — команды:"
@@ -26,13 +28,17 @@ setup:
 		MASTER_KEY=$$(openssl rand -hex 32); \
 		SALT_KEY=$$(openssl rand -hex 32); \
 		DB_PASSWORD=$$(openssl rand -hex 16); \
-		sed -i "s/^LITELLM_MASTER_KEY=.*/LITELLM_MASTER_KEY=sk-$${MASTER_KEY}/" .env; \
-		sed -i "s/^LITELLM_SALT_KEY=.*/LITELLM_SALT_KEY=$${SALT_KEY}/" .env; \
-		sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$${DB_PASSWORD}/" .env; \
-		sed -i "s|postgresql://litellm:.*@db|postgresql://litellm:$${DB_PASSWORD}@db|" .env; \
+		$(SED_INPLACE) "s/^LITELLM_MASTER_KEY=.*/LITELLM_MASTER_KEY=sk-$${MASTER_KEY}/" .env; \
+		$(SED_INPLACE) "s/^LITELLM_SALT_KEY=.*/LITELLM_SALT_KEY=$${SALT_KEY}/" .env; \
+		$(SED_INPLACE) "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$${DB_PASSWORD}/" .env; \
+		$(SED_INPLACE) "s|postgresql://litellm:.*@db|postgresql://litellm:$${DB_PASSWORD}@db|" .env; \
+		rm -f .env.bak; \
 		echo ""; \
 		echo "✅ .env создан с автосгенерированными ключами"; \
-		echo "⚠️  Заполните API-ключи провайдеров в .env:"; \
+		echo "⚠️  Заполните API-ключ основного провайдера в .env:"; \
+		echo "   ZAI_API_KEY=***"; \
+		echo ""; \
+		echo "Опционально можно заполнить ключи других провайдеров:"; \
 		echo "   OPENAI_API_KEY=***"; \
 		echo "   ANTHROPIC_API_KEY=***"; \
 		echo "   GOOGLE_API_KEY=***"; \
