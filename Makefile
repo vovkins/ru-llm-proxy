@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test health clean help
+.PHONY: setup build up down restart logs test test-unit test-e2e health clean help
 
 # Default target
 help:
@@ -11,6 +11,8 @@ help:
 	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
 	@echo "  make logs     — логи всех сервисов"
 	@echo "  make test     — запустить тесты recognizers"
+	@echo "  make test-unit — запустить все unit-тесты"
+	@echo "  make test-e2e — end-to-end тест (нужны запущенные сервисы)"
 	@echo "  make health   — проверить статус всех сервисов"
 	@echo "  make clean    — удалить volumes и образы"
 
@@ -91,3 +93,22 @@ clean:
 	@read -p "Продолжить? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	docker compose down -v --rmi local
 	@echo "✅ Очищено"
+
+# === Unit tests (all) ===
+test-unit:
+	@echo "🧪 Запуск всех unit-тестов..."
+	@echo ""
+	@echo "📋 Recognizer tests:"
+	docker compose run --rm --no-deps presidio-analyzer \
+		python -m pytest /app/tests/ -v 2>/dev/null || \
+		(echo "⚠️  Тесты через Docker недоступны. Запускаю локально..." && \
+		 pip install -q pytest presidio-analyzer presidio-anonymizer spacy && \
+		 python -m spacy download ru_core_web_sm -q && \
+		 cd presidio && python -m pytest tests/ -v)
+
+# === End-to-end tests (requires running services) ===
+test-e2e:
+	@echo "🧪 End-to-end тесты (требуются запущенные сервисы)"
+	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
+	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+		bash tests/e2e/test_e2e.sh
