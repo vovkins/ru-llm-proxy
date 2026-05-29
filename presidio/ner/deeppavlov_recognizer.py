@@ -5,10 +5,9 @@ Entity mapping: PER → PERSON, LOC → LOCATION, ORG → ORGANIZATION
 """
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from presidio_analyzer import RecognizerResult
-from presidio_analyzer.nlp_engine import NlpArtifacts
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +20,9 @@ DEEPPAVLOV_ENTITY_MAP = {
     "ORG": "ORGANIZATION",
     "ORGANIZATION": "ORGANIZATION",
 }
+
+DEFAULT_NER_SCORE = 0.7
+NER_ENTITY_TYPES = frozenset(DEEPPAVLOV_ENTITY_MAP.values())
 
 
 def _merge_bio_tags(tokens: list[str], tags: list[str]) -> list[dict]:
@@ -77,6 +79,56 @@ def _merge_bio_tags(tokens: list[str], tags: list[str]) -> list[dict]:
     return entities
 
 
+def _normalize_requested_entities(entities: Optional[list[str]]) -> Optional[set[str]]:
+    """Normalize requested entity names for NER filtering."""
+    if not entities:
+        return None
+    return {str(entity).upper() for entity in entities}
+
+
+def should_run_ner(
+    requested_entities: Optional[list[str]],
+    score_threshold: float,
+) -> bool:
+    """Return whether DeepPavlov NER can contribute to this request."""
+    if score_threshold > DEFAULT_NER_SCORE:
+        return False
+
+    normalized_entities = _normalize_requested_entities(requested_entities)
+    if normalized_entities is None:
+        return True
+
+    return bool(normalized_entities & NER_ENTITY_TYPES)
+
+
+def _find_entity_span(
+    text: str,
+    text_parts: list[str],
+    cursor: int = 0,
+) -> Optional[Tuple[int, int, str]]:
+    """Find entity text at or after cursor, preserving repeated entity order."""
+    candidates = []
+    spaced = " ".join(text_parts)
+    compact = "".join(text_parts)
+    for candidate in (spaced, compact):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    best_match = None
+    for candidate in candidates:
+        start = text.find(candidate, cursor)
+        if start == -1:
+            continue
+        end = start + len(candidate)
+        if best_match is None or (start, -len(candidate)) < (
+            best_match[0],
+            -len(best_match[2]),
+        ):
+            best_match = (start, end, candidate)
+
+    return best_match
+
+
 class DeepPavlovRecognizer:
     """NER recognizer using DeepPavlov ner_rus_bert model.
 
@@ -102,16 +154,25 @@ class DeepPavlovRecognizer:
         """Check if model is loaded."""
         return self._model is not None
 
-    def analyze(self, text: str, score_threshold: float = 0.7) -> List[RecognizerResult]:
+    def analyze(
+        self,
+        text: str,
+        score_threshold: float = 0.35,
+        entities: Optional[list[str]] = None,
+    ) -> List[RecognizerResult]:
         """Analyze text for NER entities.
 
         Args:
             text: Input text
-            score_threshold: Minimum confidence score
+            score_threshold: Minimum confidence score requested by caller
+            entities: Optional Presidio entity types requested by caller
 
         Returns:
             List of Presidio RecognizerResult objects
         """
+        if not should_run_ner(entities, score_threshold):
+            return []
+
         if not self._model:
             self.load_model()
 
@@ -134,37 +195,36 @@ class DeepPavlovRecognizer:
         tags = tags_list[0]
 
         # Merge BIO tags into entity spans
-        entities = _merge_bio_tags(tokens, tags)
+        ner_entities = _merge_bio_tags(tokens, tags)
+        requested_entities = _normalize_requested_entities(entities)
 
         # Convert to RecognizerResult
         presidio_results = []
-        for entity in entities:
+        cursor = 0
+        for entity in ner_entities:
             entity_tag = entity["entity_tag"]
-            entity_text = " ".join(entity["text_parts"])
+            text_parts = entity["text_parts"]
 
             # Map to Presidio entity type
             presidio_type = DEEPPAVLOV_ENTITY_MAP.get(entity_tag)
             if not presidio_type:
                 continue
 
-            # Find position in original text
-            start = text.find(entity_text)
-            if start == -1:
-                # Try without spaces (tokenization may differ)
-                entity_text_no_space = "".join(entity["text_parts"])
-                start = text.find(entity_text_no_space)
-                if start == -1:
-                    continue
-                entity_text = entity_text_no_space
+            span = _find_entity_span(text, text_parts, cursor)
+            if span is None:
+                continue
+            start, end, _ = span
+            cursor = end
 
-            end = start + len(entity_text)
+            if requested_entities is not None and presidio_type not in requested_entities:
+                continue
 
             presidio_results.append(
                 RecognizerResult(
                     entity_type=presidio_type,
                     start=start,
                     end=end,
-                    score=score_threshold,
+                    score=DEFAULT_NER_SCORE,
                     analysis_explanation=None,
                 )
             )

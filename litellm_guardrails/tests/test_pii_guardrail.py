@@ -1,24 +1,42 @@
 """Unit tests for PII guardrail module."""
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
+
+
+def _entity(text, value, entity_type="PHONE_NUMBER", score=1.0):
+    start = text.index(value)
+    return {
+        "entity_type": entity_type,
+        "start": start,
+        "end": start + len(value),
+        "score": score,
+        "text": value,
+    }
+
+
+def _mock_redis(get_value=None):
+    redis = AsyncMock()
+    redis.setex = AsyncMock()
+    redis.get = AsyncMock(return_value=get_value)
+    redis.delete = AsyncMock()
+    return redis
 
 
 @pytest.fixture
 def guardrail():
     """Create a guardrail instance with mocked Redis."""
     g = RuPIIGuardrail()
-    g._redis = AsyncMock()
-    g._redis.setex = AsyncMock()
-    g._redis.get = AsyncMock(return_value=None)
-    g._redis.delete = AsyncMock()
+    g._redis = _mock_redis()
     return g
 
 
 # === _get_request_id ===
+
 
 class TestGetRequestId:
     def test_from_metadata_request_id(self, guardrail):
@@ -30,8 +48,7 @@ class TestGetRequestId:
         assert guardrail._get_request_id(data) == "call-456"
 
     def test_generates_uuid_when_none(self, guardrail):
-        data = {}
-        result = guardrail._get_request_id(data)
+        result = guardrail._get_request_id({})
         assert isinstance(result, str)
         assert len(result) > 0
 
@@ -40,7 +57,21 @@ class TestGetRequestId:
         assert guardrail._get_request_id(data) == "from-meta"
 
 
+# === failure mode ===
+
+
+class TestFailureMode:
+    def test_defaults_to_fail_open_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(failure_mode="bad-value")
+        assert guardrail.failure_mode == "fail_open"
+
+    def test_accepts_fail_closed_alias(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail-closed")
+        assert guardrail.failure_mode == "fail_closed"
+
+
 # === _analyze_text ===
+
 
 class TestAnalyzeText:
     @pytest.mark.asyncio
@@ -48,25 +79,27 @@ class TestAnalyzeText:
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "entities": [
-                {"entity_type": "PHONE_NUMBER", "start": 0, "end": 16, "score": 1.0, "text": "+7 903 123 45 67"}
+                {
+                    "entity_type": "PHONE_NUMBER",
+                    "start": 12,
+                    "end": 27,
+                    "score": 1.0,
+                    "text": "+79031234567",
+                }
             ]
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-            mock_client.return_value.__aexit__ = AsyncMock(return_value=False)
-            mock_response.post = AsyncMock()  # not used directly
-            # The AsyncClient is used as context manager, so we need to set up post on the instance
-            mock_instance = AsyncMock()
-            mock_instance.post.return_value = mock_response
-            mock_client.return_value = mock_instance
-            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-            mock_instance.__aexit__ = AsyncMock(return_value=False)
+        mock_instance = AsyncMock()
+        mock_instance.post.return_value = mock_response
+        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+        mock_instance.__aexit__ = AsyncMock(return_value=False)
 
-            result = await guardrail._analyze_text("Мой телефон +7 903 123 45 67")
-            assert len(result) == 1
-            assert result[0]["entity_type"] == "PHONE_NUMBER"
+        with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient", return_value=mock_instance):
+            result = await guardrail._analyze_text("Мой телефон +79031234567")
+
+        assert len(result) == 1
+        assert result[0]["entity_type"] == "PHONE_NUMBER"
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_no_pii(self, guardrail):
@@ -81,57 +114,121 @@ class TestAnalyzeText:
 
         with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient", return_value=mock_instance):
             result = await guardrail._analyze_text("Обычный текст без PII")
-            assert result == []
+
+        assert result == []
 
 
-# === _anonymize_text ===
+# === _mask_text ===
 
-class TestAnonymizeText:
-    @pytest.mark.asyncio
-    async def test_anonymizes_and_builds_mapping(self, guardrail):
+
+class TestMaskText:
+    def test_masks_with_unique_placeholders_for_same_type(self, guardrail):
+        text = "Телефоны +79031234567 и 89031234567"
         entities = [
-            {"entity_type": "PHONE_NUMBER", "start": 0, "end": 16, "score": 1.0, "text": "+7 903 123 45 67"}
+            _entity(text, "+79031234567"),
+            _entity(text, "89031234567"),
         ]
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "text": "Мой телефон <PHONE_NUMBER>",
-            "items": [
-                {"text": "<PHONE_NUMBER>", "start": 12, "end": 27, "entity_type": "PHONE_NUMBER", "operator": "replace"}
-            ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == "Телефоны <PHONE_NUMBER_1> и <PHONE_NUMBER_2>"
+        assert mapping == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<PHONE_NUMBER_2>": "89031234567",
         }
-        mock_response.raise_for_status = MagicMock()
 
-        mock_instance = AsyncMock()
-        mock_instance.post.return_value = mock_response
-        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-        mock_instance.__aexit__ = AsyncMock(return_value=False)
+    def test_masks_repeated_same_value_with_distinct_placeholders(self, guardrail):
+        phone = "+79031234567"
+        text = f"Телефоны {phone} и {phone}"
+        first_start = text.index(phone)
+        second_start = text.rindex(phone)
+        entities = [
+            {
+                "entity_type": "PHONE_NUMBER",
+                "start": first_start,
+                "end": first_start + len(phone),
+                "score": 1.0,
+                "text": phone,
+            },
+            {
+                "entity_type": "PHONE_NUMBER",
+                "start": second_start,
+                "end": second_start + len(phone),
+                "score": 1.0,
+                "text": phone,
+            },
+        ]
 
-        with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient", return_value=mock_instance):
-            masked_text, mapping = await guardrail._anonymize_text(
-                "Мой телефон +7 903 123 45 67", entities
-            )
-            assert "<PHONE_NUMBER>" in masked_text
-            # mapping should map placeholder back to original
-            assert "<PHONE_NUMBER>" in mapping
+        masked_text, mapping = guardrail._mask_text(text, entities)
 
-    @pytest.mark.asyncio
-    async def test_no_entities_returns_original(self, guardrail):
-        masked_text, mapping = await guardrail._anonymize_text("Обычный текст", [])
+        assert masked_text == "Телефоны <PHONE_NUMBER_1> и <PHONE_NUMBER_2>"
+        assert mapping == {
+            "<PHONE_NUMBER_1>": phone,
+            "<PHONE_NUMBER_2>": phone,
+        }
+
+    def test_entity_counts_are_request_scoped(self, guardrail):
+        first = "Первый +79031234567"
+        second = "Второй 89031234567"
+        counts = {}
+
+        first_masked, first_mapping = guardrail._mask_text(
+            first,
+            [_entity(first, "+79031234567")],
+            counts,
+        )
+        second_masked, second_mapping = guardrail._mask_text(
+            second,
+            [_entity(second, "89031234567")],
+            counts,
+        )
+
+        assert first_masked == "Первый <PHONE_NUMBER_1>"
+        assert second_masked == "Второй <PHONE_NUMBER_2>"
+        assert first_mapping["<PHONE_NUMBER_1>"] == "+79031234567"
+        assert second_mapping["<PHONE_NUMBER_2>"] == "89031234567"
+
+    def test_skips_invalid_and_overlapping_entities(self, guardrail):
+        text = "ИНН 7707083893"
+        entities = [
+            {"entity_type": "RU_INN", "start": -1, "end": 3},
+            _entity(text, "7707083893", "RU_INN"),
+            {"entity_type": "PHONE_NUMBER", "start": 4, "end": 10},
+        ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == "ИНН <RU_INN_1>"
+        assert mapping == {"<RU_INN_1>": "7707083893"}
+
+    def test_no_entities_returns_original(self, guardrail):
+        masked_text, mapping = guardrail._mask_text("Обычный текст", [])
         assert masked_text == "Обычный текст"
         assert mapping == {}
 
 
 # === _save_mapping / _load_mapping ===
 
+
 class TestRedisMapping:
     @pytest.mark.asyncio
     async def test_save_mapping(self, guardrail):
-        await guardrail._save_mapping("req-1", {"<PHONE>": "+7 903 123 45 67"})
+        await guardrail._save_mapping("req-1", {"<PHONE>": "+79031234567"})
+
         guardrail._redis.setex.assert_called_once()
         args = guardrail._redis.setex.call_args[0]
         assert args[0] == "pii_mapping:req-1"
         assert args[1] == 3600
-        assert json.loads(args[2]) == {"<PHONE>": "+7 903 123 45 67"}
+        assert json.loads(args[2]) == {"<PHONE>": "+79031234567"}
+
+    @pytest.mark.asyncio
+    async def test_save_mapping_uses_configured_ttl(self):
+        guardrail = RuPIIGuardrail(mapping_ttl_seconds=30)
+        guardrail._redis = _mock_redis()
+
+        await guardrail._save_mapping("req-1", {"<PHONE>": "+79031234567"})
+
+        assert guardrail._redis.setex.call_args[0][1] == 30
 
     @pytest.mark.asyncio
     async def test_save_empty_mapping_skips(self, guardrail):
@@ -140,103 +237,161 @@ class TestRedisMapping:
 
     @pytest.mark.asyncio
     async def test_load_mapping_returns_dict(self, guardrail):
-        guardrail._redis.get.return_value = json.dumps({"<PHONE>": "+7 903 123 45 67"})
+        guardrail._redis.get.return_value = json.dumps({"<PHONE>": "+79031234567"})
+
         result = await guardrail._load_mapping("req-1")
-        assert result == {"<PHONE>": "+7 903 123 45 67"}
+
+        assert result == {"<PHONE>": "+79031234567"}
 
     @pytest.mark.asyncio
     async def test_load_mapping_returns_empty_on_miss(self, guardrail):
         guardrail._redis.get.return_value = None
+
         result = await guardrail._load_mapping("req-1")
+
         assert result == {}
 
 
 # === async_pre_call_hook ===
 
+
 class TestPreCallHook:
     @pytest.mark.asyncio
-    async def test_masks_pii_in_messages(self, guardrail):
-        """Verify pre-call hook masks PII and saves mapping."""
-        # Mock analyze to return a phone entity
-        analyze_entities = [
-            {"entity_type": "PHONE_NUMBER", "start": 0, "end": 16, "score": 1.0, "text": "+7 903 123 45 67"}
-        ]
+    async def test_masks_pii_in_messages_and_saves_mapping(self, guardrail):
+        first = "Мой телефон +79031234567"
+        second = "Рабочий телефон 89031234567"
+        save_mapping = AsyncMock()
 
-        with patch.object(guardrail, "_analyze_text", return_value=analyze_entities):
-            with patch.object(guardrail, "_anonymize_text") as mock_anon:
-                mock_anon.return_value = (
-                    "Мой телефон <PHONE_NUMBER_0>",
-                    {"<PHONE_NUMBER_0>": "+7 903 123 45 67"}
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(first, "+79031234567")],
+                [_entity(second, "89031234567")],
+            ],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {
+                    "messages": [
+                        {"role": "user", "content": first},
+                        {"role": "user", "content": second},
+                    ]
+                }
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
                 )
-                with patch.object(guardrail, "_save_mapping", new_callable=AsyncMock):
-                    data = {
-                        "messages": [
-                            {"role": "user", "content": "Мой телефон +7 903 123 45 67"}
-                        ]
-                    }
-                    result = await guardrail.async_pre_call_hook(
-                        user_api_key_dict=MagicMock(),
-                        cache=MagicMock(),
-                        data=data,
-                    )
-                    assert result is not None
-                    assert "<PHONE_NUMBER_0>" in result["messages"][0]["content"]
-                    assert "+7 903 123 45 67" not in result["messages"][0]["content"]
+
+        assert result["messages"][0]["content"] == "Мой телефон <PHONE_NUMBER_1>"
+        assert result["messages"][1]["content"] == "Рабочий телефон <PHONE_NUMBER_2>"
+        assert result["metadata"]["pii_request_id"]
+        saved_mapping = save_mapping.call_args[0][1]
+        assert saved_mapping == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<PHONE_NUMBER_2>": "89031234567",
+        }
 
     @pytest.mark.asyncio
     async def test_no_messages_returns_data(self, guardrail):
-        """If no messages, should return data unchanged."""
         data = {"model": "glm-5.1"}
+
         result = await guardrail.async_pre_call_hook(
             user_api_key_dict=MagicMock(),
             cache=MagicMock(),
             data=data,
         )
+
         assert result == data
 
     @pytest.mark.asyncio
     async def test_no_pii_passes_through(self, guardrail):
-        """If no PII found, message should pass unchanged."""
         with patch.object(guardrail, "_analyze_text", return_value=[]):
-            data = {
-                "messages": [
-                    {"role": "user", "content": "Расскажи joke"}
-                ]
-            }
+            data = {"messages": [{"role": "user", "content": "Расскажи joke"}]}
+
             result = await guardrail.async_pre_call_hook(
                 user_api_key_dict=MagicMock(),
                 cache=MagicMock(),
                 data=data,
             )
-            assert result["messages"][0]["content"] == "Расскажи joke"
+
+        assert result["messages"][0]["content"] == "Расскажи joke"
 
     @pytest.mark.asyncio
     async def test_analyze_error_fails_open(self, guardrail):
-        """On analyzer error, message should pass unchanged (fail open)."""
+        text = "Мой телефон +79031234567"
         with patch.object(guardrail, "_analyze_text", side_effect=Exception("connection error")):
-            data = {
-                "messages": [
-                    {"role": "user", "content": "Мой телефон +7 903 123 45 67"}
-                ]
-            }
+            data = {"messages": [{"role": "user", "content": text}]}
+
             result = await guardrail.async_pre_call_hook(
                 user_api_key_dict=MagicMock(),
                 cache=MagicMock(),
                 data=data,
             )
-            # Fail open: original text unchanged
-            assert result["messages"][0]["content"] == "Мой телефон +7 903 123 45 67"
+
+        assert result["messages"][0]["content"] == text
+        assert "metadata" not in result
+
+    @pytest.mark.asyncio
+    async def test_analyze_error_fails_closed(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_closed")
+        guardrail._redis = _mock_redis()
+        text = "Мой телефон +79031234567"
+
+        with patch.object(guardrail, "_analyze_text", side_effect=Exception("connection error")):
+            with pytest.raises(RuntimeError, match="PII guardrail masking failed"):
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data={"messages": [{"role": "user", "content": text}]},
+                )
+
+    @pytest.mark.asyncio
+    async def test_redis_save_error_fails_open_without_partial_mutation(self, guardrail):
+        text = "Мой телефон +79031234567"
+        guardrail._redis.setex.side_effect = RuntimeError("redis down")
+
+        with patch.object(guardrail, "_analyze_text", return_value=[_entity(text, "+79031234567")]):
+            data = {"messages": [{"role": "user", "content": text}]}
+
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result["messages"][0]["content"] == text
+        assert "metadata" not in result
+
+    @pytest.mark.asyncio
+    async def test_redis_save_error_fails_closed(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_closed")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.setex.side_effect = RuntimeError("redis down")
+        text = "Мой телефон +79031234567"
+
+        with patch.object(guardrail, "_analyze_text", return_value=[_entity(text, "+79031234567")]):
+            with pytest.raises(RuntimeError, match="PII guardrail mapping save failed"):
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data={"messages": [{"role": "user", "content": text}]},
+                )
 
 
 # === async_post_call_success_hook ===
 
+
 class TestPostCallHook:
     @pytest.mark.asyncio
     async def test_unmasks_response(self, guardrail):
-        """Verify post-call hook replaces placeholders with originals."""
         import litellm
 
-        mapping = {"<PHONE_NUMBER_0>": "+7 903 123 45 67"}
+        mapping = {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<PHONE_NUMBER_2>": "89031234567",
+        }
         guardrail._redis.get.return_value = json.dumps(mapping)
 
         response = litellm.ModelResponse(
@@ -246,26 +401,25 @@ class TestPostCallHook:
                     index=0,
                     message=litellm.Message(
                         role="assistant",
-                        content="Ваш телефон <PHONE_NUMBER_0> подтверждён"
+                        content="Телефоны <PHONE_NUMBER_1> и <PHONE_NUMBER_2> подтверждены",
                     ),
                     finish_reason="stop",
                 )
             ],
         )
 
-        data = {"metadata": {"pii_request_id": "req-1"}}
         await guardrail.async_post_call_success_hook(
-            data=data,
+            data={"metadata": {"pii_request_id": "req-1"}},
             user_api_key_dict=MagicMock(),
             response=response,
         )
 
-        assert "+7 903 123 45 67" in response.choices[0].message.content
-        assert "<PHONE_NUMBER_0>" not in response.choices[0].message.content
+        assert "+79031234567" in response.choices[0].message.content
+        assert "89031234567" in response.choices[0].message.content
+        assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
 
     @pytest.mark.asyncio
     async def test_no_request_id_skips(self, guardrail):
-        """If no pii_request_id in metadata, should skip."""
         import litellm
 
         response = litellm.ModelResponse(
@@ -279,11 +433,100 @@ class TestPostCallHook:
             ],
         )
 
-        data = {"metadata": {}}
         await guardrail.async_post_call_success_hook(
-            data=data,
+            data={"metadata": {}},
             user_api_key_dict=MagicMock(),
             response=response,
         )
-        # Content unchanged
+
         assert response.choices[0].message.content == "test"
+
+    @pytest.mark.asyncio
+    async def test_uses_litellm_call_id_when_metadata_id_missing(self, guardrail):
+        import litellm
+
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": "+79031234567"}
+        )
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(role="assistant", content="<PHONE_NUMBER_1>"),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {}, "litellm_call_id": "req-1"},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.choices[0].message.content == "+79031234567"
+
+    @pytest.mark.asyncio
+    async def test_redis_load_error_fails_open(self, guardrail):
+        import litellm
+
+        guardrail._redis.get.side_effect = RuntimeError("redis down")
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(role="assistant", content="<PHONE_NUMBER_1>"),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.choices[0].message.content == "<PHONE_NUMBER_1>"
+
+    @pytest.mark.asyncio
+    async def test_redis_load_error_fails_closed(self):
+        import litellm
+
+        guardrail = RuPIIGuardrail(failure_mode="fail_closed")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.get.side_effect = RuntimeError("redis down")
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(role="assistant", content="<PHONE_NUMBER_1>"),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        with pytest.raises(RuntimeError, match="PII guardrail mapping load failed"):
+            await guardrail.async_post_call_success_hook(
+                data={"metadata": {"pii_request_id": "req-1"}},
+                user_api_key_dict=MagicMock(),
+                response=response,
+            )
+
+
+# === _replace_placeholders ===
+
+
+class TestReplacePlaceholders:
+    def test_replaces_longer_placeholders_first(self, guardrail):
+        mapping = {
+            "<PERSON_1>": "Иван",
+            "<PERSON_10>": "Петр",
+        }
+
+        result = guardrail._replace_placeholders("<PERSON_10> и <PERSON_1>", mapping)
+
+        assert result == "Петр и Иван"

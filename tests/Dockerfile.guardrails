@@ -1,0 +1,8 @@
+FROM docker.litellm.ai/berriai/litellm:main-stable
+
+COPY tests/requirements-guardrails.txt /tmp/requirements-guardrails.txt
+RUN python -m pip install --no-cache-dir -r /tmp/requirements-guardrails.txt
+
+WORKDIR /workspace
+ENV PYTHONPATH=/workspace
+ENV PYTHONDONTWRITEBYTECODE=1

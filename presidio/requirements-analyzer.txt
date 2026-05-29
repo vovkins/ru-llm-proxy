@@ -1,0 +1,26 @@
+# Analyzer runtime dependencies.
+#
+# These are compatibility constraints, not a full lockfile. They intentionally
+# bound major/minor lines used by the current Docker image while avoiding
+# DeepPavlov's older transitive pins, which are installed with --no-deps.
+numpy>=1.26,<2.0
+scikit-learn>=1.3,<1.6
+scipy>=1.10,<1.13
+
+nltk>=3.8,<4.0
+pandas>=1.5,<3.0
+prometheus-client>=0.13,<1.0
+pybind11==2.10.3
+tqdm>=4.66,<5.0
+requests>=2.31,<3.0
+filelock>=3.12,<4.0
+pydantic>=1.10,<3.0
+
+presidio-analyzer>=2.2.362,<3.0
+presidio-anonymizer>=2.2.362,<3.0
+spacy>=3.8,<3.9
+fastapi>=0.115,<0.116
+uvicorn>=0.34,<0.35
+torch>=2.0,<3.0
+transformers>=4.30,<5.0
+pytest>=8.0,<9.0

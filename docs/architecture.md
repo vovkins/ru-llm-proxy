@@ -1,84 +1,164 @@
-# Архитектура ru-llm-proxy
+# Архитектура
 
-## Обзор
+Документ описывает текущую реализацию `ru-llm-proxy`.
 
+## Компоненты
+
+| Компонент | Service | Ответственность |
+| --- | --- | --- |
+| LiteLLM Proxy | `litellm` | OpenAI-compatible gateway, роутинг к провайдеру, выполнение guardrails |
+| PII Guardrail | `litellm_guardrails/pii_guardrail.py` | Маскирование запросов, Redis-маппинг, восстановление ответов |
+| Presidio Analyzer | `presidio-analyzer` | Детекция PII через русские regex recognizers и опциональный DeepPavlov NER |
+| Presidio Anonymizer | `presidio-anonymizer` | Standalone anonymization API для прямых проверок и будущих интеграций |
+| Redis | `redis` | Временное хранение обратимых placeholder mappings |
+| PostgreSQL | `db` | Persistence для LiteLLM |
+
+## Поток запроса
+
+```text
+1. Клиент отправляет POST /chat/completions в LiteLLM.
+2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
+3. Guardrail отправляет каждое string message в Presidio Analyzer.
+4. Analyzer возвращает entity spans, entity types и scores.
+5. Guardrail строит request-scoped placeholders в порядке исходного текста.
+6. Guardrail сохраняет placeholder -> original mappings в Redis.
+7. Только после успешного Redis save содержимое message заменяется на masked text.
+8. LiteLLM отправляет masked request настроенному LLM-провайдеру.
+9. LiteLLM запускает ru-pii-mask-post в режиме post_call.
+10. Guardrail загружает Redis mapping и заменяет placeholders в response content.
+11. Redis mapping удаляется после post-call обработки.
 ```
-┌──────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│  Клиент   │────▶│ LiteLLM Proxy│────▶│ PII Guardrail   │────▶│ LLM Provider │
-│ (приложение)│   │  (порт 4000) │     │ Presidio + NER  │     │ (OpenAI, etc)│
-│           │◀────│              │◀────│ Mask / Unmask   │◀────│              │
-└──────────┘     └──────────────┘     └─────────────────┘     └──────────────┘
-                        │
-                 ┌──────┴──────┐
-                 │ PostgreSQL  │
-                 │   + Redis   │
-                 └─────────────┘
+
+Пример трансформации:
+
+```text
+Input:       Мой телефон +79031234567, ИНН 7707083893
+To provider: Мой телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>
+Mapping:     <PHONE_NUMBER_1> -> +79031234567
+             <RU_INN_1>       -> 7707083893
 ```
 
-## Поток запроса (детально)
+## Конфигурация Guardrail
 
-1. **Клиент** отправляет `POST /v1/chat/completions` с текстом, содержащим PII
-2. **LiteLLM** перехватывает через `async_pre_call_hook` (RuPIIGuardrail)
-3. Текст отправляется на **Presidio Analyzer** (`POST /api/v1/analyze`)
-4. Analyzer запускает:
-   - **Regex recognizers** — телефоны, email, ИНН, СНИЛС, паспорт, карты, адреса
-   - **DeepPavlov NER** (ner_rus_bert) — имена, организации, локации
-5. Результат + текст отправляются на **Presidio Anonymizer** (`POST /api/v1/anonymize`)
-6. Anonymizer заменяет PII на плейсхолдеры: `+7 903 123 45 67` → `<PHONE_NUMBER>`
-7. Маппинг `плейсхолдер → оригинал` сохраняется в **Redis** (TTL 1 час)
-8. Обезличенный запрос отправляется к **LLM-провайдеру** (OpenAI/Anthropic/Google)
-9. **LiteLLM** перехватывает ответ через `async_post_call_success_hook`
-10. Плейсхолдеры в ответе заменяются на оригинальные данные из Redis
-11. **Клиент** получает полный ответ с оригинальными PII
+В LiteLLM настроены два guardrail entry, потому что pre-call и post-call hooks выполняются через разные modes:
 
-## Стек технологий
+```yaml
+guardrails:
+  - guardrail_name: "ru-pii-mask-pre"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "pre_call"
+      default_on: true
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
+      default_on: true
+```
 
-| Компонент | Версия | Примечание |
-|-----------|--------|------------|
-| LiteLLM Proxy | latest stable | Docker: `docker.litellm.ai/berriai/litellm:main-stable` |
-| Python | 3.12 | Presidio recognizers + NER |
-| Presidio Analyzer | 2.2.362+ | PII detection framework |
-| Presidio Anonymizer | 2.2.362+ | PII masking/restoration |
-| DeepPavlov | 1.0+ | NER model `ner_rus_bert` (PER, LOC, ORG) |
-| spaCy | 3.8+ | NLP engine для Presidio (базовый русский) |
-| PostgreSQL | 16-alpine | БД LiteLLM |
-| Redis | 7-alpine | PII mapping cache + LiteLLM cache |
-| Docker | 20.10+ | Контейнеризация |
-| Docker Compose | v2 | Оркестрация |
+`async_pre_call_hook` маскирует запросы. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`.
 
-## PII-детекция для русского языка
+## Семантика плейсхолдеров
 
-### Regex-recognizers (точные паттерны)
+Плейсхолдеры уникальны в рамках одного запроса и группируются по entity type:
 
-| Recognizer | Типы | Валидация |
-|-----------|------|-----------|
-| RuPhoneRecognizer | PHONE_NUMBER | Проверка количества цифр (10-11) |
-| RuEmailRecognizer | EMAIL_ADDRESS | Стандартный email regex |
-| RuInnRecognizer | RU_INN | Контрольная сумма (10 и 12 цифр) |
-| RuSnilsRecognizer | RU_SNILS | Checksum (11 цифр) |
-| RuPassportRecognizer | RU_PASSPORT | Валидация региона (01-99) |
-| RuBankCardRecognizer | CREDIT_CARD | Luhn algorithm |
-| RuAddressRecognizer | RU_ADDRESS | Паттерны ул./д./кв. |
+```text
+<PERSON_1>
+<PHONE_NUMBER_1>
+<PHONE_NUMBER_2>
+<RU_INN_1>
+```
 
-### NER-модель (DeepPavlov ner_rus_bert)
+Счётчик request-scoped, а не message-scoped. Если один запрос содержит два user messages с телефонами, второй телефон получит `<PHONE_NUMBER_2>`.
 
-| Entity | Presidio type | Пример |
-|--------|--------------|--------|
-| PER | PERSON | Иван Иванов |
-| LOC | LOCATION | Москва |
-| ORG | ORGANIZATION | Сбербанк |
+`presidio/analyzer_server.py` дедуплицирует пересекающиеся результаты analyzer/NER. Guardrail дополнительно пропускает некорректные spans и оставшиеся пересечения во время построения замен.
 
-## Дедупликация
+## Failure Modes
 
-Regex + NER могут найти одну и ту же сущность дважды. Анализатор дедуплицирует:
-- Перекрывающиеся сущности — остаётся с более высоким score
-- Сортировка по позиции в тексте
+Guardrail поддерживает два режима через `PII_GUARDRAIL_FAILURE_MODE`.
 
-## Кастомный LiteLLM Guardrail
+| Mode | Поведение |
+| --- | --- |
+| `fail_open` | По умолчанию. При сбоях Presidio/Redis запрос остаётся неизменённым. Если Redis save не удался, guardrail не применяет частичную маскировку. |
+| `fail_closed` | При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
 
-Файл: `litellm_guardrails/pii_guardrail.py`
+TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
 
-- `async_pre_call_hook` — маскирование PII перед отправкой к LLM
-- `async_post_call_success_hook` — восстановление PII в ответе
-- Маппинг хранится в Redis (TTL 1 час, auto-cleanup)
-- Fail-open: при ошибке Presidio запрос проходит без маскировки
+## Analyzer
+
+Analyzer service — FastAPI приложение в `presidio/analyzer_server.py`.
+
+Источники детекции:
+
+| Источник | Entity types |
+| --- | --- |
+| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
+| DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
+
+DeepPavlov загружается на startup. Если модель не загрузилась, analyzer остаётся доступен, regex recognizers продолжают работать, а `/api/v1/health` возвращает `ner: "not_loaded"`.
+
+NER запускается только когда он может повлиять на ответ Analyzer:
+
+- если `entities` не указан, NER добавляет `PERSON`, `LOCATION` и `ORGANIZATION`;
+- если `entities` указан, NER добавляет только пересечение запрошенного списка с `PERSON`, `LOCATION`, `ORGANIZATION`;
+- если `score_threshold > 0.7`, NER пропускается, потому что DeepPavlov не отдаёт per-entity confidence, а проект присваивает NER spans фиксированный score `0.7`.
+
+Offsets для NER spans вычисляются по исходному тексту после объединения BIO-тегов. Для повторяющихся сущностей с одинаковым текстом поиск идёт последовательно от конца предыдущего найденного span, поэтому одинаковые значения получают разные позиции.
+
+## Anonymizer
+
+Anonymizer service доступен через `POST /api/v1/anonymize`. Текущий reversible LiteLLM guardrail не зависит от anonymizer output, потому что для восстановления нужен стабильный one-to-one mapping, контролируемый самим guardrail.
+
+Сервис сохраняется для:
+
+- прямых проверок Presidio Anonymizer API;
+- совместимости с клиентами, которые вызывают anonymizer напрямую;
+- будущих сценариев, где anonymizer operators используются вне reversible LiteLLM masking.
+
+## Границы данных
+
+Ожидаемая privacy boundary:
+
+- Presidio Analyzer и Redis работают внутри Docker Compose network.
+- Внешний LLM-провайдер получает masked prompt text.
+- Redis временно хранит исходные PII для post-call восстановления.
+- PostgreSQL хранит состояние LiteLLM; текущий guardrail mapping там не сохраняется.
+
+## Сборка и зависимости
+
+Presidio images собираются из `presidio/Dockerfile` с двумя targets: `analyzer` и `anonymizer`.
+
+Dependency constraints вынесены из Dockerfile:
+
+| Файл | Использование |
+| --- | --- |
+| `presidio/requirements-analyzer.txt` | Analyzer runtime, Presidio, spaCy, torch, transformers, pytest |
+| `presidio/requirements-torchcrf.txt` | `pytorch-crf`, устанавливается после `torch` |
+| `presidio/requirements-anonymizer.txt` | Anonymizer runtime |
+| `tests/requirements-guardrails.txt` | Test-only зависимости guardrail test runner |
+
+DeepPavlov устанавливается отдельно с `--no-deps`, потому что его transitive pins тянут старые версии зависимостей, неподходящие для текущего Python 3.11 образа. Совместимые runtime dependencies задаются явно в requirements-файлах.
+
+Analyzer build скачивает DeepPavlov model archive через `presidio/download_model.py`. Скрипт:
+
+- скачивает archive во временный файл и атомарно переименовывает его после успешной загрузки;
+- разрешает только `http`/`https` URLs;
+- считает SHA-256;
+- проверяет SHA-256, если задан `DEEPPAVLOV_NER_MODEL_SHA256`;
+- отклоняет absolute paths, path traversal и link entries при распаковке tar;
+- распаковывает модель во временную директорию и затем атомарно переносит ожидаемый model directory.
+
+Build args пробрасываются из `.env` через `docker-compose.yml`:
+
+```env
+DEEPPAVLOV_NER_MODEL_URL=http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz
+DEEPPAVLOV_NER_MODEL_SHA256=
+DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
+```
+
+## Текущие ограничения
+
+- Восстановление ответа работает только для плейсхолдеров, которые провайдер вернул.
+- Streaming post-call restoration не реализован. Для сценариев с обязательным восстановлением используйте non-streaming calls.
+- DeepPavlov span alignment основан на поиске token text в исходной строке и может пропускать сущности, если модель токенизировала их в форме, которой нет в исходной строке.
+- Requirements-файлы задают compatibility constraints, но это ещё не полный lockfile с hash-проверкой всех Python wheels.

@@ -1,6 +1,12 @@
-.PHONY: setup build up down restart logs test test-unit test-e2e health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e health clean help
 
 SED_INPLACE = sed -i.bak -e
+PYTEST = python -m pytest -p no:cacheprovider -v
+PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
+	-e PYTHONPATH=/workspace:/workspace/presidio \
+	-e PYTHONDONTWRITEBYTECODE=1 \
+	-v .:/workspace:ro \
+	-w /workspace
 
 # Default target
 help:
@@ -12,9 +18,12 @@ help:
 	@echo "  make down     — остановить все сервисы"
 	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
 	@echo "  make logs     — логи всех сервисов"
-	@echo "  make test     — запустить тесты recognizers"
-	@echo "  make test-unit — запустить все unit-тесты"
-	@echo "  make test-e2e — end-to-end тест (нужны запущенные сервисы)"
+	@echo "  make test     — запустить весь локальный test suite"
+	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
+	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
+	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
+	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
+	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make health   — проверить статус всех сервисов"
 	@echo "  make clean    — удалить volumes и образы"
 
@@ -73,14 +82,22 @@ logs:
 	docker compose logs -f --tail=50
 
 # === Test ===
-test:
-	@echo "🧪 Запуск тестов recognizers..."
-	docker compose run --rm --no-deps presidio-analyzer \
-		python -m pytest /app/tests/ -v 2>/dev/null || \
-		(echo "⚠️  Тесты через Docker недоступны. Запускаю локально..." && \
-		 pip install -q pytest presidio-analyzer presidio-anonymizer spacy && \
-		 python -m spacy download ru_core_web_sm -q && \
-		 cd presidio && python -m pytest tests/ -v)
+test: test-unit
+
+test-recognizers:
+	@echo "🧪 Recognizer + NER unit tests"
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
+		$(PYTEST) presidio/tests
+
+test-guardrail:
+	@echo "🧪 LiteLLM guardrail unit tests"
+	docker compose run $(PYTEST_DOCKER_FLAGS) guardrail-tests \
+		$(PYTEST) litellm_guardrails/tests
+
+test-flow:
+	@echo "🧪 Deterministic guardrail-flow test"
+	docker compose run $(PYTEST_DOCKER_FLAGS) guardrail-tests \
+		$(PYTEST) tests/e2e/test_guardrail_flow.py
 
 # === Health check ===
 health:
@@ -103,18 +120,14 @@ clean:
 # === Unit tests (all) ===
 test-unit:
 	@echo "🧪 Запуск всех unit-тестов..."
-	@echo ""
-	@echo "📋 Recognizer tests:"
-	docker compose run --rm --no-deps presidio-analyzer \
-		python -m pytest /app/tests/ -v 2>/dev/null || \
-		(echo "⚠️  Тесты через Docker недоступны. Запускаю локально..." && \
-		 pip install -q pytest presidio-analyzer presidio-anonymizer spacy && \
-		 python -m spacy download ru_core_web_sm -q && \
-		 cd presidio && python -m pytest tests/ -v)
+	@$(MAKE) test-recognizers
+	@$(MAKE) test-guardrail
+	@$(MAKE) test-flow
+	@echo "✅ Unit suite completed"
 
-# === End-to-end tests (requires running services) ===
+# === Live smoke test (requires running services) ===
 test-e2e:
-	@echo "🧪 End-to-end тесты (требуются запущенные сервисы)"
+	@echo "🧪 Live smoke test (требуются запущенные сервисы и LLM provider key)"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
 		bash tests/e2e/test_e2e.sh

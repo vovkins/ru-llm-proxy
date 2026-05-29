@@ -1,134 +1,181 @@
-# Примеры API-запросов
+# Примеры API
 
-Все запросы идут через LiteLLM Proxy (OpenAI-совместимый API).
+Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, модель `glm-5.1`.
 
-## Настройка
+## Окружение
 
 ```bash
-# Установить мастер-ключ из .env
-export LITELLM_MASTER_KEY=$(grep LITELLM_MASTER_KEY .env | cut -d= -f2)
 export API_URL="http://localhost:4000"
+export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)
 ```
 
-## 1. Простой запрос (без PII)
+## Chat completion без PII
 
 ```bash
-curl -s $API_URL/v1/chat/completions \
+curl -s "$API_URL/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Расскажи сказку"}]
-  }' | jq '.choices[0].message.content'
+    "model": "glm-5.1",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Скажи короткое приветствие на русском"
+      }
+    ],
+    "max_tokens": 80
+  }' | jq '.choices[0].message'
 ```
 
-Текст без PII проходит как есть — no masking.
-
-## 2. Запрос с телефоном
+## Chat completion с PII
 
 ```bash
-curl -s $API_URL/v1/chat/completions \
+curl -s "$API_URL/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Позвони мне на номер +7 903 123 45 67"}]
-  }' | jq '.choices[0].message.content'
+    "model": "glm-5.1",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Клиент Иванов Иван, телефон +79031234567, ИНН 7707083893. Составь краткую справку."
+      }
+    ],
+    "max_tokens": 120
+  }' | jq '.choices[0].message'
 ```
 
-**Что происходит:**
-- К LLM уходит: `"Позвони мне на номер <PHONE_NUMBER_1>"`
-- Ответ LLM содержит плейсхолдер
-- Клиент получает: `"Я не могу позвонить на номер +7 903 123 45 67..."`
+Перед вызовом провайдера guardrail отправляет masked text примерно такого вида:
 
-## 3. Запрос с ИНН и СНИЛС
+```text
+Клиент <PERSON_1>, телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>. Составь краткую справку.
+```
+
+Если ответ провайдера содержит эти плейсхолдеры, post-call hook восстановит исходные значения перед возвратом клиенту.
+
+## Несколько значений одного типа
 
 ```bash
-curl -s $API_URL/v1/chat/completions \
+curl -s "$API_URL/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Мой ИНН 7707083893 и СНИЛС 112-233-445 95"}]
-  }' | jq '.choices[0].message.content'
+    "model": "glm-5.1",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Основной телефон +79031234567, резервный телефон 89031234567."
+      }
+    ],
+    "max_tokens": 80
+  }' | jq '.choices[0].message'
 ```
 
-## 4. Запрос с ФИО (NER)
+Провайдер получает разные плейсхолдеры:
 
-```bash
-curl -s $API_URL/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Иван Иванов из Москвы работает в Сбербанке"}]
-  }' | jq '.choices[0].message.content'
+```text
+Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
 ```
 
-**DeepPavlov NER обнаружит:** Иван Иванов → PERSON, Москвы → LOCATION, Сбербанке → ORGANIZATION
-
-## 5. Комплексный запрос (много PII)
+## Прямая проверка Analyzer
 
 ```bash
-curl -s $API_URL/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Клиент Петров Иван Сергеевич, телефон +7 903 123 45 67, email: petrov@mail.ru, ИНН 500100732259, проживает по адресу ул. Ленина, д. 10, кв. 5"}]
-  }' | jq '.choices[0].message.content'
-```
-
-Все PII будут маскированы перед отправкой и восстановлены в ответе.
-
-## 6. Разные модели
-
-```bash
-# GPT-4o
-curl -s $API_URL/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Привет"}]}'
-
-# Claude Sonnet 4
-curl -s $API_URL/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Привет"}]}'
-
-# Gemini 2.5 Pro
-curl -s $API_URL/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "gemini-2.5-pro", "messages": [{"role": "user", "content": "Привет"}]}'
-```
-
-## 7. Streaming
-
-```bash
-curl -s $API_URL/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Привет, я Иван Иванов"}], "stream": true}'
-```
-
-## 8. Прямая проверка Presidio
-
-```bash
-# Analyzer — что найдено
 curl -s http://localhost:5001/api/v1/analyze \
   -H "Content-Type: application/json" \
-  -d '{"text": "Мой телефон +7 903 123 45 67 и ИНН 7707083893", "language": "ru"}' | jq
+  -d '{
+    "text": "Мой телефон +79031234567 и ИНН 7707083893",
+    "language": "ru"
+  }' | jq
+```
 
-# Anonymizer — что замаскировано
+Ожидаемые entity types: `PHONE_NUMBER` и `RU_INN`.
+
+## Фильтрация Analyzer по entity types
+
+Analyzer API поддерживает стандартный Presidio-параметр `entities`. Regex recognizers и DeepPavlov NER соблюдают этот список одинаково: если запрошен только `RU_INN`, NER-типы `PERSON`, `LOCATION` и `ORGANIZATION` не вычисляются.
+
+```bash
+curl -s http://localhost:5001/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Иван Иванов из Москвы, ИНН 7707083893",
+    "language": "ru",
+    "entities": ["RU_INN"]
+  }' | jq
+```
+
+Чтобы получить только NER-сущности, явно запросите соответствующие типы:
+
+```bash
+curl -s http://localhost:5001/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Иван Иванов работает в Газпроме",
+    "language": "ru",
+    "entities": ["PERSON", "ORGANIZATION"],
+    "score_threshold": 0.7
+  }' | jq
+```
+
+NER-результаты имеют фиксированный score `0.7`; при `score_threshold` выше `0.7` DeepPavlov NER не запускается.
+
+## Health Analyzer
+
+```bash
+curl -s http://localhost:5001/api/v1/health | jq
+```
+
+NER status возвращается отдельно:
+
+```json
+{"status":"ok","ner":"loaded"}
+```
+
+Если модель не загрузилась, сервис продолжит работать для regex recognizers:
+
+```json
+{"status":"ok","ner":"not_loaded"}
+```
+
+## Прямая проверка Anonymizer
+
+Anonymizer service доступен для прямых вызовов. Reversible LiteLLM guardrail path его не использует.
+
+```bash
 curl -s http://localhost:5002/api/v1/anonymize \
   -H "Content-Type: application/json" \
   -d '{
-    "text": "Мой телефон +7 903 123 45 67 и ИНН 7707083893",
+    "text": "Мой телефон +79031234567",
     "entities": [
-      {"entity_type": "PHONE_NUMBER", "start": 12, "end": 29, "score": 0.85},
-      {"entity_type": "RU_INN", "start": 33, "end": 43, "score": 0.9}
+      {
+        "entity_type": "PHONE_NUMBER",
+        "start": 12,
+        "end": 24,
+        "score": 0.85
+      }
     ],
-    "operators": {"PHONE_NUMBER": "replace", "RU_INN": "replace"}
+    "operators": {
+      "PHONE_NUMBER": "replace"
+    }
   }' | jq
 ```
+
+## Добавление моделей
+
+По умолчанию настроена только модель `glm-5.1`. Чтобы использовать другого провайдера, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
+
+```yaml
+model_list:
+  - model_name: my-openai-model
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+```
+
+```bash
+make restart
+```
+
+## Streaming
+
+LiteLLM может принимать streaming requests, но в проекте пока не реализовано streaming response restoration. Не используйте `stream: true` для сценариев, где восстановление PII в ответе обязательно.
