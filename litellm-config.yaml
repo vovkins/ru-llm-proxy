@@ -1,60 +1,16 @@
-# === LiteLLM Proxy Configuration for ru-llm-proxy ===
-
 model_list:
-  - model_name: gpt-4o
+  - model_name: glm-5.1
     litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
+      model: zai/glm-5.1
+      api_key: os.environ/ZAI_API_KEY
 
-  - model_name: gpt-4o-mini
-    litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
-
-  - model_name: claude-sonnet-4-20250514
-    litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
-      api_key: os.environ/ANTHROPIC_API_KEY
-
-  - model_name: gemini-2.5-pro
-    litellm_params:
-      model: gemini/gemini-2.5-pro
-      api_key: os.environ/GOOGLE_API_KEY
-
-# === Router Settings ===
 router_settings:
-  routing_strategy: fallback
   num_retries: 3
   timeout: 60
-  retry_after: 0
-  allowed_fails: 3
-  cooldown_time: 60
 
-# Fallback: если основной провайдер недоступен
-fallbacks:
-  - gpt-4o: ["claude-sonnet-4-20250514", "gemini-2.5-pro"]
-  - gpt-4o-mini: ["gpt-4o"]
-
-# === Guardrails ===
-guardrails:
-  - guardrail_name: "ru-pii-mask"
-    litellm_params:
-      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
-      mode: "pre_call"
-      default_on: true
-
-# === General Settings ===
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
-  store_model_in_db: false
 
-# === Success/Failure Callbacks ===
-success_callback: ["prometheus"]
-failure_callback: ["prometheus"]
-
-# === Rate Limiting ===
 litellm_settings:
   drop_requests: true
-  redis_host: os.environ/REDIS_HOST
-  redis_port: os.environ/REDIS_PORT
