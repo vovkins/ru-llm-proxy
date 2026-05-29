@@ -8,6 +8,13 @@ router_settings:
   num_retries: 3
   timeout: 60
 
+guardrails:
+  - guardrail_name: "ru-pii-mask"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "pre_call"
+      default_on: true
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
