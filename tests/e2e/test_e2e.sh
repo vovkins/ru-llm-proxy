@@ -133,7 +133,7 @@ basic_response=$(curl -sf "$BASE_URL/chat/completions" \
     -H "Content-Type: application/json" \
     -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
 
-basic_content=$(echo "$basic_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+basic_content=$(echo "$basic_response" | jq -r '.choices[0].message.content // .choices[0].message.reasoning_content // empty' 2>/dev/null)
 if [ -n "$basic_content" ]; then
     echo "  ✅ LLM responded: ${basic_content:0:80}..."
     PASS=$((PASS + 1))
@@ -156,7 +156,7 @@ pii_response=$(curl -sf "$BASE_URL/chat/completions" \
     -H "Content-Type: application/json" \
     -d "$pii_request" 2>/dev/null || echo "{}")
 
-pii_content=$(echo "$pii_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+pii_content=$(echo "$pii_response" | jq -r '.choices[0].message.content // .choices[0].message.reasoning_content // empty' 2>/dev/null)
 if [ -n "$pii_content" ]; then
     echo "  ✅ LLM responded to PII request"
     PASS=$((PASS + 1))

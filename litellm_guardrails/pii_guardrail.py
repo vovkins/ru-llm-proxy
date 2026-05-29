@@ -193,11 +193,19 @@ class RuPIIGuardrail(CustomGuardrail):
         # Unmask in response
         if isinstance(response, litellm.ModelResponse):
             for choice in response.choices:
-                if isinstance(choice, litellm.Choices) and choice.message.content:
-                    content = choice.message.content
-                    for placeholder, original in mapping.items():
-                        content = content.replace(placeholder, original)
-                    choice.message.content = content
+                if isinstance(choice, litellm.Choices):
+                    # Unmask in content
+                    if choice.message.content:
+                        content = choice.message.content
+                        for placeholder, original in mapping.items():
+                            content = content.replace(placeholder, original)
+                        choice.message.content = content
+                    # Unmask in reasoning_content (GLM-5.1 coding plan)
+                    if hasattr(choice.message, 'reasoning_content') and choice.message.reasoning_content:
+                        rc = choice.message.reasoning_content
+                        for placeholder, original in mapping.items():
+                            rc = rc.replace(placeholder, original)
+                        choice.message.reasoning_content = rc
 
         # Clean up Redis key
         try:
