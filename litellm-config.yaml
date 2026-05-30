@@ -15,11 +15,33 @@ guardrails:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
       default_on: true
+    guardrail_info:
+      params:
+        - name: "stage"
+          type: "string"
+          description: "pre_call; masks Russian PII before the provider request."
+        - name: "entities"
+          type: "list[string]"
+          description: "PHONE_NUMBER, EMAIL_ADDRESS, RU_INN, RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, PERSON, LOCATION, ORGANIZATION."
+        - name: "mapping_store"
+          type: "string"
+          description: "Redis key pii_mapping:<request_id> with TTL from PII_MAPPING_TTL_SECONDS."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "post_call"
       default_on: true
+    guardrail_info:
+      params:
+        - name: "stage"
+          type: "string"
+          description: "post_call; restores request-scoped placeholders in model responses."
+        - name: "response_fields"
+          type: "list[string]"
+          description: "Restores placeholders in content and reasoning_content."
+        - name: "mapping_cleanup"
+          type: "string"
+          description: "Deletes Redis pii_mapping:<request_id> after successful post-call processing."
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

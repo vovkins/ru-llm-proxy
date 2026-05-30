@@ -147,6 +147,43 @@ NER status возвращается отдельно:
 {"status":"ok","ner":"not_loaded"}
 ```
 
+## Guardrails
+
+Список guardrails, зарегистрированных в LiteLLM:
+
+```bash
+curl -s "$API_URL/guardrails/list" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq
+```
+
+Live-запрос с явным `guardrails` parameter:
+
+```bash
+curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -d '{
+    "model": "glm-5.1",
+    "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Клиент Иванов Иван, телефон +79031234567"
+      }
+    ],
+    "max_tokens": 80
+  }' | jq '.choices[0].message'
+
+grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
+```
+
+То же самое через Makefile:
+
+```bash
+make guardrails-list
+make guardrails-smoke
+```
+
 ## Добавление моделей
 
 По умолчанию настроена только модель `glm-5.1`. Чтобы использовать другого провайдера, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
