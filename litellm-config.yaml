@@ -10,10 +10,15 @@ router_settings:
   timeout: 60
 
 guardrails:
-  - guardrail_name: "ru-pii-mask"
+  - guardrail_name: "ru-pii-mask-pre"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
+      default_on: true
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
       default_on: true
 
 general_settings:
@@ -21,4 +26,4 @@ general_settings:
   database_url: os.environ/DATABASE_URL
 
 litellm_settings:
-  drop_requests: true
+  drop_params: true

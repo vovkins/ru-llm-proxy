@@ -22,7 +22,8 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - ZAI_API_KEY=${ZAI_API_KEY}
       - PRESIDIO_ANALYZER_URL=${PRESIDIO_ANALYZER_URL:-http://presidio-analyzer:5001}
-      - PRESIDIO_ANONYMIZER_URL=${PRESIDIO_ANONYMIZER_URL:-http://presidio-anonymizer:5002}
+      - PII_GUARDRAIL_FAILURE_MODE=${PII_GUARDRAIL_FAILURE_MODE:-fail_open}
+      - PII_MAPPING_TTL_SECONDS=${PII_MAPPING_TTL_SECONDS:-3600}
       # Tell LiteLLM to find our guardrail module
       - PYTHONPATH=/app
     depends_on:
@@ -32,10 +33,10 @@ services:
         condition: service_healthy
       presidio-analyzer:
         condition: service_healthy
-      presidio-anonymizer:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5).read()"
       interval: 30s
       timeout: 10s
       retries: 3
@@ -49,6 +50,10 @@ services:
       context: ./presidio
       dockerfile: Dockerfile
       target: analyzer
+      args:
+        DEEPPAVLOV_NER_MODEL_URL: ${DEEPPAVLOV_NER_MODEL_URL:-http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz}
+        DEEPPAVLOV_NER_MODEL_SHA256: ${DEEPPAVLOV_NER_MODEL_SHA256:-}
+        DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS: ${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS:-120}
     container_name: presidio-analyzer
     restart: unless-stopped
     ports:
@@ -59,25 +64,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    networks:
-      - ru-llm-proxy
-
-  # === Presidio Anonymizer ===
-  presidio-anonymizer:
-    build:
-      context: ./presidio
-      dockerfile: Dockerfile
-      target: anonymizer
-    container_name: presidio-anonymizer
-    restart: unless-stopped
-    ports:
-      - "5002:5002"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5002/api/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
     networks:
       - ru-llm-proxy
 
@@ -112,6 +98,24 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+    networks:
+      - ru-llm-proxy
+
+  # === Test runner for LiteLLM guardrail unit tests ===
+  guardrail-tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.guardrails
+    profiles:
+      - test
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace
+      - PYTHONDONTWRITEBYTECODE=1
+      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - .:/workspace:ro
     networks:
       - ru-llm-proxy
 

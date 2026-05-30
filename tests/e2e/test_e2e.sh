@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end tests for ru-llm-proxy
-# Requires: running services (make up), curl, jq
+# Live smoke tests for ru-llm-proxy.
+# Requires: running services (make up), curl, jq, and a configured LLM provider key.
+# Deterministic guardrail masking/unmasking is covered by test_guardrail_flow.py.
 set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
@@ -42,9 +43,18 @@ assert_not_contains() {
     fi
 }
 
+extract_message_text() {
+    jq -r '
+        (.choices[0].message // {}) |
+        if ((.content // "") != "") then .content
+        elif ((.reasoning_content // "") != "") then .reasoning_content
+        else "" end
+    '
+}
+
 # =====================================================
 echo ""
-echo "🧪 ru-llm-proxy — End-to-End Tests"
+echo "🧪 ru-llm-proxy — Live Smoke Tests"
 echo "====================================="
 echo ""
 
@@ -62,19 +72,8 @@ else
 fi
 
 TOTAL=$((TOTAL + 1))
-health=$(curl -sf "http://localhost:5002/api/v1/health" 2>/dev/null || echo "")
-if echo "$health" | grep -q '"status":"ok"'; then
-    echo "  ✅ Presidio Anonymizer is healthy"
-    PASS=$((PASS + 1))
-else
-    echo "  ❌ Presidio Anonymizer is NOT healthy"
-    FAIL=$((FAIL + 1))
-fi
-
-TOTAL=$((TOTAL + 1))
-health=$(curl -sf -H "Authorization: Bearer $MASTER_KEY" "$BASE_URL/health" 2>/dev/null || echo "")
-if echo "$health" | grep -q '"healthy_count":1'; then
-    echo "  ✅ LiteLLM Proxy is healthy (1 endpoint)"
+if curl -sf "$BASE_URL/health/liveliness" >/dev/null 2>&1; then
+    echo "  ✅ LiteLLM Proxy is alive"
     PASS=$((PASS + 1))
 else
     echo "  ❌ LiteLLM Proxy is NOT healthy"
@@ -133,7 +132,7 @@ basic_response=$(curl -sf "$BASE_URL/chat/completions" \
     -H "Content-Type: application/json" \
     -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
 
-basic_content=$(echo "$basic_response" | jq -r '.choices[0].message | if .content == "" then .reasoning_content else .content end' 2>/dev/null)
+basic_content=$(echo "$basic_response" | extract_message_text 2>/dev/null || true)
 if [ -n "$basic_content" ]; then
     echo "  ✅ LLM responded: ${basic_content:0:80}..."
     PASS=$((PASS + 1))
@@ -145,8 +144,8 @@ fi
 
 echo ""
 
-# --- 4. LiteLLM with PII (guardrail test) ---
-echo "📋 4. LiteLLM with PII (Guardrail)"
+# --- 4. LiteLLM with PII (live smoke) ---
+echo "📋 4. LiteLLM with PII (live smoke)"
 
 pii_request='{"model":"glm-5.1","messages":[{"role":"user","content":"Перепиши: Клиент Иванов Иван, телефон +79031234567, ИНН 7707083893, проживает г. Москва, ул. Тверская, д. 1. Перепиши это как краткую справку."}],"max_tokens":100}'
 
@@ -156,7 +155,7 @@ pii_response=$(curl -sf "$BASE_URL/chat/completions" \
     -H "Content-Type: application/json" \
     -d "$pii_request" 2>/dev/null || echo "{}")
 
-pii_content=$(echo "$pii_response" | jq -r '.choices[0].message | if .content == "" then .reasoning_content else .content end' 2>/dev/null)
+pii_content=$(echo "$pii_response" | extract_message_text 2>/dev/null || true)
 if [ -n "$pii_content" ]; then
     echo "  ✅ LLM responded to PII request"
     PASS=$((PASS + 1))
@@ -167,16 +166,11 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# Check that real PII data is in the response (unmasked back)
-TOTAL=$((TOTAL + 1))
 if echo "$pii_content" | grep -q "7707083893"; then
-    echo "  ✅ INN unmasked in response (guardrail works)"
-    PASS=$((PASS + 1))
+    echo "  ℹ️  Response contains original INN after post-call processing"
 else
-    echo "  ⚠️  INN not found in response (may be LLM paraphrased or guardrail issue)"
-    echo "     Response: $pii_content"
-    # Not counting as hard failure - LLM may paraphrase
-    PASS=$((PASS + 1))
+    echo "  ℹ️  INN not found in live response; the provider may have paraphrased or omitted it"
+    echo "     Deterministic guardrail behavior is verified by make test-flow"
 fi
 
 echo ""

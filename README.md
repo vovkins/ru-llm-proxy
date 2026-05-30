@@ -2,38 +2,47 @@
 
 LLM-прокси с санитайзером персональных данных (PII) для русского языка.
 
-Обнаруживает и маскирует чувствительные данные в запросах к LLM перед отправкой провайдеру, и восстанавливает оригинальные данные в ответах. Клиент получает полный ответ, но к внешнему LLM уходят только обезличенные тексты.
+Обнаруживает и маскирует чувствительные данные в запросах к LLM перед отправкой провайдеру, а затем восстанавливает оригинальные данные в ответах, если модель вернула плейсхолдеры. Клиент работает с обычным OpenAI-compatible API, а внешний LLM получает обезличенный текст.
 
 ## Статус проекта
 
-✅ **MVP работает** — все компоненты запущены, PII маскируется, E2E тесты проходят.
+✅ **MVP работает** — в проекте есть LiteLLM Proxy, Presidio Analyzer, русские PII recognizers, DeepPavlov NER, Redis-маппинг для обратимого восстановления и Docker-based тесты.
+
+⚠️ **Текущие ограничения** — streaming response restoration не реализован; восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе.
 
 ## Что маскируется
 
-| Тип данных | Метод | Пример |
-|-----------|-------|--------|
-| Телефоны | Regex + валидация | +7 903 123-45-67 → `<PHONE_NUMBER>` |
-| Email | Regex | test@yandex.ru → `<EMAIL_ADDRESS>` |
-| ИНН | Regex + контрольная сумма | 7707083893 → `<RU_INN>` |
-| СНИЛС | Regex + checksum | 112-233-445 95 → `<RU_SNILS>` |
-| Паспорт | Regex + регион | 45 10 123456 → `<RU_PASSPORT>` |
-| Банк. карты | Regex + Luhn | 4111 1111 1111 1111 → `<CREDIT_CARD>` |
-| Адреса | Regex-паттерны | ул. Ленина, д. 10 → `<RU_ADDRESS>` |
-| ФИО | DeepPavlov NER | Иван Иванов → `<PERSON>` |
-| Организации | DeepPavlov NER | Сбербанк → `<ORGANIZATION>` |
-| Города/локации | DeepPavlov NER | Москва → `<LOCATION>` |
+| Тип данных | Entity | Метод |
+|-----------|--------|-------|
+| Телефоны | `PHONE_NUMBER` | Regex + валидация количества цифр |
+| Email | `EMAIL_ADDRESS` | Regex |
+| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр |
+| СНИЛС | `RU_SNILS` | Regex + checksum |
+| Паспорт РФ | `RU_PASSPORT` | Regex + проверка региона |
+| Банковские карты | `CREDIT_CARD` | Regex + Luhn |
+| Адреса | `RU_ADDRESS` | Regex-паттерны российских адресов |
+| ФИО | `PERSON` | DeepPavlov `ner_rus_bert`, если модель загружена |
+| Организации | `ORGANIZATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
+| Города/локации | `LOCATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
+
+DeepPavlov NER соблюдает параметры Analyzer API: если в запросе указан `entities`, NER запускается только для `PERSON`, `ORGANIZATION` или `LOCATION`; если запрошены только regex-типы вроде `RU_INN`, NER пропускается. Так как DeepPavlov не возвращает per-entity confidence, проект присваивает NER-результатам фиксированный score `0.7` и не запускает NER при `score_threshold > 0.7`.
 
 ## Архитектура
 
-```
-┌──────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│  Клиент   │────▶│ LiteLLM Proxy│────▶│ PII Guardrail   │────▶│ LLM Provider │
-│           │     │  (порт 4000) │     │ Presidio+NER    │     │  (GLM-5.1)   │
-│           │     │              │     │ Mask on request  │     │              │
-│           │◀────│              │◀────│ Unmask on resp.  │◀────│              │
-└──────────┘     └──────────────┘     └─────────────────┘     └──────────────┘
+```text
+┌──────────┐     ┌──────────────┐     ┌────────────────────┐     ┌──────────────┐
+│  Клиент  │────▶│ LiteLLM Proxy│────▶│  PII Guardrail     │────▶│ LLM Provider │
+│          │     │  порт 4000   │     │  mask / unmask     │     │   glm-5.1    │
+│          │◀────│              │◀────│                    │◀────│              │
+└──────────┘     └──────┬───────┘     └─────────┬──────────┘     └──────────────┘
+                        │                       │
+                        │                       ▼
+                        │              ┌──────────────────┐
+                        │              │ Presidio Analyzer│
+                        │              │ regex + NER      │
+                        │              └──────────────────┘
                         │
-                 ┌──────┴──────┐
+                 ┌──────▼──────┐
                  │ PostgreSQL  │
                  │   + Redis   │
                  └─────────────┘
@@ -41,36 +50,53 @@ LLM-прокси с санитайзером персональных данны
 
 ### Компоненты
 
-| Компонент | Образ | Назначение |
-|-----------|-------|------------|
-| LiteLLM | `docker.litellm.ai/berriai/litellm:main-stable` | Агрегация LLM, роутинг, guardrails |
-| Presidio Analyzer | Custom (Python 3.11) | Детекция PII (regex + NER) |
-| Presidio Anonymizer | Custom (Python 3.11) | Маскирование/восстановление |
-| DeepPavlov | Внутри Analyzer | NER модель `ner_rus_bert` (PER, LOC, ORG) |
-| PostgreSQL | `postgres:16-alpine` | Данные LiteLLM |
-| Redis | `redis:7-alpine` | Кэш, маппинг PII |
+| Компонент | Service | Назначение |
+|-----------|---------|------------|
+| LiteLLM Proxy | `litellm` | OpenAI-compatible gateway, роутинг к провайдеру, выполнение guardrails |
+| PII Guardrail | `litellm_guardrails/pii_guardrail.py` | Маскирование запросов, Redis-маппинг, восстановление ответов |
+| Presidio Analyzer | `presidio-analyzer` | Детекция PII через русские regex recognizers и DeepPavlov NER |
+| Redis | `redis` | Временное хранение `placeholder -> original` маппингов |
+| PostgreSQL | `db` | Persistence для LiteLLM |
 
 ### Поток запроса
 
-1. Клиент отправляет `POST /chat/completions` с текстом
-2. LiteLLM guardrail перехватывает запрос (pre-call)
-3. Presidio Analyzer находит PII (regex + DeepPavlov NER)
-4. Presidio Anonymizer заменяет PII на плейсхолдеры
-5. Маппинг «плейсхолдер → оригинал» сохраняется в Redis
-6. Обезличенный запрос отправляется к LLM-провайдеру
-7. Guardrail перехватывает ответ (post-call)
-8. Плейсхолдеры заменяются на оригинальные данные
-9. Клиент получает полный ответ
+1. Клиент отправляет `POST /chat/completions`.
+2. LiteLLM запускает `ru-pii-mask-pre` в режиме `pre_call`.
+3. Guardrail отправляет каждое строковое сообщение в Presidio Analyzer.
+4. Analyzer возвращает entity spans, entity types и scores.
+5. Guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
+6. Guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
+7. Только после успешного Redis save исходный message заменяется на masked text.
+8. LiteLLM отправляет masked request LLM-провайдеру.
+9. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+10. Guardrail восстанавливает `content` и `reasoning_content`, если ответ содержит плейсхолдеры.
+
+Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
+
+## spaCy и DeepPavlov: кто за что отвечает
+
+В проекте используются две разные NLP-модели, они не являются обёртками друг над другом.
+
+| Модель | Где используется | Роль |
+|--------|------------------|------|
+| `ru_core_news_sm` | Presidio Analyzer / spaCy NLP engine | Токенизация и базовая языковая обработка для Presidio |
+| DeepPavlov `ner_rus_bert` | `presidio/ner/deeppavlov_recognizer.py` | NER для `PERSON`, `LOCATION`, `ORGANIZATION` |
+
+Regex recognizers отвечают за структурированные российские PII: телефоны, ИНН, СНИЛС, паспорта, карты, email и адреса. DeepPavlov добавляет NER-сущности поверх этого результата.
+
+Подробности: [docs/architecture.md](docs/architecture.md).
 
 ## Требования к серверу
 
 | Параметр | Минимум | Рекомендуется |
 |----------|---------|---------------|
-| CPU | 1 vCPU | 2-4 vCPU |
-| RAM | 2 GB | 4 GB |
-| Диск | 10 GB | 20 GB |
 | Docker | 20.10+ | 24+ |
 | Docker Compose | v2 | v2 |
+| RAM | 2 GB | 4 GB+ |
+| Диск | 10 GB | 20 GB+ |
+| Provider key | `ZAI_API_KEY` | `ZAI_API_KEY` |
+
+Первая сборка может занять заметное время: Dockerfile скачивает spaCy model `ru_core_news_sm` и DeepPavlov archive `ner_rus_bert_torch_new.tar.gz`.
 
 ## Быстрый старт
 
@@ -84,61 +110,83 @@ make setup
 # Заполните API-ключ в .env:
 #   ZAI_API_KEY=your-key-here
 
-# 3. Запустить
+# 3. Собрать и запустить
 make build
 make up
 
 # 4. Проверить
 make health
-make test-e2e
 ```
 
 ## Конфигурация
 
-### .env — секреты
+### .env — секреты и runtime-настройки
 
-Все секреты хранятся в `.env` (не коммитится):
+Все секреты хранятся в `.env`, который создаётся из [.env.example](.env.example).
 
 ```env
-ZAI_API_KEY=your-zai-key          # Z.ai API ключ (GLM-5.1)
-LITELLM_MASTER_KEY=sk-...         # автогенерируется при make setup
-LITELLM_SALT_KEY=...              # автогенерируется при make setup
-POSTGRES_PASSWORD=...             # автогенерируется при make setup
+ZAI_API_KEY=your-zai-key
+LITELLM_MASTER_KEY=sk-...       # автогенерируется через make setup
+LITELLM_SALT_KEY=...            # автогенерируется через make setup
+POSTGRES_PASSWORD=...           # автогенерируется через make setup
+REDIS_URL=redis://redis:6379
+PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+PII_GUARDRAIL_FAILURE_MODE=fail_open
+PII_MAPPING_TTL_SECONDS=3600
 ```
+
+Build-time переменные для DeepPavlov:
+
+```env
+DEEPPAVLOV_NER_MODEL_URL=http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz
+DEEPPAVLOV_NER_MODEL_SHA256=
+DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
+```
+
+`DEEPPAVLOV_NER_MODEL_SHA256` опционален, но для воспроизводимой и более строгой сборки его стоит заполнить после доверенной загрузки архива.
 
 ### litellm-config.yaml — настройки LiteLLM
 
-Монтируется через volume — можно менять без пересборки. Текущая конфигурация:
+Монтируется через volume — можно менять без пересборки.
 
 ```yaml
 model_list:
   - model_name: glm-5.1
     litellm_params:
       model: openai/glm-5.1
-      api_base: https://api.z.ai/api/coding/paas/v4  # Z.ai coding plan endpoint
+      api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
 
 guardrails:
-  - guardrail_name: "ru-pii-mask"
+  - guardrail_name: "ru-pii-mask-pre"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
+      default_on: true
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
       default_on: true
 ```
 
 ### Добавление другого провайдера
 
-Любой из 100+ провайдеров LiteLLM (OpenAI, Anthropic, Google, Azure, AWS Bedrock, Groq, DeepSeek и т.д.):
+Любой провайдер, поддерживаемый LiteLLM, добавляется через `model_list`:
 
 ```yaml
 model_list:
-  - model_name: my-model
+  - model_name: my-openai-model
     litellm_params:
       model: openai/gpt-4o
-      api_key: os.environ/MY_API_KEY
+      api_key: os.environ/OPENAI_API_KEY
 ```
 
-После правки — `make restart`.
+После правки:
+
+```bash
+make restart
+```
 
 ## Make-команды
 
@@ -146,21 +194,26 @@ model_list:
 |---------|----------|
 | `make setup` | Создать `.env`, сгенерировать ключи |
 | `make build` | Собрать Docker-образы |
-| `make up` | Запустить все сервисы |
-| `make down` | Остановить |
-| `make restart` | Рестарт LiteLLM (применить новый конфиг) |
-| `make logs` | Логи всех сервисов (live) |
-| `make test` | Запустить тесты recognizers |
-| `make test-unit` | Запустить все unit-тесты |
-| `make test-e2e` | End-to-end тест (нужны запущенные сервисы) |
-| `make health` | Проверить статус сервисов |
-| `make clean` | Удалить volumes и образы |
+| `make up` | Запустить все сервисы и выполнить health check |
+| `make down` | Остановить сервисы |
+| `make restart` | Рестарт LiteLLM после изменения конфигурации |
+| `make logs` | Логи всех сервисов |
+| `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
+| `make test` | Алиас для `make test-unit` |
+| `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
+| `make test-recognizers` | Unit-тесты recognizers и NER helpers |
+| `make test-guardrail` | Unit-тесты LiteLLM guardrail |
+| `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
+| `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
+| `make clean` | Удалить volumes и локальные images проекта |
 
 ## Примеры использования
 
 ### Базовый запрос
 
 ```bash
+export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)
+
 curl http://localhost:4000/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
@@ -170,85 +223,115 @@ curl http://localhost:4000/chat/completions \
   }'
 ```
 
-### Запрос с PII (автоматическое маскирование)
+### Запрос с PII
 
 ```bash
-# Клиент отправляет:
 curl http://localhost:4000/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{
     "model": "glm-5.1",
-    "messages": [{"role": "user", "content": "Мой телефон +7 903 123 45 67, ИНН 7707083893"}]
+    "messages": [
+      {
+        "role": "user",
+        "content": "Мой телефон +79031234567, ИНН 7707083893"
+      }
+    ]
   }'
-
-# К LLM уходит: "Мой телефон <PHONE_NUMBER>, ИНН <RU_INN>"
-# Клиент получает ответ с оригинальными данными восстановленными
 ```
+
+К провайдеру уйдёт текст вида:
+
+```text
+Мой телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>
+```
+
+Если ответ провайдера содержит эти плейсхолдеры, post-call hook восстановит исходные значения перед возвратом клиенту.
+
+Больше примеров: [docs/examples.md](docs/examples.md).
+
+## Healthcheck
+
+Docker healthcheck для `ru-llm-proxy` использует LiteLLM endpoint `/health/liveliness`. Это unauthenticated liveness probe, он не делает LLM API calls и не требует `LITELLM_MASTER_KEY`.
+
+```bash
+curl http://localhost:4000/health/liveliness
+```
+
+`/health` в LiteLLM предназначен для проверки моделей и может требовать авторизацию, поэтому он не используется как container healthcheck.
+
+См. официальную документацию LiteLLM: https://docs.litellm.ai/docs/proxy/health
 
 ## Тестирование
 
-### Unit-тесты
+Локальные тесты запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста.
 
 ```bash
-make test       # Recognizers + NER (17 + 8 тестов)
-make test-unit  # Все unit-тесты включая guardrail
+make test             # alias для make test-unit
+make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
+make test-recognizers
+make test-guardrail
+make test-flow        # deterministic проверка без внешнего LLM
+make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
 ```
 
-### End-to-end тесты
-
-```bash
-make test-e2e   # Требует запущенных сервисов
-                # Проверяет: health → PII detection → LLM call → guardrail masking
-```
+`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
 
 ## Troubleshooting
 
-**LiteLLM не стартует:**
+**LiteLLM container unhealthy:**
+
 ```bash
-make logs  # смотреть логи
-# Проверить .env — ZAI_API_KEY заполнен?
+docker inspect ru-llm-proxy --format '{{json .State.Health}}' | jq
+curl http://localhost:4000/health/liveliness
 ```
 
-**Presidio не детектирует PII:**
+**Presidio Analyzer не детектирует PII:**
+
 ```bash
 curl http://localhost:5001/api/v1/analyze \
   -H "Content-Type: application/json" \
-  -d '{"text": "Мой телефон +7 903 123 45 67", "language": "ru"}'
+  -d '{"text": "Мой телефон +79031234567", "language": "ru"}' | jq
 ```
 
 **DeepPavlov модель не загружена:**
+
 ```bash
-curl http://localhost:5001/api/v1/health
-# {"status": "ok", "ner": "loaded"} — нормально
-# {"status": "ok", "ner": "not_loaded"} — NER недоступен (regex-recognizers работают)
+curl http://localhost:5001/api/v1/health | jq
+# {"status": "ok", "ner": "loaded"}      — NER доступен
+# {"status": "ok", "ner": "not_loaded"}  — regex recognizers продолжают работать
 ```
 
-**GLM-5.1 возвращает пустой content:**
-- Coding plan использует reasoning mode — ответ в `reasoning_content`
-- Guardrail автоматически демаскирует оба поля
+**GLM-5.1 возвращает пустой `content`:**
+
+- coding plan может вернуть ответ в `reasoning_content`;
+- guardrail восстанавливает плейсхолдеры и в `content`, и в `reasoning_content`.
 
 ## Структура проекта
 
-```
+```text
 ru-llm-proxy/
-├── docker-compose.yml          # 5 сервисов
-├── litellm-config.yaml         # LiteLLM конфигурация
+├── docker-compose.yml
+├── litellm-config.yaml
+├── Makefile
 ├── presidio/
-│   ├── Dockerfile              # Multi-stage: analyzer + anonymizer
-│   ├── analyzer_server.py      # Presidio Analyzer REST API
-│   ├── anonymizer_server.py    # Presidio Anonymizer REST API
-│   ├── recognizers/            # 8 русских PII recognizers
-│   ├── ner/                    # DeepPavlov NER интеграция
-│   └── tests/                  # Unit-тесты (recognizers + NER)
+│   ├── Dockerfile
+│   ├── analyzer_server.py
+│   ├── requirements-*.txt
+│   ├── recognizers/
+│   ├── ner/
+│   └── tests/
 ├── litellm_guardrails/
-│   ├── pii_guardrail.py        # PII маскирование/демаскирование
-│   └── tests/                  # Unit-тесты guardrail
+│   ├── pii_guardrail.py
+│   └── tests/
 ├── tests/
-│   └── e2e/                    # End-to-end тесты
-├── Makefile                    # Команды управления
-├── RESEARCH.md                 # Исследование и обоснование выбора стека
-└── README.md
+│   ├── Dockerfile.guardrails
+│   ├── requirements-guardrails.txt
+│   └── e2e/
+└── docs/
+    ├── architecture.md
+    ├── examples.md
+    └── research.md
 ```
 
 ## Лицензия

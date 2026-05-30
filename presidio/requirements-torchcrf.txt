@@ -1,0 +1,2 @@
+# Installed after torch so the package can import torch during setup/runtime checks.
+pytorch-crf>=0.7,<1.0

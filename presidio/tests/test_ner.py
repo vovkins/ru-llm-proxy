@@ -4,8 +4,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from presidio.ner.deeppavlov_recognizer import (
+    DEFAULT_NER_SCORE,
     DeepPavlovRecognizer,
     _merge_bio_tags,
+    should_run_ner,
     DEEPPAVLOV_ENTITY_MAP,
 )
 
@@ -70,6 +72,71 @@ class TestDeepPavlovRecognizer:
         assert len(person_results) == 1
         assert len(loc_results) == 1
 
+    @patch("presidio.ner.deeppavlov_recognizer.DeepPavlovRecognizer.load_model")
+    def test_analyze_repeated_entities_uses_sequential_offsets(self, mock_load):
+        """Repeated equal entity text should map to sequential spans."""
+        recognizer = DeepPavlovRecognizer()
+        recognizer._model = MagicMock()
+        recognizer._model.return_value = [
+            [["Иван", "Иванов", "встретил", "Иван", "Иванов"]],
+            [["B-PER", "I-PER", "O", "B-PER", "I-PER"]],
+        ]
+
+        text = "Иван Иванов встретил Иван Иванов"
+        results = recognizer.analyze(text)
+
+        assert len(results) == 2
+        assert [text[r.start : r.end] for r in results] == [
+            "Иван Иванов",
+            "Иван Иванов",
+        ]
+        assert results[0].start == 0
+        assert results[1].start == text.rindex("Иван Иванов")
+
+    @patch("presidio.ner.deeppavlov_recognizer.DeepPavlovRecognizer.load_model")
+    def test_analyze_filters_requested_entities(self, mock_load):
+        """NER should only emit requested Presidio entity types."""
+        recognizer = DeepPavlovRecognizer()
+        recognizer._model = MagicMock()
+        recognizer._model.return_value = [
+            [["Иван", "из", "Москвы", "работает", "в", "Газпроме"]],
+            [["B-PER", "O", "B-LOC", "O", "O", "B-ORG"]],
+        ]
+
+        results = recognizer.analyze(
+            "Иван из Москвы работает в Газпроме",
+            entities=["LOCATION"],
+        )
+
+        assert [r.entity_type for r in results] == ["LOCATION"]
+
+    @patch("presidio.ner.deeppavlov_recognizer.DeepPavlovRecognizer.load_model")
+    def test_filtering_preserves_offsets_after_skipped_entities(self, mock_load):
+        """Skipped NER types should still advance span alignment."""
+        recognizer = DeepPavlovRecognizer()
+        recognizer._model = MagicMock()
+        recognizer._model.return_value = [
+            [["Москва", "и", "Москва"]],
+            [["B-ORG", "O", "B-LOC"]],
+        ]
+
+        text = "Москва и Москва"
+        results = recognizer.analyze(text, entities=["LOCATION"])
+
+        assert len(results) == 1
+        assert results[0].entity_type == "LOCATION"
+        assert results[0].start == text.rindex("Москва")
+
+    @patch("presidio.ner.deeppavlov_recognizer.DeepPavlovRecognizer.load_model")
+    def test_score_threshold_above_default_skips_model(self, mock_load):
+        """DeepPavlov has no per-entity score, so high thresholds skip NER."""
+        recognizer = DeepPavlovRecognizer()
+
+        results = recognizer.analyze("Иван Иванов", score_threshold=DEFAULT_NER_SCORE + 0.01)
+
+        assert results == []
+        mock_load.assert_not_called()
+
     def test_is_loaded_false(self):
         recognizer = DeepPavlovRecognizer()
         assert recognizer.is_loaded() is False
@@ -88,3 +155,17 @@ class TestDeepPavlovRecognizer:
 
         results = recognizer.analyze("просто текст")
         assert len(results) == 0
+
+
+class TestShouldRunNER:
+    def test_runs_when_entities_are_not_limited(self):
+        assert should_run_ner(None, score_threshold=0.35) is True
+
+    def test_runs_when_requested_entities_include_ner_type(self):
+        assert should_run_ner(["PERSON"], score_threshold=0.35) is True
+
+    def test_skips_when_requested_entities_exclude_ner_types(self):
+        assert should_run_ner(["RU_INN", "PHONE_NUMBER"], score_threshold=0.35) is False
+
+    def test_skips_when_score_threshold_is_too_high(self):
+        assert should_run_ner(["PERSON"], score_threshold=DEFAULT_NER_SCORE + 0.01) is False

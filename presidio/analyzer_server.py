@@ -7,7 +7,7 @@ from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 from recognizers import ALL_RECOGNIZERS
-from ner import DeepPavlovRecognizer
+from ner import DeepPavlovRecognizer, should_run_ner
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,10 +73,17 @@ async def analyze(request: AnalyzeRequest):
         score_threshold=request.score_threshold,
     )
 
-    # 2. Run DeepPavlov NER and merge results
-    if dp_recognizer.is_loaded():
+    # 2. Run DeepPavlov NER and merge results when requested.
+    if dp_recognizer.is_loaded() and should_run_ner(
+        request.entities,
+        request.score_threshold,
+    ):
         try:
-            ner_results = dp_recognizer.analyze(request.text, score_threshold=0.7)
+            ner_results = dp_recognizer.analyze(
+                request.text,
+                score_threshold=request.score_threshold,
+                entities=request.entities,
+            )
             results.extend(ner_results)
         except Exception as e:
             logger.error(f"NER analysis error: {e}")

@@ -1,5 +1,5 @@
 """NER module for ru-llm-proxy."""
 
-from ner.deeppavlov_recognizer import DeepPavlovRecognizer
+from .deeppavlov_recognizer import DeepPavlovRecognizer, should_run_ner
 
-__all__ = ["DeepPavlovRecognizer"]
+__all__ = ["DeepPavlovRecognizer", "should_run_ner"]
