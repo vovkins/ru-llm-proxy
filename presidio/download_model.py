@@ -115,10 +115,16 @@ def _extract_model(archive_path: Path, model_dir: Path) -> None:
         _safe_extract(archive_path, tmp_dir)
 
         extracted_model_dir = tmp_dir / expected_name
-        if not extracted_model_dir.is_dir():
-            raise FileNotFoundError(
-                f"Archive did not contain expected model directory: {expected_name}"
-            )
+        if extracted_model_dir.is_dir():
+            # Archive contains the expected subdirectory
+            pass
+        else:
+            # Archive contains files directly — wrap them into the expected directory
+            print(f"Archive has flat layout; creating {expected_name}/ directory")
+            flat_files = list(tmp_dir.iterdir())
+            extracted_model_dir.mkdir()
+            for f in flat_files:
+                f.rename(extracted_model_dir / f.name)
 
         if model_dir.exists():
             raise FileExistsError(f"Model directory appeared during extraction: {model_dir}")
