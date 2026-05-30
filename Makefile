@@ -103,9 +103,8 @@ test-flow:
 health:
 	@echo "=== Статус сервисов ==="
 	@echo ""
-	@echo -n "LiteLLM Proxy:    "; curl -sf http://localhost:4000/health > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
+	@echo -n "LiteLLM Proxy:    "; curl -sf http://localhost:4000/health/liveliness > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
 	@echo -n "Presidio Analyzer: "; curl -sf http://localhost:5001/api/v1/health > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
-	@echo -n "Presidio Anonymizer: "; curl -sf http://localhost:5002/api/v1/health > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
 	@echo -n "PostgreSQL:       "; docker compose exec -T db pg_isready -U litellm > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
 	@echo -n "Redis:            "; docker compose exec -T redis redis-cli ping > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
 	@echo ""

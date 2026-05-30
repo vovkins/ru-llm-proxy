@@ -119,6 +119,16 @@ curl -s http://localhost:5001/api/v1/analyze \
 
 NER-результаты имеют фиксированный score `0.7`; при `score_threshold` выше `0.7` DeepPavlov NER не запускается.
 
+## Health Checks
+
+LiteLLM liveness endpoint не требует `LITELLM_MASTER_KEY` и используется для Docker healthcheck контейнера `ru-llm-proxy`:
+
+```bash
+curl -s http://localhost:4000/health/liveliness
+```
+
+`/health` у LiteLLM предназначен для проверки моделей и может делать реальные LLM API calls, поэтому для liveness/readiness лучше использовать специализированные endpoints.
+
 ## Health Analyzer
 
 ```bash
@@ -135,29 +145,6 @@ NER status возвращается отдельно:
 
 ```json
 {"status":"ok","ner":"not_loaded"}
-```
-
-## Прямая проверка Anonymizer
-
-Anonymizer service доступен для прямых вызовов. Reversible LiteLLM guardrail path его не использует.
-
-```bash
-curl -s http://localhost:5002/api/v1/anonymize \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Мой телефон +79031234567",
-    "entities": [
-      {
-        "entity_type": "PHONE_NUMBER",
-        "start": 12,
-        "end": 24,
-        "score": 0.85
-      }
-    ],
-    "operators": {
-      "PHONE_NUMBER": "replace"
-    }
-  }' | jq
 ```
 
 ## Добавление моделей

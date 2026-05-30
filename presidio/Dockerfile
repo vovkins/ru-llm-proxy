@@ -40,15 +40,3 @@ COPY ner/ ./ner/
 
 EXPOSE 5001
 CMD ["python", "analyzer_server.py"]
-
-# === Presidio Anonymizer ===
-FROM base AS anonymizer
-
-COPY requirements-anonymizer.txt ./
-RUN pip install --no-cache-dir -r requirements-anonymizer.txt
-
-WORKDIR /app
-COPY anonymizer_server.py .
-
-EXPOSE 5002
-CMD ["python", "anonymizer_server.py"]

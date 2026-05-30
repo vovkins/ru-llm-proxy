@@ -72,19 +72,8 @@ else
 fi
 
 TOTAL=$((TOTAL + 1))
-health=$(curl -sf "http://localhost:5002/api/v1/health" 2>/dev/null || echo "")
-if echo "$health" | grep -q '"status":"ok"'; then
-    echo "  ✅ Presidio Anonymizer is healthy"
-    PASS=$((PASS + 1))
-else
-    echo "  ❌ Presidio Anonymizer is NOT healthy"
-    FAIL=$((FAIL + 1))
-fi
-
-TOTAL=$((TOTAL + 1))
-health=$(curl -sf -H "Authorization: Bearer $MASTER_KEY" "$BASE_URL/health" 2>/dev/null || echo "")
-if echo "$health" | grep -q '"healthy_count":1'; then
-    echo "  ✅ LiteLLM Proxy is healthy (1 endpoint)"
+if curl -sf "$BASE_URL/health/liveliness" >/dev/null 2>&1; then
+    echo "  ✅ LiteLLM Proxy is alive"
     PASS=$((PASS + 1))
 else
     echo "  ❌ LiteLLM Proxy is NOT healthy"

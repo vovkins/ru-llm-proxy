@@ -5,6 +5,8 @@
 **Статус:** Исследование рынка завершено
 
 > Примечание: этот документ фиксирует исследование и исторический контекст выбора стека. Актуальное состояние реализации, команды запуска и ограничения описаны в `README.md`, `docs/architecture.md` и `docs/examples.md`.
+>
+> Текущее отличие реализации от ранней идеи: LiteLLM guardrail использует `presidio-analyzer` в основном request path, строит обратимые плейсхолдеры самостоятельно и хранит маппинг в Redis. Отдельный сервис для анонимизации удалён из runtime-состава, потому что продуктового сценария для standalone API нет.
 
 ---
 
@@ -188,8 +190,8 @@
 | Компонент | RAM | CPU | Диск |
 |-----------|-----|-----|------|
 | LiteLLM Proxy | 200-500 MB | минимально | ~500 MB |
-| Presidio Analyzer + Anonymizer | 300-500 MB | минимально | ~300 MB |
-| spaCy `ru_core_web_lg` | +500 MB (на загрузку модели) | средне | ~500 MB |
+| Presidio Analyzer | 300-500 MB | минимально | ~300 MB |
+| spaCy `ru_core_news_sm` | +100-200 MB (на загрузку модели) | средне | ~50 MB |
 | ruBERT / DeepPavlov NER | +1-2 GB (на модель) | средне-высоко | 1-2 GB |
 
 ### Три уровня конфигурации
@@ -197,7 +199,7 @@
 | Конфигурация | RAM | CPU | Диск | PII-качество для русского |
 |---|---|---|---|---|
 | **Минимальный** (regex-only recognizers) | 1 GB | 1 vCPU | 5 GB | ⚠️ Телефоны, email, ИНН, СНИЛС — ок. Имена/адреса — пропускает |
-| **Средний** (regex + spaCy `ru_core_web_lg`) | 2 GB | 2 vCPU | 10 GB | ⚠️ Имена/адреса — средне, много false positives/negatives |
+| **Средний** (regex + spaCy backend без DeepPavlov) | 2 GB | 2 vCPU | 10 GB | ⚠️ Имена/адреса — ограниченно, много false positives/negatives |
 | **Полный** (regex + ruBERT/DeepPavlov NER) | 4 GB | 2-4 vCPU | 15-20 GB | ✅ Нормальное качество для имён/адресов/организаций |
 
 ### Рекомендация
@@ -215,11 +217,10 @@
 ### Компоненты для деплоя
 
 1. **LiteLLM Proxy** — Python-сервис, единый API-эндпоинт
-2. **Presidio Analyzer** — REST-сервис (или in-process Python) для детекции PII
-3. **Presidio Anonymizer** — REST-сервис (или in-process) для маскирования
-4. **NER-модель** — ruBERT/DeepPavlov (файлы ~1-2 GB)
-5. **PostgreSQL** — база данных для LiteLLM (ключи, логи, расходы) — опционально, можно SQLite для MVP
-6. **Redis** — для кэширования и сессий — опционально для MVP
+2. **Presidio Analyzer** — REST-сервис для детекции PII; используется guardrail в основном request path
+3. **NER-модель** — ruBERT/DeepPavlov (файлы ~1-2 GB)
+4. **PostgreSQL** — база данных для LiteLLM
+5. **Redis** — обязательное временное хранилище обратимых PII-маппингов
 
 ### Вариант 1: Docker Compose ⭐ Рекомендуемый
 
@@ -229,29 +230,29 @@
 # docker-compose.yml (упрощённый MVP)
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: docker.litellm.ai/berriai/litellm:main-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
       - "4000:4000"
     volumes:
-      - ./litellm-config.yaml:/app/config.yaml
+      - ./litellm-config.yaml:/app/config.yaml:ro
+      - ./litellm_guardrails:/app/litellm_guardrails:ro
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - MASTER_KEY=${MASTER_KEY}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - ZAI_API_KEY=${ZAI_API_KEY}
+      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+      - REDIS_URL=redis://redis:6379
     depends_on:
       - presidio-analyzer
+      - redis
 
   presidio-analyzer:
-    build: ./presidio-custom  # свой образ с русскими recognizers + ruBERT
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: analyzer
     ports:
       - "5001:5001"
-    volumes:
-      - ./models:/models  # NER-модели
-
-  presidio-anonymizer:
-    image: mcr.microsoft.com/presidio-anonymizer:latest
-    ports:
-      - "5002:5002"
 
   db:
     image: postgres:16-alpine
@@ -260,6 +261,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
 
 volumes:
   pgdata:
@@ -279,9 +283,9 @@ volumes:
 - Управление volumes для персистентности
 
 **Настройка:**
-1. `.env` файл с API-ключами провайдеров и MASTER_KEY
+1. `.env` файл с API-ключами провайдеров и `LITELLM_MASTER_KEY`
 2. `litellm-config.yaml` — список провайдеров, guardrails, роутинг
-3. `presidio-custom/Dockerfile` — кастомный образ с русскими recognizers и NER-моделью
+3. `presidio/Dockerfile` — образ Analyzer с русскими recognizers и NER-моделью
 4. Nginx/Caddy как reverse proxy для TLS и rate limiting
 
 ### Вариант 2: Всё на хосте (bare metal)
@@ -292,7 +296,6 @@ volumes:
 /systemd/
   litellm.service       → litellm --config config.yaml --port 4000
   presidio-analyzer.service → python analyzer_server.py --port 5001
-  presidio-anonymizer.service → python anonymizer_server.py --port 5002
 ```
 
 **Плюсы:**
@@ -368,8 +371,8 @@ volumes:
 3. Основная работа — написать качественные русские recognizers (regex для российских форматов + ruBERT NER)
 4. Self-hosted, бесплатно, полный контроль
 
-**Следующие шаги:**
-1. Протестировать Presidio с `ru_core_web` на русских текстах — оценить baseline
-2. Протестировать ruBERT/DeepPavlov NER на тех же текстах
-3. Написать кастомные regex-recognizers для российских форматов данных
-4. Собрать MVP: LiteLLM + Presidio с русской конфигурацией
+**Статус исторических следующих шагов в текущей реализации:**
+1. Presidio baseline заменён на кастомные русские recognizers и spaCy `ru_core_news_sm` как NLP backend.
+2. DeepPavlov `ner_rus_bert` интегрирован как отдельный NER recognizer.
+3. Regex recognizers для российских форматов реализованы и покрыты тестами.
+4. MVP собран в Docker Compose: LiteLLM, Analyzer, PostgreSQL и Redis.
