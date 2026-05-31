@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
@@ -25,6 +25,9 @@ help:
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
 	@echo "  make guardrails-smoke — live smoke с явным guardrails parameter"
+	@echo "  make metrics  — показать начало LiteLLM /metrics"
+	@echo "  make monitor-smoke — проверить health, guardrails list и /metrics"
+	@echo "  make update-litellm — подтянуть новый LiteLLM image и пересоздать proxy"
 	@echo "  make health   — проверить статус всех сервисов"
 	@echo "  make clean    — удалить volumes и образы"
 
@@ -131,3 +134,28 @@ guardrails-smoke:
 			if command -v jq >/dev/null 2>&1; then jq . "$$body"; else cat "$$body"; fi; \
 			rm -f "$$headers" "$$body"; \
 		}
+
+# === Monitoring diagnostics ===
+metrics:
+	@echo "📈 LiteLLM /metrics"
+	@tmp=$$(mktemp) && \
+		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		sed -n '1,120p' "$$tmp"; \
+		status=$$?; rm -f "$$tmp"; exit $$status
+
+monitor-smoke:
+	@echo "📈 Monitoring smoke check"
+	@$(MAKE) health
+	@$(MAKE) guardrails-list
+	@tmp=$$(mktemp) && \
+		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \
+		if grep -q "ru_pii_guardrail_" "$$tmp"; then echo "✅ PII guardrail metrics exposed"; else echo "⚠️  PII guardrail metrics not emitted yet; run a PII request and retry"; fi; \
+		rm -f "$$tmp"
+
+# === LiteLLM update ===
+update-litellm:
+	@echo "⬇️  Pulling latest LiteLLM image configured in docker-compose.yml"
+	docker compose pull litellm
+	docker compose up -d --force-recreate --no-deps litellm
+	@echo "✅ LiteLLM image updated and proxy container recreated"

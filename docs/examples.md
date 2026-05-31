@@ -184,6 +184,23 @@ make guardrails-list
 make guardrails-smoke
 ```
 
+## Metrics
+
+LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
+
+```bash
+curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_pii_guardrail_)' | head
+```
+
+То же самое через Makefile:
+
+```bash
+make metrics
+make monitor-smoke
+```
+
+PII guardrail метрики `ru_pii_guardrail_*` появятся после первого запроса, который прошёл через guardrail. Метрики не содержат raw PII или текст пользовательского запроса.
+
 ## Добавление моделей
 
 По умолчанию настроена только модель `glm-5.1`. Чтобы использовать другого провайдера, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:

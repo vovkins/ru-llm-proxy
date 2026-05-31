@@ -16,6 +16,7 @@ guardrails:
       mode: "pre_call"
       default_on: true
     guardrail_info:
+      description: "Masks Russian PII before the provider request. Returned by GET /guardrails/list for API consumers; LiteLLM UI may show only the guardrail name."
       params:
         - name: "stage"
           type: "string"
@@ -32,6 +33,7 @@ guardrails:
       mode: "post_call"
       default_on: true
     guardrail_info:
+      description: "Restores request-scoped placeholders in model responses. Returned by GET /guardrails/list for API consumers; LiteLLM UI may show only the guardrail name."
       params:
         - name: "stage"
           type: "string"
@@ -48,4 +50,6 @@ general_settings:
   database_url: os.environ/DATABASE_URL
 
 litellm_settings:
+  callbacks:
+    - prometheus
   drop_params: true

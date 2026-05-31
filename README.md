@@ -169,6 +169,7 @@ guardrails:
       mode: "pre_call"
       default_on: true
     guardrail_info:
+      description: "Masks Russian PII before the provider request."
       params:
         - name: "stage"
           type: "string"
@@ -179,10 +180,16 @@ guardrails:
       mode: "post_call"
       default_on: true
     guardrail_info:
+      description: "Restores request-scoped placeholders in model responses."
       params:
         - name: "stage"
           type: "string"
           description: "post_call; restores placeholders in model responses."
+
+litellm_settings:
+  callbacks:
+    - prometheus
+  drop_params: true
 ```
 
 ### Добавление другого провайдера
@@ -222,6 +229,9 @@ make restart
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
 | `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
+| `make metrics` | Показать первые строки LiteLLM `/metrics` |
+| `make monitor-smoke` | Проверить health, guardrails list и `/metrics` |
+| `make update-litellm` | Подтянуть новый LiteLLM image и пересоздать только proxy container |
 | `make clean` | Удалить volumes и локальные images проекта |
 
 ## Admin UI
@@ -281,7 +291,7 @@ curl http://localhost:4000/chat/completions \
 
 ## Guardrails UI
 
-Guardrails зарегистрированы в `litellm-config.yaml` и имеют `guardrail_info`, чтобы LiteLLM мог отдавать metadata в API/UI.
+Guardrails зарегистрированы в `litellm-config.yaml` и имеют `guardrail_info`, чтобы LiteLLM мог отдавать metadata через `GET /guardrails/list`.
 
 ```bash
 make guardrails-list
@@ -293,7 +303,45 @@ make guardrails-list
 make guardrails-smoke
 ```
 
-Guardrails Monitor в LiteLLM UI зависит от того, какие guardrail events и traces LiteLLM получает через свою observability/logging подсистему. В этой конфигурации добавлены registration metadata и diagnostics, но внешняя observability-инфраструктура вроде Langfuse/OpenTelemetry не включена по умолчанию.
+LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`. Для production monitoring используйте `/metrics`, health checks и structured logs.
+
+## Monitoring
+
+Prometheus включён через `litellm_settings.callbacks: ["prometheus"]`. Метрики доступны на:
+
+```text
+http://localhost:4000/metrics
+```
+
+Быстрая проверка:
+
+```bash
+make metrics
+make monitor-smoke
+```
+
+Проект добавляет собственные PII guardrail метрики:
+
+- `ru_pii_guardrail_pre_calls_total`
+- `ru_pii_guardrail_post_calls_total`
+- `ru_pii_guardrail_entities_detected_total`
+- `ru_pii_guardrail_fail_open_total`
+- `ru_pii_guardrail_fail_closed_total`
+- `ru_pii_guardrail_analyzer_latency_seconds_*`
+- `ru_pii_guardrail_redis_latency_seconds_*`
+- `ru_pii_guardrail_mapping_size_*`
+
+Guardrail также пишет structured JSON logs без prompt text и без raw PII. Подробный DevOps guide: [docs/monitoring.md](docs/monitoring.md).
+
+## Обновление LiteLLM
+
+LiteLLM запускается из готового image `docker.litellm.ai/berriai/litellm:main-stable`, поэтому для обновления proxy не нужно пересобирать весь проект:
+
+```bash
+make update-litellm
+```
+
+Команда выполняет `docker compose pull litellm` и пересоздаёт только контейнер `litellm`. В production после staging-проверки лучше закреплять конкретный tag или digest LiteLLM image. Подробный update checklist: [docs/monitoring.md](docs/monitoring.md#обновление-litellm).
 
 ## Healthcheck
 
@@ -378,6 +426,7 @@ ru-llm-proxy/
 └── docs/
     ├── architecture.md
     ├── examples.md
+    ├── monitoring.md
     └── research.md
 ```
 
