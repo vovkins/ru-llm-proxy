@@ -1,6 +1,5 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke metrics monitor-smoke update-litellm health clean help
 
-SED_INPLACE = sed -i.bak -e
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
@@ -24,37 +23,17 @@ help:
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
+	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
+	@echo "  make guardrails-smoke — live smoke с явным guardrails parameter"
+	@echo "  make metrics  — показать начало LiteLLM /metrics"
+	@echo "  make monitor-smoke — проверить health, guardrails list и /metrics"
+	@echo "  make update-litellm — подтянуть новый LiteLLM image и пересоздать proxy"
 	@echo "  make health   — проверить статус всех сервисов"
 	@echo "  make clean    — удалить volumes и образы"
 
 # === Setup ===
 setup:
-	@if [ ! -f .env ]; then \
-		echo "Создание .env из шаблона..."; \
-		cp .env.example .env; \
-		echo ""; \
-		echo "Генерация ключей..."; \
-		MASTER_KEY=$$(openssl rand -hex 32); \
-		SALT_KEY=$$(openssl rand -hex 32); \
-		DB_PASSWORD=$$(openssl rand -hex 16); \
-		$(SED_INPLACE) "s/^LITELLM_MASTER_KEY=.*/LITELLM_MASTER_KEY=sk-$${MASTER_KEY}/" .env; \
-		$(SED_INPLACE) "s/^LITELLM_SALT_KEY=.*/LITELLM_SALT_KEY=$${SALT_KEY}/" .env; \
-		$(SED_INPLACE) "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$${DB_PASSWORD}/" .env; \
-		$(SED_INPLACE) "s|postgresql://litellm:.*@db|postgresql://litellm:$${DB_PASSWORD}@db|" .env; \
-		rm -f .env.bak; \
-		echo ""; \
-		echo "✅ .env создан с автосгенерированными ключами"; \
-		echo "⚠️  Заполните API-ключ основного провайдера в .env:"; \
-		echo "   ZAI_API_KEY=***"; \
-		echo ""; \
-		echo "Опционально можно заполнить ключи других провайдеров:"; \
-		echo "   OPENAI_API_KEY=***"; \
-		echo "   ANTHROPIC_API_KEY=***"; \
-		echo "   GOOGLE_API_KEY=***"; \
-		echo ""; \
-	else \
-		echo "✅ .env уже существует, пропускаем"; \
-	fi
+	bash scripts/setup_env.sh
 
 # === Build ===
 build:
@@ -130,3 +109,53 @@ test-e2e:
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
 		bash tests/e2e/test_e2e.sh
+
+# === Guardrails diagnostics ===
+guardrails-list:
+	@echo "🛡️  LiteLLM registered guardrails"
+	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
+	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+		response=$$(curl -sS -H "Authorization: Bearer $$LITELLM_MASTER_KEY" http://localhost:4000/guardrails/list); \
+		if command -v jq >/dev/null 2>&1; then printf "%s\n" "$$response" | jq .; else printf "%s\n" "$$response"; fi
+
+guardrails-smoke:
+	@echo "🛡️  LiteLLM guardrails live smoke"
+	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
+	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+		headers=$$(mktemp) && body=$$(mktemp) && \
+		curl -sS -D "$$headers" -o "$$body" http://localhost:4000/chat/completions \
+			-H "Authorization: Bearer $$LITELLM_MASTER_KEY" \
+			-H "Content-Type: application/json" \
+			-d '{"model":"glm-5.1","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}' >/dev/null && \
+		{ \
+			echo "Applied guardrails header:"; \
+			if ! grep -i "^x-litellm-applied-guardrails:" "$$headers"; then echo "Header not found"; fi; \
+			echo ""; \
+			if command -v jq >/dev/null 2>&1; then jq . "$$body"; else cat "$$body"; fi; \
+			rm -f "$$headers" "$$body"; \
+		}
+
+# === Monitoring diagnostics ===
+metrics:
+	@echo "📈 LiteLLM /metrics"
+	@tmp=$$(mktemp) && \
+		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		sed -n '1,120p' "$$tmp"; \
+		status=$$?; rm -f "$$tmp"; exit $$status
+
+monitor-smoke:
+	@echo "📈 Monitoring smoke check"
+	@$(MAKE) health
+	@$(MAKE) guardrails-list
+	@tmp=$$(mktemp) && \
+		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \
+		if grep -q "ru_pii_guardrail_" "$$tmp"; then echo "✅ PII guardrail metrics exposed"; else echo "⚠️  PII guardrail metrics not emitted yet; run a PII request and retry"; fi; \
+		rm -f "$$tmp"
+
+# === LiteLLM update ===
+update-litellm:
+	@echo "⬇️  Pulling latest LiteLLM image configured in docker-compose.yml"
+	docker compose pull litellm
+	docker compose up -d --force-recreate --no-deps litellm
+	@echo "✅ LiteLLM image updated and proxy container recreated"

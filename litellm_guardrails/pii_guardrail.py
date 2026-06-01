@@ -5,6 +5,7 @@ import uuid
 import json
 import logging
 import re
+import time
 from typing import Optional, Union, Any
 
 import httpx
@@ -14,6 +15,87 @@ from litellm.proxy._types import UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
 logger = logging.getLogger(__name__)
+
+try:
+    from prometheus_client import Counter, Histogram
+except Exception:
+    Counter = None
+    Histogram = None
+
+
+class _NoopMetric:
+    """Fallback metric used when prometheus_client is unavailable."""
+
+    def labels(self, *args, **kwargs):
+        return self
+
+    def inc(self, amount: float = 1):
+        return None
+
+    def observe(self, amount: float):
+        return None
+
+
+def _build_metric(factory, *args, **kwargs):
+    """Create a Prometheus metric or a no-op replacement."""
+    if factory is None:
+        return _NoopMetric()
+    try:
+        return factory(*args, **kwargs)
+    except ValueError:
+        logger.warning("Prometheus metric already registered, using no-op for %s", args[0])
+        return _NoopMetric()
+
+
+PII_PRE_CALLS = _build_metric(
+    Counter,
+    "ru_pii_guardrail_pre_calls",
+    "PII guardrail pre-call requests.",
+    ["result"],
+)
+PII_POST_CALLS = _build_metric(
+    Counter,
+    "ru_pii_guardrail_post_calls",
+    "PII guardrail post-call requests.",
+    ["result"],
+)
+PII_ENTITIES_DETECTED = _build_metric(
+    Counter,
+    "ru_pii_guardrail_entities_detected",
+    "PII entities masked by entity type.",
+    ["entity_type"],
+)
+PII_FAIL_OPEN = _build_metric(
+    Counter,
+    "ru_pii_guardrail_fail_open",
+    "PII guardrail failures handled in fail-open mode.",
+    ["operation"],
+)
+PII_FAIL_CLOSED = _build_metric(
+    Counter,
+    "ru_pii_guardrail_fail_closed",
+    "PII guardrail failures handled in fail-closed mode.",
+    ["operation"],
+)
+PII_ANALYZER_LATENCY = _build_metric(
+    Histogram,
+    "ru_pii_guardrail_analyzer_latency_seconds",
+    "Latency of Presidio Analyzer calls made by the PII guardrail.",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+)
+PII_REDIS_LATENCY = _build_metric(
+    Histogram,
+    "ru_pii_guardrail_redis_latency_seconds",
+    "Latency of Redis operations made by the PII guardrail.",
+    ["operation"],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+)
+PII_MAPPING_SIZE = _build_metric(
+    Histogram,
+    "ru_pii_guardrail_mapping_size",
+    "Number of placeholder mappings saved for a masked request.",
+    buckets=(1, 2, 5, 10, 25, 50, 100, 250),
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
@@ -37,6 +119,18 @@ def _get_int_env(name: str, default: int) -> int:
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 PII_MAPPING_TTL_SECONDS = _get_int_env("PII_MAPPING_TTL_SECONDS", 3600)
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
+
+
+def _safe_log(level: int, event: str, **fields) -> None:
+    """Write structured logs without prompt text or raw PII values."""
+    logger.log(
+        level,
+        json.dumps(
+            {"event": event, **fields},
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+    )
 
 
 class RuPIIGuardrail(CustomGuardrail):
@@ -74,7 +168,20 @@ class RuPIIGuardrail(CustomGuardrail):
 
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
         """Apply configured fail-open/fail-closed behavior."""
-        logger.error("PII guardrail %s failed: %s", operation, error)
+        operation_label = operation.replace(" ", "_")
+        if self.failure_mode == "fail_closed":
+            PII_FAIL_CLOSED.labels(operation=operation_label).inc()
+        else:
+            PII_FAIL_OPEN.labels(operation=operation_label).inc()
+        _safe_log(
+            logging.ERROR,
+            "pii_guardrail_failed_open"
+            if self.failure_mode == "fail_open"
+            else "pii_guardrail_failed_closed",
+            operation=operation_label,
+            failure_mode=self.failure_mode,
+            error_type=type(error).__name__,
+        )
         if self.failure_mode == "fail_closed":
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
@@ -88,14 +195,18 @@ class RuPIIGuardrail(CustomGuardrail):
 
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
-                json={"text": text, "language": "ru", "score_threshold": 0.35},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("entities", [])
+        started_at = time.perf_counter()
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
+                    json={"text": text, "language": "ru", "score_threshold": 0.35},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data.get("entities", [])
+        finally:
+            PII_ANALYZER_LATENCY.observe(time.perf_counter() - started_at)
 
     def _mask_text(
         self,
@@ -165,19 +276,42 @@ class RuPIIGuardrail(CustomGuardrail):
         if not mapping:
             return
         r = await self._get_redis()
-        await r.setex(
-            f"pii_mapping:{request_id}",
-            self.mapping_ttl_seconds,
-            json.dumps(mapping, ensure_ascii=False),
-        )
+        started_at = time.perf_counter()
+        try:
+            await r.setex(
+                f"pii_mapping:{request_id}",
+                self.mapping_ttl_seconds,
+                json.dumps(mapping, ensure_ascii=False),
+            )
+        finally:
+            PII_REDIS_LATENCY.labels(operation="save").observe(
+                time.perf_counter() - started_at
+            )
 
     async def _load_mapping(self, request_id: str) -> dict:
         """Load PII mapping from Redis."""
         r = await self._get_redis()
-        data = await r.get(f"pii_mapping:{request_id}")
+        started_at = time.perf_counter()
+        try:
+            data = await r.get(f"pii_mapping:{request_id}")
+        finally:
+            PII_REDIS_LATENCY.labels(operation="load").observe(
+                time.perf_counter() - started_at
+            )
         if data:
             return json.loads(data)
         return {}
+
+    async def _delete_mapping(self, request_id: str) -> None:
+        """Delete PII mapping from Redis after post-call processing."""
+        r = await self._get_redis()
+        started_at = time.perf_counter()
+        try:
+            await r.delete(f"pii_mapping:{request_id}")
+        finally:
+            PII_REDIS_LATENCY.labels(operation="delete").observe(
+                time.perf_counter() - started_at
+            )
 
     def _get_request_id(self, data: dict) -> str:
         """Get or generate request ID from data."""
@@ -192,6 +326,21 @@ class RuPIIGuardrail(CustomGuardrail):
         # Generate new
         return str(uuid.uuid4())
 
+    @staticmethod
+    def _entity_counts_from_mapping(mapping: dict[str, str]) -> dict[str, int]:
+        """Return entity counts derived from generated placeholders."""
+        counts: dict[str, int] = {}
+        for placeholder in mapping:
+            entity_type = placeholder.strip("<>").rsplit("_", 1)[0] or "PII"
+            counts[entity_type] = counts.get(entity_type, 0) + 1
+        return counts
+
+    @staticmethod
+    def _record_entities(entity_counts: dict[str, int]) -> None:
+        """Increment entity metrics with bounded entity_type labels."""
+        for entity_type, count in entity_counts.items():
+            PII_ENTITIES_DETECTED.labels(entity_type=entity_type).inc(count)
+
     async def async_pre_call_hook(
         self,
         user_api_key_dict: UserAPIKeyAuth,
@@ -202,6 +351,7 @@ class RuPIIGuardrail(CustomGuardrail):
         """Mask PII in request messages before sending to LLM."""
         messages = data.get("messages")
         if not messages:
+            PII_PRE_CALLS.labels(result="skipped").inc()
             return data
 
         request_id = self._get_request_id(data)
@@ -225,6 +375,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     pending_updates.append((message, masked_text))
 
             except Exception as e:
+                PII_PRE_CALLS.labels(result="error").inc()
                 return self._handle_failure("masking", e, data)
 
         # Save mapping for post-call unmasking
@@ -232,16 +383,30 @@ class RuPIIGuardrail(CustomGuardrail):
             try:
                 await self._save_mapping(request_id, full_mapping)
             except Exception as e:
+                PII_PRE_CALLS.labels(result="error").inc()
                 return self._handle_failure("mapping save", e, data)
 
             for message, masked_text in pending_updates:
                 message["content"] = masked_text
 
             # Store request_id in data for post-call hook
-            if "metadata" not in data:
+            if not isinstance(data.get("metadata"), dict):
                 data["metadata"] = {}
             data["metadata"]["pii_request_id"] = request_id
-            logger.info(f"PII masked {len(full_mapping)} entities for request {request_id}")
+            entity_counts_for_log = self._entity_counts_from_mapping(full_mapping)
+            self._record_entities(entity_counts_for_log)
+            PII_MAPPING_SIZE.observe(len(full_mapping))
+            PII_PRE_CALLS.labels(result="masked").inc()
+            _safe_log(
+                logging.INFO,
+                "pii_guardrail_masked",
+                request_id=request_id,
+                masked_count=len(full_mapping),
+                entity_counts=entity_counts_for_log,
+                mapping_ttl_seconds=self.mapping_ttl_seconds,
+            )
+        else:
+            PII_PRE_CALLS.labels(result="clean").inc()
 
         return data
 
@@ -260,6 +425,7 @@ class RuPIIGuardrail(CustomGuardrail):
             or data.get("litellm_call_id")
         )
         if not request_id:
+            PII_POST_CALLS.labels(result="skipped").inc()
             return
         request_id = str(request_id)
 
@@ -267,13 +433,21 @@ class RuPIIGuardrail(CustomGuardrail):
         try:
             mapping = await self._load_mapping(request_id)
         except Exception as e:
+            PII_POST_CALLS.labels(result="error").inc()
             self._handle_failure("mapping load", e, data)
             return
 
         if not mapping:
+            PII_POST_CALLS.labels(result="no_mapping").inc()
+            _safe_log(
+                logging.INFO,
+                "pii_guardrail_no_mapping",
+                request_id=request_id,
+            )
             return
 
         # Unmask in response
+        restored_fields = 0
         if isinstance(response, litellm.ModelResponse):
             for choice in response.choices:
                 message = getattr(choice, "message", None)
@@ -281,23 +455,53 @@ class RuPIIGuardrail(CustomGuardrail):
                     continue
 
                 if getattr(message, "content", None):
-                    message.content = self._replace_placeholders(message.content, mapping)
+                    restored_content = self._replace_placeholders(message.content, mapping)
+                    if restored_content != message.content:
+                        restored_fields += 1
+                    message.content = restored_content
 
                 # GLM-5.1 coding plan can put final text in reasoning_content.
                 if getattr(message, "reasoning_content", None):
-                    message.reasoning_content = self._replace_placeholders(
+                    restored_reasoning = self._replace_placeholders(
                         message.reasoning_content,
                         mapping,
                     )
+                    if restored_reasoning != message.reasoning_content:
+                        restored_fields += 1
+                    message.reasoning_content = restored_reasoning
+        else:
+            PII_POST_CALLS.labels(result="unsupported_response").inc()
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_unsupported_response",
+                request_id=request_id,
+                response_type=type(response).__name__,
+                mapping_size=len(mapping),
+            )
+            return
 
         # Clean up Redis key
         try:
-            r = await self._get_redis()
-            await r.delete(f"pii_mapping:{request_id}")
+            await self._delete_mapping(request_id)
         except Exception as e:
-            logger.warning("Failed to delete PII mapping for request %s: %s", request_id, e)
+            PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_cleanup_failed",
+                request_id=request_id,
+                error_type=type(e).__name__,
+            )
 
-        logger.info(f"PII unmasked for request {request_id}")
+        PII_POST_CALLS.labels(
+            result="restored" if restored_fields else "no_placeholders"
+        ).inc()
+        _safe_log(
+            logging.INFO,
+            "pii_guardrail_restored",
+            request_id=request_id,
+            mapping_size=len(mapping),
+            restored_fields=restored_fields,
+        )
 
     @staticmethod
     def _replace_placeholders(text: str, mapping: dict[str, str]) -> str:

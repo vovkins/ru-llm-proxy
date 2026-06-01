@@ -1,6 +1,7 @@
 """Unit tests for PII guardrail module."""
 
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -206,6 +207,18 @@ class TestMaskText:
         assert masked_text == "Обычный текст"
         assert mapping == {}
 
+    def test_entity_counts_from_mapping(self, guardrail):
+        mapping = {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<PHONE_NUMBER_2>": "89031234567",
+            "<RU_INN_1>": "7707083893",
+        }
+
+        assert guardrail._entity_counts_from_mapping(mapping) == {
+            "PHONE_NUMBER": 2,
+            "RU_INN": 1,
+        }
+
 
 # === _save_mapping / _load_mapping ===
 
@@ -292,6 +305,35 @@ class TestPreCallHook:
             "<PHONE_NUMBER_1>": "+79031234567",
             "<PHONE_NUMBER_2>": "89031234567",
         }
+
+    @pytest.mark.asyncio
+    async def test_masking_log_is_structured_and_does_not_include_raw_pii(
+        self,
+        guardrail,
+        caplog,
+    ):
+        text = "Мой телефон +79031234567"
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with patch.object(guardrail, "_save_mapping", AsyncMock()):
+                with caplog.at_level(
+                    logging.INFO,
+                    logger="litellm_guardrails.pii_guardrail",
+                ):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data={"messages": [{"role": "user", "content": text}]},
+                    )
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pii_guardrail_masked" in logs
+        assert "PHONE_NUMBER" in logs
+        assert "+79031234567" not in logs
 
     @pytest.mark.asyncio
     async def test_no_messages_returns_data(self, guardrail):

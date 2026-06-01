@@ -48,14 +48,59 @@ guardrails:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
       default_on: true
+    guardrail_info:
+      description: "Masks Russian PII before the provider request."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "pre_call; masks Russian PII before the provider request."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "post_call"
       default_on: true
+    guardrail_info:
+      description: "Restores request-scoped placeholders in model responses."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "post_call; restores placeholders in model responses."
 ```
 
 `async_pre_call_hook` маскирует запросы. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`.
+
+`guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
+
+## Guardrails UI и наблюдаемость
+
+`default_on: true` включает guardrail для обычных запросов, но для диагностики полезно явно передавать request parameter:
+
+```json
+{
+  "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"]
+}
+```
+
+`make guardrails-smoke` отправляет live request с этим параметром и печатает header `x-litellm-applied-guardrails`, если LiteLLM вернул его.
+
+Guardrails Monitor в LiteLLM UI опирается на события/traces, которые LiteLLM пишет через свою logging/observability подсистему. В текущем проекте primary monitoring path — Prometheus `/metrics`, health checks и structured logs guardrail.
+
+В `litellm_settings` включён Prometheus callback:
+
+```yaml
+litellm_settings:
+  callbacks:
+    - prometheus
+  drop_params: true
+```
+
+Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size. Structured logs guardrail пишутся в JSON без prompt text и без raw PII. Подробный DevOps guide: [monitoring.md](monitoring.md).
+
+References:
+
+- https://docs.litellm.ai/docs/proxy/guardrails/quick_start
+- https://docs.litellm.ai/docs/proxy/guardrails/custom_guardrail
+- https://docs.litellm.ai/docs/proxy/prometheus
 
 ## Семантика плейсхолдеров
 
@@ -130,6 +175,14 @@ LiteLLM container healthcheck использует `GET /health/liveliness`, а 
 Host-side `make health` также проверяет LiteLLM через `/health/liveliness`, чтобы не требовать `LITELLM_MASTER_KEY` для обычной проверки статуса сервисов.
 
 Reference: https://docs.litellm.ai/docs/proxy/health
+
+## Admin UI
+
+LiteLLM Admin UI доступен на `/ui`. Для входа используются `UI_USERNAME` и `UI_PASSWORD`, которые `make setup` генерирует в `.env` отдельно от `LITELLM_MASTER_KEY`.
+
+`LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
+
+Reference: https://docs.litellm.ai/docs/proxy/ui
 
 ## Границы данных
 

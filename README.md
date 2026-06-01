@@ -126,14 +126,19 @@ make health
 
 ```env
 ZAI_API_KEY=your-zai-key
-LITELLM_MASTER_KEY=sk-...       # автогенерируется через make setup
+LITELLM_MASTER_KEY=sk-ru-...    # автогенерируется через make setup
 LITELLM_SALT_KEY=...            # автогенерируется через make setup
+UI_USERNAME=admin               # автогенерируется через make setup
+UI_PASSWORD=...                 # автогенерируется через make setup
 POSTGRES_PASSWORD=...           # автогенерируется через make setup
+LITELLM_DB_URL=postgresql://litellm:...@db:5432/litellm
 REDIS_URL=redis://redis:6379
 PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 ```
+
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD` и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -163,11 +168,28 @@ guardrails:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
       default_on: true
+    guardrail_info:
+      description: "Masks Russian PII before the provider request."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "pre_call; masks Russian PII before the provider request."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "post_call"
       default_on: true
+    guardrail_info:
+      description: "Restores request-scoped placeholders in model responses."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "post_call; restores placeholders in model responses."
+
+litellm_settings:
+  callbacks:
+    - prometheus
+  drop_params: true
 ```
 
 ### Добавление другого провайдера
@@ -205,7 +227,24 @@ make restart
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
+| `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
+| `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
+| `make metrics` | Показать первые строки LiteLLM `/metrics` |
+| `make monitor-smoke` | Проверить health, guardrails list и `/metrics` |
+| `make update-litellm` | Подтянуть новый LiteLLM image и пересоздать только proxy container |
 | `make clean` | Удалить volumes и локальные images проекта |
+
+## Admin UI
+
+LiteLLM Admin UI доступен по адресу:
+
+```text
+http://localhost:4000/ui
+```
+
+Для входа используются `UI_USERNAME` и `UI_PASSWORD` из `.env`. Это отдельные credentials для UI; `LITELLM_MASTER_KEY` остаётся admin API key и не должен выдаваться пользователям.
+
+Через UI можно создавать virtual keys для пользователей, смотреть usage/spend и управлять ключами. Пользователям выдавайте virtual keys, а не `LITELLM_MASTER_KEY`.
 
 ## Примеры использования
 
@@ -249,6 +288,60 @@ curl http://localhost:4000/chat/completions \
 Если ответ провайдера содержит эти плейсхолдеры, post-call hook восстановит исходные значения перед возвратом клиенту.
 
 Больше примеров: [docs/examples.md](docs/examples.md).
+
+## Guardrails UI
+
+Guardrails зарегистрированы в `litellm-config.yaml` и имеют `guardrail_info`, чтобы LiteLLM мог отдавать metadata через `GET /guardrails/list`.
+
+```bash
+make guardrails-list
+```
+
+Для smoke-проверки применения guardrails к live-запросу:
+
+```bash
+make guardrails-smoke
+```
+
+LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`. Для production monitoring используйте `/metrics`, health checks и structured logs.
+
+## Monitoring
+
+Prometheus включён через `litellm_settings.callbacks: ["prometheus"]`. Метрики доступны на:
+
+```text
+http://localhost:4000/metrics
+```
+
+Быстрая проверка:
+
+```bash
+make metrics
+make monitor-smoke
+```
+
+Проект добавляет собственные PII guardrail метрики:
+
+- `ru_pii_guardrail_pre_calls_total`
+- `ru_pii_guardrail_post_calls_total`
+- `ru_pii_guardrail_entities_detected_total`
+- `ru_pii_guardrail_fail_open_total`
+- `ru_pii_guardrail_fail_closed_total`
+- `ru_pii_guardrail_analyzer_latency_seconds_*`
+- `ru_pii_guardrail_redis_latency_seconds_*`
+- `ru_pii_guardrail_mapping_size_*`
+
+Guardrail также пишет structured JSON logs без prompt text и без raw PII. Подробный DevOps guide: [docs/monitoring.md](docs/monitoring.md).
+
+## Обновление LiteLLM
+
+LiteLLM запускается из готового image `docker.litellm.ai/berriai/litellm:main-stable`, поэтому для обновления proxy не нужно пересобирать весь проект:
+
+```bash
+make update-litellm
+```
+
+Команда выполняет `docker compose pull litellm` и пересоздаёт только контейнер `litellm`. В production после staging-проверки лучше закреплять конкретный tag или digest LiteLLM image. Подробный update checklist: [docs/monitoring.md](docs/monitoring.md#обновление-litellm).
 
 ## Healthcheck
 
@@ -314,6 +407,8 @@ ru-llm-proxy/
 ├── docker-compose.yml
 ├── litellm-config.yaml
 ├── Makefile
+├── scripts/
+│   └── setup_env.sh
 ├── presidio/
 │   ├── Dockerfile
 │   ├── analyzer_server.py
@@ -331,6 +426,7 @@ ru-llm-proxy/
 └── docs/
     ├── architecture.md
     ├── examples.md
+    ├── monitoring.md
     └── research.md
 ```
 
