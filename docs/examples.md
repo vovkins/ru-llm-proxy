@@ -184,6 +184,24 @@ make guardrails-list
 make guardrails-smoke
 ```
 
+## Sticky routing
+
+Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:
+
+```bash
+make routing-smoke
+```
+
+Команда отправляет два live-запроса одним ключом и сравнивает header `x-litellm-model-id`.
+
+Если хотите проверять не master key, а пользовательский virtual key, задайте его в `.env`:
+
+```env
+LITELLM_ROUTING_TEST_KEY=sk-...
+```
+
+Подробности настройки нескольких аккаунтов одной модели: [routing.md](routing.md).
+
 ## Metrics
 
 LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
@@ -211,11 +229,16 @@ model_list:
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      id: openai-gpt-4o-primary
+      base_model: gpt-4o
 ```
 
 ```bash
 make restart
 ```
+
+Если это второй deployment той же публичной модели, оставьте прежний `model_name`, но задайте новый `model_info.id`. Так LiteLLM сможет корректно хранить sticky affinity.
 
 ## Streaming
 

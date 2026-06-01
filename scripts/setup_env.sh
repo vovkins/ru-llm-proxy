@@ -64,6 +64,15 @@ ensure_secret() {
     return 1
 }
 
+ensure_key_exists() {
+    local key="$1"
+    local value="${2:-}"
+
+    if ! grep -q "^${key}=" "$ENV_FILE"; then
+        set_env_value "$key" "$value"
+    fi
+}
+
 if [ ! -f "$ENV_FILE" ]; then
     echo "Создание ${ENV_FILE} из шаблона..."
     cp "$EXAMPLE_FILE" "$ENV_FILE"
@@ -86,6 +95,8 @@ fi
 
 ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" || true
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true
+ensure_key_exists "ZAI_API_KEY_2" ""
+ensure_key_exists "LITELLM_ROUTING_TEST_KEY" ""
 
 actual_db_password="$(get_env_value "POSTGRES_PASSWORD" || true)"
 current_db_url="$(get_env_value "LITELLM_DB_URL" || true)"
@@ -97,6 +108,7 @@ echo ""
 echo "✅ ${ENV_FILE} готов"
 echo "⚠️  Заполните API-ключ основного провайдера в ${ENV_FILE}:"
 echo "   ZAI_API_KEY=***"
+echo "   ZAI_API_KEY_2=...  # опционально, второй аккаунт/deployment для sticky routing"
 echo ""
 echo "LiteLLM Admin UI будет доступен по адресу /ui."
 echo "Логин и пароль сохранены в ${ENV_FILE}: UI_USERNAME и UI_PASSWORD."
