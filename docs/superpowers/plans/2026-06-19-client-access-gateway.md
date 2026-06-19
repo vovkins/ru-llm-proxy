@@ -4,7 +4,7 @@
 
 **Goal:** Add first-class client access for Codex, Claude Code, OpenCode, and Kilo Code through a multi-provider LiteLLM gateway.
 
-**Architecture:** LiteLLM remains the only public LLM boundary. Clients authenticate with LiteLLM virtual keys, while upstream provider keys for Z.AI, OpenAI, and Anthropic stay on the proxy. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
+**Architecture:** LiteLLM remains the only public LLM boundary. Server-funded requests authenticate to the proxy with LiteLLM virtual keys and use upstream provider keys stored on the proxy. Subscription/BYOK passthrough requests authenticate to LiteLLM with `x-litellm-api-key` and reserve provider auth headers such as `Authorization` or `x-api-key` for Codex/Claude upstream auth. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
 
 **Tech Stack:** LiteLLM proxy YAML, Bash helper scripts, Makefile targets, curl/jq live smokes, Markdown documentation.
 
@@ -12,7 +12,7 @@
 
 ## Files
 
-- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic.
+- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic; enable header forwarding required for subscription/BYOK passthrough.
 - Create `scripts/create_virtual_key.sh`: admin helper for `/key/generate`.
 - Create `tests/e2e/test_client_auth.sh`: live auth/protocol smoke tests.
 - Modify `Makefile`: add `virtual-key-create` and `client-auth-smoke`; keep existing admin diagnostics on master key.
@@ -183,7 +183,23 @@ env_key = "RU_LLM_PROXY_TOKEN"
 wire_api = "responses"
 ```
 
-Mention Codex App support is for local tasks and that upstream OpenAI credentials stay on the proxy.
+Mention Codex App support is for local tasks and that upstream OpenAI Platform credentials stay on the proxy in server-funded mode.
+
+Also document ChatGPT subscription passthrough using OpenAI authentication against the proxy:
+
+```toml
+model_provider = "ru_llm_proxy_chatgpt"
+model = "openai-gpt-5.4-mini"
+
+[model_providers.ru_llm_proxy_chatgpt]
+name = "ru-llm-proxy via ChatGPT auth"
+base_url = "http://localhost:4000/v1"
+wire_api = "responses"
+requires_openai_auth = true
+env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }
+```
+
+Call out that this path must be live-validated because standard LiteLLM header forwarding normally strips `Authorization`; if normal routing fails, the implementation must use pass-through or a sidecar.
 
 - [ ] **Step 2: Document Claude Code**
 
@@ -195,7 +211,18 @@ export ANTHROPIC_AUTH_TOKEN="$RU_LLM_PROXY_TOKEN"
 export ANTHROPIC_MODEL="claude-sonnet-4.6"
 ```
 
-Mention `apiKeyHelper` as CLI-only dynamic auth and keep subscription-backed upstream auth out of scope.
+Mention `apiKeyHelper` as CLI-only dynamic auth.
+
+Also document Claude subscription passthrough:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:4000"
+export ANTHROPIC_MODEL="claude-sonnet-4.6"
+export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
+claude
+```
+
+Call out that the Claude account auth stays in Claude Code on the client machine and must be live-validated against the pinned LiteLLM image.
 
 - [ ] **Step 3: Document OpenCode**
 
@@ -286,3 +313,71 @@ If verification required edits:
 git add -A
 git commit -m "fix: address client access verification issues"
 ```
+
+### Task 6: Subscription/BYOK Passthrough Delta
+
+**Files:**
+- Modify: `litellm-config.yaml`
+- Modify: `docs/clients/codex.md`
+- Modify: `docs/clients/claude-code.md`
+- Modify: `README.md`
+- Modify: `docs/examples.md`
+- Modify: `tests/e2e/test_client_auth.sh`
+- Modify: `docs/superpowers/specs/2026-06-19-client-access-gateway-design.md`
+
+- [ ] **Step 1: Enable LiteLLM header forwarding**
+
+Add the required forwarding settings:
+
+```yaml
+general_settings:
+  forward_client_headers_to_llm_api: true
+  forward_llm_provider_auth_headers: true
+```
+
+Keep `LITELLM_MASTER_KEY` admin-only and keep existing server-funded provider API key routes working.
+
+- [ ] **Step 2: Add x-litellm proxy auth smoke coverage**
+
+Extend `tests/e2e/test_client_auth.sh` so it verifies `x-litellm-api-key` works as proxy auth when `Authorization` is occupied by a non-proxy bearer token.
+
+- [ ] **Step 3: Update Codex docs**
+
+Document two Codex modes:
+
+- server-funded mode: `env_key = "RU_LLM_PROXY_TOKEN"`;
+- ChatGPT subscription passthrough mode: `requires_openai_auth = true` plus `env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }`.
+
+Mark the ChatGPT passthrough path as requiring live validation on the current LiteLLM image. If `/v1/responses` strips `Authorization`, do not claim support until a pass-through route or sidecar is implemented.
+
+- [ ] **Step 4: Update Claude Code docs**
+
+Document two Claude Code modes:
+
+- server-funded mode: `ANTHROPIC_AUTH_TOKEN="$RU_LLM_PROXY_TOKEN"`;
+- Claude subscription passthrough mode: client-side Claude login plus `ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"`.
+
+- [ ] **Step 5: Update README and examples**
+
+Explain the two auth layers:
+
+- `x-litellm-api-key` authenticates the caller to the proxy;
+- `Authorization`, `x-api-key`, or provider-specific headers authenticate the caller to the upstream provider in passthrough/BYOK mode.
+
+- [ ] **Step 6: Verify**
+
+Run:
+
+```bash
+bash -n tests/e2e/test_client_auth.sh
+python3 - <<'PY'
+import yaml
+from pathlib import Path
+yaml.safe_load(Path("litellm-config.yaml").read_text())
+print("litellm-config.yaml ok")
+PY
+git diff --check
+make -n client-auth-smoke
+```
+
+Live validation must be reported separately because it requires running services and real Codex/Claude client auth.
