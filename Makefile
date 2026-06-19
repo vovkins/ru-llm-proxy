@@ -115,7 +115,17 @@ test-e2e:
 
 # === Client access ===
 virtual-key-create:
-	@bash scripts/create_virtual_key.sh
+	@KEY_ALIAS="$(KEY_ALIAS)" \
+		MODELS="$(MODELS)" \
+		DURATION="$(DURATION)" \
+		MAX_BUDGET="$(MAX_BUDGET)" \
+		BUDGET_DURATION="$(BUDGET_DURATION)" \
+		RPM_LIMIT="$(RPM_LIMIT)" \
+		TPM_LIMIT="$(TPM_LIMIT)" \
+		USER_ID="$(USER_ID)" \
+		TEAM_ID="$(TEAM_ID)" \
+		METADATA_JSON='$(METADATA_JSON)' \
+		bash scripts/create_virtual_key.sh
 
 client-auth-smoke:
 	@bash tests/e2e/test_client_auth.sh
