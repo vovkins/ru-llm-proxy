@@ -117,10 +117,11 @@ Expose stable proxy-facing aliases rather than raw provider names. Initial alias
 Recommended initial names:
 
 - `zai-glm-5.1` -> Z.AI GLM model through the existing OpenAI-compatible Z.AI endpoint.
-- `openai-gpt-4o-mini` -> OpenAI fast/general model.
-- `openai-gpt-4o` -> OpenAI higher-capability model.
-- `claude-sonnet` -> Anthropic Sonnet class model.
-- `claude-haiku` -> Anthropic Haiku class model.
+- `openai-gpt-5.4-mini` -> OpenAI fast/general model.
+- `openai-gpt-5.5` -> OpenAI higher-capability model.
+- `claude-opus-4.8` -> Anthropic Opus class model.
+- `claude-sonnet-4.6` -> Anthropic Sonnet class model.
+- `claude-haiku-4.5` -> Anthropic Haiku class model.
 
 Keep the existing `glm-5.1` name as a compatibility alias or documented legacy name. New docs should prefer provider-prefixed aliases.
 

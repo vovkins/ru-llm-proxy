@@ -47,27 +47,33 @@ model_list:
       api_key: os.environ/ZAI_API_KEY
     model_info:
       access_groups: ["zai", "standard"]
-  - model_name: openai-gpt-4o-mini
+  - model_name: openai-gpt-5.4-mini
     litellm_params:
-      model: openai/gpt-4o-mini
+      model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       access_groups: ["openai", "standard"]
-  - model_name: openai-gpt-4o
+  - model_name: openai-gpt-5.5
     litellm_params:
-      model: openai/gpt-4o
+      model: openai/gpt-5.5
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       access_groups: ["openai", "premium"]
-  - model_name: claude-sonnet
+  - model_name: claude-opus-4.8
     litellm_params:
-      model: anthropic/claude-sonnet-4-5
+      model: anthropic/claude-opus-4-8
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       access_groups: ["anthropic", "premium"]
-  - model_name: claude-haiku
+  - model_name: claude-sonnet-4.6
     litellm_params:
-      model: anthropic/claude-3-5-haiku-latest
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      access_groups: ["anthropic", "standard"]
+  - model_name: claude-haiku-4.5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       access_groups: ["anthropic", "standard"]
@@ -167,7 +173,7 @@ Create a Codex guide that shows `~/.codex/config.toml` with:
 
 ```toml
 model_provider = "ru_llm_proxy"
-model = "openai-gpt-4o-mini"
+model = "openai-gpt-5.4-mini"
 
 [model_providers.ru_llm_proxy]
 name = "ru-llm-proxy"
@@ -185,14 +191,14 @@ Create a Claude Code guide that shows:
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
 export ANTHROPIC_AUTH_TOKEN="$RU_LLM_PROXY_TOKEN"
-export ANTHROPIC_MODEL="claude-sonnet"
+export ANTHROPIC_MODEL="claude-sonnet-4.6"
 ```
 
 Mention `apiKeyHelper` as CLI-only dynamic auth and keep subscription-backed upstream auth out of scope.
 
 - [ ] **Step 3: Document OpenCode**
 
-Create an OpenCode guide with `opencode.json` using `@ai-sdk/openai-compatible`, `baseURL`, `apiKey`, and models `zai-glm-5.1`, `openai-gpt-4o-mini`, and `openai-gpt-4o`.
+Create an OpenCode guide with `opencode.json` using `@ai-sdk/openai-compatible`, `baseURL`, `apiKey`, and models `zai-glm-5.1`, `openai-gpt-5.4-mini`, and `openai-gpt-5.5`.
 
 - [ ] **Step 4: Document Kilo Code**
 

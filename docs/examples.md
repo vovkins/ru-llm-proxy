@@ -1,22 +1,30 @@
 # Примеры API
 
-Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, модель `glm-5.1`.
+Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, базовая Z.AI модель `zai-glm-5.1`, OpenAI aliases `openai-gpt-5.4-mini` / `openai-gpt-5.5` и Anthropic aliases `claude-haiku-4.5` / `claude-sonnet-4.6` / `claude-opus-4.8`.
 
 ## Окружение
 
 ```bash
 export API_URL="http://localhost:4000"
-export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)
+export RU_LLM_PROXY_TOKEN="sk-..."
 ```
+
+Создайте `RU_LLM_PROXY_TOKEN` через Admin UI или CLI helper:
+
+```bash
+make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anthropic DURATION=30d
+```
+
+`LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и диагностики guardrails.
 
 ## Chat completion без PII
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "zai-glm-5.1",
     "messages": [
       {
         "role": "user",
@@ -30,11 +38,11 @@ curl -s "$API_URL/chat/completions" \
 ## Chat completion с PII
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "zai-glm-5.1",
     "messages": [
       {
         "role": "user",
@@ -56,11 +64,11 @@ curl -s "$API_URL/chat/completions" \
 ## Несколько значений одного типа
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "zai-glm-5.1",
     "messages": [
       {
         "role": "user",
@@ -75,6 +83,41 @@ curl -s "$API_URL/chat/completions" \
 
 ```text
 Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
+```
+
+## OpenAI Responses API
+
+Codex CLI/App local tasks используют Responses API:
+
+```bash
+curl -s "$API_URL/v1/responses" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{
+    "model": "openai-gpt-5.4-mini",
+    "input": "Скажи короткое приветствие на русском",
+    "max_output_tokens": 80
+  }' | jq
+```
+
+## Anthropic Messages API
+
+Claude Code использует Anthropic-compatible Messages API:
+
+```bash
+curl -s "$API_URL/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{
+    "model": "claude-sonnet-4.6",
+    "max_tokens": 80,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Скажи короткое приветствие на русском"
+      }
+    ]
+  }' | jq
 ```
 
 ## Прямая проверка Analyzer
@@ -163,7 +206,7 @@ curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -d '{
-    "model": "glm-5.1",
+    "model": "zai-glm-5.1",
     "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
     "messages": [
       {
@@ -219,15 +262,22 @@ make monitor-smoke
 
 PII guardrail метрики `ru_pii_guardrail_*` появятся после первого запроса, который прошёл через guardrail. Метрики не содержат raw PII или текст пользовательского запроса.
 
+## Клиентские гайды
+
+- Codex CLI / Codex App local tasks: [clients/codex.md](clients/codex.md)
+- Claude Code: [clients/claude-code.md](clients/claude-code.md)
+- OpenCode CLI / Desktop: [clients/opencode.md](clients/opencode.md)
+- Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
+
 ## Добавление моделей
 
-По умолчанию настроена только модель `glm-5.1`. Чтобы использовать другого провайдера, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
+По умолчанию настроены provider-prefixed aliases для Z.AI, OpenAI и Anthropic. Чтобы добавить ещё один провайдер, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
 
 ```yaml
 model_list:
   - model_name: my-openai-model
     litellm_params:
-      model: openai/gpt-4o
+      model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       id: openai-gpt-4o-primary
