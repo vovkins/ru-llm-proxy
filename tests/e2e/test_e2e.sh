@@ -133,7 +133,7 @@ echo ""
 echo "📋 3. LiteLLM Basic Call (no PII)"
 
 TOTAL=$((TOTAL + 1))
-basic_response=$(curl -sf "$BASE_URL/chat/completions" \
+basic_response=$(curl -sf "$BASE_URL/v1/chat/completions" \
     -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
     -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
@@ -156,7 +156,7 @@ echo "📋 4. LiteLLM with PII (live smoke)"
 pii_request='{"model":"glm-5.1","messages":[{"role":"user","content":"Перепиши: Клиент Иванов Иван, телефон +79031234567, ИНН 7707083893, проживает г. Москва, ул. Тверская, д. 1. Перепиши это как краткую справку."}],"max_tokens":100}'
 
 TOTAL=$((TOTAL + 1))
-pii_response=$(curl -sf "$BASE_URL/chat/completions" \
+pii_response=$(curl -sf "$BASE_URL/v1/chat/completions" \
     -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
     -d "$pii_request" 2>/dev/null || echo "{}")

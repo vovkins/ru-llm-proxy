@@ -15,7 +15,7 @@
 ## Поток запроса
 
 ```text
-1. Клиент отправляет POST /chat/completions в LiteLLM.
+1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
 3. Guardrail отправляет каждое string message в Presidio Analyzer.
 4. Analyzer возвращает entity spans, entity types и scores.

@@ -8,7 +8,7 @@ Turn the project from a single Z.AI-oriented proxy into a practical corporate LL
 
 This PR covers the first production-oriented slice:
 
-- Client access to the proxy through LiteLLM virtual keys.
+- Client access to the proxy through LiteLLM virtual keys, plus documented JWT/OIDC deployment guidance.
 - Multi-provider LiteLLM configuration for Z.AI, OpenAI, and Anthropic.
 - Client setup docs for Codex CLI/App local tasks, Claude Code, OpenCode CLI/Desktop, and Kilo Code VS Code/CLI.
 - Helper scripts and Make targets for creating client virtual keys and smoke-testing supported protocols.
@@ -24,7 +24,7 @@ There are two separate credential layers.
 
 Ingress credentials answer: "Who may use this proxy?"
 
-The proxy issues LiteLLM virtual keys to users, teams, CI jobs, and local tools. Those keys are sent by clients as bearer tokens or through a client-specific equivalent:
+The default proxy issues LiteLLM virtual keys to users, teams, CI jobs, and local tools. Those keys are sent by clients as bearer tokens or through a client-specific equivalent:
 
 - OpenAI-compatible clients use `Authorization: Bearer <virtual-key>`.
 - Codex custom providers use a configured `env_key` such as `RU_LLM_PROXY_TOKEN`.
@@ -32,6 +32,8 @@ The proxy issues LiteLLM virtual keys to users, teams, CI jobs, and local tools.
 - OpenCode and Kilo Code use their OpenAI-compatible provider API key field, usually sourced from `RU_LLM_PROXY_TOKEN`.
 
 `LITELLM_MASTER_KEY` remains admin-only. It is used for LiteLLM admin APIs such as `/key/generate` and must not appear in normal client examples.
+
+JWT/OIDC is a separate deployment path for the same ingress boundary. It is not enabled by default because it requires an identity provider, JWKS URL, audience policy, and LiteLLM Enterprise features. The PR documents that path but keeps the default runnable config on virtual keys.
 
 ### Upstream Provider Credentials
 
@@ -173,6 +175,7 @@ Docs must show:
 - Which model aliases are examples, not required defaults.
 - That `LITELLM_MASTER_KEY` is not for users.
 - That upstream provider keys stay only on the proxy.
+- How JWT/OIDC fits as an enterprise proxy-auth option without mixing it with upstream provider credentials.
 
 Update existing README and examples so normal client requests use `RU_LLM_PROXY_TOKEN` or an equivalent virtual-key variable instead of `LITELLM_MASTER_KEY`.
 

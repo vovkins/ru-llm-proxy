@@ -20,6 +20,7 @@
 - Create `docs/clients/claude-code.md`: Claude Code setup.
 - Create `docs/clients/opencode.md`: OpenCode CLI/Desktop setup.
 - Create `docs/clients/kilo-code.md`: Kilo Code VS Code/CLI setup.
+- Create `docs/clients/jwt.md`: JWT/OIDC proxy auth deployment guidance.
 - Modify `README.md` and `docs/examples.md`: make virtual keys the user-facing examples.
 
 ### Task 1: Multi-Provider LiteLLM Config
@@ -211,11 +212,13 @@ git add docs/clients
 git commit -m "docs: add coding client setup guides"
 ```
 
-### Task 4: README And Examples Cleanup
+### Task 4: README, Examples, And JWT Cleanup
 
 **Files:**
 - Modify: `README.md`
 - Modify: `docs/examples.md`
+- Modify: `.env.example`
+- Create: `docs/clients/jwt.md`
 
 - [ ] **Step 1: Make user examples virtual-key-first**
 
@@ -223,9 +226,17 @@ Replace normal client calls that use `LITELLM_MASTER_KEY` with `RU_LLM_PROXY_TOK
 
 - [ ] **Step 2: Add client access index**
 
-Link the four `docs/clients/*.md` guides from README.
+Link the client guides from README, including JWT/OIDC proxy auth.
 
-- [ ] **Step 3: Add docs guard**
+- [ ] **Step 3: Add JWT/OIDC guidance**
+
+Add `docs/clients/jwt.md` for LiteLLM JWT/OIDC and JWT to virtual key mapping. Keep it disabled in default config because it needs an IdP/JWKS and LiteLLM Enterprise.
+
+- [ ] **Step 4: Limit upstream examples to the supported providers**
+
+Remove unused provider key placeholders from `.env.example` so the documented upstream set is `ZAI_API_KEY`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+
+- [ ] **Step 5: Add docs guard**
 
 Verify remaining `LITELLM_MASTER_KEY` references are admin-only:
 
@@ -233,10 +244,10 @@ Verify remaining `LITELLM_MASTER_KEY` references are admin-only:
 rg -n "LITELLM_MASTER_KEY" README.md docs Makefile tests scripts
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add README.md docs/examples.md
+git add README.md docs/examples.md .env.example docs/clients/jwt.md
 git commit -m "docs: make client examples virtual-key first"
 ```
 

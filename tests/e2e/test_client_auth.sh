@@ -8,6 +8,7 @@ CHAT_MODEL="${CHAT_MODEL:-zai-glm-5.1}"
 RESPONSES_MODEL="${RESPONSES_MODEL:-openai-gpt-5.4-mini}"
 MESSAGES_MODEL="${MESSAGES_MODEL:-claude-haiku-4.5}"
 DENIED_MODEL="${DENIED_MODEL:-openai-gpt-5.5}"
+REQUIRE_ALL_PROTOCOLS="${REQUIRE_ALL_PROTOCOLS:-0}"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
@@ -43,6 +44,17 @@ fail() {
 skip() {
     echo "  ⚠️  $1"
     SKIP=$((SKIP + 1))
+}
+
+missing_provider_key() {
+    local description="$1"
+    local secret_name="$2"
+
+    if [ "$REQUIRE_ALL_PROTOCOLS" = "1" ]; then
+        fail "$description required but $secret_name is not configured"
+    else
+        skip "$description skipped; $secret_name is not configured"
+    fi
 }
 
 has_configured_secret() {
@@ -184,7 +196,7 @@ if has_configured_secret ZAI_API_KEY; then
     chat_body=$(printf '%s\n' "$chat_result" | sed '1d')
     expect_success "/v1/chat/completions with virtual key" "$chat_status" "$chat_body"
 else
-    skip "/v1/chat/completions allowed-call skipped; ZAI_API_KEY is not configured"
+    missing_provider_key "/v1/chat/completions allowed-call" "ZAI_API_KEY"
 fi
 
 if has_configured_secret OPENAI_API_KEY; then
@@ -194,7 +206,7 @@ if has_configured_secret OPENAI_API_KEY; then
     responses_body=$(printf '%s\n' "$responses_result" | sed '1d')
     expect_success "/v1/responses with virtual key" "$responses_status" "$responses_body"
 else
-    skip "/v1/responses skipped; OPENAI_API_KEY is not configured"
+    missing_provider_key "/v1/responses" "OPENAI_API_KEY"
 fi
 
 if has_configured_secret ANTHROPIC_API_KEY; then
@@ -204,7 +216,7 @@ if has_configured_secret ANTHROPIC_API_KEY; then
     messages_body=$(printf '%s\n' "$messages_result" | sed '1d')
     expect_success "/v1/messages with virtual key" "$messages_status" "$messages_body"
 else
-    skip "/v1/messages skipped; ANTHROPIC_API_KEY is not configured"
+    missing_provider_key "/v1/messages" "ANTHROPIC_API_KEY"
 fi
 
 echo ""

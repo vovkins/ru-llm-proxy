@@ -15,7 +15,7 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anthropic DURATION=30d
 ```
 
-`LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и диагностики guardrails.
+`LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
 
 ## Chat completion без PII
 
@@ -202,9 +202,9 @@ curl -s "$API_URL/guardrails/list" \
 Live-запрос с явным `guardrails` parameter:
 
 ```bash
-curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/chat/completions" \
+curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
     "model": "zai-glm-5.1",
     "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
@@ -268,6 +268,7 @@ PII guardrail метрики `ru_pii_guardrail_*` появятся после п
 - Claude Code: [clients/claude-code.md](clients/claude-code.md)
 - OpenCode CLI / Desktop: [clients/opencode.md](clients/opencode.md)
 - Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
+- JWT/OIDC proxy auth: [clients/jwt.md](clients/jwt.md)
 
 ## Добавление моделей
 
