@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Live smoke tests for ru-llm-proxy.
-# Requires: running services (make up), curl, jq, and a configured LLM provider key.
+# Requires: running services (make up), curl, jq, a LiteLLM virtual key,
+# and a configured LLM provider key.
 # Deterministic guardrail masking/unmasking is covered by test_guardrail_flow.py.
 set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ANALYZER_URL="${ANALYZER_URL:-http://localhost:5001}"
-MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+API_KEY="${RU_LLM_PROXY_TOKEN:-}"
 
 if ! command -v jq &>/dev/null; then
     echo "❌ jq is required: apt install jq"
@@ -57,6 +58,11 @@ echo ""
 echo "🧪 ru-llm-proxy — Live Smoke Tests"
 echo "====================================="
 echo ""
+
+if [ -z "$API_KEY" ]; then
+    echo "❌ RU_LLM_PROXY_TOKEN is required; use make test-e2e to create a short-lived virtual key"
+    exit 1
+fi
 
 # --- 1. Health checks ---
 echo "📋 1. Health Checks"
@@ -128,7 +134,7 @@ echo "📋 3. LiteLLM Basic Call (no PII)"
 
 TOTAL=$((TOTAL + 1))
 basic_response=$(curl -sf "$BASE_URL/chat/completions" \
-    -H "Authorization: Bearer $MASTER_KEY" \
+    -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
     -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
 
@@ -151,7 +157,7 @@ pii_request='{"model":"glm-5.1","messages":[{"role":"user","content":"Переп
 
 TOTAL=$((TOTAL + 1))
 pii_response=$(curl -sf "$BASE_URL/chat/completions" \
-    -H "Authorization: Bearer $MASTER_KEY" \
+    -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
     -d "$pii_request" 2>/dev/null || echo "{}")
 

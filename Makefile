@@ -110,7 +110,12 @@ test-unit:
 test-e2e:
 	@echo "🧪 Live smoke test (требуются запущенные сервисы и LLM provider key)"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
-	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+	@RU_LLM_PROXY_TOKEN=$$(bash scripts/create_virtual_key.sh \
+			--alias "e2e-$$(date +%Y%m%d%H%M%S)" \
+			--models standard,zai \
+			--duration 30m | awk -F= '$$1 == "RU_LLM_PROXY_TOKEN" {print $$2; exit}'); \
+		if [ -z "$$RU_LLM_PROXY_TOKEN" ]; then echo "❌ failed to create e2e virtual key"; exit 1; fi; \
+		export RU_LLM_PROXY_TOKEN; \
 		bash tests/e2e/test_e2e.sh
 
 # === Client access ===
