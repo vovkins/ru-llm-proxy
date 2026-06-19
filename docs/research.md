@@ -6,7 +6,7 @@
 
 > Примечание: этот документ фиксирует исследование и исторический контекст выбора стека. Актуальное состояние реализации, команды запуска и ограничения описаны в `README.md`, `docs/architecture.md` и `docs/examples.md`.
 >
-> Текущее отличие реализации от ранней идеи: LiteLLM guardrail использует `presidio-analyzer` в основном request path, строит обратимые плейсхолдеры самостоятельно и хранит маппинг в Redis. Отдельный сервис для анонимизации удалён из runtime-состава, потому что продуктового сценария для standalone API нет.
+> Текущее отличие реализации от ранней идеи: LiteLLM guardrail использует `presidio-analyzer` в основном request path, строит обратимые плейсхолдеры самостоятельно и хранит маппинг в Redis. Отдельный сервис для анонимизации удалён из runtime-состава, потому что продуктового сценария для standalone API нет. Для нескольких provider deployments используется LiteLLM `deployment_affinity`; подробнее в `docs/routing.md`.
 
 ---
 
@@ -220,7 +220,7 @@
 2. **Presidio Analyzer** — REST-сервис для детекции PII; используется guardrail в основном request path
 3. **NER-модель** — ruBERT/DeepPavlov (файлы ~1-2 GB)
 4. **PostgreSQL** — база данных для LiteLLM
-5. **Redis** — обязательное временное хранилище обратимых PII-маппингов
+5. **Redis** — обязательное временное хранилище обратимых PII-маппингов и LiteLLM deployment affinity
 
 ### Вариант 1: Docker Compose ⭐ Рекомендуемый
 
@@ -376,3 +376,4 @@ volumes:
 2. DeepPavlov `ner_rus_bert` интегрирован как отдельный NER recognizer.
 3. Regex recognizers для российских форматов реализованы и покрыты тестами.
 4. MVP собран в Docker Compose: LiteLLM, Analyzer, PostgreSQL и Redis.
+5. Для нескольких deployments одной model group включён LiteLLM sticky routing через `deployment_affinity`.

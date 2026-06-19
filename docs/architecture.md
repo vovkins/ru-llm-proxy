@@ -6,10 +6,10 @@
 
 | Компонент | Service | Ответственность |
 | --- | --- | --- |
-| LiteLLM Proxy | `litellm` | OpenAI-compatible gateway, роутинг к провайдеру, выполнение guardrails |
+| LiteLLM Proxy | `litellm` | OpenAI-compatible gateway, sticky routing к provider deployments, выполнение guardrails |
 | PII Guardrail | `litellm_guardrails/pii_guardrail.py` | Маскирование запросов, Redis-маппинг, восстановление ответов |
 | Presidio Analyzer | `presidio-analyzer` | Детекция PII через русские regex recognizers и опциональный DeepPavlov NER |
-| Redis | `redis` | Временное хранение обратимых placeholder mappings |
+| Redis | `redis` | Временное хранение обратимых placeholder mappings и LiteLLM deployment affinity |
 | PostgreSQL | `db` | Persistence для LiteLLM |
 
 ## Поток запроса
@@ -102,6 +102,37 @@ References:
 - https://docs.litellm.ai/docs/proxy/guardrails/custom_guardrail
 - https://docs.litellm.ai/docs/proxy/prometheus
 
+## Provider routing и sticky affinity
+
+В `litellm-config.yaml` включена Router pre-call проверка `deployment_affinity`:
+
+```yaml
+router_settings:
+  redis_url: os.environ/REDIS_URL
+  routing_strategy: simple-shuffle
+  optional_pre_call_checks:
+    - deployment_affinity
+  deployment_affinity_ttl_seconds: 86400
+```
+
+LiteLLM использует `user_api_key_hash` из request metadata и сохраняет в Redis привязку этого клиента к конкретному `model_info.id`. При следующих запросах того же ключа Router старается выбрать тот же healthy deployment. Если deployment недоступен или mapping отсутствует/истёк, LiteLLM возвращается к обычной стратегии выбора и обновляет привязку.
+
+Это помогает provider-side кэшированию входных токенов, когда в одной model group настроено несколько аккаунтов или провайдеров. Для стабильной работы у каждого deployment должен быть постоянный `model_info.id`:
+
+```yaml
+model_list:
+  - model_name: glm-5.1
+    litellm_params:
+      model: openai/glm-5.1
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: z-ai-glm-5-1-primary
+      base_model: glm-5.1
+```
+
+Подробности, пример второго аккаунта и smoke-проверка описаны в [routing.md](routing.md).
+
 ## Семантика плейсхолдеров
 
 Плейсхолдеры уникальны в рамках одного запроса и группируются по entity type:
@@ -191,6 +222,7 @@ Reference: https://docs.litellm.ai/docs/proxy/ui
 - Presidio Analyzer и Redis работают внутри Docker Compose network.
 - Внешний LLM-провайдер получает masked prompt text.
 - Redis временно хранит исходные PII для post-call восстановления.
+- Redis также хранит LiteLLM deployment affinity mapping по хэшу клиентского ключа и `model_info.id`; raw API key в mapping не сохраняется.
 - PostgreSQL хранит состояние LiteLLM; текущий guardrail mapping там не сохраняется.
 
 ## Сборка и зависимости

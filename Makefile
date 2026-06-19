@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
@@ -25,6 +25,7 @@ help:
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
 	@echo "  make guardrails-smoke — live smoke с явным guardrails parameter"
+	@echo "  make routing-smoke — проверить sticky deployment affinity для одного ключа"
 	@echo "  make metrics  — показать начало LiteLLM /metrics"
 	@echo "  make monitor-smoke — проверить health, guardrails list и /metrics"
 	@echo "  make update-litellm — подтянуть новый LiteLLM image и пересоздать proxy"
@@ -134,6 +135,30 @@ guardrails-smoke:
 			if command -v jq >/dev/null 2>&1; then jq . "$$body"; else cat "$$body"; fi; \
 			rm -f "$$headers" "$$body"; \
 		}
+
+# === Routing diagnostics ===
+routing-smoke:
+	@echo "🧭 LiteLLM sticky routing smoke"
+	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
+	@eval "$$(grep -E '^(LITELLM_MASTER_KEY|LITELLM_ROUTING_TEST_KEY)=' .env | sed 's/^/export /')" && \
+		token="$${LITELLM_ROUTING_TEST_KEY:-$$LITELLM_MASTER_KEY}" && \
+		if [ -z "$$token" ]; then echo "❌ LITELLM_MASTER_KEY or LITELLM_ROUTING_TEST_KEY is required"; exit 1; fi && \
+		first_headers=$$(mktemp) && second_headers=$$(mktemp) && first_body=$$(mktemp) && second_body=$$(mktemp) && \
+		trap 'rm -f "$$first_headers" "$$second_headers" "$$first_body" "$$second_body"' EXIT && \
+		curl -sS -D "$$first_headers" -o "$$first_body" http://localhost:4000/chat/completions \
+			-H "Authorization: Bearer $$token" \
+			-H "Content-Type: application/json" \
+			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 1"}],"max_tokens":16}' >/dev/null && \
+		curl -sS -D "$$second_headers" -o "$$second_body" http://localhost:4000/chat/completions \
+			-H "Authorization: Bearer $$token" \
+			-H "Content-Type: application/json" \
+			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 2"}],"max_tokens":16}' >/dev/null && \
+		first_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$first_headers") && \
+		second_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$second_headers") && \
+		if [ -z "$$first_model" ] || [ -z "$$second_model" ]; then echo "❌ x-litellm-model-id header not found"; exit 1; fi && \
+		echo "First deployment:  $$first_model" && \
+		echo "Second deployment: $$second_model" && \
+		if [ "$$first_model" = "$$second_model" ]; then echo "✅ Same key stayed on one deployment"; else echo "❌ Deployment changed for the same key"; exit 1; fi
 
 # === Monitoring diagnostics ===
 metrics:

@@ -4,8 +4,16 @@ model_list:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: z-ai-glm-5-1-primary
+      base_model: glm-5.1
 
 router_settings:
+  redis_url: os.environ/REDIS_URL
+  routing_strategy: simple-shuffle
+  optional_pre_call_checks:
+    - deployment_affinity
+  deployment_affinity_ttl_seconds: 86400
   num_retries: 3
   timeout: 60
 
