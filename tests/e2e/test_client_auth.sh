@@ -63,12 +63,15 @@ http_post() {
             -X POST "$BASE_URL$endpoint" \
             -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
-            -d "$payload" 2>/dev/null || echo "000")
+            -d "$payload" 2>/dev/null || true)
     else
         status=$(curl -sS -o "$body_file" -w "%{http_code}" \
             -X POST "$BASE_URL$endpoint" \
             -H "Content-Type: application/json" \
-            -d "$payload" 2>/dev/null || echo "000")
+            -d "$payload" 2>/dev/null || true)
+    fi
+    if [ -z "$status" ]; then
+        status="000"
     fi
 
     printf '%s\n' "$status"
