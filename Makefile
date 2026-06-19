@@ -23,7 +23,7 @@ help:
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
-	@echo "  make virtual-key-create — создать LiteLLM virtual key для клиента"
+	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
 	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
 	@echo "  REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke — строгий smoke всех /v1 протоколов"
 	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
@@ -174,11 +174,11 @@ routing-smoke:
 		if [ -z "$$token" ]; then echo "❌ LITELLM_MASTER_KEY or LITELLM_ROUTING_TEST_KEY is required"; exit 1; fi && \
 		first_headers=$$(mktemp) && second_headers=$$(mktemp) && first_body=$$(mktemp) && second_body=$$(mktemp) && \
 		trap 'rm -f "$$first_headers" "$$second_headers" "$$first_body" "$$second_body"' EXIT && \
-		curl -sS -D "$$first_headers" -o "$$first_body" http://localhost:4000/chat/completions \
+		curl -sS -D "$$first_headers" -o "$$first_body" http://localhost:4000/v1/chat/completions \
 			-H "Authorization: Bearer $$token" \
 			-H "Content-Type: application/json" \
 			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 1"}],"max_tokens":16}' >/dev/null && \
-		curl -sS -D "$$second_headers" -o "$$second_body" http://localhost:4000/chat/completions \
+		curl -sS -D "$$second_headers" -o "$$second_body" http://localhost:4000/v1/chat/completions \
 			-H "Authorization: Bearer $$token" \
 			-H "Content-Type: application/json" \
 			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 2"}],"max_tokens":16}' >/dev/null && \

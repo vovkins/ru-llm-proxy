@@ -9,7 +9,7 @@ Turn the project from a single Z.AI-oriented proxy into a practical corporate LL
 This PR covers the first production-oriented slice:
 
 - Client access to the proxy through LiteLLM virtual keys, plus documented JWT/OIDC deployment guidance.
-- Client-side subscription/BYOK passthrough for Codex and Claude Code, where the client keeps the ChatGPT/Claude auth locally and sends it through the proxy to the provider.
+- Client-side subscription/BYOK passthrough design for Codex and Claude Code, where the client keeps the ChatGPT/Claude auth locally and sends it through the proxy to the provider. This is an explicit opt-in deployment mode, not the default repository configuration.
 - Multi-provider LiteLLM configuration for Z.AI, OpenAI, and Anthropic.
 - Client setup docs for Codex CLI/App local tasks, Claude Code, OpenCode CLI/Desktop, and Kilo Code VS Code/CLI.
 - Helper scripts and Make targets for creating client virtual keys and smoke-testing supported protocols.
@@ -68,9 +68,9 @@ These credentials never leave the server. Local clients do not receive provider 
 
 #### Client-Side Subscription Or BYOK Passthrough
 
-For Codex and Claude Code subscription workflows, the subscription credential stays on the developer workstation. The proxy forwards the provider auth header to the upstream provider while still enforcing LiteLLM virtual key access, usage tracking, budgets, and guardrails.
+For Codex and Claude Code subscription workflows, the subscription credential stays on the developer workstation. In an opt-in passthrough deployment, the proxy forwards the provider auth header to the upstream provider while still enforcing LiteLLM virtual key access, usage tracking, budgets, and guardrails.
 
-This mode requires LiteLLM header forwarding:
+This mode requires explicit LiteLLM header forwarding and must not be enabled as the quiet production default:
 
 ```yaml
 general_settings:
@@ -174,14 +174,14 @@ The user signs into Claude Code with a Claude account subscription on the client
 
 Expose stable proxy-facing aliases rather than raw provider names. Initial aliases should be clear enough for users and restrictive enough for LiteLLM virtual key policies.
 
-Recommended initial names:
+Recommended initial proxy-facing names:
 
 - `zai-glm-5.1` -> Z.AI GLM model through the existing OpenAI-compatible Z.AI endpoint.
-- `openai-gpt-5.4-mini` -> OpenAI fast/general model.
-- `openai-gpt-5.5` -> OpenAI higher-capability model.
-- `claude-opus-4.8` -> Anthropic Opus class model.
-- `claude-sonnet-4.6` -> Anthropic Sonnet class model.
-- `claude-haiku-4.5` -> Anthropic Haiku class model.
+- `openai-gpt-5.4-mini` -> OpenAI fast/general model placeholder until live-validated.
+- `openai-gpt-5.5` -> OpenAI higher-capability model placeholder until live-validated.
+- `claude-opus-4.8` -> Anthropic Opus class model placeholder until live-validated.
+- `claude-sonnet-4.6` -> Anthropic Sonnet class model placeholder until live-validated.
+- `claude-haiku-4.5` -> Anthropic Haiku class model placeholder until live-validated.
 
 Keep the existing `glm-5.1` name as a compatibility alias or documented legacy name. New docs should prefer provider-prefixed aliases.
 
@@ -198,7 +198,7 @@ Add an admin helper script for virtual key creation. It should:
 - Never print upstream provider keys.
 - Make it obvious that generated keys are client-facing tokens, not provider API keys.
 
-The Makefile should wrap this script with a `virtual-key-create` target.
+The primary routine user/key management path remains LiteLLM Admin UI. The Makefile should wrap this script with a `virtual-key-create` target for DevOps/CI/bootstrap/runbook use.
 
 ## Smoke Tests
 
@@ -211,8 +211,8 @@ Required live checks:
 - A generated virtual key can call an allowed model.
 - A restricted virtual key cannot call a disallowed model.
 - `/v1/chat/completions` works with a virtual key.
-- `/v1/responses` works with a virtual key.
-- `/v1/messages` works with a virtual key.
+- `/v1/responses` works with a virtual key when `RESPONSES_MODEL` is set to a live-validated proxy alias.
+- `/v1/messages` works with a virtual key when `MESSAGES_MODEL` is set to a live-validated proxy alias.
 - `x-litellm-api-key` is accepted as proxy auth when `Authorization` is reserved for upstream provider auth.
 - Subscription/BYOK passthrough documentation examples use `x-litellm-api-key` for proxy auth and never ask users to put `LITELLM_MASTER_KEY` in client config.
 - Claude Code subscription passthrough is live-validated against the current LiteLLM image before it is documented as working.

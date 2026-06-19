@@ -4,7 +4,7 @@
 
 **Goal:** Add first-class client access for Codex, Claude Code, OpenCode, and Kilo Code through a multi-provider LiteLLM gateway.
 
-**Architecture:** LiteLLM remains the only public LLM boundary. Server-funded requests authenticate to the proxy with LiteLLM virtual keys and use upstream provider keys stored on the proxy. Subscription/BYOK passthrough requests authenticate to LiteLLM with `x-litellm-api-key` and reserve provider auth headers such as `Authorization` or `x-api-key` for Codex/Claude upstream auth. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
+**Architecture:** LiteLLM remains the only public LLM boundary. Server-funded requests authenticate to the proxy with LiteLLM virtual keys and use upstream provider keys stored on the proxy. Subscription/BYOK passthrough requests authenticate to LiteLLM with `x-litellm-api-key` and reserve provider auth headers such as `Authorization` or `x-api-key` for Codex/Claude upstream auth, but this remains an explicit opt-in deployment mode until live-validated. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
 
 **Tech Stack:** LiteLLM proxy YAML, Bash helper scripts, Makefile targets, curl/jq live smokes, Markdown documentation.
 
@@ -12,7 +12,7 @@
 
 ## Files
 
-- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic; enable header forwarding required for subscription/BYOK passthrough.
+- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic; keep subscription/BYOK header forwarding out of the default config and document it as opt-in.
 - Create `scripts/create_virtual_key.sh`: admin helper for `/key/generate`.
 - Create `tests/e2e/test_client_auth.sh`: live auth/protocol smoke tests.
 - Modify `Makefile`: add `virtual-key-create` and `client-auth-smoke`; keep existing admin diagnostics on master key.
@@ -40,6 +40,8 @@ model_list:
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
+      id: z-ai-glm-5-1-primary
+      base_model: glm-5.1
       access_groups: ["zai", "standard"]
   - model_name: glm-5.1
     litellm_params:
@@ -47,36 +49,48 @@ model_list:
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
+      id: z-ai-glm-5-1-legacy
+      base_model: glm-5.1
       access_groups: ["zai", "standard"]
   - model_name: openai-gpt-5.4-mini
     litellm_params:
       model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
+      id: openai-gpt-5-4-mini-primary
+      base_model: gpt-5.4-mini
       access_groups: ["openai", "standard"]
   - model_name: openai-gpt-5.5
     litellm_params:
       model: openai/gpt-5.5
       api_key: os.environ/OPENAI_API_KEY
     model_info:
+      id: openai-gpt-5-5-primary
+      base_model: gpt-5.5
       access_groups: ["openai", "premium"]
   - model_name: claude-opus-4.8
     litellm_params:
       model: anthropic/claude-opus-4-8
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
+      id: anthropic-claude-opus-4-8-primary
+      base_model: claude-opus-4-8
       access_groups: ["anthropic", "premium"]
   - model_name: claude-sonnet-4.6
     litellm_params:
       model: anthropic/claude-sonnet-4-6
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
+      id: anthropic-claude-sonnet-4-6-primary
+      base_model: claude-sonnet-4-6
       access_groups: ["anthropic", "standard"]
   - model_name: claude-haiku-4.5
     litellm_params:
       model: anthropic/claude-haiku-4-5
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
+      id: anthropic-claude-haiku-4-5-primary
+      base_model: claude-haiku-4-5
       access_groups: ["anthropic", "standard"]
 ```
 
@@ -325,9 +339,9 @@ git commit -m "fix: address client access verification issues"
 - Modify: `tests/e2e/test_client_auth.sh`
 - Modify: `docs/superpowers/specs/2026-06-19-client-access-gateway-design.md`
 
-- [ ] **Step 1: Enable LiteLLM header forwarding**
+- [ ] **Step 1: Document opt-in LiteLLM header forwarding**
 
-Add the required forwarding settings:
+Do not add passthrough forwarding to the default `litellm-config.yaml`. Document the dedicated opt-in deployment settings instead:
 
 ```yaml
 general_settings:
@@ -335,7 +349,7 @@ general_settings:
   forward_llm_provider_auth_headers: true
 ```
 
-Keep `LITELLM_MASTER_KEY` admin-only and keep existing server-funded provider API key routes working.
+Keep `LITELLM_MASTER_KEY` admin-only and keep existing server-funded provider API key routes working. The opt-in deployment must be live-validated with Codex/Claude before it is presented as production-ready.
 
 - [ ] **Step 2: Add x-litellm proxy auth smoke coverage**
 

@@ -22,7 +22,7 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 
 The real `ANTHROPIC_API_KEY` stays only on the proxy host in server-funded mode. Do not put `ANTHROPIC_API_KEY` or `LITELLM_MASTER_KEY` into local Claude Code config.
 
-Create a Claude-capable client key from the proxy host:
+Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash
 scripts/create_virtual_key.sh --alias claude-code-local --models anthropic,standard --duration 30d
@@ -44,11 +44,15 @@ Use the premium model only when the key allows it:
 export ANTHROPIC_MODEL="claude-opus-4.8"
 ```
 
+The `claude-*` names here are proxy-facing aliases. Verify the raw Anthropic model ID behind each alias against the current LiteLLM image and your provider account before using it in production.
+
 Claude Code sends the virtual key to the proxy. The proxy then uses its server-side `ANTHROPIC_API_KEY` to call Anthropic.
 
 ## Claude Subscription Passthrough
 
 Use this mode when Claude Code should use the local user's Claude subscription while still routing through the proxy for guardrails, tracking, and proxy access control.
+
+This is an opt-in deployment mode. It requires LiteLLM client/provider auth header forwarding to be enabled in a dedicated environment and live-validated with the pinned LiteLLM image before it is marked production-ready. The default repo config does not enable header forwarding.
 
 Do not set `ANTHROPIC_AUTH_TOKEN` to the proxy key in this mode. Instead, send the proxy key with `ANTHROPIC_CUSTOM_HEADERS` and let Claude Code manage Claude account auth locally:
 
@@ -60,7 +64,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
 claude
 ```
 
-If Claude Code asks for login, choose the Claude account subscription flow. The proxy authenticates the request with `x-litellm-api-key`; Claude Code sends its Claude OAuth provider auth separately and LiteLLM forwards it upstream.
+If Claude Code asks for login, choose the Claude account subscription flow. The proxy authenticates the request with `x-litellm-api-key`; Claude Code sends its Claude OAuth provider auth separately and the opt-in passthrough deployment must forward it upstream.
 
 Do not copy a shared Claude credentials file onto the proxy for all users. This mode must be live-validated against the pinned LiteLLM image before production rollout.
 
@@ -86,7 +90,11 @@ POST /v1/messages/count_tokens
 GET /v1/models
 ```
 
-`make client-auth-smoke` checks `/v1/messages` when `ANTHROPIC_API_KEY` is configured on the proxy.
+`make client-auth-smoke` checks `/v1/messages` only when `ANTHROPIC_API_KEY` is configured and `MESSAGES_MODEL` is set to a live-validated proxy alias:
+
+```bash
+MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
+```
 
 ## References
 

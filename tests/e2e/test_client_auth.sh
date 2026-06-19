@@ -5,9 +5,9 @@ set -euo pipefail
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ENV_FILE="${ENV_FILE:-.env}"
 CHAT_MODEL="${CHAT_MODEL:-zai-glm-5.1}"
-RESPONSES_MODEL="${RESPONSES_MODEL:-openai-gpt-5.4-mini}"
-MESSAGES_MODEL="${MESSAGES_MODEL:-claude-haiku-4.5}"
-DENIED_MODEL="${DENIED_MODEL:-openai-gpt-5.5}"
+RESPONSES_MODEL="${RESPONSES_MODEL:-}"
+MESSAGES_MODEL="${MESSAGES_MODEL:-}"
+DENIED_MODEL="${DENIED_MODEL:-zai-glm-5.1}"
 REQUIRE_ALL_PROTOCOLS="${REQUIRE_ALL_PROTOCOLS:-0}"
 
 if [ -f "$ENV_FILE" ]; then
@@ -54,6 +54,17 @@ missing_provider_key() {
         fail "$description required but $secret_name is not configured"
     else
         skip "$description skipped; $secret_name is not configured"
+    fi
+}
+
+missing_smoke_model() {
+    local description="$1"
+    local env_name="$2"
+
+    if [ "$REQUIRE_ALL_PROTOCOLS" = "1" ]; then
+        fail "$description required but $env_name is not set to a live-validated proxy alias"
+    else
+        skip "$description skipped; set $env_name to a live-validated proxy alias"
     fi
 }
 
@@ -205,14 +216,14 @@ expect_rejected "invalid token" "$invalid_token_status"
 echo ""
 echo "📋 2. Virtual key model access"
 standard_key=$(create_smoke_key "smoke-standard-$(date +%Y%m%d%H%M%S)" "standard")
-zai_key=$(create_smoke_key "smoke-zai-$(date +%Y%m%d%H%M%S)" "zai")
+openai_key=$(create_smoke_key "smoke-openai-restricted-$(date +%Y%m%d%H%M%S)" "openai")
 
 proxy_header_result=$(http_get_with_proxy_header "/v1/models" "$standard_key" "upstream-auth-placeholder")
 proxy_header_status=$(printf '%s\n' "$proxy_header_result" | sed -n '1p')
 proxy_header_body=$(printf '%s\n' "$proxy_header_result" | sed '1d')
 expect_success "x-litellm-api-key proxy auth with Authorization reserved for upstream" "$proxy_header_status" "$proxy_header_body"
 
-denied_result=$(http_post "/v1/chat/completions" "$zai_key" '{"model":"'"$DENIED_MODEL"'","messages":[{"role":"user","content":"Reply with ok."}],"max_tokens":8}')
+denied_result=$(http_post "/v1/chat/completions" "$openai_key" '{"model":"'"$DENIED_MODEL"'","messages":[{"role":"user","content":"Reply with ok."}],"max_tokens":8}')
 denied_status=$(printf '%s\n' "$denied_result" | sed -n '1p')
 expect_rejected "restricted key on disallowed model" "$denied_status"
 
@@ -226,21 +237,29 @@ else
 fi
 
 if has_configured_secret OPENAI_API_KEY; then
-    responses_payload='{"model":"'"$RESPONSES_MODEL"'","input":"Reply with ok.","max_output_tokens":16}'
-    responses_result=$(http_post "/v1/responses" "$standard_key" "$responses_payload")
-    responses_status=$(printf '%s\n' "$responses_result" | sed -n '1p')
-    responses_body=$(printf '%s\n' "$responses_result" | sed '1d')
-    expect_success "/v1/responses with virtual key" "$responses_status" "$responses_body"
+    if [ -n "$RESPONSES_MODEL" ]; then
+        responses_payload='{"model":"'"$RESPONSES_MODEL"'","input":"Reply with ok.","max_output_tokens":16}'
+        responses_result=$(http_post "/v1/responses" "$standard_key" "$responses_payload")
+        responses_status=$(printf '%s\n' "$responses_result" | sed -n '1p')
+        responses_body=$(printf '%s\n' "$responses_result" | sed '1d')
+        expect_success "/v1/responses with virtual key" "$responses_status" "$responses_body"
+    else
+        missing_smoke_model "/v1/responses" "RESPONSES_MODEL"
+    fi
 else
     missing_provider_key "/v1/responses" "OPENAI_API_KEY"
 fi
 
 if has_configured_secret ANTHROPIC_API_KEY; then
-    messages_payload='{"model":"'"$MESSAGES_MODEL"'","max_tokens":16,"messages":[{"role":"user","content":"Reply with ok."}]}'
-    messages_result=$(http_post "/v1/messages" "$standard_key" "$messages_payload")
-    messages_status=$(printf '%s\n' "$messages_result" | sed -n '1p')
-    messages_body=$(printf '%s\n' "$messages_result" | sed '1d')
-    expect_success "/v1/messages with virtual key" "$messages_status" "$messages_body"
+    if [ -n "$MESSAGES_MODEL" ]; then
+        messages_payload='{"model":"'"$MESSAGES_MODEL"'","max_tokens":16,"messages":[{"role":"user","content":"Reply with ok."}]}'
+        messages_result=$(http_post "/v1/messages" "$standard_key" "$messages_payload")
+        messages_status=$(printf '%s\n' "$messages_result" | sed -n '1p')
+        messages_body=$(printf '%s\n' "$messages_result" | sed '1d')
+        expect_success "/v1/messages with virtual key" "$messages_status" "$messages_body"
+    else
+        missing_smoke_model "/v1/messages" "MESSAGES_MODEL"
+    fi
 else
     missing_provider_key "/v1/messages" "ANTHROPIC_API_KEY"
 fi

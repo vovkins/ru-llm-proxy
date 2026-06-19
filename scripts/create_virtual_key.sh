@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create a LiteLLM virtual key for clients of ru-llm-proxy.
+# DevOps/CI helper for creating a LiteLLM virtual key.
 set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
@@ -19,7 +19,9 @@ usage() {
     cat <<'EOF'
 Usage: scripts/create_virtual_key.sh [options]
 
-Creates a LiteLLM virtual key for clients. This key is for proxy access only;
+Creates a LiteLLM virtual key through the admin API. The primary path for
+routine user/key management is LiteLLM Admin UI; this helper is for automation,
+CI/e2e bootstrap, and runbook use. The generated key is for proxy access only;
 it is not an upstream OpenAI, Anthropic, or Z.AI provider key.
 
 Options:

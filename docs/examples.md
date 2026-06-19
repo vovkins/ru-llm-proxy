@@ -2,6 +2,8 @@
 
 Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, базовая Z.AI модель `zai-glm-5.1`, OpenAI aliases `openai-gpt-5.4-mini` / `openai-gpt-5.5` и Anthropic aliases `claude-haiku-4.5` / `claude-sonnet-4.6` / `claude-opus-4.8`.
 
+OpenAI/Anthropic aliases являются proxy-facing примерами. Перед production используйте только model IDs, проверенные live на текущем LiteLLM image и реальных provider keys.
+
 ## Окружение
 
 ```bash
@@ -9,7 +11,7 @@ export API_URL="http://localhost:4000"
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-Создайте `RU_LLM_PROXY_TOKEN` через Admin UI или CLI helper:
+Создавайте обычные пользовательские `RU_LLM_PROXY_TOKEN` через LiteLLM Admin UI. CLI helper нужен для DevOps/CI/bootstrap/runbook-сценариев:
 
 ```bash
 make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anthropic DURATION=30d
@@ -28,7 +30,7 @@ curl -s "$API_URL/v1/chat/completions" \
   -d '{"model":"zai-glm-5.1","messages":[{"role":"user","content":"Привет"}]}'
 ```
 
-Subscription/BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а `Authorization` или provider-specific header остаётся для upstream:
+Subscription/BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а `Authorization` или provider-specific header остаётся для upstream. Этот режим не включён в default config; включайте его отдельным opt-in deployment после live validation Codex/Claude на текущем LiteLLM image.
 
 ```bash
 curl -s "$API_URL/v1/messages" \
@@ -127,6 +129,12 @@ curl -s "$API_URL/v1/responses" \
   }' | jq
 ```
 
+Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
+
+```bash
+RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
+```
+
 ## Anthropic Messages API
 
 Claude Code использует Anthropic-compatible Messages API:
@@ -145,6 +153,12 @@ curl -s "$API_URL/v1/messages" \
       }
     ]
   }' | jq
+```
+
+Для live smoke этого endpoint задайте `MESSAGES_MODEL` явно:
+
+```bash
+MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
 ```
 
 ## Прямая проверка Analyzer
@@ -219,11 +233,10 @@ NER status возвращается отдельно:
 
 ## Guardrails
 
-Список guardrails, зарегистрированных в LiteLLM:
+Список guardrails, зарегистрированных в LiteLLM, смотрит администратор через Makefile target:
 
 ```bash
-curl -s "$API_URL/guardrails/list" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq
+make guardrails-list
 ```
 
 Live-запрос с явным `guardrails` parameter:
@@ -250,7 +263,6 @@ grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
 То же самое через Makefile:
 
 ```bash
-make guardrails-list
 make guardrails-smoke
 ```
 
@@ -308,8 +320,9 @@ model_list:
       model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
-      id: openai-gpt-4o-primary
-      base_model: gpt-4o
+      id: openai-gpt-5-4-mini-primary
+      base_model: gpt-5.4-mini
+      access_groups: ["openai", "standard"]
 ```
 
 ```bash

@@ -135,6 +135,8 @@ ANTHROPIC_API_KEY=your-anthropic-key
 LITELLM_MASTER_KEY=sk-ru-...    # автогенерируется через make setup
 LITELLM_SALT_KEY=...            # автогенерируется через make setup
 LITELLM_ROUTING_TEST_KEY=...     # опциональный virtual key для make routing-smoke
+RESPONSES_MODEL=...             # опциональный live-validated alias для strict /v1/responses smoke
+MESSAGES_MODEL=...              # опциональный live-validated alias для strict /v1/messages smoke
 UI_USERNAME=admin               # автогенерируется через make setup
 UI_PASSWORD=...                 # автогенерируется через make setup
 POSTGRES_PASSWORD=...           # автогенерируется через make setup
@@ -145,7 +147,7 @@ PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing-переменные и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -168,6 +170,10 @@ model_list:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: z-ai-glm-5-1-primary
+      base_model: glm-5.1
+      access_groups: ["zai", "standard"]
   - model_name: glm-5.1
     litellm_params:
       model: openai/glm-5.1
@@ -231,6 +237,8 @@ litellm_settings:
   drop_params: true
 ```
 
+OpenAI/Anthropic aliases in this repository are proxy-facing examples. Before production, verify the raw provider model IDs against the current LiteLLM image and your provider account, then update `litellm_params.model` if needed. Default smokes do not call those aliases until `RESPONSES_MODEL` / `MESSAGES_MODEL` are explicitly set.
+
 ### Добавление другого провайдера
 
 Любой провайдер, поддерживаемый LiteLLM, добавляется через `model_list`:
@@ -280,7 +288,7 @@ make routing-smoke
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
-| `make virtual-key-create` | Создать LiteLLM virtual key для клиента |
+| `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и `/v1` протоколы |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
 | `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
@@ -302,13 +310,15 @@ http://localhost:4000/ui
 
 Через UI можно создавать virtual keys для пользователей, смотреть usage/spend и управлять ключами. Пользователям выдавайте virtual keys, а не `LITELLM_MASTER_KEY`.
 
-Создать client token из CLI:
+Основной путь управления пользователями и ключами — LiteLLM Admin UI. CLI-helper остаётся вспомогательным путём для DevOps/CI/bootstrap/runbook-сценариев, когда UI недоступен или нужен автоматический short-lived key:
 
 ```bash
 make virtual-key-create KEY_ALIAS=local-coding MODELS=standard,zai,openai DURATION=30d
 ```
 
 Полученный `RU_LLM_PROXY_TOKEN` используется в локальных клиентах. Upstream-ключи провайдеров остаются только в `.env` на proxy.
+
+`make test-e2e`, `make client-auth-smoke` и `make guardrails-smoke` могут создавать short-lived virtual keys через `LITELLM_MASTER_KEY` как bootstrap test flow. Этот admin key остаётся внутри proxy/CI окружения; client-facing запросы тестов идут через generated virtual key.
 
 ## Клиенты
 
@@ -331,7 +341,7 @@ Proxy auth по умолчанию основан на LiteLLM virtual keys. JWT
 Есть два режима upstream auth:
 
 - Server-funded: клиент отправляет `Authorization: Bearer $RU_LLM_PROXY_TOKEN`, proxy вызывает провайдера через свои `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` или `ZAI_API_KEY`.
-- Client-side subscription/BYOK passthrough: клиент отправляет `x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN` для доступа к proxy, а `Authorization`, `x-api-key` или другой provider auth header остаётся для Codex/Claude/OpenAI/Anthropic auth и форвардится upstream.
+- Client-side subscription/BYOK passthrough: клиент отправляет `x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN` для доступа к proxy, а `Authorization`, `x-api-key` или другой provider auth header остаётся для Codex/Claude/OpenAI/Anthropic auth и форвардится upstream. Этот режим не включён в default config; включайте его только в отдельном окружении после live validation Codex/Claude на текущем LiteLLM image.
 
 Subscription auth остаётся на клиентской машине. Не кладите общий Codex `auth.json` или Claude credentials на proxy как shared upstream credential.
 
@@ -459,7 +469,8 @@ make test-flow        # deterministic проверка без внешнего L
 make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
 make routing-smoke    # live sticky routing smoke; нужны make up и provider key
 make client-auth-smoke # live проверка virtual keys и /v1 протоколов
-REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke # fail, если нет provider key для любого /v1 протокола
+RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke
+# fail, если нет provider key или live-validated model alias для любого /v1 протокола
 ```
 
 `make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.

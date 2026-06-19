@@ -17,7 +17,7 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 
 The real `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` stay only on the proxy host. OpenCode receives only the proxy token.
 
-Create a client key from the proxy host:
+Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash
 scripts/create_virtual_key.sh --alias opencode-local --models standard,zai,openai --duration 30d
@@ -56,6 +56,8 @@ Add a provider to `opencode.json`:
 ```
 
 Use `zai-glm-5.1` for Z.AI, or switch to an OpenAI alias when the key allows it.
+
+The `openai-gpt-*` entries are proxy-facing examples. Verify or replace the raw OpenAI model IDs behind those aliases before production use.
 
 ## Smoke Test
 

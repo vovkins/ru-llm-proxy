@@ -22,7 +22,7 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 
 The real `OPENAI_API_KEY` stays only on the proxy host in server-funded mode. Do not put `OPENAI_API_KEY` or `LITELLM_MASTER_KEY` into local Codex client config.
 
-Create a client key from the proxy host:
+Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash
 make virtual-key-create MODELS=openai,standard KEY_ALIAS=codex-local
@@ -55,9 +55,13 @@ Use a higher-capability model when the issued key allows it:
 model = "openai-gpt-5.5"
 ```
 
+The `openai-gpt-*` names here are proxy-facing aliases. Verify the raw OpenAI model ID behind each alias against the current LiteLLM image and your provider account before using it in production.
+
 ## ChatGPT Subscription Passthrough
 
 Use this mode when Codex should use the local user's ChatGPT/Codex subscription while still routing through the proxy for guardrails, tracking, and proxy access control.
+
+This is an opt-in deployment mode. It requires LiteLLM client/provider auth header forwarding to be enabled in a dedicated environment and live-validated with the pinned LiteLLM image before it is marked production-ready. The default repo config does not enable header forwarding.
 
 First sign in locally with Codex:
 
@@ -105,7 +109,11 @@ From the proxy repo:
 make client-auth-smoke
 ```
 
-The Codex-specific part checks `POST /v1/responses` when `OPENAI_API_KEY` is configured on the proxy.
+The Codex-specific part checks `POST /v1/responses` only when `OPENAI_API_KEY` is configured and `RESPONSES_MODEL` is set to a live-validated proxy alias:
+
+```bash
+RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
+```
 
 ## References
 
