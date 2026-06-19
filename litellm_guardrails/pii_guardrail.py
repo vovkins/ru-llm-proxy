@@ -254,6 +254,56 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return targets
 
+    @staticmethod
+    def _get_container_field(container: Any, field: str) -> Any:
+        """Read a field from dict-like or object-like LiteLLM containers."""
+        if isinstance(container, dict):
+            return container.get(field)
+        return getattr(container, field, None)
+
+    @staticmethod
+    def _set_container_field(container: Any, field: str, value: Any) -> None:
+        """Write a field to dict-like or object-like LiteLLM containers."""
+        if isinstance(container, dict):
+            container[field] = value
+        else:
+            setattr(container, field, value)
+
+    @classmethod
+    def _iter_response_text_targets(cls, message: Any) -> list[tuple[Any, str]]:
+        """Return mutable response fields that may contain PII placeholders."""
+        if message is None:
+            return []
+
+        targets: list[tuple[Any, str]] = []
+        content = cls._get_container_field(message, "content")
+        if isinstance(content, str):
+            targets.append((message, "content"))
+        elif isinstance(content, list):
+            for block in content:
+                block_text = cls._get_container_field(block, "text")
+                if isinstance(block_text, str):
+                    targets.append((block, "text"))
+
+        reasoning_content = cls._get_container_field(message, "reasoning_content")
+        if isinstance(reasoning_content, str):
+            targets.append((message, "reasoning_content"))
+
+        tool_calls = cls._get_container_field(message, "tool_calls")
+        if isinstance(tool_calls, list):
+            for tool_call in tool_calls:
+                function = cls._get_container_field(tool_call, "function")
+                arguments = cls._get_container_field(function, "arguments")
+                if isinstance(arguments, str):
+                    targets.append((function, "arguments"))
+
+        function_call = cls._get_container_field(message, "function_call")
+        arguments = cls._get_container_field(function_call, "arguments")
+        if isinstance(arguments, str):
+            targets.append((function_call, "arguments"))
+
+        return targets
+
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
         started_at = time.perf_counter()
@@ -517,24 +567,15 @@ class RuPIIGuardrail(CustomGuardrail):
         if isinstance(response, litellm.ModelResponse):
             for choice in response.choices:
                 message = getattr(choice, "message", None)
-                if message is None:
-                    continue
-
-                if getattr(message, "content", None):
-                    restored_content = self._replace_placeholders(message.content, mapping)
-                    if restored_content != message.content:
-                        restored_fields += 1
-                    message.content = restored_content
-
-                # GLM-5.1 coding plan can put final text in reasoning_content.
-                if getattr(message, "reasoning_content", None):
-                    restored_reasoning = self._replace_placeholders(
-                        message.reasoning_content,
+                for target, field in self._iter_response_text_targets(message):
+                    original_value = self._get_container_field(target, field)
+                    restored_value = self._replace_placeholders(
+                        original_value,
                         mapping,
                     )
-                    if restored_reasoning != message.reasoning_content:
+                    if restored_value != original_value:
                         restored_fields += 1
-                    message.reasoning_content = restored_reasoning
+                        self._set_container_field(target, field, restored_value)
         else:
             PII_POST_CALLS.labels(result="unsupported_response").inc()
             _safe_log(

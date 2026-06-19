@@ -40,7 +40,13 @@ jobs:
         run: python -m compileall litellm_guardrails presidio tests
 
       - name: Check whitespace-sensitive diff issues
-        run: git diff --check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            git diff-tree --check --no-commit-id -r HEAD
+          fi
 
       - name: Dry-run Make targets
         run: |

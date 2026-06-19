@@ -206,6 +206,18 @@ class TestMaskText:
         assert masked_text == "ИНН <RU_INN_1>"
         assert mapping == {"<RU_INN_1>": "7707083893"}
 
+    def test_prefers_longer_entity_when_overlapping_entities_share_start(self, guardrail):
+        text = "Иван Иванов"
+        entities = [
+            {"entity_type": "PERSON", "start": 0, "end": len("Иван")},
+            {"entity_type": "PERSON", "start": 0, "end": len(text)},
+        ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == "<PERSON_1>"
+        assert mapping == {"<PERSON_1>": "Иван Иванов"}
+
     def test_no_entities_returns_original(self, guardrail):
         masked_text, mapping = guardrail._mask_text("Обычный текст", [])
         assert masked_text == "Обычный текст"
@@ -562,6 +574,48 @@ class TestPostCallHook:
         assert "+79031234567" in response.choices[0].message.content
         assert "89031234567" in response.choices[0].message.content
         assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
+
+    @pytest.mark.asyncio
+    async def test_unmasks_tool_and_function_arguments(self, guardrail):
+        import litellm
+
+        mapping = {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<RU_INN_1>": "7707083893",
+        }
+        guardrail._redis.get.return_value = json.dumps(mapping)
+
+        message = MagicMock()
+        message.content = "Tool call prepared"
+        message.reasoning_content = "Проверяю <PHONE_NUMBER_1>"
+        message.tool_calls = [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "lookup_phone",
+                    "arguments": '{"phone":"<PHONE_NUMBER_1>"}',
+                },
+            }
+        ]
+        message.function_call = {
+            "name": "lookup_inn",
+            "arguments": '{"inn":"<RU_INN_1>"}',
+        }
+        response = litellm.ModelResponse(id="test", choices=[])
+        response.choices = [MagicMock(message=message)]
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert message.reasoning_content == "Проверяю +79031234567"
+        assert message.tool_calls[0]["function"]["arguments"] == (
+            '{"phone":"+79031234567"}'
+        )
+        assert message.function_call["arguments"] == '{"inn":"7707083893"}'
 
     @pytest.mark.asyncio
     async def test_no_request_id_skips(self, guardrail):
