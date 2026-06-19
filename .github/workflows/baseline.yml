@@ -1,0 +1,53 @@
+name: Baseline checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight validation dependencies
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Validate shell syntax
+        run: bash -n scripts/setup_env.sh
+
+      - name: Parse YAML configs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          for path in ("litellm-config.yaml", "docker-compose.yml"):
+              yaml.safe_load(Path(path).read_text())
+              print(f"{path} ok")
+          PY
+
+      - name: Compile Python sources
+        run: python -m compileall litellm_guardrails presidio tests
+
+      - name: Check whitespace-sensitive diff issues
+        run: git diff --check
+
+      - name: Dry-run Make targets
+        run: |
+          make -n test-unit
+          make -n guardrails-list
+          make -n guardrails-smoke
+          make -n monitor-smoke
+          if grep -q '^routing-smoke:' Makefile; then
+            make -n routing-smoke
+          fi
