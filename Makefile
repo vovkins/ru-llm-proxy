@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
@@ -23,6 +23,8 @@ help:
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
+	@echo "  make virtual-key-create — создать LiteLLM virtual key для клиента"
+	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
 	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
 	@echo "  make guardrails-smoke — live smoke с явным guardrails parameter"
 	@echo "  make routing-smoke — проверить sticky deployment affinity для одного ключа"
@@ -110,6 +112,13 @@ test-e2e:
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
 		bash tests/e2e/test_e2e.sh
+
+# === Client access ===
+virtual-key-create:
+	@bash scripts/create_virtual_key.sh
+
+client-auth-smoke:
+	@bash tests/e2e/test_client_auth.sh
 
 # === Guardrails diagnostics ===
 guardrails-list:
