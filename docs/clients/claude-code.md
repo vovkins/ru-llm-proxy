@@ -9,7 +9,7 @@ Supported scope:
 
 Not covered here:
 
-- Using Claude.ai or Claude Code login files as upstream proxy credentials.
+- Placing shared Claude.ai or Claude Code login files on the proxy as upstream credentials.
 - Claude Desktop or cloud features that do not honor the same gateway settings.
 
 ## Credentials
@@ -20,7 +20,7 @@ Use a LiteLLM virtual key as the client token:
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-The real `ANTHROPIC_API_KEY` stays only on the proxy host. Do not put `ANTHROPIC_API_KEY` or `LITELLM_MASTER_KEY` into local Claude Code config.
+The real `ANTHROPIC_API_KEY` stays only on the proxy host in server-funded mode. Do not put `ANTHROPIC_API_KEY` or `LITELLM_MASTER_KEY` into local Claude Code config.
 
 Create a Claude-capable client key from the proxy host:
 
@@ -28,9 +28,9 @@ Create a Claude-capable client key from the proxy host:
 scripts/create_virtual_key.sh --alias claude-code-local --models anthropic,standard --duration 30d
 ```
 
-## Static Token Setup
+## Server-Funded Token Setup
 
-Point Claude Code at the proxy:
+Use this mode when the proxy should pay with its server-side `ANTHROPIC_API_KEY`. Point Claude Code at the proxy:
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
@@ -45,6 +45,24 @@ export ANTHROPIC_MODEL="claude-opus-4.8"
 ```
 
 Claude Code sends the virtual key to the proxy. The proxy then uses its server-side `ANTHROPIC_API_KEY` to call Anthropic.
+
+## Claude Subscription Passthrough
+
+Use this mode when Claude Code should use the local user's Claude subscription while still routing through the proxy for guardrails, tracking, and proxy access control.
+
+Do not set `ANTHROPIC_AUTH_TOKEN` to the proxy key in this mode. Instead, send the proxy key with `ANTHROPIC_CUSTOM_HEADERS` and let Claude Code manage Claude account auth locally:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:4000"
+export ANTHROPIC_MODEL="claude-sonnet-4.6"
+export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
+
+claude
+```
+
+If Claude Code asks for login, choose the Claude account subscription flow. The proxy authenticates the request with `x-litellm-api-key`; Claude Code sends its Claude OAuth provider auth separately and LiteLLM forwards it upstream.
+
+Do not copy a shared Claude credentials file onto the proxy for all users. This mode must be live-validated against the pinned LiteLLM image before production rollout.
 
 ## Dynamic Token Setup
 
@@ -74,4 +92,6 @@ GET /v1/models
 
 - Claude Code LLM gateway: https://docs.anthropic.com/en/docs/claude-code/llm-gateway
 - Claude Code environment variables: https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables
+- LiteLLM Claude Code Max subscription: https://docs.litellm.ai/docs/tutorials/claude_code_max_subscription
+- LiteLLM forward client headers: https://docs.litellm.ai/docs/proxy/forward_client_headers
 - LiteLLM Anthropic Messages API: https://docs.litellm.ai/docs/anthropic_unified/

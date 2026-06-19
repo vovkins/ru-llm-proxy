@@ -17,6 +17,33 @@ make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anth
 
 `LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
 
+## Режимы авторизации
+
+Server-funded режим использует proxy token как обычный bearer token. Proxy сам вызывает провайдера через серверные `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` или `ZAI_API_KEY`:
+
+```bash
+curl -s "$API_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{"model":"zai-glm-5.1","messages":[{"role":"user","content":"Привет"}]}'
+```
+
+Subscription/BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а `Authorization` или provider-specific header остаётся для upstream:
+
+```bash
+curl -s "$API_URL/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN" \
+  -H "Authorization: Bearer $CLAUDE_OAUTH_TOKEN" \
+  -d '{
+    "model": "claude-sonnet-4.6",
+    "max_tokens": 80,
+    "messages": [{"role": "user", "content": "Привет"}]
+  }'
+```
+
+На практике Codex и Claude Code сами управляют subscription auth на клиентской машине; см. [clients/codex.md](clients/codex.md) и [clients/claude-code.md](clients/claude-code.md). Не кладите общий Codex `auth.json` или Claude credentials на proxy.
+
 ## Chat completion без PII
 
 ```bash

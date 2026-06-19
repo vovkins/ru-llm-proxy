@@ -328,6 +328,13 @@ make virtual-key-create KEY_ALIAS=local-coding MODELS=standard,zai,openai DURATI
 
 Proxy auth по умолчанию основан на LiteLLM virtual keys. JWT/OIDC — отдельный enterprise deployment path: он включается только при наличии IdP/JWKS и не заменяет upstream provider keys.
 
+Есть два режима upstream auth:
+
+- Server-funded: клиент отправляет `Authorization: Bearer $RU_LLM_PROXY_TOKEN`, proxy вызывает провайдера через свои `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` или `ZAI_API_KEY`.
+- Client-side subscription/BYOK passthrough: клиент отправляет `x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN` для доступа к proxy, а `Authorization`, `x-api-key` или другой provider auth header остаётся для Codex/Claude/OpenAI/Anthropic auth и форвардится upstream.
+
+Subscription auth остаётся на клиентской машине. Не кладите общий Codex `auth.json` или Claude credentials на proxy как shared upstream credential.
+
 ## Примеры использования
 
 ### Базовый запрос

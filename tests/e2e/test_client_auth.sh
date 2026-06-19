@@ -91,6 +91,27 @@ http_post() {
     rm -f "$body_file"
 }
 
+http_get_with_proxy_header() {
+    local endpoint="$1"
+    local proxy_token="$2"
+    local upstream_auth="$3"
+    local body_file status
+
+    body_file=$(mktemp)
+    status=$(curl -sS -o "$body_file" -w "%{http_code}" \
+        -X GET "$BASE_URL$endpoint" \
+        -H "x-litellm-api-key: Bearer $proxy_token" \
+        -H "Authorization: Bearer $upstream_auth" \
+        2>/dev/null || true)
+    if [ -z "$status" ]; then
+        status="000"
+    fi
+
+    printf '%s\n' "$status"
+    cat "$body_file"
+    rm -f "$body_file"
+}
+
 expect_rejected() {
     local description="$1"
     local status="$2"
@@ -185,6 +206,11 @@ echo ""
 echo "📋 2. Virtual key model access"
 standard_key=$(create_smoke_key "smoke-standard-$(date +%Y%m%d%H%M%S)" "standard")
 zai_key=$(create_smoke_key "smoke-zai-$(date +%Y%m%d%H%M%S)" "zai")
+
+proxy_header_result=$(http_get_with_proxy_header "/v1/models" "$standard_key" "upstream-auth-placeholder")
+proxy_header_status=$(printf '%s\n' "$proxy_header_result" | sed -n '1p')
+proxy_header_body=$(printf '%s\n' "$proxy_header_result" | sed '1d')
+expect_success "x-litellm-api-key proxy auth with Authorization reserved for upstream" "$proxy_header_status" "$proxy_header_body"
 
 denied_result=$(http_post "/v1/chat/completions" "$zai_key" '{"model":"'"$DENIED_MODEL"'","messages":[{"role":"user","content":"Reply with ok."}],"max_tokens":8}')
 denied_status=$(printf '%s\n' "$denied_result" | sed -n '1p')

@@ -213,6 +213,8 @@ LiteLLM Admin UI доступен на `/ui`. Для входа использу
 
 `LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
 
+Для обычного server-funded режима client virtual key передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает upstream через серверные provider keys. Для subscription/BYOK passthrough режима client virtual key передаётся как `x-litellm-api-key`, чтобы `Authorization` или provider-specific auth headers могли быть переданы upstream. Shared Codex/Claude auth files на proxy не являются частью этой модели.
+
 Reference: https://docs.litellm.ai/docs/proxy/ui
 
 ## Границы данных
