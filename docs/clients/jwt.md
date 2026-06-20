@@ -44,7 +44,7 @@ curl "$RU_LLM_PROXY_URL/v1/chat/completions" \
   -H "Authorization: Bearer $OIDC_JWT" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "zai-glm-5.1",
+    "model": "glm-5.1",
     "messages": [{"role": "user", "content": "Привет"}]
   }'
 ```

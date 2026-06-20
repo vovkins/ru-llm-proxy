@@ -4,7 +4,7 @@
 
 **Goal:** Add first-class client access for Codex, Claude Code, OpenCode, and Kilo Code through a multi-provider LiteLLM gateway.
 
-**Architecture:** LiteLLM remains the only public LLM boundary. Server-funded requests authenticate to the proxy with LiteLLM virtual keys and use upstream provider keys stored on the proxy. Subscription/BYOK passthrough requests authenticate to LiteLLM with `x-litellm-api-key` and reserve provider auth headers such as `Authorization` or `x-api-key` for Codex/Claude upstream auth, but this remains an explicit opt-in deployment mode until live-validated. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
+**Architecture:** LiteLLM remains the only public LLM boundary. Server-funded requests authenticate to the proxy with LiteLLM virtual keys and use upstream provider keys stored on the proxy. BYOK passthrough requests authenticate to LiteLLM with `x-litellm-api-key` and use supported provider-specific headers such as `x-api-key`, `api-key`, or `x-goog-api-key` for upstream auth. Codex/ChatGPT and Claude subscription OAuth remain explicit validation targets because ordinary provider `Authorization` forwarding is not assumed to work on the standard LiteLLM route. The repo documents and smoke-tests OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages API surfaces.
 
 **Tech Stack:** LiteLLM proxy YAML, Bash helper scripts, Makefile targets, curl/jq live smokes, Markdown documentation.
 
@@ -12,7 +12,7 @@
 
 ## Files
 
-- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic; keep subscription/BYOK header forwarding out of the default config and document it as opt-in.
+- Modify `litellm-config.yaml`: add provider-prefixed model aliases for Z.AI, OpenAI, and Anthropic; keep BYOK/subscription header forwarding out of the default config and document each path as opt-in.
 - Create `scripts/create_virtual_key.sh`: admin helper for `/key/generate`.
 - Create `tests/e2e/test_client_auth.sh`: live auth/protocol smoke tests.
 - Modify `Makefile`: add `virtual-key-create` and `client-auth-smoke`; keep existing admin diagnostics on master key.
@@ -34,7 +34,7 @@ Replace the single `model_list` entry with provider-prefixed aliases while prese
 
 ```yaml
 model_list:
-  - model_name: zai-glm-5.1
+  - model_name: glm-5.1
     litellm_params:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
@@ -43,13 +43,13 @@ model_list:
       id: z-ai-glm-5-1-primary
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.1
+  - model_name: zai-glm-5.1
     litellm_params:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-legacy
+      id: z-ai-glm-5-1-alias
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
   - model_name: openai-gpt-5.4-mini
@@ -376,7 +376,8 @@ Document two Claude Code modes:
 Explain the two auth layers:
 
 - `x-litellm-api-key` authenticates the caller to the proxy;
-- `Authorization`, `x-api-key`, or provider-specific headers authenticate the caller to the upstream provider in passthrough/BYOK mode.
+- provider-specific headers such as `x-api-key`, `api-key`, or `x-goog-api-key` authenticate the caller to the upstream provider in BYOK mode;
+- Codex/ChatGPT and Claude subscription OAuth may require provider `Authorization`, so those paths need live validation and possibly a pass-through route, sidecar, or custom adapter.
 
 - [ ] **Step 6: Verify**
 

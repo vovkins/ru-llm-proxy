@@ -156,7 +156,7 @@ guardrails-smoke:
 		curl -sS -D "$$headers" -o "$$body" http://localhost:4000/v1/chat/completions \
 			-H "Authorization: Bearer $$RU_LLM_PROXY_TOKEN" \
 			-H "Content-Type: application/json" \
-			-d '{"model":"zai-glm-5.1","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}' >/dev/null && \
+			-d '{"model":"glm-5.1","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}' >/dev/null && \
 		{ \
 			echo "Applied guardrails header:"; \
 			if ! grep -i "^x-litellm-applied-guardrails:" "$$headers"; then echo "Header not found"; fi; \

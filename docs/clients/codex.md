@@ -61,7 +61,7 @@ The `openai-gpt-*` names here are proxy-facing aliases. Verify the raw OpenAI mo
 
 Use this mode when Codex should use the local user's ChatGPT/Codex subscription while still routing through the proxy for guardrails, tracking, and proxy access control.
 
-This is an opt-in deployment mode. It requires LiteLLM client/provider auth header forwarding to be enabled in a dedicated environment and live-validated with the pinned LiteLLM image before it is marked production-ready. The default repo config does not enable header forwarding.
+This is an opt-in validation target, not a production-ready default. ChatGPT/Codex subscription auth normally relies on provider `Authorization`; the standard LiteLLM path is not assumed to forward that header upstream. The default repo config does not enable header forwarding.
 
 First sign in locally with Codex:
 
@@ -87,9 +87,9 @@ In this mode:
 
 - Codex keeps `~/.codex/auth.json` or OS credential-store auth on the client machine.
 - The proxy authenticates the client with `x-litellm-api-key`.
-- OpenAI/ChatGPT auth remains in the provider auth path and must be forwarded by the proxy.
+- OpenAI/ChatGPT auth remains in the provider auth path and must be proven to reach upstream before this mode can be used beyond a spike.
 
-Do not copy a shared Codex `auth.json` onto the proxy for all users. If live validation shows the normal LiteLLM `/v1/responses` route strips the required provider `Authorization` header, this mode needs a pass-through route or sidecar before it can be marked production-ready.
+Do not copy a shared Codex `auth.json` onto the proxy for all users. If live validation shows the normal LiteLLM `/v1/responses` route strips the required provider `Authorization` header, this mode needs a pass-through route, sidecar, or custom adapter before it can be marked production-ready.
 
 ## Codex App Local Tasks
 

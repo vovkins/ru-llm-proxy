@@ -1,5 +1,5 @@
 model_list:
-  - model_name: zai-glm-5.1
+  - model_name: glm-5.1
     litellm_params:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
@@ -8,13 +8,13 @@ model_list:
       id: z-ai-glm-5-1-primary
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.1
+  - model_name: zai-glm-5.1
     litellm_params:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-legacy
+      id: z-ai-glm-5-1-alias
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
   - model_name: openai-gpt-5.5
@@ -85,6 +85,9 @@ guardrails:
         - name: "mapping_store"
           type: "string"
           description: "Redis key pii_mapping:<request_id> with TTL from PII_MAPPING_TTL_SECONDS."
+        - name: "request_fields"
+          type: "list[string]"
+          description: "Masks message.content, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -98,7 +101,7 @@ guardrails:
           description: "post_call; restores request-scoped placeholders in model responses."
         - name: "response_fields"
           type: "list[string]"
-          description: "Restores placeholders in content and reasoning_content."
+          description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
         - name: "mapping_cleanup"
           type: "string"
           description: "Deletes Redis pii_mapping:<request_id> after successful post-call processing."

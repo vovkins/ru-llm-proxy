@@ -4,10 +4,10 @@ set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ENV_FILE="${ENV_FILE:-.env}"
-CHAT_MODEL="${CHAT_MODEL:-zai-glm-5.1}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.1}"
 RESPONSES_MODEL="${RESPONSES_MODEL:-}"
 MESSAGES_MODEL="${MESSAGES_MODEL:-}"
-DENIED_MODEL="${DENIED_MODEL:-zai-glm-5.1}"
+DENIED_MODEL="${DENIED_MODEL:-glm-5.1}"
 REQUIRE_ALL_PROTOCOLS="${REQUIRE_ALL_PROTOCOLS:-0}"
 
 if [ -f "$ENV_FILE" ]; then
@@ -102,17 +102,17 @@ http_post() {
     rm -f "$body_file"
 }
 
-http_get_with_proxy_header() {
+http_get_with_separate_authorization() {
     local endpoint="$1"
     local proxy_token="$2"
-    local upstream_auth="$3"
+    local other_auth="$3"
     local body_file status
 
     body_file=$(mktemp)
     status=$(curl -sS -o "$body_file" -w "%{http_code}" \
         -X GET "$BASE_URL$endpoint" \
         -H "x-litellm-api-key: Bearer $proxy_token" \
-        -H "Authorization: Bearer $upstream_auth" \
+        -H "Authorization: Bearer $other_auth" \
         2>/dev/null || true)
     if [ -z "$status" ]; then
         status="000"
@@ -218,10 +218,10 @@ echo "📋 2. Virtual key model access"
 standard_key=$(create_smoke_key "smoke-standard-$(date +%Y%m%d%H%M%S)" "standard")
 openai_key=$(create_smoke_key "smoke-openai-restricted-$(date +%Y%m%d%H%M%S)" "openai")
 
-proxy_header_result=$(http_get_with_proxy_header "/v1/models" "$standard_key" "upstream-auth-placeholder")
+proxy_header_result=$(http_get_with_separate_authorization "/v1/models" "$standard_key" "non-litellm-auth-placeholder")
 proxy_header_status=$(printf '%s\n' "$proxy_header_result" | sed -n '1p')
 proxy_header_body=$(printf '%s\n' "$proxy_header_result" | sed '1d')
-expect_success "x-litellm-api-key proxy auth with Authorization reserved for upstream" "$proxy_header_status" "$proxy_header_body"
+expect_success "x-litellm-api-key proxy auth while Authorization is occupied" "$proxy_header_status" "$proxy_header_body"
 
 denied_result=$(http_post "/v1/chat/completions" "$openai_key" '{"model":"'"$DENIED_MODEL"'","messages":[{"role":"user","content":"Reply with ok."}],"max_tokens":8}')
 denied_status=$(printf '%s\n' "$denied_result" | sed -n '1p')

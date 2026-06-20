@@ -2,14 +2,14 @@
 
 ## Goal
 
-Turn the project from a single Z.AI-oriented proxy into a practical corporate LLM gateway for coding tools. The gateway must support both server-funded provider API keys and client-side subscription/BYOK passthrough for tools such as Codex CLI/App, Claude Code, OpenCode, and Kilo Code.
+Turn the project from a single Z.AI-oriented proxy into a practical corporate LLM gateway for coding tools. The gateway must support server-funded provider API keys, provider API-key BYOK, and separately validated subscription OAuth passthrough for tools such as Codex CLI/App, Claude Code, OpenCode, and Kilo Code.
 
 ## Scope
 
 This PR covers the first production-oriented slice:
 
 - Client access to the proxy through LiteLLM virtual keys, plus documented JWT/OIDC deployment guidance.
-- Client-side subscription/BYOK passthrough design for Codex and Claude Code, where the client keeps the ChatGPT/Claude auth locally and sends it through the proxy to the provider. This is an explicit opt-in deployment mode, not the default repository configuration.
+- Client-side BYOK and subscription OAuth passthrough design for Codex and Claude Code, where the client keeps provider credentials locally and sends them through the proxy when live validation proves the path. This is an explicit opt-in deployment mode, not the default repository configuration.
 - Multi-provider LiteLLM configuration for Z.AI, OpenAI, and Anthropic.
 - Client setup docs for Codex CLI/App local tasks, Claude Code, OpenCode CLI/Desktop, and Kilo Code VS Code/CLI.
 - Helper scripts and Make targets for creating client virtual keys and smoke-testing supported protocols.
@@ -38,11 +38,11 @@ Subscription passthrough clients must authenticate to LiteLLM with the provider-
 x-litellm-api-key: Bearer <LiteLLM virtual key>
 ```
 
-That leaves `Authorization` and provider-specific auth headers available for upstream credentials:
+That leaves provider-specific BYOK headers available for upstream credentials:
 
-- Codex uses OpenAI authentication with `requires_openai_auth = true`, so its ChatGPT/API auth is sent as OpenAI auth to the proxy endpoint.
-- Claude Code uses Claude account OAuth or Anthropic API-key auth and sends it to the proxy while adding the LiteLLM virtual key through `ANTHROPIC_CUSTOM_HEADERS`.
-- OpenAI-compatible BYOK clients may use provider auth headers where supported by LiteLLM header forwarding.
+- Provider API-key BYOK clients use headers supported by LiteLLM forwarding, such as `x-api-key`, `api-key`, `x-goog-api-key`, or provider equivalents.
+- Codex/ChatGPT and Claude subscription OAuth may require provider `Authorization`; do not treat this as proven on the standard LiteLLM route until live validation passes.
+- If a subscription OAuth path needs ordinary `Authorization`, implement a pass-through route, sidecar, or custom adapter when the standard LiteLLM route strips it.
 
 This PR must not mark subscription passthrough complete until live validation proves the current LiteLLM image forwards the provider auth needed by the target client. If standard LiteLLM routing strips a required provider `Authorization` header, the follow-up implementation must use a LiteLLM pass-through route, a sidecar, or a custom adapter rather than pretending the standard model route is enough.
 
@@ -135,7 +135,7 @@ requires_openai_auth = true
 env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }
 ```
 
-In this mode Codex keeps the ChatGPT auth locally. The proxy receives a LiteLLM virtual key in `x-litellm-api-key` and must forward OpenAI auth to the upstream OpenAI-compatible API. Because LiteLLM's general header-forwarding rules strip ordinary `Authorization` headers by default, this path requires live validation. If it fails on the normal `/v1/responses` route, implement a pass-through route or sidecar for Codex subscription traffic.
+In this mode Codex keeps the ChatGPT auth locally. The proxy receives a LiteLLM virtual key in `x-litellm-api-key`, while Codex may need provider `Authorization` to reach OpenAI/ChatGPT upstream. Because the standard LiteLLM route is not assumed to forward ordinary `Authorization`, this path requires live validation. If it fails on the normal `/v1/responses` route, implement a pass-through route, sidecar, or custom adapter for Codex subscription traffic.
 
 ### Anthropic Messages
 
@@ -168,7 +168,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
 claude
 ```
 
-The user signs into Claude Code with a Claude account subscription on the client machine. Claude Code sends its OAuth provider auth in `Authorization`, and LiteLLM should forward it upstream while authenticating the proxy request with `x-litellm-api-key`. This follows LiteLLM's Claude Code Max subscription tutorial and must be verified with a live Claude Code request against the pinned LiteLLM image.
+The user signs into Claude Code with a Claude account subscription on the client machine. Claude Code may send OAuth provider auth in `Authorization`, while the proxy request is authenticated with `x-litellm-api-key`. This path must be verified with a live Claude Code request against the pinned LiteLLM image; if the standard LiteLLM route strips the required OAuth header, use a pass-through route, sidecar, or custom adapter.
 
 ## Model Naming
 
@@ -213,7 +213,7 @@ Required live checks:
 - `/v1/chat/completions` works with a virtual key.
 - `/v1/responses` works with a virtual key when `RESPONSES_MODEL` is set to a live-validated proxy alias.
 - `/v1/messages` works with a virtual key when `MESSAGES_MODEL` is set to a live-validated proxy alias.
-- `x-litellm-api-key` is accepted as proxy auth when `Authorization` is reserved for upstream provider auth.
+- `x-litellm-api-key` is accepted as proxy auth when `Authorization` is occupied by a non-LiteLLM token. This proves ingress auth separation only; it does not prove upstream forwarding.
 - Subscription/BYOK passthrough documentation examples use `x-litellm-api-key` for proxy auth and never ask users to put `LITELLM_MASTER_KEY` in client config.
 - Claude Code subscription passthrough is live-validated against the current LiteLLM image before it is documented as working.
 - Codex ChatGPT subscription passthrough is live-validated against the current LiteLLM image; if normal LiteLLM routing strips the required auth, the implementation must switch to a pass-through/sidecar design.
@@ -237,7 +237,7 @@ Docs must show:
 - Which model aliases are examples, not required defaults.
 - That `LITELLM_MASTER_KEY` is not for users.
 - That upstream provider keys stay only on the proxy.
-- How subscription/BYOK passthrough differs from server-funded provider API keys.
+- How BYOK and subscription OAuth passthrough differ from server-funded provider API keys.
 - How Codex ChatGPT auth and Claude account auth remain client-side while provider auth is forwarded through the proxy.
 - How JWT/OIDC fits as an enterprise proxy-auth option without mixing it with upstream provider credentials.
 
