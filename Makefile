@@ -63,7 +63,7 @@ logs:
 	docker compose logs -f --tail=50
 
 # === Test ===
-test: test-unit
+test: test-unit test-routing-diagnostics
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"

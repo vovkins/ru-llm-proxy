@@ -250,11 +250,12 @@ make routing-smoke
 | `make restart` | Рестарт LiteLLM после изменения конфигурации |
 | `make logs` | Логи всех сервисов |
 | `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
-| `make test` | Алиас для `make test-unit` |
+| `make test` | Локальный test suite: `test-unit` и routing diagnostics regression test |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
+| `make test-routing-diagnostics` | Static regression test для `routing-smoke` Makefile target |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
 | `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
@@ -392,16 +393,17 @@ curl http://localhost:4000/health/liveliness
 Локальные тесты запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста.
 
 ```bash
-make test             # alias для make test-unit
+make test             # test-unit + routing diagnostics regression test
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
 make test-recognizers
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM
+make test-routing-diagnostics
 make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
 make routing-smoke    # live sticky routing smoke; нужны make up и provider key
 ```
 
-`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
+`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет, что `routing-smoke` ловит HTTP/network failures, использует `/v1/chat/completions` и не печатает proxy token. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
 
 ## Troubleshooting
 
