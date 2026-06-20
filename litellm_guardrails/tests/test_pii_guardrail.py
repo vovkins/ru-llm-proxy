@@ -70,6 +70,10 @@ class TestFailureMode:
         guardrail = RuPIIGuardrail(failure_mode="fail-closed")
         assert guardrail.failure_mode == "fail_closed"
 
+    def test_rejects_non_positive_mapping_ttl(self):
+        guardrail = RuPIIGuardrail(mapping_ttl_seconds=-5)
+        assert guardrail.mapping_ttl_seconds == 3600
+
 
 # === _analyze_text ===
 
@@ -202,6 +206,18 @@ class TestMaskText:
         assert masked_text == "ИНН <RU_INN_1>"
         assert mapping == {"<RU_INN_1>": "7707083893"}
 
+    def test_prefers_longer_entity_when_overlapping_entities_share_start(self, guardrail):
+        text = "Иван Иванов"
+        entities = [
+            {"entity_type": "PERSON", "start": 0, "end": len("Иван")},
+            {"entity_type": "PERSON", "start": 0, "end": len(text)},
+        ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == "<PERSON_1>"
+        assert mapping == {"<PERSON_1>": "Иван Иванов"}
+
     def test_no_entities_returns_original(self, guardrail):
         masked_text, mapping = guardrail._mask_text("Обычный текст", [])
         assert masked_text == "Обычный текст"
@@ -304,6 +320,105 @@ class TestPreCallHook:
         assert saved_mapping == {
             "<PHONE_NUMBER_1>": "+79031234567",
             "<PHONE_NUMBER_2>": "89031234567",
+        }
+
+    @pytest.mark.asyncio
+    async def test_masks_pii_in_text_content_blocks(self, guardrail):
+        text = "Клиент Иван Иванов, телефон +79031234567"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "Иван Иванов", "PERSON"),
+                _entity(text, "+79031234567"),
+            ],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": text},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": "https://example.test/image.png"},
+                                },
+                            ],
+                        }
+                    ]
+                }
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        content = result["messages"][0]["content"]
+        assert content[0]["text"] == "Клиент <PERSON_1>, телефон <PHONE_NUMBER_1>"
+        assert content[1] == {
+            "type": "image_url",
+            "image_url": {"url": "https://example.test/image.png"},
+        }
+        assert save_mapping.call_args[0][1] == {
+            "<PERSON_1>": "Иван Иванов",
+            "<PHONE_NUMBER_1>": "+79031234567",
+        }
+
+    @pytest.mark.asyncio
+    async def test_masks_pii_in_function_arguments(self, guardrail):
+        tool_args = '{"phone":"+79031234567"}'
+        function_args = '{"inn":"7707083893"}'
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(tool_args, "+79031234567")],
+                [_entity(function_args, "7707083893", "RU_INN")],
+            ],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "lookup_phone",
+                                        "arguments": tool_args,
+                                    },
+                                }
+                            ],
+                            "function_call": {
+                                "name": "lookup_inn",
+                                "arguments": function_args,
+                            },
+                        }
+                    ]
+                }
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        message = result["messages"][0]
+        assert message["tool_calls"][0]["function"]["arguments"] == (
+            '{"phone":"<PHONE_NUMBER_1>"}'
+        )
+        assert message["function_call"]["arguments"] == '{"inn":"<RU_INN_1>"}'
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<RU_INN_1>": "7707083893",
         }
 
     @pytest.mark.asyncio
@@ -459,6 +574,48 @@ class TestPostCallHook:
         assert "+79031234567" in response.choices[0].message.content
         assert "89031234567" in response.choices[0].message.content
         assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
+
+    @pytest.mark.asyncio
+    async def test_unmasks_tool_and_function_arguments(self, guardrail):
+        import litellm
+
+        mapping = {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<RU_INN_1>": "7707083893",
+        }
+        guardrail._redis.get.return_value = json.dumps(mapping)
+
+        message = MagicMock()
+        message.content = "Tool call prepared"
+        message.reasoning_content = "Проверяю <PHONE_NUMBER_1>"
+        message.tool_calls = [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "lookup_phone",
+                    "arguments": '{"phone":"<PHONE_NUMBER_1>"}',
+                },
+            }
+        ]
+        message.function_call = {
+            "name": "lookup_inn",
+            "arguments": '{"inn":"<RU_INN_1>"}',
+        }
+        response = litellm.ModelResponse(id="test", choices=[])
+        response.choices = [MagicMock(message=message)]
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert message.reasoning_content == "Проверяю +79031234567"
+        assert message.tool_calls[0]["function"]["arguments"] == (
+            '{"phone":"+79031234567"}'
+        )
+        assert message.function_call["arguments"] == '{"inn":"7707083893"}'
 
     @pytest.mark.asyncio
     async def test_no_request_id_skips(self, guardrail):

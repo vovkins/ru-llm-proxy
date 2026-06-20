@@ -101,6 +101,7 @@ PII_MAPPING_SIZE = _build_metric(
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
 
 FAILURE_MODES = {"fail_open", "fail_closed"}
+DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -109,15 +110,27 @@ def _get_int_env(name: str, default: int) -> int:
     if raw_value is None:
         return default
     try:
-        return int(raw_value)
+        value = int(raw_value)
     except ValueError:
         logger.warning("Invalid %s=%r, falling back to %s", name, raw_value, default)
         return default
+    return _normalize_positive_int(name, value, default)
+
+
+def _normalize_positive_int(name: str, value: int, default: int) -> int:
+    """Return value when positive, otherwise log and return default."""
+    if value > 0:
+        return value
+    logger.warning("Invalid %s=%r, falling back to %s", name, value, default)
+    return default
 
 
 # Redis for storing PII mappings (for unmasking responses)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
-PII_MAPPING_TTL_SECONDS = _get_int_env("PII_MAPPING_TTL_SECONDS", 3600)
+PII_MAPPING_TTL_SECONDS = _get_int_env(
+    "PII_MAPPING_TTL_SECONDS",
+    DEFAULT_PII_MAPPING_TTL_SECONDS,
+)
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
 
 
@@ -151,7 +164,13 @@ class RuPIIGuardrail(CustomGuardrail):
         self.failure_mode = self._normalize_failure_mode(
             failure_mode or PII_GUARDRAIL_FAILURE_MODE
         )
-        self.mapping_ttl_seconds = mapping_ttl_seconds or PII_MAPPING_TTL_SECONDS
+        self.mapping_ttl_seconds = _normalize_positive_int(
+            "PII_MAPPING_TTL_SECONDS",
+            mapping_ttl_seconds
+            if mapping_ttl_seconds is not None
+            else PII_MAPPING_TTL_SECONDS,
+            PII_MAPPING_TTL_SECONDS,
+        )
         super().__init__(**kwargs)
 
     @staticmethod
@@ -192,6 +211,98 @@ class RuPIIGuardrail(CustomGuardrail):
             import redis.asyncio as aioredis
             self._redis = aioredis.from_url(REDIS_URL, decode_responses=True)
         return self._redis
+
+    @staticmethod
+    def _iter_message_text_targets(message: dict) -> list[tuple[dict, str]]:
+        """Return mutable text fields that are safe to send through analyzer."""
+        if not isinstance(message, dict):
+            return []
+
+        targets: list[tuple[dict, str]] = []
+        content = message.get("content")
+        if isinstance(content, str):
+            targets.append((message, "content"))
+        elif isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_type = block.get("type")
+                if block_type in (None, "text", "input_text") and isinstance(
+                    block.get("text"),
+                    str,
+                ):
+                    targets.append((block, "text"))
+
+        tool_calls = message.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tool_call in tool_calls:
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function")
+                if isinstance(function, dict) and isinstance(
+                    function.get("arguments"),
+                    str,
+                ):
+                    targets.append((function, "arguments"))
+
+        function_call = message.get("function_call")
+        if isinstance(function_call, dict) and isinstance(
+            function_call.get("arguments"),
+            str,
+        ):
+            targets.append((function_call, "arguments"))
+
+        return targets
+
+    @staticmethod
+    def _get_container_field(container: Any, field: str) -> Any:
+        """Read a field from dict-like or object-like LiteLLM containers."""
+        if isinstance(container, dict):
+            return container.get(field)
+        return getattr(container, field, None)
+
+    @staticmethod
+    def _set_container_field(container: Any, field: str, value: Any) -> None:
+        """Write a field to dict-like or object-like LiteLLM containers."""
+        if isinstance(container, dict):
+            container[field] = value
+        else:
+            setattr(container, field, value)
+
+    @classmethod
+    def _iter_response_text_targets(cls, message: Any) -> list[tuple[Any, str]]:
+        """Return mutable response fields that may contain PII placeholders."""
+        if message is None:
+            return []
+
+        targets: list[tuple[Any, str]] = []
+        content = cls._get_container_field(message, "content")
+        if isinstance(content, str):
+            targets.append((message, "content"))
+        elif isinstance(content, list):
+            for block in content:
+                block_text = cls._get_container_field(block, "text")
+                if isinstance(block_text, str):
+                    targets.append((block, "text"))
+
+        reasoning_content = cls._get_container_field(message, "reasoning_content")
+        if isinstance(reasoning_content, str):
+            targets.append((message, "reasoning_content"))
+
+        tool_calls = cls._get_container_field(message, "tool_calls")
+        if isinstance(tool_calls, list):
+            for tool_call in tool_calls:
+                function = cls._get_container_field(tool_call, "function")
+                arguments = cls._get_container_field(function, "arguments")
+                if isinstance(arguments, str):
+                    targets.append((function, "arguments"))
+
+        function_call = cls._get_container_field(message, "function_call")
+        arguments = cls._get_container_field(function_call, "arguments")
+        if isinstance(arguments, str):
+            targets.append((function_call, "arguments"))
+
+        return targets
 
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
@@ -240,7 +351,7 @@ class RuPIIGuardrail(CustomGuardrail):
         if not normalized_entities:
             return text, {}
 
-        normalized_entities.sort(key=lambda item: (item[0], item[1]))
+        normalized_entities.sort(key=lambda item: (item[0], -(item[1] - item[0])))
 
         parts = []
         mapping = {}
@@ -360,23 +471,28 @@ class RuPIIGuardrail(CustomGuardrail):
         pending_updates = []
 
         for message in messages:
-            content = message.get("content")
-            if not isinstance(content, str) or not content.strip():
-                continue
-
-            try:
-                entities = await self._analyze_text(content)
-                if not entities:
+            for target, field in self._iter_message_text_targets(message):
+                content = target[field]
+                if not content.strip():
                     continue
 
-                masked_text, mapping = self._mask_text(content, entities, entity_counts)
-                if mapping:
-                    full_mapping.update(mapping)
-                    pending_updates.append((message, masked_text))
+                try:
+                    entities = await self._analyze_text(content)
+                    if not entities:
+                        continue
 
-            except Exception as e:
-                PII_PRE_CALLS.labels(result="error").inc()
-                return self._handle_failure("masking", e, data)
+                    masked_text, mapping = self._mask_text(
+                        content,
+                        entities,
+                        entity_counts,
+                    )
+                    if mapping:
+                        full_mapping.update(mapping)
+                        pending_updates.append((target, field, masked_text))
+
+                except Exception as e:
+                    PII_PRE_CALLS.labels(result="error").inc()
+                    return self._handle_failure("masking", e, data)
 
         # Save mapping for post-call unmasking
         if full_mapping:
@@ -386,8 +502,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 PII_PRE_CALLS.labels(result="error").inc()
                 return self._handle_failure("mapping save", e, data)
 
-            for message, masked_text in pending_updates:
-                message["content"] = masked_text
+            for target, field, masked_text in pending_updates:
+                target[field] = masked_text
 
             # Store request_id in data for post-call hook
             if not isinstance(data.get("metadata"), dict):
@@ -451,24 +567,15 @@ class RuPIIGuardrail(CustomGuardrail):
         if isinstance(response, litellm.ModelResponse):
             for choice in response.choices:
                 message = getattr(choice, "message", None)
-                if message is None:
-                    continue
-
-                if getattr(message, "content", None):
-                    restored_content = self._replace_placeholders(message.content, mapping)
-                    if restored_content != message.content:
-                        restored_fields += 1
-                    message.content = restored_content
-
-                # GLM-5.1 coding plan can put final text in reasoning_content.
-                if getattr(message, "reasoning_content", None):
-                    restored_reasoning = self._replace_placeholders(
-                        message.reasoning_content,
+                for target, field in self._iter_response_text_targets(message):
+                    original_value = self._get_container_field(target, field)
+                    restored_value = self._replace_placeholders(
+                        original_value,
                         mapping,
                     )
-                    if restored_reasoning != message.reasoning_content:
+                    if restored_value != original_value:
                         restored_fields += 1
-                    message.reasoning_content = restored_reasoning
+                        self._set_container_field(target, field, restored_value)
         else:
             PII_POST_CALLS.labels(result="unsupported_response").inc()
             _safe_log(
