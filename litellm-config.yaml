@@ -35,6 +35,9 @@ guardrails:
         - name: "mapping_store"
           type: "string"
           description: "Redis key pii_mapping:<request_id> with TTL from PII_MAPPING_TTL_SECONDS."
+        - name: "policy_mode"
+          type: "string"
+          description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail

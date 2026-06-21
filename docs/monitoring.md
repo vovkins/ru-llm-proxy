@@ -118,9 +118,10 @@ make routing-smoke
 
 | Metric | Type | Labels | Назначение |
 | --- | --- | --- | --- |
-| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `clean`, `skipped`, `error` |
+| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `clean`, `skipped`, `error` |
 | `ru_pii_guardrail_post_calls_total` | Counter | `result` | Итог post-call: `restored`, `no_placeholders`, `no_mapping`, `skipped`, `unsupported_response`, `error` |
 | `ru_pii_guardrail_entities_detected_total` | Counter | `entity_type` | Количество замаскированных сущностей по типам |
+| `ru_pii_guardrail_blocked_total` | Counter | `entity_type` | Количество заблокированных сущностей по типам в `PII_GUARDRAIL_MODE=block` |
 | `ru_pii_guardrail_fail_open_total` | Counter | `operation` | Ошибки, после которых запрос продолжен в режиме `fail_open` |
 | `ru_pii_guardrail_fail_closed_total` | Counter | `operation` | Ошибки, после которых запрос остановлен в режиме `fail_closed` |
 | `ru_pii_guardrail_analyzer_latency_seconds_*` | Histogram | none | Latency вызовов Presidio Analyzer |
@@ -152,6 +153,12 @@ sum(rate(ru_pii_guardrail_pre_calls_total{result="error"}[5m])) > 0
 Ошибки pre-call обработки.
 
 ```promql
+sum(rate(ru_pii_guardrail_pre_calls_total{result="blocked"}[5m])) > 0
+```
+
+Block mode отклоняет запросы с PII до вызова провайдера. Это ожидаемое policy event, но его стоит мониторить как security telemetry.
+
+```promql
 histogram_quantile(0.95, sum(rate(ru_pii_guardrail_analyzer_latency_seconds_bucket[5m])) by (le)) > 2
 ```
 
@@ -174,6 +181,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 | Event | Уровень | Поля |
 | --- | --- | --- |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
+| `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
 | `pii_guardrail_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
 | `pii_guardrail_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |

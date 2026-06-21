@@ -97,6 +97,7 @@ ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" |
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true
 ensure_key_exists "ZAI_API_KEY_2" ""
 ensure_key_exists "LITELLM_ROUTING_TEST_KEY" ""
+ensure_key_exists "PII_GUARDRAIL_MODE" "mask"
 
 actual_db_password="$(get_env_value "POSTGRES_PASSWORD" || true)"
 current_db_url="$(get_env_value "LITELLM_DB_URL" || true)"

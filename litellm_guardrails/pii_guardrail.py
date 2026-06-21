@@ -96,12 +96,20 @@ PII_MAPPING_SIZE = _build_metric(
     "Number of placeholder mappings saved for a masked request.",
     buckets=(1, 2, 5, 10, 25, 50, 100, 250),
 )
+PII_BLOCKED_ENTITIES = _build_metric(
+    Counter,
+    "ru_pii_guardrail_blocked",
+    "PII entities blocked by entity type.",
+    ["entity_type"],
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
 
 FAILURE_MODES = {"fail_open", "fail_closed"}
+POLICY_MODES = {"mask", "block"}
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
+PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -132,6 +140,7 @@ PII_MAPPING_TTL_SECONDS = _get_int_env(
     DEFAULT_PII_MAPPING_TTL_SECONDS,
 )
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
+PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
 
 
 def _safe_log(level: int, event: str, **fields) -> None:
@@ -147,16 +156,17 @@ def _safe_log(level: int, event: str, **fields) -> None:
 
 
 class RuPIIGuardrail(CustomGuardrail):
-    """LiteLLM custom guardrail that masks Russian PII using Presidio.
+    """LiteLLM custom guardrail that masks or blocks Russian PII using Presidio.
 
     Flow:
-    1. async_pre_call_hook: Mask PII in request → save mapping to Redis
-    2. async_post_call_success_hook: Unmask PII in response using mapping
+    1. async_pre_call_hook: mask PII and save mapping, or block PII requests
+    2. async_post_call_success_hook: unmask PII in responses when mapping exists
     """
 
     def __init__(
         self,
         failure_mode: Optional[str] = None,
+        pii_mode: Optional[str] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -164,6 +174,7 @@ class RuPIIGuardrail(CustomGuardrail):
         self.failure_mode = self._normalize_failure_mode(
             failure_mode or PII_GUARDRAIL_FAILURE_MODE
         )
+        self.pii_mode = self._normalize_policy_mode(pii_mode or PII_GUARDRAIL_MODE)
         self.mapping_ttl_seconds = _normalize_positive_int(
             "PII_MAPPING_TTL_SECONDS",
             mapping_ttl_seconds
@@ -183,6 +194,18 @@ class RuPIIGuardrail(CustomGuardrail):
                 value,
             )
             return "fail_open"
+        return mode
+
+    @staticmethod
+    def _normalize_policy_mode(value: str) -> str:
+        """Normalize and validate normal PII policy behavior."""
+        mode = value.strip().lower().replace("-", "_")
+        if mode not in POLICY_MODES:
+            logger.warning(
+                "Unknown PII_GUARDRAIL_MODE=%r, falling back to mask",
+                value,
+            )
+            return "mask"
         return mode
 
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
@@ -332,6 +355,29 @@ class RuPIIGuardrail(CustomGuardrail):
         if entity_counts is None:
             entity_counts = {}
 
+        normalized_entities = self._normalize_entities(text, entities)
+        if not normalized_entities:
+            return text, {}
+
+        parts = []
+        mapping = {}
+        last_end = 0
+        for start, end, entity_type in normalized_entities:
+            placeholder = self._next_placeholder(entity_type, entity_counts)
+            parts.append(text[last_end:start])
+            parts.append(placeholder)
+            mapping[placeholder] = text[start:end]
+            last_end = end
+
+        parts.append(text[last_end:])
+        return "".join(parts), mapping
+
+    def _normalize_entities(
+        self,
+        text: str,
+        entities: list[dict],
+    ) -> list[tuple[int, int, str]]:
+        """Return valid non-overlapping entity spans with normalized types."""
         normalized_entities = []
         for entity in entities:
             try:
@@ -349,25 +395,19 @@ class RuPIIGuardrail(CustomGuardrail):
             normalized_entities.append((start, end, entity_type))
 
         if not normalized_entities:
-            return text, {}
+            return []
 
         normalized_entities.sort(key=lambda item: (item[0], -(item[1] - item[0])))
 
-        parts = []
-        mapping = {}
+        non_overlapping_entities = []
         last_end = 0
         for start, end, entity_type in normalized_entities:
             if start < last_end:
                 continue
-
-            placeholder = self._next_placeholder(entity_type, entity_counts)
-            parts.append(text[last_end:start])
-            parts.append(placeholder)
-            mapping[placeholder] = text[start:end]
+            non_overlapping_entities.append((start, end, entity_type))
             last_end = end
 
-        parts.append(text[last_end:])
-        return "".join(parts), mapping
+        return non_overlapping_entities
 
     @staticmethod
     def _normalize_entity_type(entity_type: str) -> str:
@@ -452,6 +492,60 @@ class RuPIIGuardrail(CustomGuardrail):
         for entity_type, count in entity_counts.items():
             PII_ENTITIES_DETECTED.labels(entity_type=entity_type).inc(count)
 
+    @staticmethod
+    def _record_blocked_entities(entity_counts: dict[str, int]) -> None:
+        """Increment blocked entity metrics with bounded entity_type labels."""
+        for entity_type, count in entity_counts.items():
+            PII_BLOCKED_ENTITIES.labels(entity_type=entity_type).inc(count)
+
+    @staticmethod
+    def _entity_counts_from_normalized_entities(
+        normalized_entities: list[tuple[int, int, str]],
+    ) -> dict[str, int]:
+        """Return entity counts without exposing source text or offsets."""
+        counts: dict[str, int] = {}
+        for _, _, entity_type in normalized_entities:
+            counts[entity_type] = counts.get(entity_type, 0) + 1
+        return counts
+
+    def _raise_blocked_request(
+        self,
+        data: dict,
+        request_id: str,
+        entity_counts: dict[str, int],
+    ) -> None:
+        """Raise a LiteLLM-compatible client error without raw PII."""
+        entity_types = sorted(entity_counts)
+        self._record_blocked_entities(entity_counts)
+        PII_PRE_CALLS.labels(result="blocked").inc()
+        _safe_log(
+            logging.INFO,
+            "pii_guardrail_blocked",
+            request_id=request_id,
+            entity_types=entity_types,
+            entity_counts=entity_counts,
+        )
+
+        body = {
+            "error": {
+                "message": PII_BLOCKED_MESSAGE,
+                "type": "pii_detected",
+                "code": "pii_blocked",
+                "details": {"entities": entity_types},
+            }
+        }
+        response = httpx.Response(
+            status_code=422,
+            json=body,
+            request=httpx.Request("POST", "http://ru-llm-proxy.local/pii-policy"),
+        )
+        raise litellm.UnprocessableEntityError(
+            message=PII_BLOCKED_MESSAGE,
+            model=str(data.get("model") or "unknown"),
+            llm_provider="ru-llm-proxy",
+            response=response,
+        )
+
     async def async_pre_call_hook(
         self,
         user_api_key_dict: UserAPIKeyAuth,
@@ -459,7 +553,7 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
-        """Mask PII in request messages before sending to LLM."""
+        """Apply request-time PII policy before sending to LLM."""
         messages = data.get("messages")
         if not messages:
             PII_PRE_CALLS.labels(result="skipped").inc()
@@ -468,6 +562,7 @@ class RuPIIGuardrail(CustomGuardrail):
         request_id = self._get_request_id(data)
         full_mapping = {}
         entity_counts: dict[str, int] = {}
+        blocked_entity_counts: dict[str, int] = {}
         pending_updates = []
 
         for message in messages:
@@ -479,6 +574,16 @@ class RuPIIGuardrail(CustomGuardrail):
                 try:
                     entities = await self._analyze_text(content)
                     if not entities:
+                        continue
+
+                    if self.pii_mode == "block":
+                        normalized_entities = self._normalize_entities(content, entities)
+                        for entity_type, count in self._entity_counts_from_normalized_entities(
+                            normalized_entities
+                        ).items():
+                            blocked_entity_counts[entity_type] = (
+                                blocked_entity_counts.get(entity_type, 0) + count
+                            )
                         continue
 
                     masked_text, mapping = self._mask_text(
@@ -493,6 +598,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 except Exception as e:
                     PII_PRE_CALLS.labels(result="error").inc()
                     return self._handle_failure("masking", e, data)
+
+        if blocked_entity_counts:
+            self._raise_blocked_request(data, request_id, blocked_entity_counts)
 
         # Save mapping for post-call unmasking
         if full_mapping:

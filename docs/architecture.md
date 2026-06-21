@@ -19,13 +19,15 @@
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
 3. Guardrail отправляет каждое string message в Presidio Analyzer.
 4. Analyzer возвращает entity spans, entity types и scores.
-5. Guardrail строит request-scoped placeholders в порядке исходного текста.
+5. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
 6. Guardrail сохраняет placeholder -> original mappings в Redis.
 7. Только после успешного Redis save содержимое message заменяется на masked text.
 8. LiteLLM отправляет masked request настроенному LLM-провайдеру.
 9. LiteLLM запускает ru-pii-mask-post в режиме post_call.
 10. Guardrail загружает Redis mapping и заменяет placeholders в response content.
 11. Redis mapping удаляется после post-call обработки.
+
+В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 4, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
 ```
 
 Пример трансформации:
@@ -54,6 +56,9 @@ guardrails:
         - name: "stage"
           type: "string"
           description: "pre_call; masks Russian PII before the provider request."
+        - name: "policy_mode"
+          type: "string"
+          description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -67,7 +72,7 @@ guardrails:
           description: "post_call; restores placeholders in model responses."
 ```
 
-`async_pre_call_hook` маскирует запросы. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`.
+`async_pre_call_hook` маскирует запросы в `mask` mode или блокирует их в `block` mode. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`; для заблокированных запросов post-call hook не нужен.
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
@@ -148,7 +153,14 @@ model_list:
 
 `presidio/analyzer_server.py` дедуплицирует пересекающиеся результаты analyzer/NER. Guardrail дополнительно пропускает некорректные spans и оставшиеся пересечения во время построения замен.
 
-## Failure Modes
+## PII policy и failure modes
+
+`PII_GUARDRAIL_MODE` управляет штатной политикой после успешной детекции PII:
+
+| Mode | Поведение |
+| --- | --- |
+| `mask` | По умолчанию. Маскирует PII, сохраняет Redis mapping, вызывает провайдера и восстанавливает placeholders в ответе. |
+| `block` | Если PII найдена, возвращает клиентскую `422` ошибку до вызова провайдера. Ответ содержит только entity types и не содержит raw PII, offsets или исходный текст. |
 
 Guardrail поддерживает два режима через `PII_GUARDRAIL_FAILURE_MODE`.
 

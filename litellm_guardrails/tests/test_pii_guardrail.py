@@ -4,6 +4,7 @@ import json
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import litellm
 import pytest
 
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
@@ -73,6 +74,23 @@ class TestFailureMode:
     def test_rejects_non_positive_mapping_ttl(self):
         guardrail = RuPIIGuardrail(mapping_ttl_seconds=-5)
         assert guardrail.mapping_ttl_seconds == 3600
+
+
+# === policy mode ===
+
+
+class TestPolicyMode:
+    def test_defaults_to_mask_mode(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.pii_mode == "mask"
+
+    def test_accepts_block_mode_alias(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        assert guardrail.pii_mode == "block"
+
+    def test_defaults_to_mask_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(pii_mode="bad-value")
+        assert guardrail.pii_mode == "mask"
 
 
 # === _analyze_text ===
@@ -447,6 +465,82 @@ class TestPreCallHook:
 
         logs = "\n".join(record.getMessage() for record in caplog.records)
         assert "pii_guardrail_masked" in logs
+        assert "PHONE_NUMBER" in logs
+        assert "+79031234567" not in logs
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_pii_without_mutating_or_saving(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = "Мой телефон +79031234567"
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == text
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body == {
+            "error": {
+                "message": "Request contains personal data and was blocked by PII policy.",
+                "type": "pii_detected",
+                "code": "pii_blocked",
+                "details": {"entities": ["PHONE_NUMBER"]},
+            }
+        }
+        assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_block_mode_allows_clean_requests(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": "Расскажи joke"}]}
+
+        with patch.object(guardrail, "_analyze_text", return_value=[]):
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_block_mode_log_does_not_include_raw_pii(self, caplog):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = "Мой телефон +79031234567"
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(litellm.UnprocessableEntityError):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data={"model": "glm-5.1", "messages": [{"role": "user", "content": text}]},
+                    )
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pii_guardrail_blocked" in logs
         assert "PHONE_NUMBER" in logs
         assert "+79031234567" not in logs
 

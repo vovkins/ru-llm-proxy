@@ -137,6 +137,7 @@ POSTGRES_PASSWORD=...           # автогенерируется через ma
 LITELLM_DB_URL=postgresql://litellm:...@db:5432/litellm
 REDIS_URL=redis://redis:6379
 PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+PII_GUARDRAIL_MODE=mask
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 ```
@@ -152,6 +153,19 @@ DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
 ```
 
 `DEEPPAVLOV_NER_MODEL_SHA256` опционален, но для воспроизводимой и более строгой сборки его стоит заполнить после доверенной загрузки архива.
+
+### PII policy mode
+
+`PII_GUARDRAIL_MODE` управляет штатным поведением после успешной детекции PII:
+
+| Значение | Поведение |
+| --- | --- |
+| `mask` | Значение по умолчанию. Guardrail маскирует PII, сохраняет Redis mapping и отправляет masked request провайдеру. |
+| `block` | Guardrail отклоняет запрос с найденной PII на pre-call этапе. Провайдер не вызывается, Redis mapping не создаётся. |
+
+В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
+
+`PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его.
 
 ### litellm-config.yaml — настройки LiteLLM
 
@@ -187,6 +201,9 @@ guardrails:
         - name: "stage"
           type: "string"
           description: "pre_call; masks Russian PII before the provider request."
+        - name: "policy_mode"
+          type: "string"
+          description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -353,6 +370,7 @@ make monitor-smoke
 - `ru_pii_guardrail_pre_calls_total`
 - `ru_pii_guardrail_post_calls_total`
 - `ru_pii_guardrail_entities_detected_total`
+- `ru_pii_guardrail_blocked_total`
 - `ru_pii_guardrail_fail_open_total`
 - `ru_pii_guardrail_fail_closed_total`
 - `ru_pii_guardrail_analyzer_latency_seconds_*`
@@ -430,6 +448,12 @@ curl http://localhost:5001/api/v1/health | jq
 
 - coding plan может вернуть ответ в `reasoning_content`;
 - guardrail восстанавливает плейсхолдеры и в `content`, и в `reasoning_content`.
+
+**Запросы с PII возвращают `422`:**
+
+- проверьте `PII_GUARDRAIL_MODE`;
+- при `block` это ожидаемое policy behavior: запрос остановлен до вызова провайдера;
+- при `mask` такое поведение не должно происходить из-за найденной PII, смотрите structured logs guardrail.
 
 ## Структура проекта
 
