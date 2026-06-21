@@ -596,6 +596,12 @@ class RuPIIGuardrail(CustomGuardrail):
                         pending_updates.append((target, field, masked_text))
 
                 except Exception as e:
+                    if self.pii_mode == "block" and blocked_entity_counts:
+                        self._raise_blocked_request(
+                            data,
+                            request_id,
+                            blocked_entity_counts,
+                        )
                     PII_PRE_CALLS.labels(result="error").inc()
                     return self._handle_failure("masking", e, data)
 

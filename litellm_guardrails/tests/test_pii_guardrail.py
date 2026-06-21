@@ -545,6 +545,40 @@ class TestPreCallHook:
         assert "+79031234567" not in logs
 
     @pytest.mark.asyncio
+    async def test_block_mode_keeps_prior_pii_block_when_later_analysis_fails(self):
+        guardrail = RuPIIGuardrail(pii_mode="block", failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        pii_text = "Мой телефон +79031234567"
+        later_text = "Еще одно поле"
+        data = {
+            "model": "glm-5.1",
+            "messages": [
+                {"role": "user", "content": pii_text},
+                {"role": "user", "content": later_text},
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(pii_text, "+79031234567")],
+                RuntimeError("analyzer down"),
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError):
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == pii_text
+        assert data["messages"][1]["content"] == later_text
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_no_messages_returns_data(self, guardrail):
         data = {"model": "glm-5.1"}
 
