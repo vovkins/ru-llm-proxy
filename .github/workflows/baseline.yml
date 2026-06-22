@@ -25,7 +25,11 @@ jobs:
         run: python -m pip install --upgrade pip pyyaml
 
       - name: Validate shell syntax
-        run: bash -n scripts/setup_env.sh
+        run: |
+          bash -n scripts/setup_env.sh
+          bash -n scripts/create_virtual_key.sh
+          bash -n tests/e2e/test_client_auth.sh
+          bash -n tests/e2e/test_e2e.sh
 
       - name: Parse YAML configs
         run: |
@@ -33,7 +37,7 @@ jobs:
           from pathlib import Path
           import yaml
 
-          for path in ("litellm-config.yaml", "docker-compose.yml"):
+          for path in ("litellm-config.yaml", "docker-compose.yml", ".github/workflows/baseline.yml"):
               yaml.safe_load(Path(path).read_text())
               print(f"{path} ok")
           PY
@@ -54,6 +58,9 @@ jobs:
         run: |
           make -n test-unit
           make -n test-routing-diagnostics
+          make -n virtual-key-create MODELS=standard,zai KEY_ALIAS=smoke DURATION=30m
+          make -n client-auth-smoke
+          make -n test-e2e
           make -n guardrails-list
           make -n guardrails-smoke
           make -n monitor-smoke

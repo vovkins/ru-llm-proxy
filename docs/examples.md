@@ -1,20 +1,59 @@
 # Примеры API
 
-Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, модель `glm-5.1`.
+Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, стабильная Z.AI модель `glm-5.1`, provider-prefixed alias `zai-glm-5.1`, OpenAI aliases `openai-gpt-5.4-mini` / `openai-gpt-5.5` и Anthropic aliases `claude-haiku-4.5` / `claude-sonnet-4.6` / `claude-opus-4.8`.
+
+OpenAI/Anthropic aliases являются proxy-facing примерами. Перед production используйте только model IDs, проверенные live на текущем LiteLLM image и реальных provider keys.
 
 ## Окружение
 
 ```bash
 export API_URL="http://localhost:4000"
-export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2-)
+export RU_LLM_PROXY_TOKEN="sk-..."
+# Optional only for BYOK passthrough examples:
+export ANTHROPIC_BYOK_API_KEY="sk-ant-..."
 ```
+
+Создавайте обычные пользовательские `RU_LLM_PROXY_TOKEN` через LiteLLM Admin UI. CLI helper нужен для DevOps/CI/bootstrap/runbook-сценариев:
+
+```bash
+make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anthropic DURATION=30d
+```
+
+`LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
+
+## Режимы авторизации
+
+Server-funded режим использует proxy token как обычный bearer token. Proxy сам вызывает провайдера через серверные `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` или `ZAI_API_KEY`:
+
+```bash
+curl -s "$API_URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Привет"}]}'
+```
+
+BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а provider auth передаётся через поддерживаемый provider-specific header вроде `x-api-key`, `api-key` или `x-goog-api-key`. Этот режим не включён в default config; включайте его отдельным opt-in deployment после live validation на текущем LiteLLM image.
+
+```bash
+curl -s "$API_URL/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN" \
+  -H "x-api-key: $ANTHROPIC_BYOK_API_KEY" \
+  -d '{
+    "model": "claude-sonnet-4.6",
+    "max_tokens": 80,
+    "messages": [{"role": "user", "content": "Привет"}]
+  }'
+```
+
+Codex/ChatGPT и Claude subscription OAuth обычно используют provider `Authorization`. Обычный LiteLLM path может не форвардить этот header upstream, поэтому subscription passthrough нужно считать experimental до live validation; при необходимости выносите его в pass-through route, sidecar или custom adapter. Не кладите общий Codex `auth.json` или Claude credentials на proxy.
 
 ## Chat completion без PII
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
     "model": "glm-5.1",
     "messages": [
@@ -30,9 +69,9 @@ curl -s "$API_URL/chat/completions" \
 ## Chat completion с PII
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
     "model": "glm-5.1",
     "messages": [
@@ -56,9 +95,9 @@ curl -s "$API_URL/chat/completions" \
 ## Несколько значений одного типа
 
 ```bash
-curl -s "$API_URL/chat/completions" \
+curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
     "model": "glm-5.1",
     "messages": [
@@ -75,6 +114,53 @@ curl -s "$API_URL/chat/completions" \
 
 ```text
 Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
+```
+
+## OpenAI Responses API
+
+Codex CLI/App local tasks используют Responses API:
+
+```bash
+curl -s "$API_URL/v1/responses" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{
+    "model": "openai-gpt-5.4-mini",
+    "input": "Скажи короткое приветствие на русском",
+    "max_output_tokens": 80
+  }' | jq
+```
+
+Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
+
+```bash
+RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
+```
+
+## Anthropic Messages API
+
+Claude Code использует Anthropic-compatible Messages API:
+
+```bash
+curl -s "$API_URL/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -d '{
+    "model": "claude-sonnet-4.6",
+    "max_tokens": 80,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Скажи короткое приветствие на русском"
+      }
+    ]
+  }' | jq
+```
+
+Для live smoke этого endpoint задайте `MESSAGES_MODEL` явно:
+
+```bash
+MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
 ```
 
 ## Прямая проверка Analyzer
@@ -149,19 +235,18 @@ NER status возвращается отдельно:
 
 ## Guardrails
 
-Список guardrails, зарегистрированных в LiteLLM:
+Список guardrails, зарегистрированных в LiteLLM, смотрит администратор через Makefile target:
 
 ```bash
-curl -s "$API_URL/guardrails/list" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq
+make guardrails-list
 ```
 
 Live-запрос с явным `guardrails` parameter:
 
 ```bash
-curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/chat/completions" \
+curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
     "model": "glm-5.1",
     "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
@@ -180,7 +265,6 @@ grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
 То же самое через Makefile:
 
 ```bash
-make guardrails-list
 make guardrails-smoke
 ```
 
@@ -219,19 +303,28 @@ make monitor-smoke
 
 PII guardrail метрики `ru_pii_guardrail_*` появятся после первого запроса, который прошёл через guardrail. Метрики не содержат raw PII или текст пользовательского запроса.
 
+## Клиентские гайды
+
+- Codex CLI / Codex App local tasks: [clients/codex.md](clients/codex.md)
+- Claude Code: [clients/claude-code.md](clients/claude-code.md)
+- OpenCode CLI / Desktop: [clients/opencode.md](clients/opencode.md)
+- Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
+- JWT/OIDC proxy auth: [clients/jwt.md](clients/jwt.md)
+
 ## Добавление моделей
 
-По умолчанию настроена только модель `glm-5.1`. Чтобы использовать другого провайдера, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
+По умолчанию настроены provider-prefixed aliases для Z.AI, OpenAI и Anthropic. Чтобы добавить ещё один провайдер, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
 
 ```yaml
 model_list:
   - model_name: my-openai-model
     litellm_params:
-      model: openai/gpt-4o
+      model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
     model_info:
-      id: openai-gpt-4o-primary
-      base_model: gpt-4o
+      id: openai-gpt-5-4-mini-primary
+      base_model: gpt-5.4-mini
+      access_groups: ["openai", "standard"]
 ```
 
 ```bash

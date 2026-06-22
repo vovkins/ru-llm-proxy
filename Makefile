@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
@@ -24,6 +24,9 @@ help:
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static test для routing-smoke Makefile target"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
+	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
+	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
+	@echo "  REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke — строгий smoke всех /v1 протоколов"
 	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
 	@echo "  make guardrails-smoke — live smoke с явным guardrails parameter"
 	@echo "  make routing-smoke — проверить sticky deployment affinity для одного ключа"
@@ -113,8 +116,30 @@ test-unit:
 test-e2e:
 	@echo "🧪 Live smoke test (требуются запущенные сервисы и LLM provider key)"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
-	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+	@RU_LLM_PROXY_TOKEN=$$(bash scripts/create_virtual_key.sh \
+			--alias "e2e-$$(date +%Y%m%d%H%M%S)" \
+			--models standard,zai \
+			--duration 30m | awk -F= '$$1 == "RU_LLM_PROXY_TOKEN" {print $$2; exit}'); \
+		if [ -z "$$RU_LLM_PROXY_TOKEN" ]; then echo "❌ failed to create e2e virtual key"; exit 1; fi; \
+		export RU_LLM_PROXY_TOKEN; \
 		bash tests/e2e/test_e2e.sh
+
+# === Client access ===
+virtual-key-create:
+	@KEY_ALIAS="$(KEY_ALIAS)" \
+		MODELS="$(MODELS)" \
+		DURATION="$(DURATION)" \
+		MAX_BUDGET="$(MAX_BUDGET)" \
+		BUDGET_DURATION="$(BUDGET_DURATION)" \
+		RPM_LIMIT="$(RPM_LIMIT)" \
+		TPM_LIMIT="$(TPM_LIMIT)" \
+		USER_ID="$(USER_ID)" \
+		TEAM_ID="$(TEAM_ID)" \
+		METADATA_JSON='$(METADATA_JSON)' \
+		bash scripts/create_virtual_key.sh
+
+client-auth-smoke:
+	@bash tests/e2e/test_client_auth.sh
 
 # === Guardrails diagnostics ===
 guardrails-list:
@@ -127,10 +152,14 @@ guardrails-list:
 guardrails-smoke:
 	@echo "🛡️  LiteLLM guardrails live smoke"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
-	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
+	@RU_LLM_PROXY_TOKEN=$$(bash scripts/create_virtual_key.sh \
+			--alias "guardrails-smoke-$$(date +%Y%m%d%H%M%S)" \
+			--models standard,zai \
+			--duration 30m | awk -F= '$$1 == "RU_LLM_PROXY_TOKEN" {print $$2; exit}'); \
+		if [ -z "$$RU_LLM_PROXY_TOKEN" ]; then echo "❌ failed to create guardrails virtual key"; exit 1; fi; \
 		headers=$$(mktemp) && body=$$(mktemp) && \
-		curl -sS -D "$$headers" -o "$$body" http://localhost:4000/chat/completions \
-			-H "Authorization: Bearer $$LITELLM_MASTER_KEY" \
+		curl -sS -D "$$headers" -o "$$body" http://localhost:4000/v1/chat/completions \
+			-H "Authorization: Bearer $$RU_LLM_PROXY_TOKEN" \
 			-H "Content-Type: application/json" \
 			-d '{"model":"glm-5.1","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}' >/dev/null && \
 		{ \

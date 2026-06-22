@@ -15,7 +15,7 @@
 ## Поток запроса
 
 ```text
-1. Клиент отправляет POST /chat/completions в LiteLLM.
+1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
 3. Guardrail отправляет каждое string message в Presidio Analyzer.
 4. Analyzer возвращает entity spans, entity types и scores.
@@ -54,6 +54,9 @@ guardrails:
         - name: "stage"
           type: "string"
           description: "pre_call; masks Russian PII before the provider request."
+        - name: "request_fields"
+          type: "list[string]"
+          description: "Masks message.content, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -65,9 +68,12 @@ guardrails:
         - name: "stage"
           type: "string"
           description: "post_call; restores placeholders in model responses."
+        - name: "response_fields"
+          type: "list[string]"
+          description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
 ```
 
-`async_pre_call_hook` маскирует запросы. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`.
+`async_pre_call_hook` маскирует `message.content`, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
@@ -212,6 +218,10 @@ Reference: https://docs.litellm.ai/docs/proxy/health
 LiteLLM Admin UI доступен на `/ui`. Для входа используются `UI_USERNAME` и `UI_PASSWORD`, которые `make setup` генерирует в `.env` отдельно от `LITELLM_MASTER_KEY`.
 
 `LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
+
+Для обычного server-funded режима client virtual key передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает upstream через серверные provider keys. Для BYOK passthrough режима client virtual key передаётся как `x-litellm-api-key`, чтобы поддерживаемые provider-specific headers (`x-api-key`, `api-key`, `x-goog-api-key` и аналогичные) могли быть переданы upstream. Этот режим не включён в default config: header forwarding должен включаться явно в отдельном deployment и проходить live validation на текущем LiteLLM image.
+
+Codex/ChatGPT и Claude subscription OAuth обычно требуют provider `Authorization`. Обычный LiteLLM route не считается подтверждённым passthrough для такого header; если live validation покажет, что OAuth `Authorization` не форвардится, нужен pass-through route, sidecar или custom adapter. Shared Codex/Claude auth files на proxy не являются частью этой модели.
 
 Reference: https://docs.litellm.ai/docs/proxy/ui
 
