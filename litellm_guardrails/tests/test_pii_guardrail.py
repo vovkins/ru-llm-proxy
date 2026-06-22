@@ -502,6 +502,115 @@ class TestPreCallHook:
         assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
 
     @pytest.mark.asyncio
+    async def test_block_mode_rejects_pii_in_text_content_blocks_without_mutating(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = "Клиент Иван Иванов, телефон +79031234567"
+        data = {
+            "model": "glm-5.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": text},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.test/image.png"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "Иван Иванов", "PERSON"),
+                _entity(text, "+79031234567"),
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        content = data["messages"][0]["content"]
+        assert content[0]["text"] == text
+        assert content[1] == {
+            "type": "image_url",
+            "image_url": {"url": "https://example.test/image.png"},
+        }
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"]["entities"] == [
+            "PERSON",
+            "PHONE_NUMBER",
+        ]
+        assert "Иван Иванов" not in json.dumps(error_body, ensure_ascii=False)
+        assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_pii_in_function_arguments_without_mutating(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        tool_args = '{"phone":"+79031234567"}'
+        function_args = '{"inn":"7707083893"}'
+        data = {
+            "model": "glm-5.1",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup_phone",
+                                "arguments": tool_args,
+                            },
+                        }
+                    ],
+                    "function_call": {
+                        "name": "lookup_inn",
+                        "arguments": function_args,
+                    },
+                }
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(tool_args, "+79031234567")],
+                [_entity(function_args, "7707083893", "RU_INN")],
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        message = data["messages"][0]
+        assert message["tool_calls"][0]["function"]["arguments"] == tool_args
+        assert message["function_call"]["arguments"] == function_args
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"]["entities"] == [
+            "PHONE_NUMBER",
+            "RU_INN",
+        ]
+        assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+        assert "7707083893" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
     async def test_block_mode_allows_clean_requests(self):
         guardrail = RuPIIGuardrail(pii_mode="block")
         guardrail._redis = _mock_redis()

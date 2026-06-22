@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -23,7 +25,11 @@ jobs:
         run: python -m pip install --upgrade pip pyyaml
 
       - name: Validate shell syntax
-        run: bash -n scripts/setup_env.sh
+        run: |
+          bash -n scripts/setup_env.sh
+          bash -n scripts/create_virtual_key.sh
+          bash -n tests/e2e/test_client_auth.sh
+          bash -n tests/e2e/test_e2e.sh
 
       - name: Parse YAML configs
         run: |
@@ -31,7 +37,7 @@ jobs:
           from pathlib import Path
           import yaml
 
-          for path in ("litellm-config.yaml", "docker-compose.yml"):
+          for path in ("litellm-config.yaml", "docker-compose.yml", ".github/workflows/baseline.yml"):
               yaml.safe_load(Path(path).read_text())
               print(f"{path} ok")
           PY
@@ -42,8 +48,8 @@ jobs:
       - name: Check whitespace-sensitive diff issues
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            git diff --check "${{ github.event.pull_request.base.sha }}" HEAD
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
           else
             git diff-tree --check --no-commit-id -r HEAD
           fi
@@ -51,9 +57,16 @@ jobs:
       - name: Dry-run Make targets
         run: |
           make -n test-unit
+          make -n test-routing-diagnostics
+          make -n virtual-key-create MODELS=standard,zai KEY_ALIAS=smoke DURATION=30m
+          make -n client-auth-smoke
+          make -n test-e2e
           make -n guardrails-list
           make -n guardrails-smoke
           make -n monitor-smoke
           if grep -q '^routing-smoke:' Makefile; then
             make -n routing-smoke
           fi
+
+      - name: Run routing diagnostics regression test
+        run: make test-routing-diagnostics

@@ -66,6 +66,8 @@ model_list:
 
 ## Добавление второго аккаунта Z.AI
 
+`ZAI_API_KEY_2` в `.env` сам по себе не меняет runtime routing. Это только место для секрета второго аккаунта. Чтобы второй аккаунт реально участвовал в routing, добавьте второй deployment в `litellm-config.yaml`.
+
 1. Заполните `ZAI_API_KEY_2` в `.env`.
 2. Добавьте второй deployment в `litellm-config.yaml` с тем же `model_name`, но другим `model_info.id`.
 3. Перезапустите LiteLLM: `make restart`.
@@ -103,7 +105,9 @@ model_list:
 make routing-smoke
 ```
 
-Команда отправляет два live request с одним и тем же ключом, читает response header `x-litellm-model-id` и проверяет, что оба запроса попали в один deployment.
+Команда отправляет два live request с одним и тем же ключом, проверяет HTTP status каждого ответа, читает response header `x-litellm-model-id` и проверяет, что оба запроса попали в один deployment.
+
+Если LiteLLM недоступен, провайдер вернул `4xx/5xx` или proxy не вернул `x-litellm-model-id`, команда завершится с ненулевым кодом. При HTTP-ошибке она печатает status и безопасные response headers, но не печатает proxy token или request payload.
 
 По умолчанию используется `LITELLM_MASTER_KEY`. Для более реалистичной проверки создайте virtual key в LiteLLM UI или через API, затем задайте его в `.env`:
 
@@ -113,7 +117,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 
 После этого `make routing-smoke` будет использовать virtual key вместо master key.
 
-Если настроен только один deployment, smoke-тест тоже должен проходить, но он не доказывает распределение между несколькими аккаунтами. Полезная проверка sticky behavior появляется после добавления минимум двух deployments в одну model group.
+Если настроен только один deployment, smoke-тест тоже должен проходить, но он доказывает только работоспособность routing path и наличие `x-litellm-model-id`. Распределение и закрепление между несколькими аккаунтами можно проверить только после добавления минимум двух deployments в одну model group.
 
 ## Наблюдаемость
 

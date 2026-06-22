@@ -15,16 +15,16 @@
 ## Поток запроса
 
 ```text
-1. Клиент отправляет POST /chat/completions в LiteLLM.
+1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
-3. Guardrail отправляет каждое string message в Presidio Analyzer.
+3. Guardrail отправляет строковые поля запроса в Presidio Analyzer: `message.content`, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 4. Analyzer возвращает entity spans, entity types и scores.
 5. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
 6. Guardrail сохраняет placeholder -> original mappings в Redis.
-7. Только после успешного Redis save содержимое message заменяется на masked text.
+7. Только после успешного Redis save исходные строковые поля заменяются на masked text.
 8. LiteLLM отправляет masked request настроенному LLM-провайдеру.
 9. LiteLLM запускает ru-pii-mask-post в режиме post_call.
-10. Guardrail загружает Redis mapping и заменяет placeholders в response content.
+10. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 11. Redis mapping удаляется после post-call обработки.
 
 В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 4, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
@@ -59,6 +59,9 @@ guardrails:
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+        - name: "request_fields"
+          type: "list[string]"
+          description: "Masks message.content, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -70,9 +73,12 @@ guardrails:
         - name: "stage"
           type: "string"
           description: "post_call; restores placeholders in model responses."
+        - name: "response_fields"
+          type: "list[string]"
+          description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
 ```
 
-`async_pre_call_hook` маскирует запросы в `mask` mode или блокирует их в `block` mode. `async_post_call_success_hook` восстанавливает `content` и, если поле присутствует, `reasoning_content`; для заблокированных запросов post-call hook не нужен.
+`async_pre_call_hook` в `mask` mode маскирует `message.content`, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
@@ -224,6 +230,10 @@ Reference: https://docs.litellm.ai/docs/proxy/health
 LiteLLM Admin UI доступен на `/ui`. Для входа используются `UI_USERNAME` и `UI_PASSWORD`, которые `make setup` генерирует в `.env` отдельно от `LITELLM_MASTER_KEY`.
 
 `LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
+
+Для обычного server-funded режима client virtual key передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает upstream через серверные provider keys. Для BYOK passthrough режима client virtual key передаётся как `x-litellm-api-key`, чтобы поддерживаемые provider-specific headers (`x-api-key`, `api-key`, `x-goog-api-key` и аналогичные) могли быть переданы upstream. Этот режим не включён в default config: header forwarding должен включаться явно в отдельном deployment и проходить live validation на текущем LiteLLM image.
+
+Codex/ChatGPT и Claude subscription OAuth обычно требуют provider `Authorization`. Обычный LiteLLM route не считается подтверждённым passthrough для такого header; если live validation покажет, что OAuth `Authorization` не форвардится, нужен pass-through route, sidecar или custom adapter. Shared Codex/Claude auth files на proxy не являются частью этой модели.
 
 Reference: https://docs.litellm.ai/docs/proxy/ui
 
