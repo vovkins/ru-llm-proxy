@@ -268,6 +268,41 @@ grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
 make guardrails-smoke
 ```
 
+## PII block mode
+
+По умолчанию guardrail работает в reversible masking mode:
+
+```env
+PII_GUARDRAIL_MODE=mask
+```
+
+Чтобы отклонять запросы с найденной PII до вызова провайдера, задайте block mode и перезапустите LiteLLM:
+
+```env
+PII_GUARDRAIL_MODE=block
+```
+
+```bash
+make restart
+```
+
+В block mode запрос с PII возвращает `422` и безопасный error body. Ответ содержит только типы сущностей:
+
+```json
+{
+  "error": {
+    "message": "Request contains personal data and was blocked by PII policy.",
+    "type": "pii_detected",
+    "code": "pii_blocked",
+    "details": {
+      "entities": ["PHONE_NUMBER"]
+    }
+  }
+}
+```
+
+Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
+
 ## Sticky routing
 
 Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:

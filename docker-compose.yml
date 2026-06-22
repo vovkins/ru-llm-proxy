@@ -26,6 +26,7 @@ services:
       - JWT_PUBLIC_KEY_URL=${JWT_PUBLIC_KEY_URL:-}
       - JWT_AUDIENCE=${JWT_AUDIENCE:-}
       - PRESIDIO_ANALYZER_URL=${PRESIDIO_ANALYZER_URL:-http://presidio-analyzer:5001}
+      - PII_GUARDRAIL_MODE=${PII_GUARDRAIL_MODE:-mask}
       - PII_GUARDRAIL_FAILURE_MODE=${PII_GUARDRAIL_FAILURE_MODE:-fail_open}
       - PII_MAPPING_TTL_SECONDS=${PII_MAPPING_TTL_SECONDS:-3600}
       # Tell LiteLLM to find our guardrail module
