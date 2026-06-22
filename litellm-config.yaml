@@ -17,6 +17,10 @@ model_list:
       id: z-ai-glm-5-1-alias
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
+
+  # Proxy-facing OpenAI aliases for client gateway readiness.
+  # Validate raw provider model IDs against the pinned LiteLLM image and
+  # your OpenAI account before using these aliases in production.
   - model_name: openai-gpt-5.5
     litellm_params:
       model: openai/gpt-5.5
@@ -33,6 +37,10 @@ model_list:
       id: openai-gpt-5-4-mini-primary
       base_model: gpt-5.4-mini
       access_groups: ["openai", "standard"]
+
+  # Proxy-facing Anthropic aliases for client gateway readiness.
+  # Validate raw provider model IDs against the pinned LiteLLM image and
+  # your Anthropic account before using these aliases in production.
   - model_name: claude-opus-4.8
     litellm_params:
       model: anthropic/claude-opus-4-8

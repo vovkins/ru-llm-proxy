@@ -136,6 +136,10 @@ if [ -z "${LITELLM_MASTER_KEY:-}" ] || [ "${LITELLM_MASTER_KEY:-}" = "sk-replace
     exit 1
 fi
 
+if [ -z "$METADATA_JSON" ]; then
+    METADATA_JSON="{}"
+fi
+
 metadata=$(printf '%s' "$METADATA_JSON" | jq -c '.')
 
 payload=$(

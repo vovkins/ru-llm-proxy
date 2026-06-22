@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
@@ -22,6 +22,7 @@ help:
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
+	@echo "  make test-routing-diagnostics — static test для routing-smoke Makefile target"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
 	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
@@ -65,7 +66,7 @@ logs:
 	docker compose logs -f --tail=50
 
 # === Test ===
-test: test-unit
+test: test-unit test-routing-diagnostics
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"
@@ -81,6 +82,10 @@ test-flow:
 	@echo "🧪 Deterministic guardrail-flow test"
 	docker compose run $(PYTEST_DOCKER_FLAGS) guardrail-tests \
 		$(PYTEST) tests/e2e/test_guardrail_flow.py
+
+test-routing-diagnostics:
+	@echo "🧪 Routing diagnostics static test"
+	python3 tests/test_makefile_routing_smoke.py
 
 # === Health check ===
 health:
@@ -174,14 +179,35 @@ routing-smoke:
 		if [ -z "$$token" ]; then echo "❌ LITELLM_MASTER_KEY or LITELLM_ROUTING_TEST_KEY is required"; exit 1; fi && \
 		first_headers=$$(mktemp) && second_headers=$$(mktemp) && first_body=$$(mktemp) && second_body=$$(mktemp) && \
 		trap 'rm -f "$$first_headers" "$$second_headers" "$$first_body" "$$second_body"' EXIT && \
-		curl -sS -D "$$first_headers" -o "$$first_body" http://localhost:4000/v1/chat/completions \
-			-H "Authorization: Bearer $$token" \
-			-H "Content-Type: application/json" \
-			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 1"}],"max_tokens":16}' >/dev/null && \
-		curl -sS -D "$$second_headers" -o "$$second_body" http://localhost:4000/v1/chat/completions \
-			-H "Authorization: Bearer $$token" \
-			-H "Content-Type: application/json" \
-			-d '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 2"}],"max_tokens":16}' >/dev/null && \
+		run_completion() { \
+			label="$$1"; headers_file="$$2"; body_file="$$3"; payload="$$4"; \
+			error_file=$$(mktemp); \
+			status=$$(curl -sS -D "$$headers_file" -o "$$body_file" -w "%{http_code}" http://localhost:4000/v1/chat/completions \
+				-H "Authorization: Bearer $$token" \
+				-H "Content-Type: application/json" \
+				-d "$$payload" 2>"$$error_file"); \
+			curl_exit=$$?; \
+			if [ "$$curl_exit" -ne 0 ]; then \
+				echo "❌ $$label request failed to reach LiteLLM"; \
+				if [ -s "$$error_file" ]; then sed -n '1,5p' "$$error_file"; fi; \
+				rm -f "$$error_file"; \
+				return 1; \
+			fi; \
+			rm -f "$$error_file"; \
+			case "$$status" in \
+				2??) return 0 ;; \
+				*) \
+					echo "❌ $$label request returned HTTP $$status"; \
+					if [ -s "$$headers_file" ]; then \
+						echo "Response diagnostics:"; \
+						awk 'tolower($$0) ~ /^(content-type|x-request-id|x-litellm-call-id|x-litellm-model-id):/ {gsub(/\r/, "", $$0); print $$0}' "$$headers_file"; \
+					fi; \
+					return 1; \
+					;; \
+			esac; \
+		}; \
+		run_completion "first" "$$first_headers" "$$first_body" '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 1"}],"max_tokens":16}' && \
+		run_completion "second" "$$second_headers" "$$second_body" '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 2"}],"max_tokens":16}' && \
 		first_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$first_headers") && \
 		second_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$second_headers") && \
 		if [ -z "$$first_model" ] || [ -z "$$second_model" ]; then echo "❌ x-litellm-model-id header not found"; exit 1; fi && \
