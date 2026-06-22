@@ -490,6 +490,7 @@ class TestPreCallHook:
         assert data["messages"][0]["content"] == text
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
+        assert exc_info.value.response.status_code == 422
         error_body = exc_info.value.response.json()
         assert error_body == {
             "error": {
@@ -545,6 +546,7 @@ class TestPreCallHook:
         }
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
+        assert exc_info.value.response.status_code == 422
         error_body = exc_info.value.response.json()
         assert error_body["error"]["details"]["entities"] == [
             "PERSON",
@@ -602,6 +604,7 @@ class TestPreCallHook:
         assert message["function_call"]["arguments"] == function_args
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
+        assert exc_info.value.response.status_code == 422
         error_body = exc_info.value.response.json()
         assert error_body["error"]["details"]["entities"] == [
             "PHONE_NUMBER",
@@ -641,13 +644,14 @@ class TestPreCallHook:
                 logging.INFO,
                 logger="litellm_guardrails.pii_guardrail",
             ):
-                with pytest.raises(litellm.UnprocessableEntityError):
+                with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
                     await guardrail.async_pre_call_hook(
                         user_api_key_dict=MagicMock(),
                         cache=MagicMock(),
                         data={"model": "glm-5.1", "messages": [{"role": "user", "content": text}]},
                     )
 
+        assert exc_info.value.response.status_code == 422
         logs = "\n".join(record.getMessage() for record in caplog.records)
         assert "pii_guardrail_blocked" in logs
         assert "PHONE_NUMBER" in logs
@@ -675,13 +679,14 @@ class TestPreCallHook:
                 RuntimeError("analyzer down"),
             ],
         ):
-            with pytest.raises(litellm.UnprocessableEntityError):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
                     data=data,
                 )
 
+        assert exc_info.value.response.status_code == 422
         assert data["messages"][0]["content"] == pii_text
         assert data["messages"][1]["content"] == later_text
         assert "metadata" not in data
