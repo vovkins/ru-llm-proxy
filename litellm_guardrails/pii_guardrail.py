@@ -110,6 +110,15 @@ FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
+ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
+
+
+class AnalyzerOverloadedError(RuntimeError):
+    """Raised when the Presidio Analyzer rejects work due to capacity policy."""
+
+    def __init__(self, reason: str = "unknown"):
+        super().__init__(f"Presidio Analyzer overloaded: {reason}")
+        self.reason = reason
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -227,6 +236,17 @@ class RuPIIGuardrail(CustomGuardrail):
         if self.failure_mode == "fail_closed":
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
+
+    def _raise_analyzer_overloaded(self, error: AnalyzerOverloadedError) -> None:
+        """Fail closed on capacity overload even when other failures fail open."""
+        PII_FAIL_CLOSED.labels(operation="analyzer_overloaded").inc()
+        _safe_log(
+            logging.ERROR,
+            "pii_guardrail_analyzer_overloaded",
+            failure_mode="fail_closed",
+            reason=error.reason,
+        )
+        raise RuntimeError(ANALYZER_OVERLOADED_MESSAGE) from error
 
     async def _get_redis(self):
         """Lazy Redis connection."""
@@ -412,6 +432,17 @@ class RuPIIGuardrail(CustomGuardrail):
                     f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
                     json={"text": text, "language": "ru", "score_threshold": 0.35},
                 )
+                if response.status_code == 503:
+                    try:
+                        detail = response.json().get("detail", {})
+                    except ValueError:
+                        detail = {}
+                    if isinstance(detail, dict) and (
+                        detail.get("code") == "analyzer_overloaded"
+                    ):
+                        raise AnalyzerOverloadedError(
+                            reason=str(detail.get("reason") or "unknown")
+                        )
                 response.raise_for_status()
                 data = response.json()
                 return data.get("entities", [])
@@ -673,6 +704,9 @@ class RuPIIGuardrail(CustomGuardrail):
                     full_mapping.update(mapping)
                     pending_updates.append((target, field, masked_text))
 
+            except AnalyzerOverloadedError as e:
+                PII_PRE_CALLS.labels(result="error").inc()
+                self._raise_analyzer_overloaded(e)
             except Exception as e:
                 if self.pii_mode == "block" and blocked_entity_counts:
                     self._raise_blocked_request(

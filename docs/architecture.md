@@ -183,6 +183,21 @@ Analyzer service — FastAPI приложение в `presidio/analyzer_server.p
 
 LiteLLM guardrail использует Analyzer в основном request path. На `pre_call` guardrail отправляет каждое строковое сообщение в `POST /api/v1/analyze`, получает spans и строит обратимые плейсхолдеры самостоятельно. Без `presidio-analyzer` автоматическая PII-детекция в запросах не работает.
 
+Analyzer имеет явную process-local capacity model:
+
+| Настройка | По умолчанию | Эффект |
+| --- | --- | --- |
+| `PRESIDIO_ANALYZER_WORKERS` | `1` | Количество uvicorn worker processes. Каждый worker загружает отдельный экземпляр spaCy/DeepPavlov, поэтому память растёт примерно линейно. |
+| `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Количество активных analyzer jobs внутри одного worker. Default `1` избегает параллельного доступа к одной DeepPavlov model instance. |
+| `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Максимум запросов, ожидающих свободный slot внутри worker. |
+| `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Максимальное ожидание slot перед `503 analyzer_overloaded`. |
+
+Эффективная ёмкость активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память планируйте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`, потому что uvicorn workers не шарят загруженный DeepPavlov model instance.
+
+`POST /api/v1/analyze` сначала занимает capacity slot, затем выполняет sync Presidio/DeepPavlov работу через threadpool, чтобы не блокировать uvicorn event loop. Capacity slot освобождается после завершения blocking analysis; timeout применяется к ожиданию slot, но не прерывает уже начатый DeepPavlov inference. `GET /api/v1/health` не проходит через limiter и возвращает `capacity` snapshot вместе с `ner`.
+
+`503 analyzer_overloaded` считается fail-closed override для guardrail независимо от `PII_GUARDRAIL_FAILURE_MODE`: LiteLLM останавливает запрос, чтобы перегрузка Analyzer не привела к отправке raw PII провайдеру. Для PII-sensitive deployment используйте `fail_closed` и для остальных инфраструктурных сбоев, а Analyzer масштабируйте через workers/replicas с учётом памяти модели.
+
 Источники детекции:
 
 | Источник | Entity types |

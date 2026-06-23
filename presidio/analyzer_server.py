@@ -1,18 +1,37 @@
 """Presidio Analyzer REST server for ru-llm-proxy."""
 
+import asyncio
 import logging
-from fastapi import FastAPI
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
+from capacity import CapacityRejected, build_limiter_from_env
 from recognizers import ALL_RECOGNIZERS
 from ner import DeepPavlovRecognizer, should_run_ner
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Presidio Analyzer (ru-llm-proxy)")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Load NER model on startup."""
+    logger.info("Loading DeepPavlov NER model...")
+    try:
+        dp_recognizer.load_model()
+        logger.info("DeepPavlov NER model loaded")
+    except Exception as e:
+        logger.error(f"Failed to load DeepPavlov model: {e}")
+        logger.info("Server will start without NER. Regex recognizers still available.")
+    yield
+
+
+app = FastAPI(title="Presidio Analyzer (ru-llm-proxy)", lifespan=lifespan)
 # Configure NLP engine with Russian spaCy model
 nlp_engine_provider = NlpEngineProvider(
     nlp_configuration={
@@ -31,18 +50,7 @@ for recognizer_cls in ALL_RECOGNIZERS:
 
 # Initialize DeepPavlov NER
 dp_recognizer = DeepPavlovRecognizer()
-
-
-@app.on_event("startup")
-async def startup():
-    """Load NER model on startup."""
-    logger.info("Loading DeepPavlov NER model...")
-    try:
-        dp_recognizer.load_model()
-        logger.info("DeepPavlov NER model loaded")
-    except Exception as e:
-        logger.error(f"Failed to load DeepPavlov model: {e}")
-        logger.info("Server will start without NER. Regex recognizers still available.")
+capacity_limiter = build_limiter_from_env()
 
 
 class AnalyzeRequest(BaseModel):
@@ -60,11 +68,61 @@ class AnalyzeResponse(BaseModel):
 @app.get("/api/v1/health")
 async def health():
     ner_status = "loaded" if dp_recognizer.is_loaded() else "not_loaded"
-    return {"status": "ok", "ner": ner_status}
+    return {
+        "status": "ok",
+        "ner": ner_status,
+        "capacity": capacity_limiter.snapshot(),
+    }
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
+    try:
+        async with await capacity_limiter.acquire():
+            return await _run_blocking_analyze(request)
+    except CapacityRejected as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "code": "analyzer_overloaded",
+                "reason": e.reason,
+                "message": str(e),
+            },
+        ) from e
+
+
+async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+    """Run blocking analyzer work without releasing capacity on cancellation."""
+    task = asyncio.create_task(asyncio.to_thread(_analyze_sync, request))
+    cancelled = False
+
+    while True:
+        try:
+            response = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+            if task.done():
+                break
+            continue
+        except Exception as e:
+            if cancelled:
+                logger.error("Analyzer work failed after request cancellation: %s", e)
+                raise asyncio.CancelledError from None
+            raise
+
+        if cancelled:
+            raise asyncio.CancelledError
+        return response
+
+    if task.done():
+        try:
+            task.result()
+        except Exception as e:
+            logger.error("Analyzer work failed after request cancellation: %s", e)
+    raise asyncio.CancelledError
+
+
+def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
     # 1. Run Presidio with regex recognizers
     results = analyzer.analyze(
         text=request.text,
@@ -130,4 +188,6 @@ def _deduplicate(results):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=5001)
+    port = int(os.getenv("PRESIDIO_ANALYZER_PORT", "5001"))
+    workers = int(os.getenv("PRESIDIO_ANALYZER_WORKERS", "1"))
+    uvicorn.run("analyzer_server:app", host="0.0.0.0", port=port, workers=workers)
