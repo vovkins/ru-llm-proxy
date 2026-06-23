@@ -131,6 +131,8 @@ curl -s "$API_URL/v1/responses" \
   }' | jq
 ```
 
+PII guardrail applies to Responses API top-level `instructions` / `input` strings, message-like `input[]` items with string `content`, tool-call `arguments`, tool-output items with string/list `output`, and text blocks with `text`, `input_text`, or `output_text` types. Non-text inputs such as images/files are passed through unchanged.
+
 Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
 
 ```bash
