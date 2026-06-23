@@ -170,6 +170,8 @@ FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
+PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
+PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -601,30 +603,44 @@ class RuPIIGuardrail(CustomGuardrail):
             )
 
     def _get_request_id(self, data: dict) -> str:
-        """Get or generate request ID from data."""
-        # LiteLLM stores request ID in various places
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            req_id = data["metadata"].get("request_id")
-            if req_id:
-                return str(req_id)
-        # Use litellm call id if available
-        if "litellm_call_id" in data:
-            return str(data["litellm_call_id"])
-        # Generate new
+        """Generate a server-side mapping ID for request-scoped PII."""
         return str(uuid.uuid4())
 
     @staticmethod
     def _get_response_request_id(data: dict) -> Optional[str]:
         """Return request ID used for post-call response restoration."""
         metadata = data.get("metadata", {})
-        request_id = (
-            metadata.get("pii_request_id")
-            or metadata.get("request_id")
-            or data.get("litellm_call_id")
-        )
+        if not isinstance(metadata, dict):
+            return None
+        request_id = metadata.get(PII_REQUEST_ID_METADATA_KEY)
         if not request_id:
             return None
         return str(request_id)
+
+    @staticmethod
+    def _mark_streaming_restoration_done(data: dict) -> None:
+        """Mark that streaming iterator hook already handled post-call restoration."""
+        if not isinstance(data.get("metadata"), dict):
+            data["metadata"] = {}
+        data["metadata"][PII_STREAMING_RESTORATION_DONE_METADATA_KEY] = True
+
+    @staticmethod
+    def _streaming_restoration_done(data: dict) -> bool:
+        """Return whether streaming iterator hook already handled this response."""
+        metadata = data.get("metadata", {})
+        return (
+            isinstance(metadata, dict)
+            and metadata.get(PII_STREAMING_RESTORATION_DONE_METADATA_KEY) is True
+        )
+
+    @staticmethod
+    def _clear_inbound_pii_metadata(data: dict) -> None:
+        """Remove caller-supplied guardrail-internal metadata from a new request."""
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        metadata.pop(PII_REQUEST_ID_METADATA_KEY, None)
+        metadata.pop(PII_STREAMING_RESTORATION_DONE_METADATA_KEY, None)
 
     @staticmethod
     def _entity_counts_from_mapping(mapping: dict[str, str]) -> dict[str, int]:
@@ -703,6 +719,7 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
         """Apply request-time PII policy before sending to LLM."""
+        self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
         if not request_targets:
             PII_PRE_CALLS.labels(result="skipped").inc()
@@ -770,10 +787,10 @@ class RuPIIGuardrail(CustomGuardrail):
             for target, field, masked_text in pending_updates:
                 target[field] = masked_text
 
-            # Store request_id in data for post-call hook
+            # Store internal mapping ID in data for post-call hooks.
             if not isinstance(data.get("metadata"), dict):
                 data["metadata"] = {}
-            data["metadata"]["pii_request_id"] = request_id
+            data["metadata"][PII_REQUEST_ID_METADATA_KEY] = request_id
             entity_counts_for_log = self._entity_counts_from_mapping(full_mapping)
             self._record_entities(entity_counts_for_log)
             PII_MAPPING_SIZE.observe(len(full_mapping))
@@ -798,7 +815,10 @@ class RuPIIGuardrail(CustomGuardrail):
         response: Any,
     ) -> None:
         """Unmask PII in response after receiving from LLM."""
-        if data.get("stream") is True:
+        if data.get("stream") is True and (
+            self._streaming_restoration_done(data)
+            or not isinstance(response, litellm.ModelResponse)
+        ):
             PII_POST_CALLS.labels(result="skipped").inc()
             return
 
@@ -973,6 +993,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 "pii_guardrail_no_mapping",
                 request_id=request_id,
             )
+            self._mark_streaming_restoration_done(request_data)
             async for item in response:
                 yield item
             return
@@ -1005,6 +1026,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 restored_fields += 1
                 yield self._build_stream_flush_chunk(choice_index, field, text)
         finally:
+            self._mark_streaming_restoration_done(request_data)
             try:
                 await self._delete_mapping(request_id)
             except Exception as e:

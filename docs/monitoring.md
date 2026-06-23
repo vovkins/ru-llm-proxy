@@ -175,6 +175,7 @@ sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 ## Logs
 
 Guardrail пишет structured JSON logs без prompt text и без raw PII.
+Поле `request_id` в событиях guardrail — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
 
 Основные события:
 
@@ -195,7 +196,7 @@ DevOps-рекомендации:
 - собирать stdout/stderr всех контейнеров через штатный log collector;
 - парсить JSON logs guardrail как отдельный источник security telemetry;
 - не включать debug-логи внешнего LLM provider в production без отдельного privacy review;
-- хранить `request_id` как correlation id, но не использовать его как Prometheus label.
+- хранить `request_id` как guardrail mapping id, но не использовать его как Prometheus label.
 
 ## Guardrails UI
 
