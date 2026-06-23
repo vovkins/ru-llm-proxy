@@ -397,6 +397,35 @@ class TestPreCallHook:
                 )
 
         assert "analyzer overloaded" in str(exc_info.value)
+        assert data["messages"][0]["content"] == "Мой телефон +79031234567"
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_analyzer_overload_fails_closed(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        data = {
+            "stream": True,
+            "messages": [
+                {"role": "user", "content": "Мой телефон +79031234567"},
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=AnalyzerOverloadedError(reason="queue_timeout"),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert "analyzer overloaded" in str(exc_info.value)
+        assert data["messages"][0]["content"] == "Мой телефон +79031234567"
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
 
