@@ -170,7 +170,9 @@ sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 
 Ошибки на уровне LiteLLM proxy.
 
-Для Analyzer health отдельно проверьте поле `ner` в `GET /api/v1/health`. Если оно равно `not_loaded`, regex recognizers продолжают работать, но `PERSON`, `LOCATION` и `ORGANIZATION` через DeepPavlov NER не детектируются.
+Для Analyzer health отдельно проверьте `GET /api/v1/health`. Поле `ner` показывает загрузку DeepPavlov: если оно равно `not_loaded`, regex recognizers продолжают работать, но `PERSON`, `LOCATION` и `ORGANIZATION` через DeepPavlov NER не детектируются. Поле `capacity` показывает process-local limiter: `active`, `waiting`, `concurrency_limit`, `queue_limit` и `queue_timeout_seconds`.
+
+Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded` и reason `queue_full` или `queue_timeout`. Для LiteLLM guardrail это infrastructure failure: в `PII_GUARDRAIL_FAILURE_MODE=fail_open` запрос может пройти без маскирования, в `fail_closed` будет остановлен. Если `waiting` часто приближается к `queue_limit`, увеличивайте replicas/workers только с учётом памяти: каждый uvicorn worker загружает отдельную spaCy/DeepPavlov model instance.
 
 ## Logs
 
@@ -243,6 +245,7 @@ docker compose up -d --force-recreate --no-deps litellm
 | Изменился `litellm-config.yaml` | `make restart` |
 | Изменился `litellm_guardrails/*.py` | `make restart` |
 | Изменился `.env` для LiteLLM | `docker compose up -d --force-recreate --no-deps litellm` |
+| Изменились `PRESIDIO_ANALYZER_*` runtime limits | `docker compose up -d --force-recreate --no-deps presidio-analyzer` |
 | Изменился `presidio/Dockerfile` или analyzer dependencies | `make build`, затем `make up` |
 
 Production-рекомендация: после staging-проверки фиксируйте конкретный LiteLLM tag или image digest вместо долгого использования плавающего `main-stable`. Перед обновлением сделайте backup PostgreSQL volume/database, потому что в PostgreSQL хранится состояние LiteLLM: virtual keys, users, budgets и usage/spend data.

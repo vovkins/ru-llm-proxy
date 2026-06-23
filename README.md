@@ -143,12 +143,16 @@ POSTGRES_PASSWORD=...           # автогенерируется через ma
 LITELLM_DB_URL=postgresql://litellm:...@db:5432/litellm
 REDIS_URL=redis://redis:6379
 PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+PRESIDIO_ANALYZER_WORKERS=1
+PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=1
+PRESIDIO_ANALYZER_QUEUE_LIMIT=8
+PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
 PII_GUARDRAIL_MODE=mask
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -159,6 +163,19 @@ DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
 ```
 
 `DEEPPAVLOV_NER_MODEL_SHA256` опционален, но для воспроизводимой и более строгой сборки его стоит заполнить после доверенной загрузки архива.
+
+Runtime capacity Analyzer:
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `PRESIDIO_ANALYZER_WORKERS` | `1` | Количество uvicorn worker processes. Каждый worker загружает отдельную копию spaCy/DeepPavlov model, поэтому память растёт примерно линейно. |
+| `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Максимум активных Analyzer requests внутри одного worker. Значение `1` безопаснее для DeepPavlov/PyTorch inference. |
+| `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
+| `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
+
+Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
+
+При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. Для LiteLLM guardrail это infrastructure failure: при `PII_GUARDRAIL_FAILURE_MODE=fail_open` запрос может пройти дальше без маскирования, а при `fail_closed` будет остановлен. Для PII-sensitive окружений используйте `fail_closed` и масштабируйте Analyzer workers/replicas под доступную память.
 
 ### PII policy mode
 
