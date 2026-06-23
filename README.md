@@ -8,7 +8,7 @@ LLM-прокси с санитайзером персональных данны
 
 ✅ **MVP работает** — в проекте есть LiteLLM Proxy, Presidio Analyzer, русские PII recognizers, DeepPavlov NER, Redis-маппинг для обратимого восстановления, sticky routing к provider deployments и Docker-based тесты.
 
-⚠️ **Текущие ограничения** — streaming response restoration не реализован; восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе.
+⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются.
 
 ## Что маскируется
 
@@ -551,6 +551,7 @@ curl http://localhost:5001/api/v1/health | jq
 
 - coding plan может вернуть ответ в `reasoning_content`;
 - guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks и function/tool call arguments.
+- для streaming responses guardrail восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между соседними чанками.
 
 **Запросы с PII возвращают `422`:**
 
