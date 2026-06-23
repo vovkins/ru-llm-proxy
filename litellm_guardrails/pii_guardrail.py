@@ -250,7 +250,12 @@ class RuPIIGuardrail(CustomGuardrail):
                 if not isinstance(block, dict):
                     continue
                 block_type = block.get("type")
-                if block_type in (None, "text", "input_text") and isinstance(
+                if block_type in (
+                    None,
+                    "text",
+                    "input_text",
+                    "output_text",
+                ) and isinstance(
                     block.get("text"),
                     str,
                 ):
@@ -275,6 +280,48 @@ class RuPIIGuardrail(CustomGuardrail):
         ):
             targets.append((function_call, "arguments"))
 
+        return targets
+
+    @classmethod
+    def _iter_responses_input_text_targets(cls, data: dict) -> list[tuple[dict, str]]:
+        """Return mutable Responses API input text fields."""
+        if not isinstance(data, dict) or "input" not in data:
+            return []
+
+        input_value = data.get("input")
+        if isinstance(input_value, str):
+            return [(data, "input")]
+
+        if not isinstance(input_value, list):
+            return []
+
+        targets: list[tuple[dict, str]] = []
+        for item in input_value:
+            if not isinstance(item, dict):
+                continue
+
+            item_type = item.get("type")
+            if item_type in ("text", "input_text", "output_text") and isinstance(
+                item.get("text"),
+                str,
+            ):
+                targets.append((item, "text"))
+
+            targets.extend(cls._iter_message_text_targets(item))
+
+        return targets
+
+    @classmethod
+    def _iter_request_text_targets(cls, data: dict) -> list[tuple[dict, str]]:
+        """Return request text fields covered by the guardrail."""
+        targets: list[tuple[dict, str]] = []
+
+        messages = data.get("messages")
+        if isinstance(messages, list):
+            for message in messages:
+                targets.extend(cls._iter_message_text_targets(message))
+
+        targets.extend(cls._iter_responses_input_text_targets(data))
         return targets
 
     @staticmethod
@@ -554,8 +601,8 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
         """Apply request-time PII policy before sending to LLM."""
-        messages = data.get("messages")
-        if not messages:
+        request_targets = self._iter_request_text_targets(data)
+        if not request_targets:
             PII_PRE_CALLS.labels(result="skipped").inc()
             return data
 
@@ -565,45 +612,47 @@ class RuPIIGuardrail(CustomGuardrail):
         blocked_entity_counts: dict[str, int] = {}
         pending_updates = []
 
-        for message in messages:
-            for target, field in self._iter_message_text_targets(message):
-                content = target[field]
-                if not content.strip():
+        for target, field in request_targets:
+            content = target[field]
+            if not content.strip():
+                continue
+
+            try:
+                entities = await self._analyze_text(content)
+                if not entities:
                     continue
 
-                try:
-                    entities = await self._analyze_text(content)
-                    if not entities:
-                        continue
-
-                    if self.pii_mode == "block":
-                        normalized_entities = self._normalize_entities(content, entities)
-                        for entity_type, count in self._entity_counts_from_normalized_entities(
+                if self.pii_mode == "block":
+                    normalized_entities = self._normalize_entities(content, entities)
+                    entity_counts_for_block = (
+                        self._entity_counts_from_normalized_entities(
                             normalized_entities
-                        ).items():
-                            blocked_entity_counts[entity_type] = (
-                                blocked_entity_counts.get(entity_type, 0) + count
-                            )
-                        continue
-
-                    masked_text, mapping = self._mask_text(
-                        content,
-                        entities,
-                        entity_counts,
-                    )
-                    if mapping:
-                        full_mapping.update(mapping)
-                        pending_updates.append((target, field, masked_text))
-
-                except Exception as e:
-                    if self.pii_mode == "block" and blocked_entity_counts:
-                        self._raise_blocked_request(
-                            data,
-                            request_id,
-                            blocked_entity_counts,
                         )
-                    PII_PRE_CALLS.labels(result="error").inc()
-                    return self._handle_failure("masking", e, data)
+                    )
+                    for entity_type, count in entity_counts_for_block.items():
+                        blocked_entity_counts[entity_type] = (
+                            blocked_entity_counts.get(entity_type, 0) + count
+                        )
+                    continue
+
+                masked_text, mapping = self._mask_text(
+                    content,
+                    entities,
+                    entity_counts,
+                )
+                if mapping:
+                    full_mapping.update(mapping)
+                    pending_updates.append((target, field, masked_text))
+
+            except Exception as e:
+                if self.pii_mode == "block" and blocked_entity_counts:
+                    self._raise_blocked_request(
+                        data,
+                        request_id,
+                        blocked_entity_counts,
+                    )
+                PII_PRE_CALLS.labels(result="error").inc()
+                return self._handle_failure("masking", e, data)
 
         if blocked_entity_counts:
             self._raise_blocked_request(data, request_id, blocked_entity_counts)
