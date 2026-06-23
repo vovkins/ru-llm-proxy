@@ -92,7 +92,7 @@ guardrails:
           description: "PHONE_NUMBER, EMAIL_ADDRESS, RU_INN, RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, PERSON, LOCATION, ORGANIZATION."
         - name: "mapping_store"
           type: "string"
-          description: "Redis key pii_mapping:<request_id> with TTL from PII_MAPPING_TTL_SECONDS."
+          description: "Redis key pii_mapping:<pii_request_id> with server-generated mapping id and TTL from PII_MAPPING_TTL_SECONDS."
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
@@ -112,10 +112,13 @@ guardrails:
           description: "post_call; restores request-scoped placeholders in model responses."
         - name: "response_fields"
           type: "list[string]"
-          description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Non-streaming: content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments. Streaming: delta.content and delta.reasoning_content."
+        - name: "streaming"
+          type: "string"
+          description: "async_post_call_streaming_iterator_hook restores placeholders across chunk boundaries and deletes Redis mapping when the stream ends."
         - name: "mapping_cleanup"
           type: "string"
-          description: "Deletes Redis pii_mapping:<request_id> after successful post-call processing."
+          description: "Deletes Redis pii_mapping:<pii_request_id> after successful post-call or streaming iterator processing."
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

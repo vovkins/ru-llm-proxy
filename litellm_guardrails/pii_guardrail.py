@@ -36,6 +36,66 @@ class _NoopMetric:
         return None
 
 
+class _StreamingPlaceholderReplacer:
+    """Chunk-safe placeholder replacement for independently streamed text fields."""
+
+    def __init__(self, mapping: dict[str, str]):
+        self._mapping = mapping
+        self._placeholders = sorted(mapping, key=len, reverse=True)
+        self._pending: dict[tuple[int, str], str] = {}
+
+    def push(self, key: tuple[int, str], text: str) -> str:
+        """Return text safe to emit now, keeping possible placeholder prefixes."""
+        combined = self._pending.get(key, "") + text
+        emit, pending = self._split_safe_prefix(combined)
+        self._pending[key] = pending
+        return self._replace(emit)
+
+    def flush(self, key: tuple[int, str]) -> str:
+        """Flush pending text for one stream field."""
+        pending = self._pending.pop(key, "")
+        return self._replace(pending)
+
+    def flush_choice(self, choice_index: int) -> dict[str, str]:
+        """Flush all pending fields for one choice."""
+        flushed: dict[str, str] = {}
+        for key in list(self._pending):
+            key_choice_index, field = key
+            if key_choice_index != choice_index:
+                continue
+            value = self.flush(key)
+            if value:
+                flushed[field] = flushed.get(field, "") + value
+        return flushed
+
+    def flush_all(self) -> dict[tuple[int, str], str]:
+        """Flush all remaining pending fields."""
+        flushed: dict[tuple[int, str], str] = {}
+        for key in list(self._pending):
+            value = self.flush(key)
+            if value:
+                flushed[key] = value
+        return flushed
+
+    def _split_safe_prefix(self, text: str) -> tuple[str, str]:
+        keep = 0
+        for length in range(1, len(text) + 1):
+            suffix = text[-length:]
+            if any(
+                suffix != placeholder and placeholder.startswith(suffix)
+                for placeholder in self._placeholders
+            ):
+                keep = length
+        if keep == 0:
+            return text, ""
+        return text[:-keep], text[-keep:]
+
+    def _replace(self, text: str) -> str:
+        for placeholder in self._placeholders:
+            text = text.replace(placeholder, self._mapping[placeholder])
+        return text
+
+
 def _build_metric(factory, *args, **kwargs):
     """Create a Prometheus metric or a no-op replacement."""
     if factory is None:
@@ -110,6 +170,8 @@ FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
+PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
+PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 
 
@@ -572,17 +634,44 @@ class RuPIIGuardrail(CustomGuardrail):
             )
 
     def _get_request_id(self, data: dict) -> str:
-        """Get or generate request ID from data."""
-        # LiteLLM stores request ID in various places
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            req_id = data["metadata"].get("request_id")
-            if req_id:
-                return str(req_id)
-        # Use litellm call id if available
-        if "litellm_call_id" in data:
-            return str(data["litellm_call_id"])
-        # Generate new
+        """Generate a server-side mapping ID for request-scoped PII."""
         return str(uuid.uuid4())
+
+    @staticmethod
+    def _get_response_request_id(data: dict) -> Optional[str]:
+        """Return request ID used for post-call response restoration."""
+        metadata = data.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return None
+        request_id = metadata.get(PII_REQUEST_ID_METADATA_KEY)
+        if not request_id:
+            return None
+        return str(request_id)
+
+    @staticmethod
+    def _mark_streaming_restoration_done(data: dict) -> None:
+        """Mark that streaming iterator hook already handled post-call restoration."""
+        if not isinstance(data.get("metadata"), dict):
+            data["metadata"] = {}
+        data["metadata"][PII_STREAMING_RESTORATION_DONE_METADATA_KEY] = True
+
+    @staticmethod
+    def _streaming_restoration_done(data: dict) -> bool:
+        """Return whether streaming iterator hook already handled this response."""
+        metadata = data.get("metadata", {})
+        return (
+            isinstance(metadata, dict)
+            and metadata.get(PII_STREAMING_RESTORATION_DONE_METADATA_KEY) is True
+        )
+
+    @staticmethod
+    def _clear_inbound_pii_metadata(data: dict) -> None:
+        """Remove caller-supplied guardrail-internal metadata from a new request."""
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        metadata.pop(PII_REQUEST_ID_METADATA_KEY, None)
+        metadata.pop(PII_STREAMING_RESTORATION_DONE_METADATA_KEY, None)
 
     @staticmethod
     def _entity_counts_from_mapping(mapping: dict[str, str]) -> dict[str, int]:
@@ -661,6 +750,7 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
         """Apply request-time PII policy before sending to LLM."""
+        self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
         if not request_targets:
             PII_PRE_CALLS.labels(result="skipped").inc()
@@ -731,10 +821,10 @@ class RuPIIGuardrail(CustomGuardrail):
             for target, field, masked_text in pending_updates:
                 target[field] = masked_text
 
-            # Store request_id in data for post-call hook
+            # Store internal mapping ID in data for post-call hooks.
             if not isinstance(data.get("metadata"), dict):
                 data["metadata"] = {}
-            data["metadata"]["pii_request_id"] = request_id
+            data["metadata"][PII_REQUEST_ID_METADATA_KEY] = request_id
             entity_counts_for_log = self._entity_counts_from_mapping(full_mapping)
             self._record_entities(entity_counts_for_log)
             PII_MAPPING_SIZE.observe(len(full_mapping))
@@ -759,17 +849,17 @@ class RuPIIGuardrail(CustomGuardrail):
         response: Any,
     ) -> None:
         """Unmask PII in response after receiving from LLM."""
-        # Get request ID
-        metadata = data.get("metadata", {})
-        request_id = (
-            metadata.get("pii_request_id")
-            or metadata.get("request_id")
-            or data.get("litellm_call_id")
-        )
+        if data.get("stream") is True and (
+            self._streaming_restoration_done(data)
+            or not isinstance(response, litellm.ModelResponse)
+        ):
+            PII_POST_CALLS.labels(result="skipped").inc()
+            return
+
+        request_id = self._get_response_request_id(data)
         if not request_id:
             PII_POST_CALLS.labels(result="skipped").inc()
             return
-        request_id = str(request_id)
 
         # Load mapping
         try:
@@ -831,6 +921,163 @@ class RuPIIGuardrail(CustomGuardrail):
         _safe_log(
             logging.INFO,
             "pii_guardrail_restored",
+            request_id=request_id,
+            mapping_size=len(mapping),
+            restored_fields=restored_fields,
+        )
+
+    @classmethod
+    def _iter_stream_delta_text_targets(
+        cls,
+        chunk: Any,
+    ) -> list[tuple[int, Any, str]]:
+        """Return stream delta text fields that can contain placeholders."""
+        targets: list[tuple[int, Any, str]] = []
+        choices = getattr(chunk, "choices", None)
+        if not isinstance(choices, list):
+            return targets
+
+        for choice in choices:
+            try:
+                choice_index = int(cls._get_container_field(choice, "index") or 0)
+            except (TypeError, ValueError):
+                choice_index = 0
+
+            delta = cls._get_container_field(choice, "delta")
+            if delta is None:
+                continue
+
+            for field in ("content", "reasoning_content"):
+                value = cls._get_container_field(delta, field)
+                if isinstance(value, str):
+                    targets.append((choice_index, delta, field))
+
+        return targets
+
+    @classmethod
+    def _append_stream_delta_text(cls, delta: Any, field: str, text: str) -> None:
+        """Append restored trailing text to a stream delta field."""
+        current_value = cls._get_container_field(delta, field)
+        if isinstance(current_value, str):
+            cls._set_container_field(delta, field, current_value + text)
+        else:
+            cls._set_container_field(delta, field, text)
+
+    def _flush_stream_choice(
+        self,
+        choice: Any,
+        replacer: _StreamingPlaceholderReplacer,
+    ) -> None:
+        """Flush pending text for a finished streaming choice onto its delta."""
+        try:
+            choice_index = int(self._get_container_field(choice, "index") or 0)
+        except (TypeError, ValueError):
+            choice_index = 0
+
+        delta = self._get_container_field(choice, "delta")
+        if delta is None:
+            return
+
+        for field, text in replacer.flush_choice(choice_index).items():
+            self._append_stream_delta_text(delta, field, text)
+
+    @staticmethod
+    def _build_stream_flush_chunk(
+        choice_index: int,
+        field: str,
+        text: str,
+    ) -> Any:
+        """Build a final stream chunk for pending text when no finish chunk exists."""
+        return litellm.ModelResponseStream(
+            choices=[
+                litellm.StreamingChoices(
+                    index=choice_index,
+                    delta={field: text},
+                )
+            ]
+        )
+
+    async def async_post_call_streaming_iterator_hook(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,
+        response: Any,
+        request_data: dict,
+    ):
+        """Unmask placeholders in streaming response chunks."""
+        request_id = self._get_response_request_id(request_data)
+        if not request_id:
+            PII_POST_CALLS.labels(result="skipped").inc()
+            async for item in response:
+                yield item
+            return
+
+        try:
+            mapping = await self._load_mapping(request_id)
+        except Exception as e:
+            PII_POST_CALLS.labels(result="error").inc()
+            self._handle_failure("stream mapping load", e, request_data)
+            async for item in response:
+                yield item
+            return
+
+        if not mapping:
+            PII_POST_CALLS.labels(result="no_mapping").inc()
+            _safe_log(
+                logging.INFO,
+                "pii_guardrail_no_mapping",
+                request_id=request_id,
+            )
+            self._mark_streaming_restoration_done(request_data)
+            async for item in response:
+                yield item
+            return
+
+        replacer = _StreamingPlaceholderReplacer(mapping)
+        restored_fields = 0
+        try:
+            async for item in response:
+                for choice_index, target, field in self._iter_stream_delta_text_targets(
+                    item
+                ):
+                    original_value = self._get_container_field(target, field)
+                    restored_value = replacer.push(
+                        (choice_index, field),
+                        original_value,
+                    )
+                    if restored_value != original_value:
+                        restored_fields += 1
+                    self._set_container_field(target, field, restored_value)
+
+                choices = getattr(item, "choices", None)
+                if isinstance(choices, list):
+                    for choice in choices:
+                        if self._get_container_field(choice, "finish_reason") is not None:
+                            self._flush_stream_choice(choice, replacer)
+
+                yield item
+
+            for (choice_index, field), text in replacer.flush_all().items():
+                restored_fields += 1
+                yield self._build_stream_flush_chunk(choice_index, field, text)
+        finally:
+            self._mark_streaming_restoration_done(request_data)
+            try:
+                await self._delete_mapping(request_id)
+            except Exception as e:
+                PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+                _safe_log(
+                    logging.WARNING,
+                    "pii_guardrail_cleanup_failed",
+                    request_id=request_id,
+                    error_type=type(e).__name__,
+                )
+
+        PII_POST_CALLS.labels(
+            result="restored" if restored_fields else "no_placeholders"
+        ).inc()
+        _safe_log(
+            logging.INFO,
+            "pii_guardrail_stream_restored",
             request_id=request_id,
             mapping_size=len(mapping),
             restored_fields=restored_fields,

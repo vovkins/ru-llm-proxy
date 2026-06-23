@@ -372,4 +372,20 @@ make restart
 
 ## Streaming
 
-LiteLLM может принимать streaming requests, но в проекте пока не реализовано streaming response restoration. Не используйте `stream: true` для сценариев, где восстановление PII в ответе обязательно.
+LiteLLM принимает streaming requests, а `ru-pii-mask-post` восстанавливает request-scoped placeholders в streaming `delta.content` и `delta.reasoning_content`. Guardrail удерживает возможный суффикс placeholder между чанками, поэтому `<PHONE_` в одном чанке и `NUMBER_1>` в следующем клиент получит как исходное значение из Redis mapping.
+
+```bash
+curl -sS "$API_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "glm-5.1",
+    "stream": true,
+    "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
+    "messages": [
+      {"role": "user", "content": "Проверь телефон +79031234567"}
+    ]
+  }'
+```
+
+Streaming restoration покрывает текстовые deltas. Если провайдер стримит placeholders внутри tool/function-call argument deltas, они могут остаться в ответе как placeholders; raw PII при этом не раскрывается.

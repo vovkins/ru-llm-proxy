@@ -183,6 +183,7 @@ Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded
 ## Logs
 
 Guardrail пишет structured JSON logs без prompt text и без raw PII.
+Поле `request_id` в событиях guardrail — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
 
 Основные события:
 
@@ -191,6 +192,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
 | `pii_guardrail_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |
+| `pii_guardrail_stream_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
 | `pii_guardrail_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |
 | `pii_guardrail_failed_closed` | `ERROR` | `operation`, `failure_mode`, `error_type` |
@@ -203,7 +205,7 @@ DevOps-рекомендации:
 - собирать stdout/stderr всех контейнеров через штатный log collector;
 - парсить JSON logs guardrail как отдельный источник security telemetry;
 - не включать debug-логи внешнего LLM provider в production без отдельного privacy review;
-- хранить `request_id` как correlation id, но не использовать его как Prometheus label.
+- хранить `request_id` как guardrail mapping id, но не использовать его как Prometheus label.
 
 ## Guardrails UI
 
