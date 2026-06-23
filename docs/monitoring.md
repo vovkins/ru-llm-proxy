@@ -147,6 +147,12 @@ increase(ru_pii_guardrail_fail_closed_total[5m]) > 0
 Есть fail-closed событие: запрос был остановлен guardrail.
 
 ```promql
+increase(ru_pii_guardrail_fail_closed_total{operation="analyzer_overloaded"}[5m]) > 0
+```
+
+Analyzer capacity limiter отклонил запрос, и guardrail остановил его как fail-closed override.
+
+```promql
 sum(rate(ru_pii_guardrail_pre_calls_total{result="error"}[5m])) > 0
 ```
 
@@ -170,7 +176,9 @@ sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 
 Ошибки на уровне LiteLLM proxy.
 
-Для Analyzer health отдельно проверьте поле `ner` в `GET /api/v1/health`. Если оно равно `not_loaded`, regex recognizers продолжают работать, но `PERSON`, `LOCATION` и `ORGANIZATION` через DeepPavlov NER не детектируются.
+Для Analyzer health отдельно проверьте `GET /api/v1/health`. Поле `ner` показывает загрузку DeepPavlov: если оно равно `not_loaded`, regex recognizers продолжают работать, но `PERSON`, `LOCATION` и `ORGANIZATION` через DeepPavlov NER не детектируются. Поле `capacity` показывает process-local limiter: `active`, `waiting`, `concurrency_limit`, `queue_limit` и `queue_timeout_seconds`.
+
+Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded` и reason `queue_full` или `queue_timeout`. Для LiteLLM guardrail это fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы перегрузка Analyzer не отправила raw PII провайдеру. Если `waiting` часто приближается к `queue_limit`, увеличивайте replicas/workers только с учётом памяти: каждый uvicorn worker загружает отдельную spaCy/DeepPavlov model instance.
 
 ## Logs
 
@@ -188,6 +196,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
 | `pii_guardrail_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |
 | `pii_guardrail_failed_closed` | `ERROR` | `operation`, `failure_mode`, `error_type` |
+| `pii_guardrail_analyzer_overloaded` | `ERROR` | `failure_mode`, `reason` |
 | `pii_guardrail_cleanup_failed` | `WARNING` | `request_id`, `error_type` |
 | `pii_guardrail_unsupported_response` | `WARNING` | `request_id`, `response_type`, `mapping_size` |
 
@@ -245,6 +254,7 @@ docker compose up -d --force-recreate --no-deps litellm
 | Изменился `litellm-config.yaml` | `make restart` |
 | Изменился `litellm_guardrails/*.py` | `make restart` |
 | Изменился `.env` для LiteLLM | `docker compose up -d --force-recreate --no-deps litellm` |
+| Изменились `PRESIDIO_ANALYZER_*` runtime limits | `docker compose up -d --force-recreate --no-deps presidio-analyzer` |
 | Изменился `presidio/Dockerfile` или analyzer dependencies | `make build`, затем `make up` |
 
 Production-рекомендация: после staging-проверки фиксируйте конкретный LiteLLM tag или image digest вместо долгого использования плавающего `main-stable`. Перед обновлением сделайте backup PostgreSQL volume/database, потому что в PostgreSQL хранится состояние LiteLLM: virtual keys, users, budgets и usage/spend data.

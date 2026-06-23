@@ -35,8 +35,10 @@ RUN python download_model.py
 
 WORKDIR /app
 COPY analyzer_server.py .
+COPY capacity.py .
 COPY recognizers/ ./recognizers/
 COPY ner/ ./ner/
 
 EXPOSE 5001
-CMD ["python", "analyzer_server.py"]
+ENV PRESIDIO_ANALYZER_WORKERS=1
+CMD ["sh", "-c", "exec uvicorn analyzer_server:app --host 0.0.0.0 --port 5001 --workers \"$PRESIDIO_ANALYZER_WORKERS\""]

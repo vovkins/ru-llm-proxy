@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import litellm
 import pytest
 
-import litellm_guardrails.pii_guardrail as pii_guardrail_module
-from litellm_guardrails.pii_guardrail import RuPIIGuardrail
+from litellm_guardrails.pii_guardrail import AnalyzerOverloadedError, RuPIIGuardrail
 
 
 def _entity(text, value, entity_type="PHONE_NUMBER", score=1.0):
@@ -149,6 +148,31 @@ class TestAnalyzeText:
             result = await guardrail._analyze_text("Обычный текст без PII")
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_raises_analyzer_overloaded_for_capacity_503(self, guardrail):
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.json.return_value = {
+            "detail": {
+                "code": "analyzer_overloaded",
+                "reason": "queue_timeout",
+                "message": "Timed out waiting for Presidio Analyzer capacity.",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_instance = AsyncMock()
+        mock_instance.post.return_value = mock_response
+        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+        mock_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient", return_value=mock_instance):
+            with pytest.raises(AnalyzerOverloadedError) as exc_info:
+                await guardrail._analyze_text("Мой телефон +79031234567")
+
+        assert exc_info.value.reason == "queue_timeout"
+        mock_response.raise_for_status.assert_not_called()
 
 
 # === _mask_text ===
@@ -351,6 +375,61 @@ class TestPreCallHook:
         }
 
     @pytest.mark.asyncio
+    async def test_analyzer_overload_fails_closed_even_in_fail_open_mode(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        data = {
+            "messages": [
+                {"role": "user", "content": "Мой телефон +79031234567"},
+            ]
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=AnalyzerOverloadedError(reason="queue_full"),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert "analyzer overloaded" in str(exc_info.value)
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_analyzer_overload_fails_closed_for_responses_input(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "openai-gpt-5.4-mini",
+            "instructions": "Не раскрывай телефон +79031234567",
+            "input": "Расскажи joke",
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=AnalyzerOverloadedError(reason="queue_timeout"),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert "analyzer overloaded" in str(exc_info.value)
+        assert data["instructions"] == "Не раскрывай телефон +79031234567"
+        assert data["input"] == "Расскажи joke"
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_streaming_request_analyzer_overload_fails_closed(self):
         guardrail = RuPIIGuardrail(failure_mode="fail_open")
         guardrail._redis = _mock_redis()
@@ -364,9 +443,7 @@ class TestPreCallHook:
         with patch.object(
             guardrail,
             "_analyze_text",
-            side_effect=pii_guardrail_module.AnalyzerOverloadedError(
-                reason="queue_timeout"
-            ),
+            side_effect=AnalyzerOverloadedError(reason="queue_timeout"),
         ):
             with pytest.raises(RuntimeError) as exc_info:
                 await guardrail.async_pre_call_hook(
@@ -1481,6 +1558,10 @@ async def _stream_chunks(chunks):
         yield chunk
 
 
+async def _anext(stream):
+    return await stream.__anext__()
+
+
 async def _broken_stream(first_chunk):
     yield first_chunk
     raise RuntimeError("upstream stream failed")
@@ -1651,7 +1732,7 @@ class TestStreamingPostCallHook:
         )
 
         with pytest.raises(RuntimeError, match="PII guardrail stream mapping load failed"):
-            await anext(result_stream)
+            await _anext(result_stream)
 
         guardrail._redis.delete.assert_not_called()
 
@@ -1677,11 +1758,11 @@ class TestStreamingPostCallHook:
             request_data={"metadata": {"pii_request_id": "req-1"}},
         )
 
-        first_result = await anext(result_stream)
+        first_result = await _anext(result_stream)
         assert first_result.choices[0].delta.content == "Начало "
 
         with pytest.raises(RuntimeError, match="upstream stream failed"):
-            await anext(result_stream)
+            await _anext(result_stream)
 
         guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 

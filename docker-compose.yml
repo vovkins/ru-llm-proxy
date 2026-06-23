@@ -63,6 +63,11 @@ services:
     restart: unless-stopped
     ports:
       - "5001:5001"
+    environment:
+      - PRESIDIO_ANALYZER_WORKERS=${PRESIDIO_ANALYZER_WORKERS:-1}
+      - PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-1}
+      - PRESIDIO_ANALYZER_QUEUE_LIMIT=${PRESIDIO_ANALYZER_QUEUE_LIMIT:-8}
+      - PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-0.25}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/api/v1/health"]
       interval: 30s

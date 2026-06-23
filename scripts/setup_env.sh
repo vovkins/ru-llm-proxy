@@ -97,6 +97,10 @@ ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" |
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true
 ensure_key_exists "ZAI_API_KEY_2" ""
 ensure_key_exists "LITELLM_ROUTING_TEST_KEY" ""
+ensure_key_exists "PRESIDIO_ANALYZER_WORKERS" "1"
+ensure_key_exists "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT" "1"
+ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_LIMIT" "8"
+ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS" "0.25"
 ensure_key_exists "PII_GUARDRAIL_MODE" "mask"
 ensure_key_exists "RESPONSES_MODEL" ""
 ensure_key_exists "MESSAGES_MODEL" ""
