@@ -1263,6 +1263,29 @@ class TestPostCallHook:
         assert response.choices[0].message.content == "+79031234567"
 
     @pytest.mark.asyncio
+    async def test_streaming_success_hook_skips_after_iterator_cleanup(self, guardrail):
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(role="assistant", content="<PHONE_NUMBER_1>"),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"stream": True, "metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.choices[0].message.content == "<PHONE_NUMBER_1>"
+        guardrail._redis.get.assert_not_called()
+        guardrail._redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_redis_load_error_fails_open(self, guardrail):
         import litellm
 
@@ -1310,6 +1333,234 @@ class TestPostCallHook:
                 user_api_key_dict=MagicMock(),
                 response=response,
             )
+
+
+# === async_post_call_streaming_iterator_hook ===
+
+
+async def _collect_stream_text(stream):
+    chunks = []
+    async for chunk in stream:
+        chunks.append(chunk)
+
+    content_parts = []
+    reasoning_parts = []
+    for chunk in chunks:
+        for choice in chunk.choices:
+            delta = choice.delta
+            if isinstance(getattr(delta, "content", None), str):
+                content_parts.append(delta.content)
+            if isinstance(getattr(delta, "reasoning_content", None), str):
+                reasoning_parts.append(delta.reasoning_content)
+    return chunks, "".join(content_parts), "".join(reasoning_parts)
+
+
+async def _stream_chunks(chunks):
+    for chunk in chunks:
+        yield chunk
+
+
+async def _broken_stream(first_chunk):
+    yield first_chunk
+    raise RuntimeError("upstream stream failed")
+
+
+class TestStreamingPostCallHook:
+    @pytest.mark.asyncio
+    async def test_restores_placeholder_split_across_content_chunks_and_cleans_mapping(
+        self,
+        guardrail,
+    ):
+        mapping = {"<PHONE_NUMBER_1>": "+79031234567"}
+        guardrail._redis.get.return_value = json.dumps(mapping)
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "Телефон <PHONE_"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "NUMBER_1> подтвержден"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[litellm.StreamingChoices(index=0, finish_reason="stop")]
+            ),
+        ]
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+        yielded, content, _reasoning = await _collect_stream_text(result_stream)
+
+        assert content == "Телефон +79031234567 подтвержден"
+        yielded_content_parts = [
+            getattr(choice.delta, "content", "") or ""
+            for chunk in yielded
+            for choice in chunk.choices
+        ]
+        assert all("<PHONE_NUMBER_1>" not in part for part in yielded_content_parts)
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_flushes_pending_placeholder_on_finish_chunk(self, guardrail):
+        mapping = {"<PHONE_NUMBER_1>": "+79031234567"}
+        guardrail._redis.get.return_value = json.dumps(mapping)
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "<PHONE_NUMBER_1"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        finish_reason="stop",
+                        delta={"content": ">"},
+                    )
+                ]
+            ),
+        ]
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+        _yielded, content, _reasoning = await _collect_stream_text(result_stream)
+
+        assert content == "+79031234567"
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_restores_reasoning_content_stream(self, guardrail):
+        mapping = {"<PERSON_1>": "Иван Иванов"}
+        guardrail._redis.get.return_value = json.dumps(mapping)
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"reasoning_content": "Проверяю <PERSON"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"reasoning_content": "_1>"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[litellm.StreamingChoices(index=0, finish_reason="stop")]
+            ),
+        ]
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+        _yielded, _content, reasoning = await _collect_stream_text(result_stream)
+
+        assert reasoning == "Проверяю Иван Иванов"
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_streaming_mapping_load_error_fails_open(self, guardrail):
+        guardrail._redis.get.side_effect = RuntimeError("redis down")
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "<PHONE_NUMBER_1>"},
+                    )
+                ]
+            )
+        ]
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+        _yielded, content, _reasoning = await _collect_stream_text(result_stream)
+
+        assert content == "<PHONE_NUMBER_1>"
+        guardrail._redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_streaming_mapping_load_error_fails_closed(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_closed")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.get.side_effect = RuntimeError("redis down")
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "<PHONE_NUMBER_1>"},
+                    )
+                ]
+            )
+        ]
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+
+        with pytest.raises(RuntimeError, match="PII guardrail stream mapping load failed"):
+            await anext(result_stream)
+
+        guardrail._redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_streaming_deletes_mapping_when_upstream_iterator_fails(
+        self,
+        guardrail,
+    ):
+        mapping = {"<PHONE_NUMBER_1>": "+79031234567"}
+        guardrail._redis.get.return_value = json.dumps(mapping)
+        first_chunk = litellm.ModelResponseStream(
+            choices=[
+                litellm.StreamingChoices(
+                    index=0,
+                    delta={"content": "Начало "},
+                )
+            ]
+        )
+
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_broken_stream(first_chunk),
+            request_data={"metadata": {"pii_request_id": "req-1"}},
+        )
+
+        first_result = await anext(result_stream)
+        assert first_result.choices[0].delta.content == "Начало "
+
+        with pytest.raises(RuntimeError, match="upstream stream failed"):
+            await anext(result_stream)
+
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
 
 # === _replace_placeholders ===

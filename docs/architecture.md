@@ -24,8 +24,9 @@
 7. Только после успешного Redis save исходные строковые поля заменяются на masked text.
 8. LiteLLM отправляет masked request настроенному LLM-провайдеру.
 9. LiteLLM запускает ru-pii-mask-post в режиме post_call.
-10. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-11. Redis mapping удаляется после post-call обработки.
+10. Для non-streaming ответа guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+11. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders в `delta.content` и `delta.reasoning_content` с учетом разрыва placeholder между чанками.
+12. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 4, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
 ```
@@ -75,10 +76,15 @@ guardrails:
           description: "post_call; restores placeholders in model responses."
         - name: "response_fields"
           type: "list[string]"
-          description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Non-streaming: content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments. Streaming: delta.content and delta.reasoning_content."
+        - name: "streaming"
+          type: "string"
+          description: "Uses async_post_call_streaming_iterator_hook to restore placeholders across chunk boundaries and clean up Redis mapping."
 ```
 
 `async_pre_call_hook` в `mask` mode маскирует `message.content`, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
+
+`async_post_call_streaming_iterator_hook` восстанавливает streaming `delta.content` и `delta.reasoning_content`, удерживая только возможный суффикс placeholder, чтобы не отдавать клиенту разорванный placeholder.
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
@@ -281,6 +287,6 @@ DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
 ## Текущие ограничения
 
 - Восстановление ответа работает только для плейсхолдеров, которые провайдер вернул.
-- Streaming post-call restoration не реализован. Для сценариев с обязательным восстановлением используйте non-streaming calls.
+- Streaming post-call restoration реализован для `delta.content` и `delta.reasoning_content`. Streaming tool/function-call argument deltas пока не переписываются; non-streaming ответы по-прежнему покрывают function/tool call arguments.
 - DeepPavlov span alignment основан на поиске token text в исходной строке и может пропускать сущности, если модель токенизировала их в форме, которой нет в исходной строке.
 - Requirements-файлы задают compatibility constraints, но это ещё не полный lockfile с hash-проверкой всех Python wheels.
