@@ -17,7 +17,7 @@
 ```text
 1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
-3. Guardrail отправляет строковые поля запроса в Presidio Analyzer: `message.content`, Responses API `input` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+3. Guardrail отправляет строковые поля запроса в Presidio Analyzer: `message.content`, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 4. Analyzer возвращает entity spans, entity types и scores.
 5. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
 6. Guardrail сохраняет placeholder -> original mappings в Redis.
@@ -61,7 +61,7 @@ guardrails:
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Responses API input string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -78,7 +78,7 @@ guardrails:
           description: "Restores placeholders in content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments."
 ```
 
-`async_pre_call_hook` в `mask` mode маскирует `message.content`, Responses API top-level `input` strings, message-like `input[]` string content, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
+`async_pre_call_hook` в `mask` mode маскирует `message.content`, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 

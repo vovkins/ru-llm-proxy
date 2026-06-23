@@ -98,7 +98,7 @@ guardrails:
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Responses API input string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail

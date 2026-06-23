@@ -236,7 +236,27 @@ class RuPIIGuardrail(CustomGuardrail):
         return self._redis
 
     @staticmethod
-    def _iter_message_text_targets(message: dict) -> list[tuple[dict, str]]:
+    def _iter_text_content_block_targets(blocks: list) -> list[tuple[dict, str]]:
+        """Return mutable text fields from OpenAI-style content block lists."""
+        targets: list[tuple[dict, str]] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type in (
+                None,
+                "text",
+                "input_text",
+                "output_text",
+            ) and isinstance(
+                block.get("text"),
+                str,
+            ):
+                targets.append((block, "text"))
+        return targets
+
+    @classmethod
+    def _iter_message_text_targets(cls, message: dict) -> list[tuple[dict, str]]:
         """Return mutable text fields that are safe to send through analyzer."""
         if not isinstance(message, dict):
             return []
@@ -246,20 +266,7 @@ class RuPIIGuardrail(CustomGuardrail):
         if isinstance(content, str):
             targets.append((message, "content"))
         elif isinstance(content, list):
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                block_type = block.get("type")
-                if block_type in (
-                    None,
-                    "text",
-                    "input_text",
-                    "output_text",
-                ) and isinstance(
-                    block.get("text"),
-                    str,
-                ):
-                    targets.append((block, "text"))
+            targets.extend(cls._iter_text_content_block_targets(content))
 
         tool_calls = message.get("tool_calls")
         if isinstance(tool_calls, list):
@@ -283,20 +290,13 @@ class RuPIIGuardrail(CustomGuardrail):
         return targets
 
     @classmethod
-    def _iter_responses_input_text_targets(cls, data: dict) -> list[tuple[dict, str]]:
-        """Return mutable Responses API input text fields."""
-        if not isinstance(data, dict) or "input" not in data:
-            return []
-
-        input_value = data.get("input")
-        if isinstance(input_value, str):
-            return [(data, "input")]
-
-        if not isinstance(input_value, list):
-            return []
-
+    def _iter_responses_input_item_text_targets(
+        cls,
+        items: list,
+    ) -> list[tuple[dict, str]]:
+        """Return mutable text fields from Responses API input item lists."""
         targets: list[tuple[dict, str]] = []
-        for item in input_value:
+        for item in items:
             if not isinstance(item, dict):
                 continue
 
@@ -309,7 +309,35 @@ class RuPIIGuardrail(CustomGuardrail):
 
             targets.extend(cls._iter_message_text_targets(item))
 
+            if isinstance(item.get("arguments"), str):
+                targets.append((item, "arguments"))
+
+            output = item.get("output")
+            if isinstance(output, str):
+                targets.append((item, "output"))
+            elif isinstance(output, list):
+                targets.extend(cls._iter_text_content_block_targets(output))
+
         return targets
+
+    @classmethod
+    def _iter_responses_field_text_targets(
+        cls,
+        data: dict,
+        field: str,
+    ) -> list[tuple[dict, str]]:
+        """Return mutable Responses API text fields for a top-level field."""
+        if not isinstance(data, dict) or field not in data:
+            return []
+
+        value = data.get(field)
+        if isinstance(value, str):
+            return [(data, field)]
+
+        if isinstance(value, list):
+            return cls._iter_responses_input_item_text_targets(value)
+
+        return []
 
     @classmethod
     def _iter_request_text_targets(cls, data: dict) -> list[tuple[dict, str]]:
@@ -321,7 +349,8 @@ class RuPIIGuardrail(CustomGuardrail):
             for message in messages:
                 targets.extend(cls._iter_message_text_targets(message))
 
-        targets.extend(cls._iter_responses_input_text_targets(data))
+        targets.extend(cls._iter_responses_field_text_targets(data, "instructions"))
+        targets.extend(cls._iter_responses_field_text_targets(data, "input"))
         return targets
 
     @staticmethod

@@ -534,6 +534,94 @@ class TestPreCallHook:
         }
 
     @pytest.mark.asyncio
+    async def test_masks_pii_in_responses_instructions_and_tool_output(self, guardrail):
+        instructions = "Не раскрывай телефон +79031234567"
+        tool_output = "Tool returned email test@example.com"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(instructions, "+79031234567")],
+                [_entity(tool_output, "test@example.com", "EMAIL_ADDRESS")],
+            ],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {
+                    "model": "openai-gpt-5.4-mini",
+                    "instructions": instructions,
+                    "input": [
+                        {
+                            "type": "function_call_output",
+                            "call_id": "call-1",
+                            "output": [
+                                {"type": "input_text", "text": tool_output},
+                                {
+                                    "type": "input_image",
+                                    "image_url": "https://example.test/image.png",
+                                },
+                            ],
+                        }
+                    ],
+                }
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert result["instructions"] == "Не раскрывай телефон <PHONE_NUMBER_1>"
+        assert result["input"][0]["output"][0]["text"] == (
+            "Tool returned email <EMAIL_ADDRESS_1>"
+        )
+        assert result["input"][0]["output"][1] == {
+            "type": "input_image",
+            "image_url": "https://example.test/image.png",
+        }
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<EMAIL_ADDRESS_1>": "test@example.com",
+        }
+
+    @pytest.mark.asyncio
+    async def test_masks_pii_in_responses_function_call_arguments(self, guardrail):
+        arguments = '{"inn":"7707083893"}'
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(arguments, "7707083893", "RU_INN")],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {
+                    "model": "openai-gpt-5.4-mini",
+                    "input": [
+                        {
+                            "type": "function_call",
+                            "call_id": "call-1",
+                            "name": "lookup_client",
+                            "arguments": arguments,
+                        }
+                    ],
+                }
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert result["input"][0]["arguments"] == '{"inn":"<RU_INN_1>"}'
+        assert save_mapping.call_args[0][1] == {
+            "<RU_INN_1>": "7707083893",
+        }
+
+    @pytest.mark.asyncio
     async def test_clean_responses_input_is_analyzed_and_passes_through(self):
         guardrail = RuPIIGuardrail()
         guardrail._redis = _mock_redis()
@@ -885,6 +973,78 @@ class TestPreCallHook:
         ]
         assert "Иван Иванов" not in json.dumps(error_body, ensure_ascii=False)
         assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_pii_in_responses_instructions_without_mutating(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        instructions = "Не раскрывай телефон +79031234567"
+        data = {
+            "model": "openai-gpt-5.4-mini",
+            "instructions": instructions,
+            "input": "Расскажи joke",
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=[
+                [_entity(instructions, "+79031234567")],
+                [],
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert data["instructions"] == instructions
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        assert exc_info.value.response.status_code == 422
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"]["entities"] == ["PHONE_NUMBER"]
+        assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_pii_in_responses_tool_output_without_mutating(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        tool_output = "Tool returned email test@example.com"
+        data = {
+            "model": "openai-gpt-5.4-mini",
+            "input": [
+                {
+                    "type": "function_call_output",
+                    "call_id": "call-1",
+                    "output": tool_output,
+                }
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(tool_output, "test@example.com", "EMAIL_ADDRESS")],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert data["input"][0]["output"] == tool_output
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        assert exc_info.value.response.status_code == 422
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"]["entities"] == ["EMAIL_ADDRESS"]
+        assert "test@example.com" not in json.dumps(error_body, ensure_ascii=False)
 
     @pytest.mark.asyncio
     async def test_no_messages_returns_data(self, guardrail):
