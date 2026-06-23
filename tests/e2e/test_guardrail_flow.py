@@ -81,7 +81,9 @@ async def test_guardrail_masks_before_model_and_unmasks_after_model():
     assert "<PHONE_NUMBER_1>" in masked_prompt
     assert "<RU_INN_1>" in masked_prompt
 
-    saved_mapping = json.loads(redis_store["pii_mapping:flow-1"])
+    mapping_id = masked_data["metadata"]["pii_request_id"]
+    assert mapping_id != "flow-1"
+    saved_mapping = json.loads(redis_store[f"pii_mapping:{mapping_id}"])
     assert saved_mapping == {
         "<PERSON_1>": "Иванов Иван",
         "<PHONE_NUMBER_1>": "+79031234567",
@@ -118,7 +120,7 @@ async def test_guardrail_masks_before_model_and_unmasks_after_model():
     assert "<PERSON_1>" not in content
     assert "<PHONE_NUMBER_1>" not in content
     assert "<RU_INN_1>" not in content
-    assert "pii_mapping:flow-1" not in redis_store
+    assert f"pii_mapping:{mapping_id}" not in redis_store
 
 
 @pytest.mark.asyncio
@@ -200,4 +202,84 @@ async def test_guardrail_masks_before_model_and_unmasks_streaming_response():
     assert "+79031234567" in content
     assert "<PERSON_1>" not in content
     assert "<PHONE_NUMBER_1>" not in content
-    assert "pii_mapping:flow-stream-1" not in redis_store
+    assert f"pii_mapping:{masked_data['metadata']['pii_request_id']}" not in redis_store
+
+
+@pytest.mark.asyncio
+async def test_client_request_id_collision_does_not_cross_restore_streaming_pii():
+    guardrail = RuPIIGuardrail()
+    redis_store = {}
+    redis = AsyncMock()
+
+    async def setex(key, ttl, value):
+        redis_store[key] = value
+
+    async def get(key):
+        return redis_store.get(key)
+
+    async def delete(key):
+        redis_store.pop(key, None)
+
+    redis.setex.side_effect = setex
+    redis.get.side_effect = get
+    redis.delete.side_effect = delete
+    guardrail._redis = redis
+
+    first_text = "Телефон +79031234567"
+    second_text = "Телефон +79037654321"
+    first_data = {
+        "metadata": {"request_id": "client-controlled"},
+        "messages": [{"role": "user", "content": first_text}],
+    }
+    second_data = {
+        "metadata": {"request_id": "client-controlled"},
+        "messages": [{"role": "user", "content": second_text}],
+    }
+
+    with patch.object(
+        guardrail,
+        "_analyze_text",
+        return_value=[_entity(first_text, "+79031234567", "PHONE_NUMBER")],
+    ):
+        first_masked_data = await guardrail.async_pre_call_hook(
+            user_api_key_dict=MagicMock(),
+            cache=MagicMock(),
+            data=first_data,
+        )
+    with patch.object(
+        guardrail,
+        "_analyze_text",
+        return_value=[_entity(second_text, "+79037654321", "PHONE_NUMBER")],
+    ):
+        second_masked_data = await guardrail.async_pre_call_hook(
+            user_api_key_dict=MagicMock(),
+            cache=MagicMock(),
+            data=second_data,
+        )
+
+    assert first_masked_data["metadata"]["pii_request_id"] != (
+        second_masked_data["metadata"]["pii_request_id"]
+    )
+
+    model_stream = _stream_chunks(
+        [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "<PHONE_NUMBER_1>"},
+                    )
+                ]
+            )
+        ]
+    )
+    restored_stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(),
+        response=model_stream,
+        request_data=first_masked_data,
+    )
+
+    content = await _collect_stream_content(restored_stream)
+
+    assert content == "+79031234567"
+    assert content != "+79037654321"

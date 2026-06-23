@@ -2,6 +2,7 @@
 
 import json
 import logging
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import litellm
@@ -41,22 +42,30 @@ def guardrail():
 
 
 class TestGetRequestId:
-    def test_from_metadata_request_id(self, guardrail):
-        data = {"metadata": {"request_id": "req-123"}}
-        assert guardrail._get_request_id(data) == "req-123"
+    def test_generates_server_id_ignoring_client_ids(self, guardrail):
+        data = {
+            "metadata": {"request_id": "client-controlled"},
+            "litellm_call_id": "call-456",
+        }
 
-    def test_from_litellm_call_id(self, guardrail):
-        data = {"litellm_call_id": "call-456"}
-        assert guardrail._get_request_id(data) == "call-456"
+        result = guardrail._get_request_id(data)
+
+        assert result not in {"client-controlled", "call-456"}
+        uuid.UUID(result)
 
     def test_generates_uuid_when_none(self, guardrail):
         result = guardrail._get_request_id({})
-        assert isinstance(result, str)
-        assert len(result) > 0
+        uuid.UUID(result)
 
-    def test_metadata_takes_priority(self, guardrail):
-        data = {"metadata": {"request_id": "from-meta"}, "litellm_call_id": "from-call"}
-        assert guardrail._get_request_id(data) == "from-meta"
+    def test_response_request_id_uses_only_guardrail_mapping_id(self, guardrail):
+        data = {
+            "metadata": {"request_id": "from-client"},
+            "litellm_call_id": "from-call",
+        }
+        assert guardrail._get_response_request_id(data) is None
+
+        data["metadata"]["pii_request_id"] = "server-mapping"
+        assert guardrail._get_response_request_id(data) == "server-mapping"
 
 
 # === failure mode ===
@@ -1141,7 +1150,13 @@ class TestPreCallHook:
     @pytest.mark.asyncio
     async def test_no_pii_passes_through(self, guardrail):
         with patch.object(guardrail, "_analyze_text", return_value=[]):
-            data = {"messages": [{"role": "user", "content": "Расскажи joke"}]}
+            data = {
+                "metadata": {
+                    "pii_request_id": "caller-supplied",
+                    "pii_streaming_restoration_done": True,
+                },
+                "messages": [{"role": "user", "content": "Расскажи joke"}],
+            }
 
             result = await guardrail.async_pre_call_hook(
                 user_api_key_dict=MagicMock(),
@@ -1150,12 +1165,17 @@ class TestPreCallHook:
             )
 
         assert result["messages"][0]["content"] == "Расскажи joke"
+        assert "pii_request_id" not in result["metadata"]
+        assert "pii_streaming_restoration_done" not in result["metadata"]
 
     @pytest.mark.asyncio
     async def test_analyze_error_fails_open(self, guardrail):
         text = "Мой телефон +79031234567"
         with patch.object(guardrail, "_analyze_text", side_effect=Exception("connection error")):
-            data = {"messages": [{"role": "user", "content": text}]}
+            data = {
+                "metadata": {"pii_request_id": "caller-supplied"},
+                "messages": [{"role": "user", "content": text}],
+            }
 
             result = await guardrail.async_pre_call_hook(
                 user_api_key_dict=MagicMock(),
@@ -1164,7 +1184,7 @@ class TestPreCallHook:
             )
 
         assert result["messages"][0]["content"] == text
-        assert "metadata" not in result
+        assert "pii_request_id" not in result["metadata"]
 
     @pytest.mark.asyncio
     async def test_analyze_error_fails_closed(self):
@@ -1317,7 +1337,10 @@ class TestPostCallHook:
         assert response.choices[0].message.content == "test"
 
     @pytest.mark.asyncio
-    async def test_uses_litellm_call_id_when_metadata_id_missing(self, guardrail):
+    async def test_ignores_client_request_id_and_call_id_when_mapping_id_missing(
+        self,
+        guardrail,
+    ):
         import litellm
 
         guardrail._redis.get.return_value = json.dumps(
@@ -1335,15 +1358,25 @@ class TestPostCallHook:
         )
 
         await guardrail.async_post_call_success_hook(
-            data={"metadata": {}, "litellm_call_id": "req-1"},
+            data={
+                "metadata": {"request_id": "client-controlled"},
+                "litellm_call_id": "req-1",
+            },
             user_api_key_dict=MagicMock(),
             response=response,
         )
 
-        assert response.choices[0].message.content == "+79031234567"
+        assert response.choices[0].message.content == "<PHONE_NUMBER_1>"
+        guardrail._redis.get.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_streaming_success_hook_skips_after_iterator_cleanup(self, guardrail):
+    async def test_stream_true_model_response_still_restores_when_iterator_did_not_run(
+        self,
+        guardrail,
+    ):
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": "+79031234567"}
+        )
         response = litellm.ModelResponse(
             id="test",
             choices=[
@@ -1361,7 +1394,64 @@ class TestPostCallHook:
             response=response,
         )
 
+        assert response.choices[0].message.content == "+79031234567"
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_stream_true_model_response_skips_after_iterator_processed(
+        self,
+        guardrail,
+    ):
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": "+79031234567"}
+        )
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(role="assistant", content="<PHONE_NUMBER_1>"),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={
+                "stream": True,
+                "metadata": {
+                    "pii_request_id": "req-1",
+                    "pii_streaming_restoration_done": True,
+                },
+            },
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
         assert response.choices[0].message.content == "<PHONE_NUMBER_1>"
+        guardrail._redis.get.assert_not_called()
+        guardrail._redis.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stream_true_non_model_response_skips_success_hook(
+        self,
+        guardrail,
+    ):
+        response = litellm.ModelResponseStream(
+            choices=[
+                litellm.StreamingChoices(
+                    index=0,
+                    delta={"content": "<PHONE_NUMBER_1>"},
+                )
+            ]
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"stream": True, "metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
         guardrail._redis.get.assert_not_called()
         guardrail._redis.delete.assert_not_called()
 
@@ -1475,10 +1565,11 @@ class TestStreamingPostCallHook:
             ),
         ]
 
+        request_data = {"metadata": {"pii_request_id": "req-1"}}
         result_stream = guardrail.async_post_call_streaming_iterator_hook(
             user_api_key_dict=MagicMock(),
             response=_stream_chunks(chunks),
-            request_data={"metadata": {"pii_request_id": "req-1"}},
+            request_data=request_data,
         )
         yielded, content, _reasoning = await _collect_stream_text(result_stream)
 
@@ -1489,6 +1580,7 @@ class TestStreamingPostCallHook:
             for choice in chunk.choices
         ]
         assert all("<PHONE_NUMBER_1>" not in part for part in yielded_content_parts)
+        assert request_data["metadata"]["pii_streaming_restoration_done"] is True
         guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
     @pytest.mark.asyncio
