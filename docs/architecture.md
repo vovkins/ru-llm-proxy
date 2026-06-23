@@ -196,7 +196,7 @@ Analyzer имеет явную process-local capacity model:
 
 `POST /api/v1/analyze` сначала занимает capacity slot, затем выполняет sync Presidio/DeepPavlov работу через threadpool, чтобы не блокировать uvicorn event loop. Capacity slot освобождается после завершения blocking analysis; timeout применяется к ожиданию slot, но не прерывает уже начатый DeepPavlov inference. `GET /api/v1/health` не проходит через limiter и возвращает `capacity` snapshot вместе с `ner`.
 
-`503 analyzer_overloaded` считается infrastructure failure для guardrail. При `PII_GUARDRAIL_FAILURE_MODE=fail_open` LiteLLM может продолжить запрос без маскирования, а при `fail_closed` остановит запрос. Для PII-sensitive deployment используйте `fail_closed` и масштабируйте Analyzer через workers/replicas с учётом памяти модели.
+`503 analyzer_overloaded` считается fail-closed override для guardrail независимо от `PII_GUARDRAIL_FAILURE_MODE`: LiteLLM останавливает запрос, чтобы перегрузка Analyzer не привела к отправке raw PII провайдеру. Для PII-sensitive deployment используйте `fail_closed` и для остальных инфраструктурных сбоев, а Analyzer масштабируйте через workers/replicas с учётом памяти модели.
 
 Источники детекции:
 

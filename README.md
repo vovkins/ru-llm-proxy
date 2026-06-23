@@ -175,7 +175,7 @@ Runtime capacity Analyzer:
 
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
-При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. Для LiteLLM guardrail это infrastructure failure: при `PII_GUARDRAIL_FAILURE_MODE=fail_open` запрос может пройти дальше без маскирования, а при `fail_closed` будет остановлен. Для PII-sensitive окружений используйте `fail_closed` и масштабируйте Analyzer workers/replicas под доступную память.
+При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. LiteLLM guardrail трактует `analyzer_overloaded` как fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы не отправить raw PII провайдеру. Для PII-sensitive окружений дополнительно используйте `fail_closed` для остальных инфраструктурных сбоев и масштабируйте Analyzer workers/replicas под доступную память.
 
 ### PII policy mode
 
@@ -188,7 +188,7 @@ Runtime capacity Analyzer:
 
 В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
 
-`PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его.
+`PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
 
 ### litellm-config.yaml — настройки LiteLLM
 

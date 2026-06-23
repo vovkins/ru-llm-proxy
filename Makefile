@@ -1,6 +1,7 @@
-.PHONY: setup build up down restart logs test test-unit test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
+PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
 	-e PYTHONDONTWRITEBYTECODE=1 \
@@ -19,6 +20,7 @@ help:
 	@echo "  make logs     — логи всех сервисов"
 	@echo "  make test     — запустить весь локальный test suite"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
+	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
@@ -66,7 +68,13 @@ logs:
 	docker compose logs -f --tail=50
 
 # === Test ===
-test: test-unit test-routing-diagnostics
+test: test-unit test-static
+
+test-static: test-routing-diagnostics
+	@echo "🧪 Static and lightweight regression tests"
+	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
+		tests/test_analyzer_capacity_config.py \
+		presidio/tests/test_capacity.py
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"

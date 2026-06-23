@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import litellm
 import pytest
 
-from litellm_guardrails.pii_guardrail import RuPIIGuardrail
+from litellm_guardrails.pii_guardrail import AnalyzerOverloadedError, RuPIIGuardrail
 
 
 def _entity(text, value, entity_type="PHONE_NUMBER", score=1.0):
@@ -139,6 +139,31 @@ class TestAnalyzeText:
             result = await guardrail._analyze_text("Обычный текст без PII")
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_raises_analyzer_overloaded_for_capacity_503(self, guardrail):
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.json.return_value = {
+            "detail": {
+                "code": "analyzer_overloaded",
+                "reason": "queue_timeout",
+                "message": "Timed out waiting for Presidio Analyzer capacity.",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_instance = AsyncMock()
+        mock_instance.post.return_value = mock_response
+        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+        mock_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("litellm_guardrails.pii_guardrail.httpx.AsyncClient", return_value=mock_instance):
+            with pytest.raises(AnalyzerOverloadedError) as exc_info:
+                await guardrail._analyze_text("Мой телефон +79031234567")
+
+        assert exc_info.value.reason == "queue_timeout"
+        mock_response.raise_for_status.assert_not_called()
 
 
 # === _mask_text ===
@@ -339,6 +364,32 @@ class TestPreCallHook:
             "<PHONE_NUMBER_1>": "+79031234567",
             "<PHONE_NUMBER_2>": "89031234567",
         }
+
+    @pytest.mark.asyncio
+    async def test_analyzer_overload_fails_closed_even_in_fail_open_mode(self):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        data = {
+            "messages": [
+                {"role": "user", "content": "Мой телефон +79031234567"},
+            ]
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=AnalyzerOverloadedError(reason="queue_full"),
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert "analyzer overloaded" in str(exc_info.value)
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_masks_pii_in_text_content_blocks(self, guardrail):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -108,47 +109,69 @@ class AnalyzerCapacityLimiter:
         self.queue_timeout_seconds = max(0.0, float(queue_timeout_seconds))
         self._condition = asyncio.Condition()
         self._active = 0
-        self._waiting = 0
+        self._waiters: deque[asyncio.Future[None]] = deque()
 
     async def acquire(self) -> AnalyzerCapacitySlot:
         """Acquire a capacity slot or reject when queue policy is exceeded."""
+        waiter: asyncio.Future[None] | None = None
         async with self._condition:
-            if self._active < self.concurrency_limit:
+            if self._active < self.concurrency_limit and not self._waiters:
                 self._active += 1
                 return AnalyzerCapacitySlot(self)
 
-            if self._waiting >= self.queue_limit:
+            if len(self._waiters) >= self.queue_limit:
                 raise CapacityRejected(
                     "queue_full",
                     "Presidio Analyzer capacity queue is full.",
                 )
 
-            self._waiting += 1
-            try:
-                await asyncio.wait_for(
-                    self._wait_for_available_slot(),
-                    timeout=self.queue_timeout_seconds,
-                )
-                self._active += 1
-                return AnalyzerCapacitySlot(self)
-            except TimeoutError as exc:
-                raise CapacityRejected(
-                    "queue_timeout",
-                    "Timed out waiting for Presidio Analyzer capacity.",
-                ) from exc
-            finally:
-                self._waiting -= 1
+            waiter = asyncio.get_running_loop().create_future()
+            self._waiters.append(waiter)
 
-    async def _wait_for_available_slot(self) -> None:
-        while self._active >= self.concurrency_limit:
-            await self._condition.wait()
+        try:
+            await asyncio.wait_for(waiter, timeout=self.queue_timeout_seconds)
+            return AnalyzerCapacitySlot(self)
+        except TimeoutError as exc:
+            await self._cancel_waiter_or_release_reserved_slot(waiter)
+            raise CapacityRejected(
+                "queue_timeout",
+                "Timed out waiting for Presidio Analyzer capacity.",
+            ) from exc
+        except asyncio.CancelledError:
+            await self._cancel_waiter_or_release_reserved_slot(waiter)
+            raise
 
     async def release(self) -> None:
         """Release one active capacity slot and wake one queued request."""
         async with self._condition:
             if self._active > 0:
                 self._active -= 1
-                self._condition.notify(1)
+                self._wake_next_waiter_unlocked()
+
+    async def _cancel_waiter_or_release_reserved_slot(
+        self,
+        waiter: asyncio.Future[None],
+    ) -> None:
+        async with self._condition:
+            try:
+                self._waiters.remove(waiter)
+                waiter.cancel()
+                return
+            except ValueError:
+                pass
+
+            if waiter.done() and not waiter.cancelled() and self._active > 0:
+                self._active -= 1
+                self._wake_next_waiter_unlocked()
+
+    def _wake_next_waiter_unlocked(self) -> None:
+        while self._waiters and self._active < self.concurrency_limit:
+            waiter = self._waiters.popleft()
+            if waiter.done():
+                continue
+            self._active += 1
+            waiter.set_result(None)
+            return
 
     def snapshot(self) -> dict[str, int | float]:
         """Return current limiter state for health and tests."""
@@ -157,7 +180,7 @@ class AnalyzerCapacityLimiter:
             "queue_limit": self.queue_limit,
             "queue_timeout_seconds": self.queue_timeout_seconds,
             "active": self._active,
-            "waiting": self._waiting,
+            "waiting": len(self._waiters),
         }
 
 

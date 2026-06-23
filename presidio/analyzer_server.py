@@ -94,14 +94,32 @@ async def analyze(request: AnalyzeRequest):
 async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     """Run blocking analyzer work without releasing capacity on cancellation."""
     task = asyncio.create_task(asyncio.to_thread(_analyze_sync, request))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
+    cancelled = False
+
+    while True:
         try:
-            await task
+            response = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+            if task.done():
+                break
+            continue
+        except Exception as e:
+            if cancelled:
+                logger.error("Analyzer work failed after request cancellation: %s", e)
+                raise asyncio.CancelledError from None
+            raise
+
+        if cancelled:
+            raise asyncio.CancelledError
+        return response
+
+    if task.done():
+        try:
+            task.result()
         except Exception as e:
             logger.error("Analyzer work failed after request cancellation: %s", e)
-        raise
+    raise asyncio.CancelledError
 
 
 def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:

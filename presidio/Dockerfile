@@ -41,4 +41,4 @@ COPY ner/ ./ner/
 
 EXPOSE 5001
 ENV PRESIDIO_ANALYZER_WORKERS=1
-CMD uvicorn analyzer_server:app --host 0.0.0.0 --port 5001 --workers "${PRESIDIO_ANALYZER_WORKERS}"
+CMD ["sh", "-c", "exec uvicorn analyzer_server:app --host 0.0.0.0 --port 5001 --workers \"$PRESIDIO_ANALYZER_WORKERS\""]

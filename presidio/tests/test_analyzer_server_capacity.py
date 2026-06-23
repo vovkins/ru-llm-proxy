@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -79,3 +80,47 @@ async def _health_reports_capacity_without_entering_limiter(monkeypatch):
     assert response["status"] == "ok"
     assert response["capacity"]["active"] == 1
     assert response["capacity"]["queue_limit"] == 0
+
+
+def test_blocking_analyze_keeps_task_alive_until_thread_finishes_after_double_cancel(
+    monkeypatch,
+):
+    asyncio.run(
+        _blocking_analyze_keeps_task_alive_until_thread_finishes_after_double_cancel(
+            monkeypatch,
+        )
+    )
+
+
+async def _blocking_analyze_keeps_task_alive_until_thread_finishes_after_double_cancel(
+    monkeypatch,
+):
+    started = threading.Event()
+    finish = threading.Event()
+
+    def blocking_analyze_sync(request):
+        started.set()
+        finish.wait(timeout=1)
+        return analyzer_server.AnalyzeResponse(text=request.text, entities=[])
+
+    monkeypatch.setattr(analyzer_server, "_analyze_sync", blocking_analyze_sync)
+
+    request = analyzer_server.AnalyzeRequest(text="Иван Иванов")
+    task = asyncio.create_task(analyzer_server._run_blocking_analyze(request))
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(started.wait, 1), timeout=1)
+        task.cancel()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.sleep(0.02)
+
+        assert not task.done()
+
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=1)
+    finally:
+        finish.set()
+        if not task.done():
+            task.cancel()

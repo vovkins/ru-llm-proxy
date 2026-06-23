@@ -90,3 +90,38 @@ async def _waiting_request_acquires_slot_after_release():
     assert limiter.snapshot()["active"] == 1
     await waiter_slot.release()
     assert limiter.snapshot()["active"] == 0
+
+
+def test_waiting_request_is_not_bypassed_by_later_arrival():
+    asyncio.run(_waiting_request_is_not_bypassed_by_later_arrival())
+
+
+async def _waiting_request_is_not_bypassed_by_later_arrival():
+    limiter = AnalyzerCapacityLimiter(
+        concurrency_limit=1,
+        queue_limit=2,
+        queue_timeout_seconds=0.05,
+    )
+
+    async with limiter._condition:
+        existing_waiter = asyncio.get_running_loop().create_future()
+        limiter._waiters.append(existing_waiter)
+
+    later = asyncio.create_task(limiter.acquire())
+    try:
+        await asyncio.sleep(0)
+
+        assert not later.done()
+        assert limiter.snapshot()["active"] == 0
+    finally:
+        existing_waiter.cancel()
+        async with limiter._condition:
+            if existing_waiter in limiter._waiters:
+                limiter._waiters.remove(existing_waiter)
+        if later.done():
+            slot = later.result()
+            await slot.release()
+        else:
+            later.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await later
