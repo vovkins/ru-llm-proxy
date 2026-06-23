@@ -98,7 +98,9 @@ guardrails:
 }
 ```
 
-`make guardrails-smoke` отправляет live request с этим параметром и печатает header `x-litellm-applied-guardrails`, если LiteLLM вернул его.
+`make guardrails-smoke` отправляет live non-streaming и streaming requests с этим параметром,
+проверяет header `x-litellm-applied-guardrails`, читает SSE stream до конца и проверяет,
+что Redis `pii_mapping:*` не растёт после завершения streaming response.
 
 Guardrails Monitor в LiteLLM UI опирается на события/traces, которые LiteLLM пишет через свою logging/observability подсистему. В текущем проекте primary monitoring path — Prometheus `/metrics`, health checks и structured logs guardrail.
 

@@ -223,6 +223,11 @@ make guardrails-list
 make guardrails-smoke
 ```
 
+Smoke выполняет non-streaming и streaming `/v1/chat/completions`, проверяет
+`x-litellm-applied-guardrails`, SSE events и отсутствие роста Redis `pii_mapping:*`
+после завершения streaming response. Это canary на то, что текущий LiteLLM image
+по-прежнему dispatch-ит `async_post_call_streaming_iterator_hook`.
+
 Для production monitoring используйте Prometheus metrics и structured logs, а UI рассматривайте как вспомогательный административный инструмент.
 
 ## Обновление LiteLLM

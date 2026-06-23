@@ -334,7 +334,7 @@ make routing-smoke
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и `/v1` протоколы |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
-| `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
+| `make guardrails-smoke` | Live smoke guardrails: non-streaming, streaming SSE и Redis cleanup |
 | `make routing-smoke` | Live smoke sticky routing: один ключ должен попасть в один deployment |
 | `make metrics` | Показать первые строки LiteLLM `/metrics` |
 | `make monitor-smoke` | Проверить health, guardrails list и `/metrics` |
@@ -441,11 +441,15 @@ Guardrails зарегистрированы в `litellm-config.yaml` и имею
 make guardrails-list
 ```
 
-Для smoke-проверки применения guardrails к live-запросу:
+Для smoke-проверки применения guardrails к live-запросам:
 
 ```bash
 make guardrails-smoke
 ```
+
+Команда отправляет non-streaming и streaming `POST /v1/chat/completions`, проверяет
+`x-litellm-applied-guardrails`, читает SSE stream до конца и убеждается, что число
+Redis-ключей `pii_mapping:*` не выросло после завершения stream.
 
 LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`. Для production monitoring используйте `/metrics`, health checks и structured logs.
 
