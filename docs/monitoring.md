@@ -147,6 +147,12 @@ increase(ru_pii_guardrail_fail_closed_total[5m]) > 0
 Есть fail-closed событие: запрос был остановлен guardrail.
 
 ```promql
+increase(ru_pii_guardrail_fail_closed_total{operation="analyzer_overloaded"}[5m]) > 0
+```
+
+Analyzer capacity limiter отклонил запрос, и guardrail остановил его как fail-closed override.
+
+```promql
 sum(rate(ru_pii_guardrail_pre_calls_total{result="error"}[5m])) > 0
 ```
 
@@ -188,6 +194,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
 | `pii_guardrail_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |
 | `pii_guardrail_failed_closed` | `ERROR` | `operation`, `failure_mode`, `error_type` |
+| `pii_guardrail_analyzer_overloaded` | `ERROR` | `failure_mode`, `reason` |
 | `pii_guardrail_cleanup_failed` | `WARNING` | `request_id`, `error_type` |
 | `pii_guardrail_unsupported_response` | `WARNING` | `request_id`, `response_type`, `mapping_size` |
 

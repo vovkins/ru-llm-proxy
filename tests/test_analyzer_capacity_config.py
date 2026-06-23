@@ -78,3 +78,10 @@ def test_docs_describe_analyzer_overload_as_fail_closed_override():
         assert "независимо" in joined or "regardless" in joined
         assert "может пройти без маскирования" not in joined
         assert "может продолжить запрос без маскирования" not in joined
+
+
+def test_monitoring_docs_list_analyzer_overload_log_event():
+    monitoring = (ROOT / "docs" / "monitoring.md").read_text()
+
+    assert "pii_guardrail_analyzer_overloaded" in monitoring
+    assert 'operation="analyzer_overloaded"' in monitoring

@@ -131,7 +131,7 @@ class AnalyzerCapacityLimiter:
         try:
             await asyncio.wait_for(waiter, timeout=self.queue_timeout_seconds)
             return AnalyzerCapacitySlot(self)
-        except TimeoutError as exc:
+        except (TimeoutError, asyncio.TimeoutError) as exc:
             await self._cancel_waiter_or_release_reserved_slot(waiter)
             raise CapacityRejected(
                 "queue_timeout",
