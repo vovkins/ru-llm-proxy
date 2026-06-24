@@ -24,7 +24,7 @@ help:
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
-	@echo "  make test-routing-diagnostics — static test для routing-smoke Makefile target"
+	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
 	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
@@ -92,7 +92,7 @@ test-flow:
 		$(PYTEST) tests/e2e/test_guardrail_flow.py
 
 test-routing-diagnostics:
-	@echo "🧪 Routing diagnostics static test"
+	@echo "🧪 Makefile diagnostics static tests"
 	python3 tests/test_makefile_routing_smoke.py
 	python3 tests/test_makefile_guardrails_smoke.py
 

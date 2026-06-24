@@ -2,9 +2,7 @@
 # Live guardrails smoke tests for non-streaming and streaming LiteLLM paths.
 set -euo pipefail
 
-BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ENV_FILE="${ENV_FILE:-.env}"
-CHAT_MODEL="${CHAT_MODEL:-glm-5.1}"
 
 if [ -f "$ENV_FILE" ]; then
     set -a
@@ -13,8 +11,37 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
+BASE_URL="${LITELLM_URL:-http://localhost:4000}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.1}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-180}"
+SMOKE_RUN_ID="${SMOKE_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
+SMOKE_PII_MARKER="${SMOKE_PII_MARKER:-guardrails-smoke-$SMOKE_RUN_ID@example.test}"
+
 if ! command -v curl >/dev/null 2>&1; then
     echo "curl is required" >&2
+    exit 1
+fi
+
+require_local_base_url() {
+    case "$BASE_URL" in
+        http://localhost | http://localhost:* | https://localhost | https://localhost:* | \
+            http://127.0.0.1 | http://127.0.0.1:* | https://127.0.0.1 | https://127.0.0.1:* | \
+            http://\[::1\] | http://\[::1\]:* | https://\[::1\] | https://\[::1\]:*)
+            return 0
+            ;;
+        *)
+            echo "guardrails-smoke uses local docker compose Redis cleanup verification;" >&2
+            echo "set LITELLM_URL to localhost/127.0.0.1/[::1] and run it against an isolated local compose project." >&2
+            exit 1
+            ;;
+    esac
+}
+
+require_local_base_url
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "jq is required" >&2
     exit 1
 fi
 
@@ -23,7 +50,10 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! curl -sf "$BASE_URL/health/liveliness" >/dev/null 2>&1; then
+if ! curl -sf \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+    --max-time "$CURL_MAX_TIME" \
+    "$BASE_URL/health/liveliness" >/dev/null 2>&1; then
     echo "LiteLLM is not reachable at $BASE_URL" >&2
     exit 1
 fi
@@ -36,11 +66,13 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 pass() {
     echo "  ✅ $1"
     PASS=$((PASS + 1))
+    return 0
 }
 
 fail() {
     echo "  ❌ $1"
     FAIL=$((FAIL + 1))
+    return 0
 }
 
 create_smoke_key() {
@@ -72,6 +104,13 @@ mapping_keys() {
     docker compose exec -T redis redis-cli --scan --pattern 'pii_mapping:*' | sort
 }
 
+mapping_value_contains() {
+    local key="$1"
+    local marker="$2"
+
+    docker compose exec -T redis redis-cli GET "$key" | grep -Fq "$marker"
+}
+
 run_chat_completion() {
     local label="$1"
     local payload="$2"
@@ -86,7 +125,10 @@ run_chat_completion() {
     set +e
     if [ "$mode" = "stream" ]; then
         HTTP_STATUS=$(
-            curl -sS --no-buffer -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
+            curl -sS --no-buffer \
+                --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+                --max-time "$CURL_MAX_TIME" \
+                -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
                 "$BASE_URL/v1/chat/completions" \
                 -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
                 -H "Accept: text/event-stream" \
@@ -96,7 +138,10 @@ run_chat_completion() {
         curl_exit=$?
     else
         HTTP_STATUS=$(
-            curl -sS -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
+            curl -sS \
+                --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+                --max-time "$CURL_MAX_TIME" \
+                -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
                 "$BASE_URL/v1/chat/completions" \
                 -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
                 -H "Content-Type: application/json" \
@@ -117,16 +162,21 @@ expect_http_success() {
 
     if [ "${CURL_EXIT:-1}" -ne 0 ]; then
         fail "$label curl failed with exit $CURL_EXIT"
-        return
+        return 1
     fi
 
     case "$HTTP_STATUS" in
-        2??) pass "$label returned HTTP $HTTP_STATUS" ;;
+        2??)
+            pass "$label returned HTTP $HTTP_STATUS"
+            return 0
+            ;;
         000)
             fail "$label could not reach $BASE_URL"
+            return 1
             ;;
         *)
             fail "$label returned HTTP $HTTP_STATUS"
+            return 1
             ;;
     esac
 }
@@ -173,25 +223,52 @@ mapping_keys > "$before_keys_file"
 before_mappings=$(mapping_count)
 echo "Redis PII mappings before smoke: $before_mappings"
 
-non_stream_payload='{"model":"'"$CHAT_MODEL"'","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}'
+non_stream_payload='{"model":"'"$CHAT_MODEL"'","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, email '"$SMOKE_PII_MARKER"'"}],"max_tokens":40}'
 run_chat_completion "non-stream" "$non_stream_payload" "non-stream"
-expect_http_success "non-streaming guardrails request"
-expect_guardrails_header "non-streaming guardrails request"
+if expect_http_success "non-streaming guardrails request"; then
+    expect_guardrails_header "non-streaming guardrails request"
+fi
 
-stream_payload='{"model":"'"$CHAT_MODEL"'","stream":true,"guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, телефон +79031234567"}],"max_tokens":40}'
+stream_payload='{"model":"'"$CHAT_MODEL"'","stream":true,"guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, email '"$SMOKE_PII_MARKER"'"}],"max_tokens":40}'
 run_chat_completion "stream" "$stream_payload" "stream"
-expect_http_success "streaming guardrails request"
-expect_guardrails_header "streaming guardrails request"
-expect_stream_events
+if expect_http_success "streaming guardrails request"; then
+    expect_guardrails_header "streaming guardrails request"
+    expect_stream_events
+fi
 
 mapping_keys > "$after_keys_file"
 after_mappings=$(mapping_count)
 echo "Redis PII mappings after smoke:  $after_mappings"
 new_mapping_keys=$(comm -13 "$before_keys_file" "$after_keys_file")
-if [ -z "$new_mapping_keys" ]; then
-    pass "Redis PII mapping set did not grow after completed stream"
+
+smoke_leaked_mappings=0
+while IFS= read -r mapping_key; do
+    if [ -z "$mapping_key" ]; then
+        continue
+    fi
+    if mapping_value_contains "$mapping_key" "$SMOKE_PII_MARKER"; then
+        smoke_leaked_mappings=$((smoke_leaked_mappings + 1))
+    fi
+done < "$after_keys_file"
+
+unrelated_new_mappings=0
+while IFS= read -r mapping_key; do
+    if [ -z "$mapping_key" ]; then
+        continue
+    fi
+    if ! mapping_value_contains "$mapping_key" "$SMOKE_PII_MARKER"; then
+        unrelated_new_mappings=$((unrelated_new_mappings + 1))
+    fi
+done <<< "$new_mapping_keys"
+
+if [ "$smoke_leaked_mappings" -eq 0 ]; then
+    pass "Redis has no smoke-owned leaked PII mappings after completed stream"
 else
-    fail "Redis PII mapping set grew after completed stream"
+    fail "Redis still has $smoke_leaked_mappings smoke-owned PII mapping(s) after completed stream"
+fi
+
+if [ "$unrelated_new_mappings" -gt 0 ]; then
+    echo "  ⚠️  Ignored $unrelated_new_mappings unrelated Redis PII mapping key(s) created during smoke" >&2
 fi
 
 echo ""

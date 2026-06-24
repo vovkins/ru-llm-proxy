@@ -88,6 +88,8 @@ guardrails:
 
 `guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
+`make guardrails-smoke` служит local docker-compose canary для hook-dispatch: он делает live non-streaming и streaming `/v1/chat/completions`, проверяет applied guardrails header, дочитывает SSE до `[DONE]` и подтверждает, что после завершения stream в Redis не осталось smoke-owned `pii_mapping:*` ключей с уникальным PII-маркером текущего запуска. Команда рассчитана на локальный `LITELLM_URL` и локальный `docker compose exec redis`, чтобы не сравнивать удаленный proxy с неверным Redis.
+
 ## Guardrails UI и наблюдаемость
 
 `default_on: true` включает guardrail для обычных запросов, но для диагностики полезно явно передавать request parameter:
