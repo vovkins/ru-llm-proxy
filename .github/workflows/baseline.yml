@@ -30,6 +30,7 @@ jobs:
           bash -n scripts/create_virtual_key.sh
           bash -n tests/e2e/test_client_auth.sh
           bash -n tests/e2e/test_e2e.sh
+          bash -n tests/e2e/test_guardrails_smoke.sh
 
       - name: Parse YAML configs
         run: |

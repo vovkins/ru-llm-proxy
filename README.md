@@ -324,17 +324,17 @@ make routing-smoke
 | `make restart` | Рестарт LiteLLM после изменения конфигурации |
 | `make logs` | Логи всех сервисов |
 | `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
-| `make test` | Локальный test suite: `test-unit` и routing diagnostics regression test |
+| `make test` | Локальный test suite: `test-unit` и Makefile diagnostics regression tests |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
-| `make test-routing-diagnostics` | Static regression test для `routing-smoke` Makefile target |
+| `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и `/v1` протоколы |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
-| `make guardrails-smoke` | Live smoke с явным `guardrails` parameter и проверкой response headers |
+| `make guardrails-smoke` | Live smoke guardrails: non-streaming, streaming SSE и Redis cleanup |
 | `make routing-smoke` | Live smoke sticky routing: один ключ должен попасть в один deployment |
 | `make metrics` | Показать первые строки LiteLLM `/metrics` |
 | `make monitor-smoke` | Проверить health, guardrails list и `/metrics` |
@@ -441,11 +441,21 @@ Guardrails зарегистрированы в `litellm-config.yaml` и имею
 make guardrails-list
 ```
 
-Для smoke-проверки применения guardrails к live-запросу:
+Для smoke-проверки применения guardrails к live-запросам:
 
 ```bash
 make guardrails-smoke
 ```
+
+Команда предназначена для локального docker-compose окружения: HTTP-запросы идут в
+`LITELLM_URL` с `localhost`, `127.0.0.1` или `[::1]`, а Redis cleanup проверяется через
+локальный `docker compose exec redis`. Она отправляет non-streaming и streaming
+`POST /v1/chat/completions`, проверяет `x-litellm-applied-guardrails`, читает SSE
+stream до конца и убеждается, что после завершения stream в Redis не осталось
+smoke-owned `pii_mapping:*` ключей с уникальным PII-маркером текущего запуска.
+
+Таймауты live-запросов настраиваются через `CURL_CONNECT_TIMEOUT` и `CURL_MAX_TIME`
+по умолчанию 10 и 180 секунд.
 
 LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`. Для production monitoring используйте `/metrics`, health checks и structured logs.
 
