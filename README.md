@@ -16,11 +16,11 @@ LLM-прокси с санитайзером персональных данны
 |-----------|--------|-------|
 | Телефоны | `PHONE_NUMBER` | Regex + валидация количества цифр |
 | Email | `EMAIL_ADDRESS` | Regex |
-| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр |
+| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр; bare INN включён по умолчанию |
 | СНИЛС | `RU_SNILS` | Regex + checksum |
 | Паспорт РФ | `RU_PASSPORT` | Regex + проверка региона |
 | Банковские карты | `CREDIT_CARD` | Regex + Luhn |
-| Адреса | `RU_ADDRESS` | Regex-паттерны российских адресов |
+| Адреса | `RU_ADDRESS` | Ограниченный regex corpus российских адресов |
 | ФИО | `PERSON` | DeepPavlov `ner_rus_bert`, если модель загружена |
 | Организации | `ORGANIZATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
 | Города/локации | `LOCATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
@@ -147,6 +147,7 @@ PRESIDIO_ANALYZER_WORKERS=1
 PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=1
 PRESIDIO_ANALYZER_QUEUE_LIMIT=8
 PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
+PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PII_GUARDRAIL_MODE=mask
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
@@ -172,10 +173,17 @@ Runtime capacity Analyzer:
 | `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Максимум активных Analyzer requests внутри одного worker. Значение `1` безопаснее для DeepPavlov/PyTorch inference. |
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
+| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare INN без контекстного слова при API `score_threshold=0.35`. Если `false`, голый ИНН требует контекст вроде `ИНН` или `налогоплательщик`. |
 
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
 При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. LiteLLM guardrail трактует `analyzer_overloaded` как fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы не отправить raw PII провайдеру. Для PII-sensitive окружений дополнительно используйте `fail_closed` для остальных инфраструктурных сбоев и масштабируйте Analyzer workers/replicas под доступную память.
+
+Recognizer calibration:
+
+- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare INN проходит дефолтный Analyzer API `score_threshold=0.35`. Это повышает recall, но может маскировать редкие случайные 10/12-значные последовательности, прошедшие checksum.
+- В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
+- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope.
 
 ### PII policy mode
 

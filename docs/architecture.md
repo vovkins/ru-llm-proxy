@@ -215,6 +215,14 @@ Analyzer имеет явную process-local capacity model:
 | Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
 | DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
 
+### Recognizer Threshold Policy
+
+Analyzer API по умолчанию использует `score_threshold=0.35`. Для `RU_INN` checksum validation всегда обязательна: невалидный контрольный разряд не детектируется даже рядом с контекстом. Настройка `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` включает более sensitive default: checksum-valid bare INN без контекстного слова проходит `score_threshold=0.35`.
+
+Если `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, включается strict mode: голый ИНН остаётся ниже `score_threshold=0.35`, а детекция требует контекст вроде `ИНН`, `индивидуальный номер налогоплательщика`, `налоговый`, `КПП` или `ОГРН`. Это снижает false positives для длинных числовых последовательностей, но может пропустить bare INN в коротких prompt'ах.
+
+`RU_ADDRESS` intentionally limited: это regex recognizer для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Unsupported/ограниченные случаи: полный парсинг индексов, регионов, владений, корпусов без улицы, свободные адреса без street/house structure и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
+
 ### NLP Stack
 
 Analyzer использует две разные NLP-составляющие:

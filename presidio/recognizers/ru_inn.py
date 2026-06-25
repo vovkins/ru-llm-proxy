@@ -4,6 +4,8 @@ INN for individuals: 12 digits, checksum validation.
 INN for legal entities: 10 digits, checksum validation.
 """
 
+import os
+
 from presidio_analyzer import Pattern, PatternRecognizer
 
 
@@ -39,7 +41,7 @@ def _validate_inn_12(digits: str) -> bool:
 class RuInnRecognizer(PatternRecognizer):
     """Recognize Russian INN (tax identification numbers)."""
 
-    PATTERNS = [
+    STRICT_PATTERNS = [
         Pattern(
             name="ru_inn_12digit",
             regex=r"(?<!\d)\d{12}(?!\d)",
@@ -49,6 +51,18 @@ class RuInnRecognizer(PatternRecognizer):
             name="ru_inn_10digit",
             regex=r"(?<!\d)\d{10}(?!\d)",
             score=0.2,
+        ),
+    ]
+    CHECKSUM_ONLY_PATTERNS = [
+        Pattern(
+            name="ru_inn_12digit",
+            regex=r"(?<!\d)\d{12}(?!\d)",
+            score=0.4,
+        ),
+        Pattern(
+            name="ru_inn_10digit",
+            regex=r"(?<!\d)\d{10}(?!\d)",
+            score=0.4,
         ),
     ]
 
@@ -65,9 +79,14 @@ class RuInnRecognizer(PatternRecognizer):
         supported_language: str = "ru",
         supported_entity: str = "RU_INN",
     ):
+        patterns = (
+            self.CHECKSUM_ONLY_PATTERNS
+            if _detect_bare_inn_by_checksum()
+            else self.STRICT_PATTERNS
+        )
         super().__init__(
             supported_entity=supported_entity,
-            patterns=self.PATTERNS,
+            patterns=patterns,
             context=self.CONTEXT,
             name=name,
             supported_language=supported_language,
@@ -89,3 +108,10 @@ class RuInnRecognizer(PatternRecognizer):
         # Base pattern scores are low (0.2-0.3) because digits alone
         # are ambiguous. Context words increase confidence significantly.
         return super().enhance_score_with_context(text, patterns)
+
+
+def _detect_bare_inn_by_checksum() -> bool:
+    """Return whether checksum-valid bare INN passes the default API threshold."""
+    raw_value = os.getenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+    normalized = raw_value.strip().lower()
+    return normalized not in {"0", "false", "no", "off"}
