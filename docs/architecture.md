@@ -215,6 +215,24 @@ Analyzer имеет явную process-local capacity model:
 | Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
 | DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
 
+## Guardrail Dependency Clients
+
+`RuPIIGuardrail` переиспользует Redis и HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop LiteLLM. Это снижает connection churn: Redis mapping store и HTTP-вызовы Presidio Analyzer используют shared clients, а не создаются заново на каждый guardrail instance или текстовое поле.
+
+Настройки dependency clients:
+
+| Настройка | По умолчанию | Эффект |
+| --- | --- | --- |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций mapping store. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий HTTP timeout для Analyzer request. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer. |
+
+Эти лимиты управляют сетевыми клиентами guardrail. Они не увеличивают фактическую compute capacity Analyzer: параллельность NER/regex inference по-прежнему задаётся `PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`, `PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`.
+
 ### NLP Stack
 
 Analyzer использует две разные NLP-составляющие:
