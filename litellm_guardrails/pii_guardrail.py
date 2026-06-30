@@ -1,6 +1,7 @@
 """Custom LiteLLM guardrail for Russian PII masking via Presidio."""
 
 import asyncio
+import inspect
 import os
 import uuid
 import json
@@ -267,6 +268,19 @@ _REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
 
 
+def _unique_clients(clients: list[Any]) -> list[Any]:
+    """Return clients once even if the same object appears in multiple loops."""
+    unique = []
+    seen = set()
+    for client in clients:
+        marker = id(client)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(client)
+    return unique
+
+
 def _get_shared_redis_client():
     """Return a per-event-loop Redis client shared by guardrail instances."""
     loop = asyncio.get_running_loop()
@@ -308,11 +322,75 @@ def _get_shared_analyzer_http_client() -> httpx.AsyncClient:
     return client
 
 
-def _clear_dependency_client_caches_for_tests() -> None:
-    """Clear shared dependency caches for unit-test isolation."""
+async def _maybe_await(value: Any) -> None:
+    """Await async close results and ignore synchronous close results."""
+    if inspect.isawaitable(value):
+        await value
+
+
+async def _close_client(
+    client: Any,
+    *,
+    operation: str,
+    close_connection_pool: bool = False,
+) -> None:
+    """Close a dependency client without leaking cleanup errors into shutdown."""
+    close = getattr(client, "aclose", None)
+    if callable(close):
+        try:
+            if close_connection_pool:
+                await _maybe_await(close(close_connection_pool=True))
+            else:
+                await _maybe_await(close())
+            return
+        except TypeError:
+            try:
+                await _maybe_await(close())
+            except Exception as exc:
+                _safe_log(
+                    logging.WARNING,
+                    "pii_guardrail_dependency_client_close_failed",
+                    operation=operation,
+                    error_type=type(exc).__name__,
+                )
+            return
+        except Exception as exc:
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_dependency_client_close_failed",
+                operation=operation,
+                error_type=type(exc).__name__,
+            )
+            return
+
+    close = getattr(client, "close", None)
+    if callable(close):
+        try:
+            await _maybe_await(close())
+        except Exception as exc:
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_dependency_client_close_failed",
+                operation=operation,
+                error_type=type(exc).__name__,
+            )
+
+
+async def close_guardrail_dependency_clients() -> None:
+    """Close shared guardrail dependency clients and clear process-local caches."""
+    redis_clients = _unique_clients(list(_REDIS_CLIENTS_BY_LOOP.values()))
+    analyzer_clients = _unique_clients(list(_ANALYZER_HTTP_CLIENTS_BY_LOOP.values()))
     _REDIS_CLIENTS_BY_LOOP.clear()
     _ANALYZER_HTTP_CLIENTS_BY_LOOP.clear()
 
+    for client in analyzer_clients:
+        await _close_client(client, operation="analyzer_http_client")
+    for client in redis_clients:
+        await _close_client(
+            client,
+            operation="redis_client",
+            close_connection_pool=True,
+        )
 
 def _safe_log(level: int, event: str, **fields) -> None:
     """Write structured logs without prompt text or raw PII values."""

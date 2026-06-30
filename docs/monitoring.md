@@ -148,6 +148,8 @@ LiteLLM guardrail переиспользует Redis и Analyzer HTTP clients м
 
 Эти лимиты не заменяют Analyzer capacity limiter. Если `analyzer_overloaded` растёт, сначала смотрите `PRESIDIO_ANALYZER_*` capacity и memory budget модели; если latency растёт без `analyzer_overloaded`, проверяйте pool limits, сеть и Redis/Analyzer service health.
 
+Для graceful teardown shared clients закрываются через `close_guardrail_dependency_clients()`. Если guardrail запускается вне стандартного Docker Compose процесса или в test harness, teardown должен вызывать этот helper, чтобы HTTPX transports и Redis connection pools не оставались открытыми после очистки caches.
+
 ## Recommended Alerts
 
 Базовые alert conditions:

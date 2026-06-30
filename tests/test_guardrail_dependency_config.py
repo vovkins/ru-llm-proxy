@@ -43,6 +43,18 @@ def test_static_suite_runs_guardrail_dependency_config_regression():
     assert "tests/test_guardrail_dependency_config.py" in makefile
 
 
+def test_guardrail_test_runner_installs_redis_dependency():
+    requirements = (ROOT / "tests" / "requirements-guardrails.txt").read_text()
+
+    assert "redis>=" in requirements
+
+
+def test_baseline_ci_runs_guardrail_unit_suite():
+    workflow = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
+
+    assert "make test-guardrail" in workflow
+
+
 def test_docs_explain_guardrail_dependency_client_limits():
     docs = {
         "README.md": (ROOT / "README.md").read_text(),
@@ -55,3 +67,4 @@ def test_docs_explain_guardrail_dependency_client_limits():
         assert "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS" in text, path
         assert "per process" in text or "процесс" in text, path
         assert "event loop" in text or "event-loop" in text, path
+        assert "close_guardrail_dependency_clients" in text, path

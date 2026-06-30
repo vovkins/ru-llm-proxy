@@ -233,6 +233,8 @@ Analyzer имеет явную process-local capacity model:
 
 Эти лимиты управляют сетевыми клиентами guardrail. Они не увеличивают фактическую compute capacity Analyzer: параллельность NER/regex inference по-прежнему задаётся `PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`, `PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`.
 
+Lifecycle shared clients управляется явно: `close_guardrail_dependency_clients()` очищает process-local caches и закрывает HTTPX/Redis pools. В Docker Compose это в основном важно для тестов и graceful teardown custom hosting; обычный stop контейнера завершает весь процесс, но embedding-код не должен просто удалять ссылки на clients без `aclose()`.
+
 ### NLP Stack
 
 Analyzer использует две разные NLP-составляющие:

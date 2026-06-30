@@ -1,5 +1,6 @@
 """Unit tests for PII guardrail module."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -8,18 +9,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import litellm
 import pytest
+import pytest_asyncio
 
 import litellm_guardrails.pii_guardrail as pii_guardrail
 from litellm_guardrails.pii_guardrail import AnalyzerOverloadedError, RuPIIGuardrail
 
 
-@pytest.fixture(autouse=True)
-def dependency_client_cache_isolation():
-    if hasattr(pii_guardrail, "_clear_dependency_client_caches_for_tests"):
-        pii_guardrail._clear_dependency_client_caches_for_tests()
+@pytest_asyncio.fixture(autouse=True)
+async def dependency_client_cache_isolation():
+    await pii_guardrail.close_guardrail_dependency_clients()
     yield
-    if hasattr(pii_guardrail, "_clear_dependency_client_caches_for_tests"):
-        pii_guardrail._clear_dependency_client_caches_for_tests()
+    await pii_guardrail.close_guardrail_dependency_clients()
 
 
 def _entity(text, value, entity_type="PHONE_NUMBER", score=1.0):
@@ -257,6 +257,80 @@ class TestDependencyClients:
         assert isinstance(kwargs["limits"], httpx.Limits)
         assert kwargs["limits"].max_connections == 20
         assert kwargs["limits"].max_keepalive_connections == 10
+
+    @pytest.mark.asyncio
+    async def test_close_dependency_clients_closes_cached_clients_and_clears_cache(self):
+        loop = asyncio.get_running_loop()
+        redis_client = AsyncMock()
+        analyzer_client = AsyncMock()
+        pii_guardrail._REDIS_CLIENTS_BY_LOOP[loop] = redis_client
+        pii_guardrail._ANALYZER_HTTP_CLIENTS_BY_LOOP[loop] = analyzer_client
+
+        await pii_guardrail.close_guardrail_dependency_clients()
+
+        redis_client.aclose.assert_awaited_once_with(close_connection_pool=True)
+        analyzer_client.aclose.assert_awaited_once_with()
+        assert len(pii_guardrail._REDIS_CLIENTS_BY_LOOP) == 0
+        assert len(pii_guardrail._ANALYZER_HTTP_CLIENTS_BY_LOOP) == 0
+
+    @pytest.mark.asyncio
+    async def test_close_dependency_clients_logs_fallback_close_errors(self, caplog):
+        class LegacyRedisClose:
+            def __init__(self):
+                self.close_connection_pool_values = []
+
+            async def aclose(self, close_connection_pool=None):
+                self.close_connection_pool_values.append(close_connection_pool)
+                if close_connection_pool is not None:
+                    raise TypeError("unsupported keyword")
+                raise RuntimeError("close failed")
+
+        loop = asyncio.get_running_loop()
+        redis_client = LegacyRedisClose()
+        pii_guardrail._REDIS_CLIENTS_BY_LOOP[loop] = redis_client
+
+        with caplog.at_level(logging.WARNING):
+            await pii_guardrail.close_guardrail_dependency_clients()
+
+        assert redis_client.close_connection_pool_values == [True, None]
+        assert "pii_guardrail_dependency_client_close_failed" in caplog.text
+        assert len(pii_guardrail._REDIS_CLIENTS_BY_LOOP) == 0
+
+    @pytest.mark.asyncio
+    async def test_dependency_clients_are_recreated_after_close(self):
+        first_redis = AsyncMock()
+        second_redis = AsyncMock()
+        first_response = TestAnalyzeText._mock_analyzer_response()
+        second_response = TestAnalyzeText._mock_analyzer_response()
+        first_http = AsyncMock()
+        first_http.post.return_value = first_response
+        second_http = AsyncMock()
+        second_http.post.return_value = second_response
+
+        with (
+            patch(
+                "redis.asyncio.from_url",
+                side_effect=[first_redis, second_redis],
+            ) as from_url,
+            patch(
+                "litellm_guardrails.pii_guardrail.httpx.AsyncClient",
+                side_effect=[first_http, second_http],
+            ) as async_client,
+        ):
+            first = RuPIIGuardrail()
+            assert await first._get_redis() is first_redis
+            await first._analyze_text("Обычный текст")
+
+            await pii_guardrail.close_guardrail_dependency_clients()
+
+            second = RuPIIGuardrail()
+            assert await second._get_redis() is second_redis
+            await second._analyze_text("Еще один текст")
+
+        assert from_url.call_count == 2
+        assert async_client.call_count == 2
+        first_redis.aclose.assert_awaited_once_with(close_connection_pool=True)
+        first_http.aclose.assert_awaited_once_with()
 
     def test_dependency_client_config_defaults_are_explicit(self):
         assert pii_guardrail.PII_GUARDRAIL_REDIS_MAX_CONNECTIONS == 20

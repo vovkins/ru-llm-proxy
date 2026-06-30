@@ -198,6 +198,8 @@ Runtime dependency clients guardrail:
 
 Эти настройки ограничивают dependency clients внутри LiteLLM guardrail. Они не заменяют `PRESIDIO_ANALYZER_*` capacity limiter: Analyzer всё равно отдельно контролирует, сколько inference jobs одновременно выполняется внутри каждого worker.
 
+При graceful shutdown или тестовом reset shared clients нужно закрывать через `close_guardrail_dependency_clients()`: helper очищает process-local caches и вызывает закрытие HTTPX/Redis pools. В штатном Docker Compose stop процесс завершается целиком, но для embedded/custom hosting или test harness этот helper должен быть частью teardown.
+
 ### PII policy mode
 
 `PII_GUARDRAIL_MODE` управляет штатным поведением после успешной детекции PII:
