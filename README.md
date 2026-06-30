@@ -150,6 +150,13 @@ PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
 PII_GUARDRAIL_MODE=mask
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
+PII_GUARDRAIL_REDIS_MAX_CONNECTIONS=20
+PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS=1.0
+PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS=2.0
+PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS=30.0
+PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS=5.0
+PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
+PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
 `make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults и заменит только placeholder-значения.
@@ -176,6 +183,22 @@ Runtime capacity Analyzer:
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
 При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. LiteLLM guardrail трактует `analyzer_overloaded` как fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы не отправить raw PII провайдеру. Для PII-sensitive окружений дополнительно используйте `fail_closed` для остальных инфраструктурных сбоев и масштабируйте Analyzer workers/replicas под доступную память.
+
+Runtime dependency clients guardrail:
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop LiteLLM. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection для PII mapping store. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций `setex`, `get`, `delete`. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий read/write/pool timeout HTTP-вызова Presidio Analyzer из guardrail. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop LiteLLM. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer в shared client. |
+
+Эти настройки ограничивают dependency clients внутри LiteLLM guardrail. Они не заменяют `PRESIDIO_ANALYZER_*` capacity limiter: Analyzer всё равно отдельно контролирует, сколько inference jobs одновременно выполняется внутри каждого worker.
+
+При graceful shutdown или тестовом reset shared clients нужно закрывать через `close_guardrail_dependency_clients()`: helper очищает process-local caches и вызывает закрытие HTTPX/Redis pools. В штатном Docker Compose stop процесс завершается целиком, но для embedded/custom hosting или test harness этот helper должен быть частью teardown.
 
 ### PII policy mode
 

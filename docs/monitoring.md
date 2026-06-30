@@ -130,6 +130,26 @@ make routing-smoke
 
 PII guardrail метрики появятся в `/metrics` после первого запроса, который прошёл через guardrail.
 
+## Guardrail Dependency Client Limits
+
+LiteLLM guardrail переиспользует Redis и Analyzer HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop. Для мониторинга это означает, что рост latency в `ru_pii_guardrail_analyzer_latency_seconds_*` или `ru_pii_guardrail_redis_latency_seconds_*` может быть связан не только с самим Analyzer/Redis, но и с ожиданием свободного connection в shared client pool.
+
+Основные ручки:
+
+| Переменная | По умолчанию | Что смотреть |
+| --- | --- | --- |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Redis pool saturation, рост `ru_pii_guardrail_redis_latency_seconds_*`, Redis server connection count. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Fail-open/fail-closed события `mapping_save`, `mapping_load`, `mapping_delete` при сетевых проблемах Redis. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Redis operation timeout и рост Redis latency histogram. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Долгие Analyzer calls, `ru_pii_guardrail_analyzer_latency_seconds_*`, fail-open/fail-closed `masking`. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Ошибки подключения к Analyzer container/service. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | HTTP client pool saturation к Analyzer на один процесс/event loop LiteLLM. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Стабильность keep-alive reuse при регулярной нагрузке. |
+
+Эти лимиты не заменяют Analyzer capacity limiter. Если `analyzer_overloaded` растёт, сначала смотрите `PRESIDIO_ANALYZER_*` capacity и memory budget модели; если latency растёт без `analyzer_overloaded`, проверяйте pool limits, сеть и Redis/Analyzer service health.
+
+Для graceful teardown shared clients закрываются через `close_guardrail_dependency_clients()`. Если guardrail запускается вне стандартного Docker Compose процесса или в test harness, teardown должен вызывать этот helper, чтобы HTTPX transports и Redis connection pools не оставались открытыми после очистки caches.
+
 ## Recommended Alerts
 
 Базовые alert conditions:
