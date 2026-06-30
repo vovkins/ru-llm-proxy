@@ -92,8 +92,8 @@ class RuInnRecognizer(PatternRecognizer):
             supported_language=supported_language,
         )
 
-    def validate_result(self, pattern_text: str) -> bool:
-        """Validate INN using checksum."""
+    def _has_valid_checksum(self, pattern_text: str) -> bool:
+        """Return whether INN text has a valid checksum."""
         digits = pattern_text.strip()
         if not digits.isdigit():
             return False
@@ -102,6 +102,14 @@ class RuInnRecognizer(PatternRecognizer):
         if len(digits) == 12:
             return _validate_inn_12(digits)
         return False
+
+    def validate_result(self, pattern_text: str):
+        """Keep base score for valid INN instead of boosting to MAX_SCORE."""
+        return None
+
+    def invalidate_result(self, pattern_text: str) -> bool:
+        """Reject INN-like numbers with an invalid checksum."""
+        return not self._has_valid_checksum(pattern_text)
 
     def enhance_score_with_context(self, text, patterns):
         """Boost score when context words are found."""

@@ -223,6 +223,26 @@ Analyzer API по умолчанию использует `score_threshold=0.35`
 
 `RU_ADDRESS` intentionally limited: это regex recognizer для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Unsupported/ограниченные случаи: полный парсинг индексов, регионов, владений, корпусов без улицы, свободные адреса без street/house structure и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
 
+## Guardrail Dependency Clients
+
+`RuPIIGuardrail` переиспользует Redis и HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop LiteLLM. Это снижает connection churn: Redis mapping store и HTTP-вызовы Presidio Analyzer используют shared clients, а не создаются заново на каждый guardrail instance или текстовое поле.
+
+Настройки dependency clients:
+
+| Настройка | По умолчанию | Эффект |
+| --- | --- | --- |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций mapping store. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий HTTP timeout для Analyzer request. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer. |
+
+Эти лимиты управляют сетевыми клиентами guardrail. Они не увеличивают фактическую compute capacity Analyzer: параллельность NER/regex inference по-прежнему задаётся `PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`, `PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`.
+
+Lifecycle shared clients управляется явно: `close_guardrail_dependency_clients()` очищает process-local caches и закрывает HTTPX/Redis pools. В Docker Compose это в основном важно для тестов и graceful teardown custom hosting; обычный stop контейнера завершает весь процесс, но embedding-код не должен просто удалять ссылки на clients без `aclose()`.
+
 ### NLP Stack
 
 Analyzer использует две разные NLP-составляющие:

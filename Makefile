@@ -75,6 +75,7 @@ test-static: test-routing-diagnostics
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
 		tests/test_analyzer_capacity_config.py \
 		tests/test_recognizer_calibration_config.py \
+		tests/test_guardrail_dependency_config.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:

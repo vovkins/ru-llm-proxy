@@ -1,5 +1,7 @@
 """Custom LiteLLM guardrail for Russian PII masking via Presidio."""
 
+import asyncio
+import inspect
 import os
 import uuid
 import json
@@ -7,6 +9,7 @@ import logging
 import re
 import time
 from typing import Optional, Union, Any
+from weakref import WeakKeyDictionary
 
 import httpx
 import litellm
@@ -204,15 +207,190 @@ def _normalize_positive_int(name: str, value: int, default: int) -> int:
     return default
 
 
+def _get_float_env(name: str, default: float) -> float:
+    """Read float environment variable with a safe fallback."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        logger.warning("Invalid %s=%r, falling back to %s", name, raw_value, default)
+        return default
+    return _normalize_positive_float(name, value, default)
+
+
+def _normalize_positive_float(name: str, value: float, default: float) -> float:
+    """Return value when positive, otherwise log and return default."""
+    if value > 0:
+        return value
+    logger.warning("Invalid %s=%r, falling back to %s", name, value, default)
+    return default
+
+
 # Redis for storing PII mappings (for unmasking responses)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+PII_GUARDRAIL_REDIS_MAX_CONNECTIONS = _get_int_env(
+    "PII_GUARDRAIL_REDIS_MAX_CONNECTIONS",
+    20,
+)
+PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS = _get_float_env(
+    "PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS",
+    1.0,
+)
+PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS = _get_float_env(
+    "PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS",
+    2.0,
+)
+PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS = _get_float_env(
+    "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS",
+    30.0,
+)
+PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS = _get_float_env(
+    "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS",
+    5.0,
+)
+PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS = _get_int_env(
+    "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS",
+    20,
+)
+PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS = _get_int_env(
+    "PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS",
+    10,
+)
 PII_MAPPING_TTL_SECONDS = _get_int_env(
     "PII_MAPPING_TTL_SECONDS",
     DEFAULT_PII_MAPPING_TTL_SECONDS,
 )
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
 PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
+_REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
+_ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
 
+
+def _unique_clients(clients: list[Any]) -> list[Any]:
+    """Return clients once even if the same object appears in multiple loops."""
+    unique = []
+    seen = set()
+    for client in clients:
+        marker = id(client)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(client)
+    return unique
+
+
+def _get_shared_redis_client():
+    """Return a per-event-loop Redis client shared by guardrail instances."""
+    loop = asyncio.get_running_loop()
+    client = _REDIS_CLIENTS_BY_LOOP.get(loop)
+    if client is None:
+        import redis.asyncio as aioredis
+
+        client = aioredis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            max_connections=PII_GUARDRAIL_REDIS_MAX_CONNECTIONS,
+            socket_connect_timeout=(
+                PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS
+            ),
+            socket_timeout=PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS,
+        )
+        _REDIS_CLIENTS_BY_LOOP[loop] = client
+    return client
+
+
+def _get_shared_analyzer_http_client() -> httpx.AsyncClient:
+    """Return a per-event-loop HTTP client shared by guardrail instances."""
+    loop = asyncio.get_running_loop()
+    client = _ANALYZER_HTTP_CLIENTS_BY_LOOP.get(loop)
+    if client is None:
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                timeout=PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS,
+                connect=PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS,
+            ),
+            limits=httpx.Limits(
+                max_connections=PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS,
+                max_keepalive_connections=(
+                    PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS
+                ),
+            ),
+        )
+        _ANALYZER_HTTP_CLIENTS_BY_LOOP[loop] = client
+    return client
+
+
+async def _maybe_await(value: Any) -> None:
+    """Await async close results and ignore synchronous close results."""
+    if inspect.isawaitable(value):
+        await value
+
+
+async def _close_client(
+    client: Any,
+    *,
+    operation: str,
+    close_connection_pool: bool = False,
+) -> None:
+    """Close a dependency client without leaking cleanup errors into shutdown."""
+    close = getattr(client, "aclose", None)
+    if callable(close):
+        try:
+            if close_connection_pool:
+                await _maybe_await(close(close_connection_pool=True))
+            else:
+                await _maybe_await(close())
+            return
+        except TypeError:
+            try:
+                await _maybe_await(close())
+            except Exception as exc:
+                _safe_log(
+                    logging.WARNING,
+                    "pii_guardrail_dependency_client_close_failed",
+                    operation=operation,
+                    error_type=type(exc).__name__,
+                )
+            return
+        except Exception as exc:
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_dependency_client_close_failed",
+                operation=operation,
+                error_type=type(exc).__name__,
+            )
+            return
+
+    close = getattr(client, "close", None)
+    if callable(close):
+        try:
+            await _maybe_await(close())
+        except Exception as exc:
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_dependency_client_close_failed",
+                operation=operation,
+                error_type=type(exc).__name__,
+            )
+
+
+async def close_guardrail_dependency_clients() -> None:
+    """Close shared guardrail dependency clients and clear process-local caches."""
+    redis_clients = _unique_clients(list(_REDIS_CLIENTS_BY_LOOP.values()))
+    analyzer_clients = _unique_clients(list(_ANALYZER_HTTP_CLIENTS_BY_LOOP.values()))
+    _REDIS_CLIENTS_BY_LOOP.clear()
+    _ANALYZER_HTTP_CLIENTS_BY_LOOP.clear()
+
+    for client in analyzer_clients:
+        await _close_client(client, operation="analyzer_http_client")
+    for client in redis_clients:
+        await _close_client(
+            client,
+            operation="redis_client",
+            close_connection_pool=True,
+        )
 
 def _safe_log(level: int, event: str, **fields) -> None:
     """Write structured logs without prompt text or raw PII values."""
@@ -312,10 +490,9 @@ class RuPIIGuardrail(CustomGuardrail):
 
     async def _get_redis(self):
         """Lazy Redis connection."""
-        if self._redis is None:
-            import redis.asyncio as aioredis
-            self._redis = aioredis.from_url(REDIS_URL, decode_responses=True)
-        return self._redis
+        if self._redis is not None:
+            return self._redis
+        return _get_shared_redis_client()
 
     @staticmethod
     def _iter_text_content_block_targets(blocks: list) -> list[tuple[dict, str]]:
@@ -489,25 +666,25 @@ class RuPIIGuardrail(CustomGuardrail):
         """Send text to Presidio Analyzer for PII detection."""
         started_at = time.perf_counter()
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
-                    json={"text": text, "language": "ru", "score_threshold": 0.35},
-                )
-                if response.status_code == 503:
-                    try:
-                        detail = response.json().get("detail", {})
-                    except ValueError:
-                        detail = {}
-                    if isinstance(detail, dict) and (
-                        detail.get("code") == "analyzer_overloaded"
-                    ):
-                        raise AnalyzerOverloadedError(
-                            reason=str(detail.get("reason") or "unknown")
-                        )
-                response.raise_for_status()
-                data = response.json()
-                return data.get("entities", [])
+            client = _get_shared_analyzer_http_client()
+            response = await client.post(
+                f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
+                json={"text": text, "language": "ru", "score_threshold": 0.35},
+            )
+            if response.status_code == 503:
+                try:
+                    detail = response.json().get("detail", {})
+                except ValueError:
+                    detail = {}
+                if isinstance(detail, dict) and (
+                    detail.get("code") == "analyzer_overloaded"
+                ):
+                    raise AnalyzerOverloadedError(
+                        reason=str(detail.get("reason") or "unknown")
+                    )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("entities", [])
         finally:
             PII_ANALYZER_LATENCY.observe(time.perf_counter() - started_at)
 

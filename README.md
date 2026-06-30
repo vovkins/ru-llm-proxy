@@ -151,6 +151,13 @@ PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PII_GUARDRAIL_MODE=mask
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
+PII_GUARDRAIL_REDIS_MAX_CONNECTIONS=20
+PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS=1.0
+PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS=2.0
+PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS=30.0
+PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS=5.0
+PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
+PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
 `make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults и заменит только placeholder-значения.
@@ -184,6 +191,22 @@ Recognizer calibration:
 - `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare INN проходит дефолтный Analyzer API `score_threshold=0.35`. Это повышает recall, но может маскировать редкие случайные 10/12-значные последовательности, прошедшие checksum.
 - В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
 - `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope.
+
+Runtime dependency clients guardrail:
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop LiteLLM. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection для PII mapping store. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций `setex`, `get`, `delete`. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий read/write/pool timeout HTTP-вызова Presidio Analyzer из guardrail. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop LiteLLM. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer в shared client. |
+
+Эти настройки ограничивают dependency clients внутри LiteLLM guardrail. Они не заменяют `PRESIDIO_ANALYZER_*` capacity limiter: Analyzer всё равно отдельно контролирует, сколько inference jobs одновременно выполняется внутри каждого worker.
+
+При graceful shutdown или тестовом reset shared clients нужно закрывать через `close_guardrail_dependency_clients()`: helper очищает process-local caches и вызывает закрытие HTTPX/Redis pools. В штатном Docker Compose stop процесс завершается целиком, но для embedded/custom hosting или test harness этот helper должен быть частью teardown.
 
 ### PII policy mode
 
