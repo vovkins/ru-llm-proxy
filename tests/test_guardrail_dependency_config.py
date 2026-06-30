@@ -49,6 +49,14 @@ def test_guardrail_test_runner_installs_redis_dependency():
     assert "redis>=" in requirements
 
 
+def test_guardrail_test_runner_uses_pip_available_python_image():
+    dockerfile = (ROOT / "tests" / "Dockerfile.guardrails").read_text()
+    requirements = (ROOT / "tests" / "requirements-guardrails.txt").read_text()
+
+    assert "FROM python:" in dockerfile
+    assert "litellm==" in requirements
+
+
 def test_baseline_ci_runs_guardrail_unit_suite():
     workflow = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
 
