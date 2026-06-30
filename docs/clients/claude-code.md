@@ -106,6 +106,8 @@ POST /v1/messages/count_tokens
 GET /v1/models
 ```
 
+`make client-auth-smoke` currently validates `/v1/messages`; `count_tokens` is listed because Claude Code may call it, but it is not covered by the default smoke yet.
+
 `make client-auth-smoke` checks `/v1/messages` only when `ANTHROPIC_API_KEY` is configured and `MESSAGES_MODEL` is set to a live-validated proxy alias:
 
 ```bash
