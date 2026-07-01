@@ -321,6 +321,34 @@ make restart
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
 
+## Pre-egress config/log policy
+
+`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio Analyzer. Он останавливает целые operational payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces.
+
+При срабатывании запрос не отправляется в Analyzer и провайдеру, а Redis mapping `pii_mapping:*` не создаётся:
+
+```json
+{
+  "error": {
+    "message": "Request contains configuration or log data and was blocked by pre-egress policy.",
+    "type": "pre_egress_policy_violation",
+    "code": "pre_egress_policy_blocked",
+    "details": {
+      "categories": ["config"],
+      "rules": ["env_secret_assignment"]
+    }
+  }
+}
+```
+
+Ответ и structured logs содержат только bounded categories/rule ids/counts, без raw payload, snippets, offsets или secret values. Если нужно временно разрешить такие payloads в dev-среде, задайте `PRE_EGRESS_POLICY_MODE=off`; PII mask/block при этом продолжит работать отдельно.
+
+Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream проверяет, что clean prompt доходит до Analyzer/provider, а blocked config payload не доходит ни до Analyzer, ни до provider:
+
+```bash
+make test-pre-egress-proxy
+```
+
 ## Sticky routing
 
 Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:

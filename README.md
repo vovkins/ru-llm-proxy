@@ -149,6 +149,7 @@ PRESIDIO_ANALYZER_QUEUE_LIMIT=8
 PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
 PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PII_GUARDRAIL_MODE=mask
+PRE_EGRESS_POLICY_MODE=block
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 PII_GUARDRAIL_REDIS_MAX_CONNECTIONS=20
@@ -160,7 +161,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE` и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -220,6 +221,19 @@ Runtime dependency clients guardrail:
 В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
 
 `PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
+
+### Pre-egress config/log policy
+
+`PRE_EGRESS_POLICY_MODE` управляет отдельным whole-payload classifier перед Presidio Analyzer и provider egress.
+
+| Значение | Поведение |
+| --- | --- |
+| `block` | Значение по умолчанию. Guardrail отклоняет высокосигнальные `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces до вызова Analyzer и провайдера. |
+| `off` | Отключает config/log classifier. PII mask/block продолжает работать по `PII_GUARDRAIL_MODE`. |
+
+При блокировке клиент получает безопасную `422` ошибку с `code=pre_egress_policy_blocked`, categories и rule ids. Error body и structured logs не содержат raw payload, snippets, offsets или secret values. PII Redis mapping `pii_mapping:*` не создаётся, потому что запрос останавливается до `_save_mapping`.
+
+Этот слой не заменяет PII mask/block: PII policy работает по entity spans и может маскировать/восстанавливать данные, а pre-egress policy останавливает целые операционные артефакты, которые нельзя безопасно отправлять внешнему LLM даже после частичной маскировки.
 
 ### litellm-config.yaml — настройки LiteLLM
 
@@ -284,6 +298,9 @@ guardrails:
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+        - name: "pre_egress_policy_mode"
+          type: "string"
+          description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "request_fields"
           type: "list[string]"
           description: "Masks message.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
@@ -361,6 +378,7 @@ make routing-smoke
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
+| `make test-pre-egress-proxy` | Docker smoke с mock provider: pre-egress block не доходит до Analyzer/provider |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и `/v1` протоколы |
@@ -516,6 +534,7 @@ make monitor-smoke
 - `ru_pii_guardrail_analyzer_latency_seconds_*`
 - `ru_pii_guardrail_redis_latency_seconds_*`
 - `ru_pii_guardrail_mapping_size_*`
+- `ru_pre_egress_policy_blocked_total`
 
 Guardrail также пишет structured JSON logs без prompt text и без raw PII. Подробный DevOps guide: [docs/monitoring.md](docs/monitoring.md).
 
