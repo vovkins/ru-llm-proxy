@@ -1,0 +1,16 @@
+model_list:
+  - model_name: mock-chat
+    litellm_params:
+      model: openai/mock-chat
+      api_base: http://mock-upstream:8080/v1
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: "ru-pii-mask-pre"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "pre_call"
+      default_on: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

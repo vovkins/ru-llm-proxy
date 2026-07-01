@@ -118,10 +118,11 @@ make routing-smoke
 
 | Metric | Type | Labels | Назначение |
 | --- | --- | --- | --- |
-| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `clean`, `skipped`, `error` |
+| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `pre_egress_policy_blocked`, `clean`, `skipped`, `error` |
 | `ru_pii_guardrail_post_calls_total` | Counter | `result` | Итог post-call: `restored`, `no_placeholders`, `no_mapping`, `skipped`, `unsupported_response`, `error` |
 | `ru_pii_guardrail_entities_detected_total` | Counter | `entity_type` | Количество замаскированных сущностей по типам |
 | `ru_pii_guardrail_blocked_total` | Counter | `entity_type` | Количество заблокированных сущностей по типам в `PII_GUARDRAIL_MODE=block` |
+| `ru_pre_egress_policy_blocked_total` | Counter | `category` | Количество config/log payload blocks по bounded categories |
 | `ru_pii_guardrail_fail_open_total` | Counter | `operation` | Ошибки, после которых запрос продолжен в режиме `fail_open` |
 | `ru_pii_guardrail_fail_closed_total` | Counter | `operation` | Ошибки, после которых запрос остановлен в режиме `fail_closed` |
 | `ru_pii_guardrail_analyzer_latency_seconds_*` | Histogram | none | Latency вызовов Presidio Analyzer |
@@ -204,6 +205,7 @@ Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded
 
 Guardrail пишет structured JSON logs без prompt text и без raw PII.
 Поле `request_id` в событиях guardrail — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
+При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 
 Основные события:
 
@@ -211,6 +213,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 | --- | --- | --- |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
+| `pre_egress_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `category_counts`, `finding_count` |
 | `pii_guardrail_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |
 | `pii_guardrail_stream_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
