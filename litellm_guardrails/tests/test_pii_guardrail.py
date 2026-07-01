@@ -113,6 +113,23 @@ class TestPolicyMode:
         assert guardrail.pii_mode == "mask"
 
 
+# === pre-egress policy mode ===
+
+
+class TestPreEgressPolicyMode:
+    def test_defaults_to_block_mode(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.pre_egress_policy_mode == "block"
+
+    def test_accepts_off_alias(self):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="off")
+        assert guardrail.pre_egress_policy_mode == "off"
+
+    def test_defaults_to_block_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="bad-value")
+        assert guardrail.pre_egress_policy_mode == "block"
+
+
 # === _analyze_text ===
 
 
@@ -963,6 +980,351 @@ class TestPreCallHook:
         assert "pii_guardrail_masked" in logs
         assert "PHONE_NUMBER" in logs
         assert "+79031234567" not in logs
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_env_payload_before_analyzer_and_redis(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "\n".join(
+            [
+                "OPENAI_API_KEY=sk-test-secret",
+                "DATABASE_URL=postgresql://user:pass@db.example/app",
+                "JWT_SECRET=local-secret",
+            ]
+        )
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert exc_info.value.response.status_code == 422
+        assert error_body == {
+            "error": {
+                "message": "Request contains configuration or log data and was blocked by pre-egress policy.",
+                "type": "pre_egress_policy_violation",
+                "code": "pre_egress_policy_blocked",
+                "details": {
+                    "categories": ["config"],
+                    "rules": ["env_secret_assignment"],
+                },
+            }
+        }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-test-secret" not in serialized
+        assert "postgresql://user:pass@db.example/app" not in serialized
+        assert "local-secret" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_responses_input_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "ANTHROPIC_API_KEY=sk-ant-test\nZAI_API_KEY=zai-secret"
+        data = {"model": "openai-gpt-5.4-mini", "input": payload}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert data["input"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "pre_egress_policy_blocked"
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "API_KEY=sk-test-secret",
+            "TOKEN=local-token",
+            "PASSWORD=local-password",
+            "SECRET=local-secret",
+            "SECRET_KEY=local-secret",
+            "LITELLM_MASTER_KEY=sk-ru-admin",
+            "LITELLM_SALT_KEY=local-salt",
+            "ZAI_API_KEY_2=zai-second-account",
+        ],
+    )
+    async def test_pre_egress_blocks_common_env_secret_names(self, payload):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        assert payload.split("=", 1)[1] not in json.dumps(
+            error_body,
+            ensure_ascii=False,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected_category", "expected_rule"),
+        [
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Config",
+                        "clusters:",
+                        "- cluster:",
+                        "    server: https://k8s.example",
+                        "contexts:",
+                        "- context:",
+                        "users:",
+                        "- name: prod-admin",
+                    ]
+                ),
+                "config",
+                "kubeconfig_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Secret",
+                        "metadata:",
+                        "  name: app-secrets",
+                        "type: Opaque",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: ConfigMap",
+                        "metadata:",
+                        "  name: nginx-config",
+                        "data:",
+                        "  nginx.conf: |",
+                        "    server { listen 80; }",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 443 ssl;",
+                        "  location /api {",
+                        "    proxy_pass http://backend;",
+                        "  }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 80;",
+                        "  root /var/www/html;",
+                        "  location / { try_files $uri $uri/ =404; }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 443 ssl;",
+                        "  location /api { proxy_pass http://backend; }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        '10.0.0.7 - - [01/Jul/2026:12:00:00 +0300] "POST /login HTTP/1.1" 401 32',
+                        "Traceback (most recent call last):",
+                        '  File "app.py", line 12, in handler',
+                        "RuntimeError: token verification failed",
+                    ]
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "TypeError: Cannot read properties of undefined",
+                        "    at handler (/app/index.js:12:3)",
+                    ]
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul 01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
+                "USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+        ],
+    )
+    async def test_pre_egress_blocks_operational_payloads(
+        self,
+        payload,
+        expected_category,
+        expected_rule,
+    ):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == payload
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"] == {
+            "categories": [expected_category],
+            "rules": [expected_rule],
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_block_log_does_not_include_raw_payload(self, caplog):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "OPENAI_API_KEY=sk-test-secret\nJWT_SECRET=local-secret"
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(litellm.UnprocessableEntityError):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data={"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]},
+                    )
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pre_egress_policy_blocked" in logs
+        assert "env_secret_assignment" in logs
+        assert "sk-test-secret" not in logs
+        assert "local-secret" not in logs
+        assert payload not in logs
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_allows_clean_prompt_and_still_runs_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": "Суммируй требования к задаче"}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with("Суммируй требования к задаче")
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Объясни, чем OPENAI_API_KEY отличается от LITELLM_MASTER_KEY.",
+            "Объясни, что значит Failed password в ssh logs.",
+            "What does authentication failure troubleshooting usually involve?",
+        ],
+    )
+    async def test_pre_egress_allows_incidental_operational_terms(self, text):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(text)
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_off_allows_payload_to_pii_pipeline(self):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="off")
+        guardrail._redis = _mock_redis()
+        payload = "OPENAI_API_KEY=sk-test-secret\nJWT_SECRET=local-secret"
+        data = {"messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(payload)
+        guardrail._redis.setex.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_block_mode_rejects_pii_without_mutating_or_saving(self):

@@ -187,6 +187,16 @@ Guardrail поддерживает два режима через `PII_GUARDRAIL
 
 TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
 
+## Pre-egress config/log policy
+
+`PRE_EGRESS_POLICY_MODE=block` включает отдельный whole-payload classifier внутри pre-call guardrail. Он запускается после сбора строковых request targets, но до `POST /api/v1/analyze`, Redis mapping save и provider egress.
+
+Цель слоя — не искать отдельные PII spans, а остановить операционные артефакты, которые нельзя безопасно отправлять внешнему LLM: `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании guardrail возвращает `422` с `code=pre_egress_policy_blocked`; тело ответа и structured logs содержат только bounded categories/rule ids/counts без raw payload, snippets, offsets или secret values.
+
+Если classifier блокирует запрос, PII Redis mapping `pii_mapping:*` не создаётся и `metadata.pii_request_id` не добавляется. Router-level Redis state вроде `deployment_affinity` относится к LiteLLM routing и не является PII restoration mapping.
+
+#28 Secondary DLP scan остаётся отдельным слоем: он должен проверять уже provider-bound payload после возможных мутаций. Pre-egress policy из этого раздела проверяет исходный operational artifact до Analyzer.
+
 ## Analyzer
 
 Analyzer service — FastAPI приложение в `presidio/analyzer_server.py`.

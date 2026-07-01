@@ -31,6 +31,7 @@ jobs:
           bash -n tests/e2e/test_client_auth.sh
           bash -n tests/e2e/test_e2e.sh
           bash -n tests/e2e/test_guardrails_smoke.sh
+          bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
 
       - name: Parse YAML configs
         run: |
@@ -38,7 +39,13 @@ jobs:
           from pathlib import Path
           import yaml
 
-          for path in ("litellm-config.yaml", "docker-compose.yml", ".github/workflows/baseline.yml"):
+          for path in (
+              "litellm-config.yaml",
+              "docker-compose.yml",
+              "tests/e2e/litellm-config.pre-egress-proxy.yaml",
+              "tests/e2e/docker-compose.pre-egress-proxy.yml",
+              ".github/workflows/baseline.yml",
+          ):
               yaml.safe_load(Path(path).read_text())
               print(f"{path} ok")
           PY
@@ -63,6 +70,7 @@ jobs:
           make -n virtual-key-create MODELS=standard,zai KEY_ALIAS=smoke DURATION=30m
           make -n client-auth-smoke
           make -n test-e2e
+          make -n test-pre-egress-proxy
           make -n guardrails-list
           make -n guardrails-smoke
           make -n monitor-smoke
