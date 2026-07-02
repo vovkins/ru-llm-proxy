@@ -22,13 +22,15 @@
 5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
 6. Analyzer возвращает entity spans, entity types и scores.
 7. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
-8. Guardrail генерирует server-side `pii_request_id` и сохраняет placeholder -> original mappings в Redis.
-9. Только после успешного Redis save исходные строковые поля заменяются на masked text.
-10. LiteLLM отправляет masked request настроенному LLM-провайдеру.
-11. LiteLLM запускает ru-pii-mask-post в режиме post_call.
-12. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-13. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders в `delta.content` и `delta.reasoning_content` с учетом разрыва placeholder между чанками.
-14. Redis mapping удаляется после post-call или streaming-iterator обработки.
+8. Guardrail применяет masked text к provider-bound request fields.
+9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences`.
+10. При final-check block guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
+11. Если final-check чистый, guardrail генерирует server-side `pii_request_id` и сохраняет placeholder -> original mappings в Redis. Если Redis save падает в `fail_open`, guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
+12. LiteLLM отправляет masked request настроенному LLM-провайдеру.
+13. LiteLLM запускает ru-pii-mask-post в режиме post_call.
+14. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+15. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders в `delta.content` и `delta.reasoning_content` с учетом разрыва placeholder между чанками.
+16. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 6, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
 ```
@@ -62,9 +64,15 @@ guardrails:
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+        - name: "pre_egress_policy_mode"
+          type: "string"
+          description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
+        - name: "final_payload_leak_check_mode"
+          type: "string"
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound tools/functions schema keys/strings, prediction, response_format, and Responses text; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Anthropic top-level system string/text blocks, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -84,7 +92,7 @@ guardrails:
           description: "Uses async_post_call_streaming_iterator_hook to restore placeholders across chunk boundaries and clean up Redis mapping."
 ```
 
-`async_pre_call_hook` в `mask` mode маскирует `message.content`, Anthropic top-level `system` string/text blocks, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
+`async_pre_call_hook` в `mask` mode маскирует `message.content`, Anthropic Messages top-level `system` и `tool_result.content`, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
 
 `async_post_call_streaming_iterator_hook` восстанавливает streaming `delta.content` и `delta.reasoning_content`, удерживая только возможный суффикс placeholder, чтобы не отдавать клиенту разорванный placeholder. Если LiteLLM получает `stream: true`, но возвращает обычный `ModelResponse`, восстановление выполняет `async_post_call_success_hook`.
 

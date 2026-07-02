@@ -3,14 +3,84 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
 import time
 
+
+RAW_PHONE = "+79031234567"
+PHONE_PLACEHOLDER = "<PHONE_NUMBER_1>"
+PRIVATE_KEY_MARKER = "-----BEGIN PRIVATE KEY-----"
+CANARIES = tuple(
+    token.strip()
+    for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
+    if token.strip()
+)
 
 CAPTURE = {
     "analyzer_requests": 0,
     "provider_requests": 0,
-    "provider_request_paths": [],
+    "analyzer_saw_canary": False,
+    "provider_saw_canary": False,
+    "provider_saw_private_key_marker": False,
+    "provider_saw_raw_phone": False,
+    "provider_saw_phone_placeholder": False,
 }
+
+
+def _iter_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_strings(item)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                yield key
+            yield from _iter_strings(item)
+
+
+def _text_contains(value, needle: str) -> bool:
+    return any(needle in text for text in _iter_strings(value))
+
+
+def _text_contains_canary(value) -> bool:
+    return any(_text_contains(value, canary) for canary in CANARIES)
+
+
+def _analyzer_entities(payload):
+    text = payload.get("text")
+    if not isinstance(text, str):
+        return []
+    if RAW_PHONE not in text:
+        return []
+    start = text.index(RAW_PHONE)
+    return [
+        {
+            "entity_type": "PHONE_NUMBER",
+            "start": start,
+            "end": start + len(RAW_PHONE),
+            "score": 1.0,
+        }
+    ]
+
+
+def _record_provider_payload(payload):
+    CAPTURE["provider_requests"] += 1
+    CAPTURE["provider_saw_canary"] = (
+        CAPTURE["provider_saw_canary"] or _text_contains_canary(payload)
+    )
+    CAPTURE["provider_saw_private_key_marker"] = (
+        CAPTURE["provider_saw_private_key_marker"]
+        or _text_contains(payload, PRIVATE_KEY_MARKER)
+    )
+    CAPTURE["provider_saw_raw_phone"] = (
+        CAPTURE["provider_saw_raw_phone"] or _text_contains(payload, RAW_PHONE)
+    )
+    CAPTURE["provider_saw_phone_placeholder"] = (
+        CAPTURE["provider_saw_phone_placeholder"]
+        or _text_contains(payload, PHONE_PLACEHOLDER)
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -49,24 +119,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/capture/reset":
             for key, value in CAPTURE.items():
-                if type(value) is int:
-                    CAPTURE[key] = 0
-                elif isinstance(value, list):
-                    CAPTURE[key] = []
+                CAPTURE[key] = 0 if type(value) is int else False
             self._write_json(200, dict(CAPTURE))
             return
 
         if self.path == "/api/v1/analyze":
-            self._read_json()
+            payload = self._read_json()
             CAPTURE["analyzer_requests"] += 1
-            self._write_json(200, {"entities": []})
+            CAPTURE["analyzer_saw_canary"] = (
+                CAPTURE["analyzer_saw_canary"] or _text_contains_canary(payload)
+            )
+            self._write_json(200, {"entities": _analyzer_entities(payload)})
             return
 
         payload = self._read_json()
 
         if self.path == "/v1/chat/completions":
-            CAPTURE["provider_requests"] += 1
-            CAPTURE["provider_request_paths"].append(self.path)
+            _record_provider_payload(self._read_json())
             self._write_json(
                 200,
                 {
@@ -91,8 +160,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/v1/responses":
-            CAPTURE["provider_requests"] += 1
-            CAPTURE["provider_request_paths"].append(self.path)
+            _record_provider_payload(self._read_json())
             self._write_json(
                 200,
                 {
@@ -100,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
                     "object": "response",
                     "created_at": int(time.time()),
                     "status": "completed",
-                    "model": payload.get("model", "mock-chat"),
+                    "model": "mock-chat",
                     "output": [
                         {
                             "id": "msg_mock",
@@ -120,27 +188,6 @@ class Handler(BaseHTTPRequestHandler):
                         "input_tokens": 1,
                         "output_tokens": 1,
                         "total_tokens": 2,
-                    },
-                },
-            )
-            return
-
-        if self.path == "/v1/messages":
-            CAPTURE["provider_requests"] += 1
-            CAPTURE["provider_request_paths"].append(self.path)
-            self._write_json(
-                200,
-                {
-                    "id": "msg_mock",
-                    "type": "message",
-                    "role": "assistant",
-                    "model": payload.get("model", "mock-claude"),
-                    "content": [{"type": "text", "text": "ok"}],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": None,
-                    "usage": {
-                        "input_tokens": 1,
-                        "output_tokens": 1,
                     },
                 },
             )
