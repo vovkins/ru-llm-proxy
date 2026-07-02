@@ -349,6 +349,33 @@ Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream п
 make test-pre-egress-proxy
 ```
 
+## Final payload leak check
+
+`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, tool/function schema keys/strings дополнительно просканированы без мутации, а внешний provider ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens и provider-key-like values.
+
+При срабатывании запрос не отправляется провайдеру:
+
+```json
+{
+  "error": {
+    "message": "Request contains a confirmed raw leak marker and was blocked before provider egress.",
+    "type": "final_payload_leak_check_violation",
+    "code": "final_payload_leak_check_blocked",
+    "details": {
+      "rules": ["configured_canary"]
+    }
+  }
+}
+```
+
+Ответ, structured logs и метрика `ru_final_payload_leak_check_blocked_total` содержат только bounded rule ids/counts, без raw matched values, prompt snippets, offsets, provider keys или mapping contents. Если нужно временно отключить слой в dev-среде, задайте `FINAL_PAYLOAD_LEAK_CHECK_MODE=off`; PII mask/block и `PRE_EGRESS_POLICY_MODE` продолжат работать отдельно.
+
+Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream проверяет, что Analyzer видит configured canary/private-key marker, tool schema canary блокируется без provider egress, а sanitized PII prompt доходит до provider только с placeholder:
+
+```bash
+make test-final-leak-proxy
+```
+
 ## Sticky routing
 
 Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:

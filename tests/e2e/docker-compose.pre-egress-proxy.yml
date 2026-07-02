@@ -1,9 +1,18 @@
 services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   mock-upstream:
     image: python:3.12-slim
     command: ["python", "/workspace/tests/e2e/mock_openai_upstream.py"]
     environment:
       - PORT=8080
+      - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=RU_PROXY_FINAL_CANARY
     volumes:
       - ../..:/workspace:ro
     healthcheck:
@@ -27,13 +36,18 @@ services:
       - LITELLM_MASTER_KEY=sk-test-master
       - LITELLM_SALT_KEY=sk-test-salt
       - OPENAI_API_KEY=sk-test-upstream
+      - REDIS_URL=redis://redis:6379
       - PRESIDIO_ANALYZER_URL=http://mock-upstream:8080
       - PII_GUARDRAIL_MODE=mask
       - PRE_EGRESS_POLICY_MODE=block
+      - FINAL_PAYLOAD_LEAK_CHECK_MODE=block
+      - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=RU_PROXY_FINAL_CANARY
       - PYTHONPATH=/app
     volumes:
       - ./litellm-config.pre-egress-proxy.yaml:/app/config.yaml:ro
       - ../../litellm_guardrails:/app/litellm_guardrails:ro
     depends_on:
+      redis:
+        condition: service_healthy
       mock-upstream:
         condition: service_healthy
