@@ -3,13 +3,82 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
 import time
 
+
+RAW_PHONE = "+79031234567"
+PHONE_PLACEHOLDER = "<PHONE_NUMBER_1>"
+PRIVATE_KEY_MARKER = "-----BEGIN PRIVATE KEY-----"
+CANARIES = tuple(
+    token.strip()
+    for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
+    if token.strip()
+)
 
 CAPTURE = {
     "analyzer_requests": 0,
     "provider_requests": 0,
+    "analyzer_saw_canary": False,
+    "provider_saw_canary": False,
+    "provider_saw_private_key_marker": False,
+    "provider_saw_raw_phone": False,
+    "provider_saw_phone_placeholder": False,
 }
+
+
+def _iter_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_strings(item)
+
+
+def _text_contains(value, needle: str) -> bool:
+    return any(needle in text for text in _iter_strings(value))
+
+
+def _text_contains_canary(value) -> bool:
+    return any(_text_contains(value, canary) for canary in CANARIES)
+
+
+def _analyzer_entities(payload):
+    text = payload.get("text")
+    if not isinstance(text, str):
+        return []
+    if RAW_PHONE not in text:
+        return []
+    start = text.index(RAW_PHONE)
+    return [
+        {
+            "entity_type": "PHONE_NUMBER",
+            "start": start,
+            "end": start + len(RAW_PHONE),
+            "score": 1.0,
+        }
+    ]
+
+
+def _record_provider_payload(payload):
+    CAPTURE["provider_requests"] += 1
+    CAPTURE["provider_saw_canary"] = (
+        CAPTURE["provider_saw_canary"] or _text_contains_canary(payload)
+    )
+    CAPTURE["provider_saw_private_key_marker"] = (
+        CAPTURE["provider_saw_private_key_marker"]
+        or _text_contains(payload, PRIVATE_KEY_MARKER)
+    )
+    CAPTURE["provider_saw_raw_phone"] = (
+        CAPTURE["provider_saw_raw_phone"] or _text_contains(payload, RAW_PHONE)
+    )
+    CAPTURE["provider_saw_phone_placeholder"] = (
+        CAPTURE["provider_saw_phone_placeholder"]
+        or _text_contains(payload, PHONE_PLACEHOLDER)
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,20 +116,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/capture/reset":
-            CAPTURE["analyzer_requests"] = 0
-            CAPTURE["provider_requests"] = 0
+            for key, value in CAPTURE.items():
+                CAPTURE[key] = 0 if type(value) is int else False
             self._write_json(200, dict(CAPTURE))
             return
 
         if self.path == "/api/v1/analyze":
-            self._read_json()
+            payload = self._read_json()
             CAPTURE["analyzer_requests"] += 1
-            self._write_json(200, {"entities": []})
+            CAPTURE["analyzer_saw_canary"] = (
+                CAPTURE["analyzer_saw_canary"] or _text_contains_canary(payload)
+            )
+            self._write_json(200, {"entities": _analyzer_entities(payload)})
             return
 
         if self.path == "/v1/chat/completions":
-            self._read_json()
-            CAPTURE["provider_requests"] += 1
+            _record_provider_payload(self._read_json())
             self._write_json(
                 200,
                 {
@@ -78,6 +149,40 @@ class Handler(BaseHTTPRequestHandler):
                     "usage": {
                         "prompt_tokens": 1,
                         "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                },
+            )
+            return
+
+        if self.path == "/v1/responses":
+            _record_provider_payload(self._read_json())
+            self._write_json(
+                200,
+                {
+                    "id": "resp_mock",
+                    "object": "response",
+                    "created_at": int(time.time()),
+                    "status": "completed",
+                    "model": "mock-chat",
+                    "output": [
+                        {
+                            "id": "msg_mock",
+                            "type": "message",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "ok",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
                         "total_tokens": 2,
                     },
                 },

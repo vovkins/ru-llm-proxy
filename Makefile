@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -26,6 +26,7 @@ help:
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
 	@echo "  make test-pre-egress-proxy — Docker smoke: pre-egress block не доходит до mock provider"
+	@echo "  make test-final-leak-proxy — Docker smoke: final leak-check не доходит до mock provider"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
 	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
@@ -78,6 +79,7 @@ test-static: test-routing-diagnostics
 		tests/test_recognizer_calibration_config.py \
 		tests/test_guardrail_dependency_config.py \
 		tests/test_pre_egress_policy_config.py \
+		tests/test_final_payload_leak_check_config.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:
@@ -98,6 +100,10 @@ test-flow:
 test-pre-egress-proxy:
 	@echo "🧪 Pre-egress proxy non-egress smoke"
 	bash tests/e2e/test_pre_egress_proxy_non_egress.sh
+
+test-final-leak-proxy:
+	@echo "🧪 Final payload leak-check proxy non-egress smoke"
+	bash tests/e2e/test_final_leak_proxy_non_egress.sh
 
 test-routing-diagnostics:
 	@echo "🧪 Makefile diagnostics static tests"

@@ -32,6 +32,7 @@ jobs:
           bash -n tests/e2e/test_e2e.sh
           bash -n tests/e2e/test_guardrails_smoke.sh
           bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
+          bash -n tests/e2e/test_final_leak_proxy_non_egress.sh
 
       - name: Parse YAML configs
         run: |
@@ -71,6 +72,7 @@ jobs:
           make -n client-auth-smoke
           make -n test-e2e
           make -n test-pre-egress-proxy
+          make -n test-final-leak-proxy
           make -n guardrails-list
           make -n guardrails-smoke
           make -n monitor-smoke
