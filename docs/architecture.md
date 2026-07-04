@@ -23,7 +23,7 @@
 6. Analyzer возвращает entity spans, entity types и scores.
 7. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
 8. Guardrail применяет masked text к provider-bound request fields.
-9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop`, `stop_sequences` и Anthropic Messages `tool_use.input`.
+9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
 10. При final-check block guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
 11. Если final-check чистый, guardrail генерирует server-side `pii_request_id` и сохраняет placeholder -> original mappings в Redis. Если Redis save падает в `fail_open`, guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
 12. LiteLLM отправляет masked request настроенному LLM-провайдеру.
@@ -69,7 +69,7 @@ guardrails:
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "final_payload_leak_check_mode"
           type: "string"
-          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound tools/functions schema keys/strings, prediction, response_format, Responses text, extra_body, and Anthropic tool_use.input; off disables this final check."
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/functions schema keys/strings, prediction, response_format, text, and extra_body; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
           description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."

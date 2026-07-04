@@ -110,6 +110,20 @@ expect_json_value() {
     fi
 }
 
+expect_no_provider_posts() {
+    local file="$1"
+
+    expect_json_value "$file" provider_requests 0
+    expect_json_value "$file" provider_request_paths '[]'
+}
+
+expect_provider_paths() {
+    local file="$1"
+    local expected="$2"
+
+    expect_json_value "$file" provider_request_paths "$expected"
+}
+
 expect_safe_block_body() {
     local body_file="$1"
     local forbidden="$2"
@@ -152,6 +166,7 @@ clean_capture="$tmp_dir/clean-capture.json"
 capture_counts "$clean_capture"
 expect_json_value "$clean_capture" analyzer_requests 1
 expect_json_value "$clean_capture" provider_requests 1
+expect_provider_paths "$clean_capture" '["/v1/chat/completions"]'
 
 reset_capture
 canary_body="$tmp_dir/canary.json"
@@ -166,8 +181,25 @@ canary_capture="$tmp_dir/canary-capture.json"
 capture_counts "$canary_capture"
 expect_json_value "$canary_capture" analyzer_requests 1
 expect_json_value "$canary_capture" analyzer_saw_canary true
-expect_json_value "$canary_capture" provider_requests 0
+expect_no_provider_posts "$canary_capture"
 expect_json_value "$canary_capture" provider_saw_canary false
+
+reset_capture
+chat_image_url_body="$tmp_dir/chat-image-url-canary.json"
+chat_image_url_payload='{"model":"mock-chat","messages":[{"role":"user","content":[{"type":"text","text":"Clean prompt"},{"type":"image_url","image_url":{"url":"RU_PROXY_FINAL_CANARY"}}]}]}'
+chat_image_url_status="$(post_json "/v1/chat/completions" "$chat_image_url_payload" "$chat_image_url_body")"
+if [ "$chat_image_url_status" != "422" ]; then
+    echo "Expected chat image_url canary status 422, got $chat_image_url_status" >&2
+    cat "$chat_image_url_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$chat_image_url_body" "$CANARY"
+chat_image_url_capture="$tmp_dir/chat-image-url-canary-capture.json"
+capture_counts "$chat_image_url_capture"
+expect_json_value "$chat_image_url_capture" analyzer_requests 1
+expect_json_value "$chat_image_url_capture" analyzer_saw_canary false
+expect_no_provider_posts "$chat_image_url_capture"
+expect_json_value "$chat_image_url_capture" provider_saw_canary false
 
 reset_capture
 responses_body="$tmp_dir/responses-canary.json"
@@ -182,8 +214,25 @@ responses_capture="$tmp_dir/responses-canary-capture.json"
 capture_counts "$responses_capture"
 expect_json_value "$responses_capture" analyzer_requests 1
 expect_json_value "$responses_capture" analyzer_saw_canary true
-expect_json_value "$responses_capture" provider_requests 0
+expect_no_provider_posts "$responses_capture"
 expect_json_value "$responses_capture" provider_saw_canary false
+
+reset_capture
+responses_image_url_body="$tmp_dir/responses-image-url-canary.json"
+responses_image_url_payload='{"model":"mock-chat","input":[{"role":"user","content":[{"type":"input_text","text":"Clean prompt"},{"type":"input_image","image_url":"RU_PROXY_FINAL_CANARY"}]}]}'
+responses_image_url_status="$(post_json "/v1/responses" "$responses_image_url_payload" "$responses_image_url_body")"
+if [ "$responses_image_url_status" != "422" ]; then
+    echo "Expected Responses input_image canary status 422, got $responses_image_url_status" >&2
+    cat "$responses_image_url_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$responses_image_url_body" "$CANARY"
+responses_image_url_capture="$tmp_dir/responses-image-url-canary-capture.json"
+capture_counts "$responses_image_url_capture"
+expect_json_value "$responses_image_url_capture" analyzer_requests 1
+expect_json_value "$responses_image_url_capture" analyzer_saw_canary false
+expect_no_provider_posts "$responses_image_url_capture"
+expect_json_value "$responses_image_url_capture" provider_saw_canary false
 
 reset_capture
 tool_schema_body="$tmp_dir/tool-schema-canary.json"
@@ -199,7 +248,7 @@ tool_schema_capture="$tmp_dir/tool-schema-canary-capture.json"
 capture_counts "$tool_schema_capture"
 expect_json_value "$tool_schema_capture" analyzer_requests 1
 expect_json_value "$tool_schema_capture" analyzer_saw_canary false
-expect_json_value "$tool_schema_capture" provider_requests 0
+expect_no_provider_posts "$tool_schema_capture"
 expect_json_value "$tool_schema_capture" provider_saw_canary false
 
 reset_capture
@@ -216,7 +265,7 @@ tool_schema_key_capture="$tmp_dir/tool-schema-key-canary-capture.json"
 capture_counts "$tool_schema_key_capture"
 expect_json_value "$tool_schema_key_capture" analyzer_requests 1
 expect_json_value "$tool_schema_key_capture" analyzer_saw_canary false
-expect_json_value "$tool_schema_key_capture" provider_requests 0
+expect_no_provider_posts "$tool_schema_key_capture"
 expect_json_value "$tool_schema_key_capture" provider_saw_canary false
 
 reset_capture
@@ -233,7 +282,7 @@ extra_body_capture="$tmp_dir/extra-body-canary-capture.json"
 capture_counts "$extra_body_capture"
 expect_json_value "$extra_body_capture" analyzer_requests 1
 expect_json_value "$extra_body_capture" analyzer_saw_canary false
-expect_json_value "$extra_body_capture" provider_requests 0
+expect_no_provider_posts "$extra_body_capture"
 expect_json_value "$extra_body_capture" provider_saw_canary false
 
 reset_capture
@@ -250,8 +299,25 @@ messages_tool_use_capture="$tmp_dir/messages-tool-use-canary-capture.json"
 capture_counts "$messages_tool_use_capture"
 expect_json_value "$messages_tool_use_capture" analyzer_requests 0
 expect_json_value "$messages_tool_use_capture" analyzer_saw_canary false
-expect_json_value "$messages_tool_use_capture" provider_requests 0
+expect_no_provider_posts "$messages_tool_use_capture"
 expect_json_value "$messages_tool_use_capture" provider_saw_canary false
+
+reset_capture
+messages_tool_use_name_body="$tmp_dir/messages-tool-use-name-canary.json"
+messages_tool_use_name_payload='{"model":"mock-claude","max_tokens":16,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"RU_PROXY_FINAL_CANARY","input":{"query":"clean"}}]}]}'
+messages_tool_use_name_status="$(post_json "/v1/messages" "$messages_tool_use_name_payload" "$messages_tool_use_name_body")"
+if [ "$messages_tool_use_name_status" != "422" ]; then
+    echo "Expected Anthropic tool_use name canary status 422, got $messages_tool_use_name_status" >&2
+    cat "$messages_tool_use_name_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$messages_tool_use_name_body" "$CANARY"
+messages_tool_use_name_capture="$tmp_dir/messages-tool-use-name-canary-capture.json"
+capture_counts "$messages_tool_use_name_capture"
+expect_json_value "$messages_tool_use_name_capture" analyzer_requests 0
+expect_json_value "$messages_tool_use_name_capture" analyzer_saw_canary false
+expect_no_provider_posts "$messages_tool_use_name_capture"
+expect_json_value "$messages_tool_use_name_capture" provider_saw_canary false
 
 reset_capture
 private_key_body="$tmp_dir/private-key.json"
@@ -266,7 +332,7 @@ expect_safe_block_body "$private_key_body" "$PRIVATE_KEY_MARKER"
 private_key_capture="$tmp_dir/private-key-capture.json"
 capture_counts "$private_key_capture"
 expect_json_value "$private_key_capture" analyzer_requests 1
-expect_json_value "$private_key_capture" provider_requests 0
+expect_no_provider_posts "$private_key_capture"
 expect_json_value "$private_key_capture" provider_saw_private_key_marker false
 
 reset_capture
@@ -281,6 +347,7 @@ masked_capture="$tmp_dir/masked-capture.json"
 capture_counts "$masked_capture"
 expect_json_value "$masked_capture" analyzer_requests 1
 expect_json_value "$masked_capture" provider_requests 1
+expect_provider_paths "$masked_capture" '["/v1/chat/completions"]'
 expect_json_value "$masked_capture" provider_saw_raw_phone false
 expect_json_value "$masked_capture" provider_saw_phone_placeholder true
 if grep -Fq -- "$RAW_PHONE" "$masked_body"; then

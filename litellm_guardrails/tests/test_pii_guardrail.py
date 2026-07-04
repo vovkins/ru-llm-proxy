@@ -2177,9 +2177,193 @@ class TestPreCallHook:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
+        ("payload", "call_type", "expected_analyzer_texts"),
+        [
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Clean prompt"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": "RU_PROXY_FINAL_CANARY"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                None,
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Clean prompt"},
+                                {
+                                    "type": "file",
+                                    "file": {"file_id": "RU_PROXY_FINAL_CANARY"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                None,
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "tool",
+                            "tool_call_id": "RU_PROXY_FINAL_CANARY",
+                            "content": "Clean tool result",
+                        }
+                    ],
+                },
+                None,
+                ["Clean tool result"],
+            ),
+            (
+                {
+                    "model": "openai-gpt-5.4-mini",
+                    "input": [
+                        {
+                            "type": "function_call_output",
+                            "call_id": "RU_PROXY_FINAL_CANARY",
+                            "output": "Clean function output",
+                        }
+                    ],
+                },
+                "responses",
+                ["Clean function output"],
+            ),
+            (
+                {
+                    "model": "openai-gpt-5.4-mini",
+                    "input": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": "Clean prompt"},
+                                {
+                                    "type": "input_image",
+                                    "image_url": "RU_PROXY_FINAL_CANARY",
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "responses",
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "claude-opus",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "RU_PROXY_FINAL_CANARY",
+                                    "name": "lookup_account",
+                                    "input": {"query": "clean"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "anthropic_messages",
+                [],
+            ),
+            (
+                {
+                    "model": "claude-opus",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_1",
+                                    "name": "RU_PROXY_FINAL_CANARY",
+                                    "input": {"query": "clean"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "anthropic_messages",
+                [],
+            ),
+        ],
+        ids=[
+            "chat-image-url",
+            "chat-file-id",
+            "chat-tool-call-id",
+            "responses-call-id",
+            "responses-input-image-url",
+            "anthropic-tool-use-id",
+            "anthropic-tool-use-name",
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_provider_bound_non_text_strings(
+        self,
+        payload,
+        call_type,
+        expected_analyzer_texts,
+    ):
+        canary = "RU_PROXY_FINAL_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=payload,
+                    call_type=call_type,
+                )
+
+        assert [
+            call.args[0] for call in analyze_text.await_args_list
+        ] == expected_analyzer_texts
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
         ("payload", "expected_rule"),
         [
             ("-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----", "private_key_marker"),
+            (
+                "-----BEGIN PGP PRIVATE KEY BLOCK-----\nredacted\n"
+                "-----END PGP PRIVATE KEY BLOCK-----",
+                "private_key_marker",
+            ),
+            (
+                "-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----\nredacted\n"
+                "-----END SSH2 ENCRYPTED PRIVATE KEY-----",
+                "private_key_marker",
+            ),
             ("Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456", "bearer_token"),
             (
                 "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
@@ -2251,10 +2435,8 @@ class TestPreCallHook:
         assert data["messages"][0]["content"] == text
         assert "metadata" not in data
         final_texts = classify_final.call_args.args[0]
-        assert final_texts == [
-            f"Мой телефон <PHONE_NUMBER_1>. Canary {canary}."
-        ]
-        assert phone not in final_texts[0]
+        assert f"Мой телефон <PHONE_NUMBER_1>. Canary {canary}." in final_texts
+        assert phone not in "\n".join(final_texts)
         error_body = exc_info.value.response.json()
         assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
         assert error_body["error"]["details"] == {"rules": ["configured_canary"]}

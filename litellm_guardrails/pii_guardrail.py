@@ -204,6 +204,12 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "text",
     "extra_body",
 )
+FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
+    "messages",
+    "input",
+    "instructions",
+    "system",
+)
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
 PRE_EGRESS_POLICY_BLOCKED_MESSAGE = (
@@ -280,7 +286,7 @@ _JSON_STACKTRACE_FIELD_RE = re.compile(
     r"(?i)\b(?:stack|stacktrace|traceback|exception|error)\b"
 )
 _PRIVATE_KEY_MARKER_RE = re.compile(
-    r"(?i)-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----"
+    r"(?i)-----BEGIN (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY(?:[ \t]+BLOCK)?-----"
 )
 _BEARER_TOKEN_RE = re.compile(
     r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/=-]{20,}\b|"
@@ -1101,33 +1107,15 @@ class RuPIIGuardrail(CustomGuardrail):
         return []
 
     @classmethod
-    def _iter_provider_bound_schema_texts(cls, data: dict) -> list[str]:
-        """Return schema/config text fields sent upstream but not PII-mutated."""
+    def _iter_provider_bound_final_payload_texts(cls, data: dict) -> list[str]:
+        """Return strings from provider-bound payload fields for scan-only checks."""
         texts: list[str] = []
-        for field in FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS:
+        for field in (
+            *FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS,
+            *FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS,
+        ):
             if field in data:
                 texts.extend(cls._iter_nested_string_values(data[field]))
-        return texts
-
-    @classmethod
-    def _iter_anthropic_tool_use_input_texts(cls, data: dict) -> list[str]:
-        """Return nested strings from Anthropic tool_use.input provider payloads."""
-        messages = data.get("messages")
-        if not isinstance(messages, list):
-            return []
-
-        texts: list[str] = []
-        for message in messages:
-            if not isinstance(message, dict):
-                continue
-            content = message.get("content")
-            if not isinstance(content, list):
-                continue
-            for block in content:
-                if not isinstance(block, dict) or block.get("type") != "tool_use":
-                    continue
-                if "input" in block:
-                    texts.extend(cls._iter_nested_string_values(block["input"]))
         return texts
 
     def _run_final_payload_leak_check(
@@ -1140,13 +1128,7 @@ class RuPIIGuardrail(CustomGuardrail):
         if self.final_payload_leak_check_mode != "block":
             return
 
-        final_texts = [
-            target[field]
-            for target, field in request_targets
-            if isinstance(target.get(field), str)
-        ]
-        final_texts.extend(self._iter_provider_bound_schema_texts(data))
-        final_texts.extend(self._iter_anthropic_tool_use_input_texts(data))
+        final_texts = self._iter_provider_bound_final_payload_texts(data)
         final_leak_findings = self._classify_final_payload_leak_check_texts(
             final_texts
         )

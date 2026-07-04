@@ -19,6 +19,7 @@ CANARIES = tuple(
 CAPTURE = {
     "analyzer_requests": 0,
     "provider_requests": 0,
+    "provider_request_paths": [],
     "analyzer_saw_canary": False,
     "provider_saw_canary": False,
     "provider_saw_private_key_marker": False,
@@ -65,8 +66,9 @@ def _analyzer_entities(payload):
     ]
 
 
-def _record_provider_payload(payload):
+def _record_provider_payload(path, payload):
     CAPTURE["provider_requests"] += 1
+    CAPTURE["provider_request_paths"].append(path)
     CAPTURE["provider_saw_canary"] = (
         CAPTURE["provider_saw_canary"] or _text_contains_canary(payload)
     )
@@ -119,7 +121,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/capture/reset":
             for key, value in CAPTURE.items():
-                CAPTURE[key] = 0 if type(value) is int else False
+                if type(value) is int:
+                    CAPTURE[key] = 0
+                elif isinstance(value, list):
+                    CAPTURE[key] = []
+                else:
+                    CAPTURE[key] = False
             self._write_json(200, dict(CAPTURE))
             return
 
@@ -135,7 +142,7 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_json()
 
         if self.path == "/v1/chat/completions":
-            _record_provider_payload(self._read_json())
+            _record_provider_payload(self.path, payload)
             self._write_json(
                 200,
                 {
@@ -160,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/v1/responses":
-            _record_provider_payload(self._read_json())
+            _record_provider_payload(self.path, payload)
             self._write_json(
                 200,
                 {
@@ -194,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/v1/messages":
-            _record_provider_payload(self._read_json())
+            _record_provider_payload(self.path, payload)
             self._write_json(
                 200,
                 {
@@ -213,6 +220,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        _record_provider_payload(self.path, payload)
         self._write_json(404, {"error": "not found"})
 
 

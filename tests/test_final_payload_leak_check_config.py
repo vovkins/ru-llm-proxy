@@ -21,12 +21,19 @@ def test_env_compose_and_smoke_wire_final_payload_leak_check():
     assert "provider_saw_canary" in script
     assert "tool_schema_payload" in script
     assert "tool_schema_key_payload" in script
+    assert "chat_image_url_payload" in script
+    assert "responses_image_url_payload" in script
     assert "extra_body_payload" in script
     assert "messages_tool_use_payload" in script
+    assert "messages_tool_use_name_payload" in script
+    assert "expect_no_provider_posts" in script
+    assert "provider_request_paths" in script
     assert "analyzer_saw_canary false" in script
     assert "grep -Fq" in script
     assert "provider_saw_phone_placeholder" in script
     assert "for key, item in value.items()" in mock
+    assert '"provider_request_paths": []' in mock
+    assert "_record_provider_payload(self.path" in mock
     assert '"/v1/responses"' in mock
     assert '"/v1/messages"' in mock
     assert "provider_saw_private_key_marker" in mock
