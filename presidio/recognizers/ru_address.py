@@ -18,7 +18,14 @@ _COUNT_NOUN_AFTER_HOUSE = (
     r"дом(?:а|ов)?|квартир(?:а|ы)?|этаж(?:а|ей)?|"
     r"месяц(?:а|ев)?|недел(?:я|и|ь)|штук(?:а|и)?)\b)"
 )
-_HOUSE_NUMBER = rf"\d+[а-яё]?(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
+_UNIT_AFTER_HOUSE_NUMBER = (
+    r"(?![ \t]*(?:[%₽]|руб\.?|рубл(?:ь|я|ей|ю|ем)?|"
+    r"коп\.?|копе(?:йка|йки|ек)|км\b|м\b))"
+)
+_HOUSE_NUMBER = (
+    rf"\d+{_UNIT_AFTER_HOUSE_NUMBER}[а-яё]?"
+    rf"(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
+)
 _HOUSE_EXPLICIT = rf"[,\.]?[ \t]*(?:д\.|дом)[ \t]*{_HOUSE_NUMBER}"
 _HOUSE_BARE = rf"[,\.]?[ \t]*{_HOUSE_NUMBER}"
 _CITY_PREFIX = (
@@ -71,7 +78,6 @@ class RuAddressRecognizer(PatternRecognizer):
 
     CONTEXT = [
         "адрес", "проживает", "зарегистрирован", "место жительства",
-        "дом", "квартира", "улица", "район",
         "прописка", "регистрация", "фактический адрес",
     ]
 

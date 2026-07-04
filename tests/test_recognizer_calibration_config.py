@@ -195,6 +195,10 @@ def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monk
     assert matches("ул Ленина 10 квартир продали") == []
     assert matches("ул Ленина 10 этажей построили") == []
     assert matches("ул Ленина 10 месяцев обсуждали") == []
+    assert matches("Адрес вопроса: ул Ленина 10 рублей стоит билет") == []
+    assert matches("Улица Ленина 10% выросла") == []
+    assert matches("ул Ленина 10м была перекрыта") == []
+    assert matches("ул Ленина 10км была перекрыта") == []
     assert "ул.Ленина, д.10" in matches("Адрес: ул.Ленина, д.10")
     assert "ул. ленина, д. 10" in matches("Адрес: ул. ленина, д. 10")
     assert "Тверская улица, дом 7" in matches(
@@ -206,6 +210,10 @@ def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monk
     assert "г.Москва, ул.Тверская, д.1" in matches(
         "г.Москва, ул.Тверская, д.1",
     )
+    assert "улица" not in ru_address.RuAddressRecognizer.CONTEXT
+    assert "дом" not in ru_address.RuAddressRecognizer.CONTEXT
+    assert "квартира" not in ru_address.RuAddressRecognizer.CONTEXT
+    assert "адрес" in ru_address.RuAddressRecognizer.CONTEXT
 
 
 def test_docs_explain_inn_threshold_policy_and_address_limits():
