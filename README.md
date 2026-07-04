@@ -358,6 +358,7 @@ make routing-smoke
 | `make test` | Локальный test suite: `test-unit` и Makefile diagnostics regression tests |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
+| `make test-recognizer-api` | Docker API-level Analyzer recognizer regression tests; отдельный CI gate `recognizer-api`, не входит в быстрый `make test` |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
@@ -551,6 +552,7 @@ curl http://localhost:4000/health/liveliness
 make test             # test-unit + routing diagnostics regression test
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
 make test-recognizers
+make test-recognizer-api  # API-level Analyzer recognizer tests; отдельный CI gate recognizer-api
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM
 make test-routing-diagnostics

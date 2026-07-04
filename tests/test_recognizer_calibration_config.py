@@ -42,9 +42,16 @@ def test_static_suite_runs_recognizer_calibration_regression():
 def test_analyzer_api_threshold_tests_use_russian_nlp_engine():
     test_source = (ROOT / "presidio" / "tests" / "test_analyzer_api_thresholds.py").read_text()
 
+    assert "importorskip" not in test_source
     assert "RecognizerRegistry(supported_languages=[\"ru\"])" in test_source
     assert "nlp_engine=analyzer_server.nlp_engine" in test_source
     assert "supported_languages=[\"ru\"]" in test_source
+    assert "test_production_analyzer_wiring_detects_registered_russian_recognizers" in test_source
+    production_smoke = test_source.split(
+        "def test_production_analyzer_wiring_detects_registered_russian_recognizers",
+        1,
+    )[1].split("\n\n", 1)[0]
+    assert "monkeypatch.setattr(analyzer_server, \"analyzer\"" not in production_smoke
 
 
 def _load_ru_inn_with_fake_presidio(monkeypatch):
@@ -169,11 +176,20 @@ def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monk
     assert matches("В отчете улица продаж выросла на 10 процентов") == []
     assert matches("Тверская улица 10 лет была пешеходной") == []
     assert matches("стул Иванова 10 раз ломался") == []
+    assert matches("ул Ленина работает 10 лет") == []
+    assert matches("ул. Иванова Петрова 10 человек посетили встречу") == []
+    assert matches("Улица Ленина 10 лет была главной") == []
+    assert matches("Адрес в строке выше\nул Ленина работает 10 лет") == []
+    assert "ул.Ленина, д.10" in matches("Адрес: ул.Ленина, д.10")
+    assert "ул. ленина, д. 10" in matches("Адрес: ул. ленина, д. 10")
     assert "Тверская улица, дом 7" in matches(
         "Фактический адрес: Тверская улица, дом 7",
     )
     assert "г. Москва, ул. Тверская, д. 1" in matches(
         "г. Москва, ул. Тверская, д. 1",
+    )
+    assert "г.Москва, ул.Тверская, д.1" in matches(
+        "г.Москва, ул.Тверская, д.1",
     )
 
 
@@ -191,3 +207,11 @@ def test_docs_explain_inn_threshold_policy_and_address_limits():
         assert "bare INN" in text or "гол" in text, path
         assert "RU_ADDRESS" in text, path
         assert "огранич" in text or "unsupported" in text, path
+
+
+def test_readme_documents_recognizer_api_target():
+    readme = (ROOT / "README.md").read_text()
+
+    assert "| `make test-recognizer-api` |" in readme
+    assert "make test-recognizer-api" in readme
+    assert "recognizer-api" in readme

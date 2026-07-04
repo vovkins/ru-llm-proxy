@@ -5,9 +5,6 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("fastapi")
-pytest.importorskip("presidio_analyzer")
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
@@ -49,6 +46,31 @@ def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
 
 def _entity_texts(entities, entity_type):
     return [entity["text"] for entity in entities if entity["entity_type"] == entity_type]
+
+
+def test_production_analyzer_wiring_detects_registered_russian_recognizers(
+    monkeypatch,
+):
+    monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+    client = TestClient(analyzer_server.app)
+
+    response = client.post(
+        "/api/v1/analyze",
+        json={
+            "text": "ИНН: 500100732259. Адрес регистрации: ул Ленина 10",
+            "language": "ru",
+            "score_threshold": 0.35,
+        },
+    )
+
+    assert response.status_code == 200
+    entities = response.json()["entities"]
+    assert _entity_texts(entities, "RU_INN") == ["500100732259"]
+    assert any(
+        "ул Ленина 10" in address
+        for address in _entity_texts(entities, "RU_ADDRESS")
+    )
 
 
 class TestAnalyzerInnThresholdPolicy:
@@ -114,6 +136,9 @@ class TestAnalyzerAddressCorpus:
             ("Проживает по адресу: ул. Ленина, д. 10, кв. 5", "ул. Ленина"),
             ("Адрес: проспект Мира, дом 25", "проспект Мира"),
             ("г. Москва, ул. Тверская, д. 1", "г. Москва, ул. Тверская"),
+            ("Адрес: ул.Ленина, д.10", "ул.Ленина"),
+            ("г.Москва, ул.Тверская, д.1", "г.Москва, ул.Тверская"),
+            ("Адрес: ул. ленина, д. 10", "ул. ленина"),
             ("Адрес регистрации: ул Ленина 10", "ул Ленина 10"),
             ("Фактический адрес: Тверская улица, дом 7", "Тверская улица"),
         ],
@@ -134,6 +159,10 @@ class TestAnalyzerAddressCorpus:
             "Адрес вопроса не изменился",
             "стул Иванова 10 раз ломался",
             "Тверская улица 10 лет была пешеходной",
+            "ул Ленина работает 10 лет",
+            "ул. Иванова Петрова 10 человек посетили встречу",
+            "Улица Ленина 10 лет была главной",
+            "Адрес в строке выше\nул Ленина работает 10 лет",
         ],
     )
     def test_address_false_positive_corpus(self, monkeypatch, text):
