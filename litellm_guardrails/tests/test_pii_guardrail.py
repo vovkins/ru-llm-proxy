@@ -15,8 +15,12 @@ import litellm_guardrails.pii_guardrail as pii_guardrail
 from litellm_guardrails.pii_guardrail import (
     AnalyzerOverloadedError,
     HTTPException,
+    ProxyException,
     RuPIIGuardrail,
 )
+
+
+PRE_EGRESS_BLOCK_EXCEPTION_TYPES = (HTTPException, ProxyException)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -51,12 +55,20 @@ def _error_body_from_exception(error):
         if isinstance(detail, dict) and "error" in detail:
             return detail
         return {"error": detail}
+    if isinstance(error, ProxyException):
+        provider_fields = error.provider_specific_fields or {}
+        structured_error = provider_fields.get("error")
+        if isinstance(structured_error, dict):
+            return {"error": structured_error}
+        return {"error": error.to_dict()}
     return error.response.json()
 
 
 def _status_code_from_exception(error):
     if isinstance(error, HTTPException):
         return error.status_code
+    if isinstance(error, ProxyException):
+        return int(error.status_code)
     return error.response.status_code
 
 
@@ -1014,7 +1026,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1051,7 +1063,7 @@ class TestPreCallHook:
         data = {"model": "openai-gpt-5.4-mini", "input": payload}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1093,7 +1105,7 @@ class TestPreCallHook:
         }
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1137,7 +1149,7 @@ class TestPreCallHook:
         }
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1207,7 +1219,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1466,7 +1478,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1493,7 +1505,7 @@ class TestPreCallHook:
                 logging.INFO,
                 logger="litellm_guardrails.pii_guardrail",
             ):
-                with pytest.raises(HTTPException):
+                with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES):
                     await guardrail.async_pre_call_hook(
                         user_api_key_dict=MagicMock(),
                         cache=MagicMock(),

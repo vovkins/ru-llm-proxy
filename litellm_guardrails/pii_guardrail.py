@@ -14,7 +14,7 @@ from weakref import WeakKeyDictionary
 import httpx
 import litellm
 from litellm.integrations.custom_guardrail import CustomGuardrail
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
 try:
@@ -1181,18 +1181,29 @@ class RuPIIGuardrail(CustomGuardrail):
             finding_count=len(findings),
         )
 
-        body = {
-            "error": {
-                "message": PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
-                "type": "pre_egress_policy_violation",
-                "code": "pre_egress_policy_blocked",
-                "details": {
-                    "categories": categories,
-                    "rules": rules,
-                },
-            }
+        error = {
+            "message": PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
+            "type": "pre_egress_policy_violation",
+            "code": "pre_egress_policy_blocked",
+            "details": {
+                "categories": categories,
+                "rules": rules,
+            },
         }
-        raise HTTPException(status_code=422, detail=body)
+        provider_specific_fields = {
+            "error": error,
+            "guardrail_name": self.guardrail_name,
+            "guardrail_mode": "pre_call",
+        }
+        exc = ProxyException(
+            message=PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
+            type="pre_egress_policy_violation",
+            param=None,
+            code=422,
+            provider_specific_fields=provider_specific_fields,
+        )
+        exc.status_code = 422
+        raise exc
 
     def _raise_blocked_request(
         self,
