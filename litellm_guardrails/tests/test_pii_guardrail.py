@@ -12,7 +12,11 @@ import pytest
 import pytest_asyncio
 
 import litellm_guardrails.pii_guardrail as pii_guardrail
-from litellm_guardrails.pii_guardrail import AnalyzerOverloadedError, RuPIIGuardrail
+from litellm_guardrails.pii_guardrail import (
+    AnalyzerOverloadedError,
+    HTTPException,
+    RuPIIGuardrail,
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -39,6 +43,21 @@ def _mock_redis(get_value=None):
     redis.get = AsyncMock(return_value=get_value)
     redis.delete = AsyncMock()
     return redis
+
+
+def _error_body_from_exception(error):
+    if isinstance(error, HTTPException):
+        detail = error.detail
+        if isinstance(detail, dict) and "error" in detail:
+            return detail
+        return {"error": detail}
+    return error.response.json()
+
+
+def _status_code_from_exception(error):
+    if isinstance(error, HTTPException):
+        return error.status_code
+    return error.response.status_code
 
 
 @pytest.fixture
@@ -995,7 +1014,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1006,8 +1025,8 @@ class TestPreCallHook:
         assert "metadata" not in data
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
-        assert exc_info.value.response.status_code == 422
+        error_body = _error_body_from_exception(exc_info.value)
+        assert _status_code_from_exception(exc_info.value) == 422
         assert error_body == {
             "error": {
                 "message": "Request contains configuration or log data and was blocked by pre-egress policy.",
@@ -1032,7 +1051,7 @@ class TestPreCallHook:
         data = {"model": "openai-gpt-5.4-mini", "input": payload}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1044,7 +1063,7 @@ class TestPreCallHook:
         assert "metadata" not in data
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
+        error_body = _error_body_from_exception(exc_info.value)
         assert error_body["error"]["code"] == "pre_egress_policy_blocked"
         assert error_body["error"]["details"] == {
             "categories": ["config"],
@@ -1074,7 +1093,7 @@ class TestPreCallHook:
         }
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1086,7 +1105,7 @@ class TestPreCallHook:
         assert "metadata" not in data
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
+        error_body = _error_body_from_exception(exc_info.value)
         assert error_body["error"]["details"] == {
             "categories": ["config"],
             "rules": ["env_secret_assignment"],
@@ -1118,7 +1137,7 @@ class TestPreCallHook:
         }
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1129,7 +1148,7 @@ class TestPreCallHook:
         assert data["messages"][0]["content"][0]["content"][0]["text"] == payload
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
+        error_body = _error_body_from_exception(exc_info.value)
         assert error_body["error"]["details"] == {
             "categories": ["config"],
             "rules": ["env_secret_assignment"],
@@ -1188,7 +1207,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1197,7 +1216,7 @@ class TestPreCallHook:
 
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
+        error_body = _error_body_from_exception(exc_info.value)
         assert error_body["error"]["details"] == {
             "categories": ["config"],
             "rules": ["env_secret_assignment"],
@@ -1447,7 +1466,7 @@ class TestPreCallHook:
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
 
         with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
-            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            with pytest.raises(HTTPException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -1457,7 +1476,7 @@ class TestPreCallHook:
         assert data["messages"][0]["content"] == payload
         analyze_text.assert_not_awaited()
         guardrail._redis.setex.assert_not_called()
-        error_body = exc_info.value.response.json()
+        error_body = _error_body_from_exception(exc_info.value)
         assert error_body["error"]["details"] == {
             "categories": [expected_category],
             "rules": [expected_rule],
@@ -1474,7 +1493,7 @@ class TestPreCallHook:
                 logging.INFO,
                 logger="litellm_guardrails.pii_guardrail",
             ):
-                with pytest.raises(litellm.UnprocessableEntityError):
+                with pytest.raises(HTTPException):
                     await guardrail.async_pre_call_hook(
                         user_api_key_dict=MagicMock(),
                         cache=MagicMock(),

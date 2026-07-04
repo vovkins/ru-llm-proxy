@@ -58,6 +58,10 @@ with open(sys.argv[1], encoding="utf-8") as fh:
     body = json.load(fh)
 
 error = body.get("error")
+if not isinstance(error, dict) and isinstance(body.get("detail"), dict):
+    detail = body["detail"]
+    error = detail.get("error", detail)
+
 if not isinstance(error, dict):
     print("Expected JSON error object", file=sys.stderr)
     print(json.dumps(body, ensure_ascii=False), file=sys.stderr)

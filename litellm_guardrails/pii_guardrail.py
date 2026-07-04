@@ -17,6 +17,15 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
+try:
+    from fastapi import HTTPException
+except ImportError:  # pragma: no cover - local lightweight test env without FastAPI.
+    class HTTPException(Exception):
+        def __init__(self, status_code: int, detail: Any):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -1183,20 +1192,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 },
             }
         }
-        response = httpx.Response(
-            status_code=422,
-            json=body,
-            request=httpx.Request(
-                "POST",
-                "http://ru-llm-proxy.local/pre-egress-policy",
-            ),
-        )
-        raise litellm.UnprocessableEntityError(
-            message=PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
-            model=str(data.get("model") or "unknown"),
-            llm_provider="ru-llm-proxy",
-            response=response,
-        )
+        raise HTTPException(status_code=422, detail=body)
 
     def _raise_blocked_request(
         self,

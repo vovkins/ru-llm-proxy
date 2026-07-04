@@ -40,6 +40,8 @@ def test_docs_distinguish_pre_egress_policy_from_pii_modes():
     architecture = docs["docs/architecture.md"]
     assert "до `POST /api/v1/analyze`" in architecture
     assert "#28 Secondary DLP scan" in architecture
+    assert "detail.error" in docs["README.md"]
+    assert "detail.error" in docs["docs/examples.md"]
     assert "force-recreate --no-deps litellm" in docs["README.md"]
     assert "force-recreate --no-deps litellm" in docs["docs/examples.md"]
 
@@ -76,6 +78,7 @@ def test_pre_egress_proxy_smoke_assets_are_wired():
     assert "/v1/responses" in script
     assert "/v1/messages" in script
     assert "blocked-messages-tool-result" in script
+    assert "detail.get(\"error\", detail)" in script
     assert "error.get(key)" in script
     assert 'for key in ("message", "type", "code")' in script
     assert "pre_egress_policy_violation" in script
