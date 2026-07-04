@@ -1050,6 +1050,16 @@ class TestPreCallHook:
                 },
             }
         }
+        if isinstance(exc_info.value, ProxyException):
+            assert exc_info.value.param == {
+                "pre_egress_policy": {
+                    "code": "pre_egress_policy_blocked",
+                    "details": {
+                        "categories": ["config"],
+                        "rules": ["env_secret_assignment"],
+                    },
+                }
+            }
         serialized = json.dumps(error_body, ensure_ascii=False)
         assert "sk-test-secret" not in serialized
         assert "postgresql://user:pass@db.example/app" not in serialized

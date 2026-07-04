@@ -62,6 +62,15 @@ if isinstance(error, dict):
     provider_fields = error.get("provider_specific_fields")
     if isinstance(provider_fields, dict) and isinstance(provider_fields.get("error"), dict):
         error = provider_fields["error"]
+    elif isinstance(error.get("param"), dict):
+        policy_param = error["param"].get("pre_egress_policy")
+        if isinstance(policy_param, dict):
+            error = {
+                "message": error.get("message"),
+                "type": error.get("type"),
+                "code": policy_param.get("code"),
+                "details": policy_param.get("details"),
+            }
 
 if not isinstance(error, dict) and isinstance(body.get("detail"), dict):
     detail = body["detail"]

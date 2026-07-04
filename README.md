@@ -246,7 +246,7 @@ Runtime dependency clients guardrail:
 | `block` | Значение по умолчанию. Guardrail отклоняет высокосигнальные `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces до вызова Analyzer и провайдера. |
 | `off` | Отключает config/log classifier. PII mask/block продолжает работать по `PII_GUARDRAIL_MODE`. |
 
-При блокировке клиент получает безопасную `422` ошибку с `code=pre_egress_policy_blocked`, categories и rule ids. В зависимости от LiteLLM/FastAPI wrapper эти поля находятся в `error`, `detail.error` или `error.provider_specific_fields.error`; машинно-читаемый контракт `message` / `type` / `code` / `details.categories` / `details.rules` остаётся тем же. Error body и structured logs не содержат raw payload, snippets, offsets или secret values. PII Redis mapping `pii_mapping:*` не создаётся, потому что запрос останавливается до `_save_mapping`.
+При блокировке клиент получает безопасную `422` ошибку с `code=pre_egress_policy_blocked`, categories и rule ids. В зависимости от LiteLLM/FastAPI wrapper эти поля находятся в `error`, `detail.error`, `error.provider_specific_fields.error` или `error.param.pre_egress_policy`; машинно-читаемый контракт `message` / `type` / `code` / `details.categories` / `details.rules` остаётся тем же. Error body и structured logs не содержат raw payload, snippets, offsets или secret values. PII Redis mapping `pii_mapping:*` не создаётся, потому что запрос останавливается до `_save_mapping`.
 
 Этот слой не заменяет PII mask/block: PII policy работает по entity spans и может маскировать/восстанавливать данные, а pre-egress policy останавливает целые операционные артефакты, которые нельзя безопасно отправлять внешнему LLM даже после частичной маскировки.
 

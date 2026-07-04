@@ -1190,6 +1190,12 @@ class RuPIIGuardrail(CustomGuardrail):
                 "rules": rules,
             },
         }
+        policy_param = {
+            "pre_egress_policy": {
+                "code": error["code"],
+                "details": error["details"],
+            }
+        }
         provider_specific_fields = {
             "error": error,
             "guardrail_name": self.guardrail_name,
@@ -1198,7 +1204,7 @@ class RuPIIGuardrail(CustomGuardrail):
         exc = ProxyException(
             message=PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
             type="pre_egress_policy_violation",
-            param=None,
+            param=policy_param,
             code=422,
             provider_specific_fields=provider_specific_fields,
         )
