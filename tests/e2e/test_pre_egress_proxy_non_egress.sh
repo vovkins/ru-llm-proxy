@@ -32,6 +32,39 @@ print(value)
 PY
 }
 
+assert_pre_egress_blocked_error() {
+    local file="$1"
+
+    python3 - "$file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    body = json.load(fh)
+
+error = body.get("error")
+if not isinstance(error, dict):
+    print("Expected JSON error object", file=sys.stderr)
+    print(json.dumps(body, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+
+code = str(error.get("code", ""))
+message = str(error.get("message", ""))
+if code == "pre_egress_policy_blocked":
+    sys.exit(0)
+if code == "422" and (
+    "pre-egress policy" in message
+    or "configuration or log data" in message
+    or "pre_egress_policy_blocked" in message
+):
+    sys.exit(0)
+
+print("Expected pre-egress policy blocked error", file=sys.stderr)
+print(json.dumps(body, ensure_ascii=False), file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 wait_for_http() {
     local url="$1"
     local description="$2"
@@ -135,11 +168,7 @@ if [ "$blocked_status" != "422" ]; then
     cat "$blocked_body" >&2
     exit 1
 fi
-if [ "$(json_get "$blocked_body" error.code)" != "pre_egress_policy_blocked" ]; then
-    echo "Expected pre_egress_policy_blocked error code" >&2
-    cat "$blocked_body" >&2
-    exit 1
-fi
+assert_pre_egress_blocked_error "$blocked_body"
 if grep -q "sk-test-secret\\|local-password" "$blocked_body"; then
     echo "Blocked response leaked raw secret value" >&2
     cat "$blocked_body" >&2

@@ -63,6 +63,8 @@ def test_pre_egress_proxy_smoke_assets_are_wired():
     assert "bash tests/e2e/test_pre_egress_proxy_non_egress.sh" in makefile
     assert "bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh" in workflow
     assert "make -n test-pre-egress-proxy" in workflow
+    assert "\n  pre-egress-proxy:" in workflow
+    assert "\n        run: make test-pre-egress-proxy" in workflow
     assert "mock-upstream" in compose
     assert "PRE_EGRESS_POLICY_MODE=block" in compose
     assert "litellm_guardrails.pii_guardrail.RuPIIGuardrail" in config

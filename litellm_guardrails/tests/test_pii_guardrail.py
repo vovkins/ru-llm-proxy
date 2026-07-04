@@ -1063,6 +1063,16 @@ class TestPreCallHook:
             "LITELLM_MASTER_KEY=sk-ru-admin",
             "LITELLM_SALT_KEY=local-salt",
             "ZAI_API_KEY_2=zai-second-account",
+            "MONGODB_URI=mongodb://user:pass@mongo.example/app",
+            "POSTGRES_DSN=postgres://user:pass@pg.example/app",
+            "PGPASSWORD=local-password",
+            "MYSQL_PWD=local-password",
+            "RABBITMQ_DEFAULT_PASS=local-password",
+            "DOCKER_AUTH_CONFIG={\"auths\":{\"registry.example\":{\"auth\":\"secret\"}}}",
+            "SERVICE_CONNECTION_STRING=postgresql://user:pass@db.example/app",
+            "SERVICE_DSN=https://user:pass@svc.example/db",
+            "SERVICE_URI=https://user:pass@svc.example/api",
+            "CUSTOM_API_KEY_12=sk-numbered",
         ],
     )
     async def test_pre_egress_blocks_common_env_secret_names(self, payload):
@@ -1144,6 +1154,84 @@ class TestPreCallHook:
             (
                 "\n".join(
                     [
+                        "apiVersion: v1",
+                        "kind: Pod",
+                        "metadata:",
+                        "  name: app",
+                        "spec:",
+                        "  containers:",
+                        "  - name: app",
+                        "    image: example/app:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: batch/v1",
+                        "kind: Job",
+                        "metadata:",
+                        "  name: db-migrate",
+                        "spec:",
+                        "  template:",
+                        "    spec:",
+                        "      containers:",
+                        "      - name: migrate",
+                        "        image: example/migrate:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: batch/v1",
+                        "kind: CronJob",
+                        "metadata:",
+                        "  name: nightly",
+                        "spec:",
+                        "  schedule: '0 1 * * *'",
+                        "  jobTemplate:",
+                        "    spec:",
+                        "      template:",
+                        "        spec:",
+                        "          containers:",
+                        "          - name: nightly",
+                        "            image: example/nightly:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Pod",
+                        "metadata:",
+                        "  name: app",
+                        "spec:",
+                        "  containers:",
+                        "  - name: app",
+                        "    image: example/app:latest",
+                        "---",
+                        "apiVersion: v1",
+                        "kind: Secret",
+                        "metadata:",
+                        "  name: app-secret",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
                         "server {",
                         "  listen 443 ssl;",
                         "  location /api {",
@@ -1193,6 +1281,17 @@ class TestPreCallHook:
                 "log_or_stacktrace_payload",
             ),
             (
+                '2001:db8::10 - - [01/Jul/2026:12:00:00 +0300] "GET /admin HTTP/1.1" 403 128',
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul  1 12:00:01 host sshd[123]: Failed password for invalid user "
+                "admin from 2001:db8::10 port 51234 ssh2",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
                 "\n".join(
                     [
                         "TypeError: Cannot read properties of undefined",
@@ -1204,6 +1303,12 @@ class TestPreCallHook:
             ),
             (
                 "Jul 01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
+                "USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul  1 12:00:01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
                 "USER=root ; COMMAND=/bin/cat /etc/shadow",
                 "log",
                 "log_or_stacktrace_payload",
@@ -1286,6 +1391,7 @@ class TestPreCallHook:
             "Объясни, чем OPENAI_API_KEY отличается от LITELLM_MASTER_KEY.",
             "Объясни, что значит Failed password в ssh logs.",
             "What does authentication failure troubleshooting usually involve?",
+            "What does pam_unix authentication failure mean in Ubuntu?",
         ],
     )
     async def test_pre_egress_allows_incidental_operational_terms(self, text):
@@ -1307,6 +1413,25 @@ class TestPreCallHook:
         assert result == data
         analyze_text.assert_awaited_once_with(text)
         guardrail._redis.setex.assert_not_called()
+
+    def test_pre_egress_block_metric_increments_once_per_category(self):
+        labels = {
+            "config": MagicMock(),
+            "log": MagicMock(),
+        }
+        metric = MagicMock()
+        metric.labels.side_effect = lambda category: labels[category]
+
+        with patch.object(pii_guardrail, "PRE_EGRESS_POLICY_BLOCKED", metric):
+            RuPIIGuardrail._record_pre_egress_policy_blocks(
+                {
+                    "config": 2,
+                    "log": 1,
+                },
+            )
+
+        labels["config"].inc.assert_called_once_with()
+        labels["log"].inc.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_pre_egress_off_allows_payload_to_pii_pipeline(self):

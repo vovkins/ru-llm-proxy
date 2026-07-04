@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import time
-from typing import Optional, Union, Any
+from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
 import httpx
@@ -190,14 +190,21 @@ ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 _ENV_SECRET_ASSIGNMENT_RE = re.compile(
     r"(?im)^[ \t]*(?:export[ \t]+)?(?:"
     r"DATABASE_URL|REDIS_URL|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|"
+    r"PGPASSWORD|MYSQL_PWD|DOCKER_AUTH_CONFIG|"
     r"SECRET_KEY|JWT_SECRET|"
     r"(?:[A-Z][A-Z0-9_]*_)?(?:"
-    r"API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY|MASTER_KEY|SALT_KEY"
+    r"API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY|MASTER_KEY|SALT_KEY|"
+    r"PASS|PWD|DSN|URI|CONNECTION_STRING|AUTH_CONFIG"
     r")(?:_[0-9]+)?"
     r")[ \t]*=[ \t]*\S+"
 )
+_ENV_CREDENTIAL_URL_RE = re.compile(
+    r"(?im)^[ \t]*(?:export[ \t]+)?[A-Z][A-Z0-9_]*"
+    r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*=[ \t]*"
+    r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
 _ACCESS_LOG_RE = re.compile(
-    r'(?m)^(?:\d{1,3}\.){3}\d{1,3}\s+\S+\s+\S+\s+\[[^\]\n]+\]\s+"'
+    r'(?m)^\S+\s+\S+\s+\S+\s+\[[^\]\n]+\]\s+"'
     r"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+\S+\s+HTTP/\d(?:\.\d)?"
     r'"\s+\d{3}\b'
 )
@@ -206,12 +213,13 @@ _STACK_TRACE_RE = re.compile(
     r"\s+at\s+(?:\S+\s+)?\(?[^)\n]+:\d+(?::\d+)?\)?|"
     r'\s+File "[^"\n]+", line \d+, in \w+)'
 )
+_SYSLOG_PREFIX_RE = r"[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+"
 _AUTH_LOG_RE = re.compile(
     r"(?im)^(?:"
-    r"(?:[A-Z][a-z]{2}\s+\d{1,2}\s+\S+\s+)?"
+    rf"(?:{_SYSLOG_PREFIX_RE})?"
     r"(?:sshd\[\d+\]:\s+)?(?:failed|accepted) password\b.*\bfrom\b|"
-    r".*\bpam_unix\b.*\bauthentication failure\b|"
-    r"[A-Z][a-z]{2}\s+\d{1,2}\s+\S+\s+sudo:\s+.*\bCOMMAND="
+    rf"{_SYSLOG_PREFIX_RE}.*\bpam_unix\b.*\bauthentication failure\b|"
+    rf"{_SYSLOG_PREFIX_RE}sudo:\s+.*\bCOMMAND="
     r")"
 )
 
@@ -700,6 +708,14 @@ class RuPIIGuardrail(CustomGuardrail):
             return None
         return match.group(1)
 
+    @staticmethod
+    def _iter_yaml_documents(text: str) -> Iterable[str]:
+        """Return non-empty YAML-ish documents split on standard doc separators."""
+        for document in re.split(r"(?m)^[ \t]*---[ \t]*(?:#.*)?$", text):
+            document = document.strip()
+            if document:
+                yield document
+
     @classmethod
     def _looks_like_kubeconfig_payload(cls, text: str) -> bool:
         """Detect high-confidence kubeconfig payloads."""
@@ -728,25 +744,22 @@ class RuPIIGuardrail(CustomGuardrail):
     @classmethod
     def _looks_like_service_manifest_payload(cls, text: str) -> bool:
         """Detect high-confidence Kubernetes service/application manifests."""
-        if not cls._has_yaml_key(text, "apiVersion") or not cls._has_yaml_key(
-            text,
-            "metadata",
-        ):
-            return False
+        for document in cls._iter_yaml_documents(text):
+            if not cls._has_yaml_key(document, "apiVersion") or not cls._has_yaml_key(
+                document,
+                "metadata",
+            ):
+                continue
 
-        kind = cls._yaml_scalar_value(text, "kind")
-        if kind == "Secret":
-            return any(
-                cls._has_yaml_key(text, key)
-                for key in ("data", "stringData", "binaryData")
-            )
-        if kind == "ConfigMap":
-            return cls._has_yaml_key(text, "data") or cls._has_yaml_key(
-                text,
-                "binaryData",
-            )
-        if kind in {"Deployment", "StatefulSet", "DaemonSet", "Service", "Ingress"}:
-            return cls._has_yaml_key(text, "spec")
+            kind = cls._yaml_scalar_value(document, "kind")
+            if not kind:
+                continue
+
+            if any(
+                cls._has_yaml_key(document, key)
+                for key in ("data", "stringData", "binaryData", "spec")
+            ):
+                return True
         return False
 
     @classmethod
@@ -758,7 +771,9 @@ class RuPIIGuardrail(CustomGuardrail):
         findings: list[dict[str, str]] = []
         seen_rules: set[str] = set()
 
-        if _ENV_SECRET_ASSIGNMENT_RE.search(text):
+        if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_CREDENTIAL_URL_RE.search(
+            text
+        ):
             cls._add_policy_finding(
                 findings,
                 seen_rules,
@@ -1108,8 +1123,8 @@ class RuPIIGuardrail(CustomGuardrail):
     @staticmethod
     def _record_pre_egress_policy_blocks(category_counts: dict[str, int]) -> None:
         """Increment pre-egress policy metrics with bounded category labels."""
-        for category, count in category_counts.items():
-            PRE_EGRESS_POLICY_BLOCKED.labels(category=category).inc(count)
+        for category in category_counts:
+            PRE_EGRESS_POLICY_BLOCKED.labels(category=category).inc()
 
     def _raise_pre_egress_policy_blocked(
         self,
