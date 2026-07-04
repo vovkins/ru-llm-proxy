@@ -1,7 +1,8 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-analyzer-api test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-analyzer-api test-analyzer-image-smoke test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
+ANALYZER_IMAGE_SMOKE ?= ru-llm-proxy-presidio-analyzer-smoke
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
 	-e PYTHONDONTWRITEBYTECODE=1 \
@@ -18,10 +19,11 @@ help:
 	@echo "  make down     — остановить все сервисы"
 	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
 	@echo "  make logs     — логи всех сервисов"
-	@echo "  make test     — запустить весь локальный test suite"
+	@echo "  make test     — быстрый локальный suite: test-unit + test-static"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-analyzer-api — Analyzer API threshold regression tests в Docker"
+	@echo "  make test-analyzer-image-smoke — production Analyzer image smoke без bind mount"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
@@ -84,6 +86,14 @@ test-analyzer-api:
 	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
 		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
 
+test-analyzer-image-smoke:
+	@echo "🧪 Production Analyzer image smoke"
+	docker build -f presidio/Dockerfile --target analyzer \
+		--build-arg DEEPPAVLOV_NER_SKIP_DOWNLOAD_FOR_SMOKE=true \
+		-t $(ANALYZER_IMAGE_SMOKE) ./presidio
+	docker run --rm --entrypoint python $(ANALYZER_IMAGE_SMOKE) \
+		-c "from recognizers import ALL_RECOGNIZERS; import analyzer_server; registered = {r.name for r in analyzer_server.analyzer.registry.recognizers}; expected = {cls().name for cls in ALL_RECOGNIZERS}; missing = expected - registered; assert analyzer_server.app is not None; assert not missing, f'missing recognizers: {sorted(missing)}'"
+
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"
 	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
@@ -101,8 +111,8 @@ test-flow:
 
 test-routing-diagnostics:
 	@echo "🧪 Makefile diagnostics static tests"
-	python3 tests/test_makefile_routing_smoke.py
-	python3 tests/test_makefile_guardrails_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_routing_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
 health:

@@ -38,9 +38,21 @@ def test_static_suite_runs_recognizer_calibration_regression():
 
     assert "tests/test_recognizer_calibration_config.py" in makefile
     assert "test-analyzer-api:" in makefile
+    assert "test-analyzer-image-smoke:" in makefile
+    assert "make test     — быстрый локальный suite: test-unit + test-static" in makefile
+    assert "make test     — запустить весь локальный test suite" not in makefile
     assert "presidio-analyzer-tests" in compose
     assert "presidio-analyzer-tests" in makefile
     assert "make test-analyzer-api" in baseline
+    assert "make test-analyzer-image-smoke" in baseline
+    assert "--target analyzer" in makefile
+    assert "DEEPPAVLOV_NER_SKIP_DOWNLOAD_FOR_SMOKE=true" in makefile
+    assert "DEEPPAVLOV_NER_SKIP_DOWNLOAD_FOR_SMOKE" in dockerfile
+    assert "Skipping DeepPavlov model pre-download for production image smoke" in dockerfile
+    assert "import analyzer_server" in makefile
+    assert "expected = {cls().name for cls in ALL_RECOGNIZERS}" in makefile
+    assert "$(PYTHON_LOCAL) tests/test_makefile_routing_smoke.py" in makefile
+    assert "$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py" in makefile
     assert "-r requirements-analyzer-base.txt" in runtime_requirements
     assert "-r requirements-analyzer-base.txt" in api_test_requirements
     assert "numpy>=1.26,<2.0" in shared_requirements
@@ -166,6 +178,7 @@ def test_address_regex_rejects_prose_under_runtime_flags(monkeypatch):
         "ул Ленина\nРаботает 10 лет",
         "ул. Иванова Петрова 10 человек посетили встречу",
         "Улица Ленина 10 лет была главной",
+        "Ул Ленина 10 ЛЕТ была главной",
     ]
 
     for text in false_positive_texts:
@@ -206,6 +219,12 @@ def test_address_regex_accepts_common_marker_casing(monkeypatch):
         "Адрес: ул. Ленина, Дом 10",
         "Адрес: ул.Ленина, д.10",
         "г.Москва, ул.Тверская, д.1",
+        "Адрес: ул. Ленина, д. 10А",
+        "Адрес: г. Москва, ул. Тверская, д. 1А",
+        "Адрес: ул. Ленина, д. 10, КВ. 5",
+        "Адрес: ул. Ленина, д. 10, Корп. 2",
+        "Адрес: пр-тМира, д. 25",
+        "Адрес: б-рПобеды, д. 3",
     ]
 
     for text in positive_texts:
@@ -215,6 +234,33 @@ def test_address_regex_accepts_common_marker_casing(monkeypatch):
             if re.search(pattern.regex, text, recognizer.global_regex_flags)
         ]
         assert matches, text
+
+
+def test_address_regex_preserves_uppercase_suffix_and_extension_spans(monkeypatch):
+    ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+    recognizer = ru_address.RuAddressRecognizer()
+
+    expected_spans = [
+        "ул. Ленина, д. 10А",
+        "г. Москва, ул. Тверская, д. 1А",
+        "ул. Ленина, д. 10, КВ. 5",
+        "ул. Ленина, д. 10, Корп. 2",
+        "пр-тМира, д. 25",
+        "б-рПобеды, д. 3",
+    ]
+
+    for expected_span in expected_spans:
+        spans = [
+            match.group(0)
+            for pattern in recognizer.patterns
+            for match in [re.search(
+                pattern.regex,
+                f"Адрес: {expected_span}",
+                recognizer.global_regex_flags,
+            )]
+            if match is not None
+        ]
+        assert expected_span in spans
 
 
 def test_docs_explain_inn_threshold_policy_and_address_limits():

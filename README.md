@@ -359,6 +359,7 @@ make routing-smoke
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
 | `make test-static` | Lightweight static/asyncio regression tests; использует локальный `PYTHON_LOCAL` |
 | `make test-analyzer-api` | Docker API-level Analyzer recognizer regression tests; отдельный CI gate, не входит в быстрый `make test` |
+| `make test-analyzer-image-smoke` | Production Analyzer image smoke без bind mount; отдельный CI gate |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
@@ -556,6 +557,7 @@ make test             # test-unit + test-static
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
 make test-static      # lightweight static/asyncio checks через локальный PYTHON_LOCAL
 make test-analyzer-api # API-level Analyzer recognizer tests; отдельный Docker/CI gate
+make test-analyzer-image-smoke # production Analyzer image smoke без bind mount
 make test-recognizers
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM

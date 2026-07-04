@@ -12,9 +12,9 @@ _SPACE_REQUIRED = r"[^\S\r\n]+"
 _SPACE_OR_COMMA_REQUIRED = r"(?:[^\S\r\n]|,)+"
 _STREET_TYPE = _LEFT_TOKEN_BOUNDARY + (
     rf"(?:(?i:ул\.){_SPACE}|(?i:ул){_SPACE_REQUIRED}|(?i:улица){_SPACE_REQUIRED}"
-    rf"|(?i:пр-т){_SPACE_REQUIRED}|(?i:проспект){_SPACE_REQUIRED}"
+    rf"|(?i:пр-т){_SPACE}|(?i:проспект){_SPACE_REQUIRED}"
     rf"|(?i:пер\.){_SPACE}|(?i:пер){_SPACE_REQUIRED}|(?i:переулок){_SPACE_REQUIRED}"
-    rf"|(?i:б-р){_SPACE_REQUIRED}|(?i:бульвар){_SPACE_REQUIRED}"
+    rf"|(?i:б-р){_SPACE}|(?i:бульвар){_SPACE_REQUIRED}"
     rf"|(?i:ш\.){_SPACE}|(?i:ш){_SPACE_REQUIRED}|(?i:шоссе){_SPACE_REQUIRED})"
 )
 _STREET_NAME_WORD = r"[А-ЯЁа-яё][а-яёА-ЯЁ-]+"
@@ -27,10 +27,12 @@ _STREET_NAME_CAPITALIZED = (
 _STREET_NAME_TYPE = r"(?i:ул\.?|улица|проспект|пер\.?|переулок|бульвар|шоссе)"
 _HOUSE_MARKER = r"(?i:д\.|дом)"
 _COUNT_NOUN_AFTER_HOUSE = (
-    r"(?![^\S\r\n]*(?:лет|год(?:а|ов)?|раз|человек|"
+    r"(?![^\S\r\n]*(?i:лет|год(?:а|ов)?|раз|человек|"
     r"процент(?:а|ов)?|метр(?:а|ов)?|час(?:а|ов)?|минут(?:а|ы)?)\b)"
 )
-_HOUSE_NUMBER = rf"\d+[а-яё]?(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
+_HOUSE_NUMBER = rf"\d+[А-Яа-яЁё]?(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
+_BUILDING_MARKER = r"(?i:корп\.|корпус|стр\.)"
+_UNIT_MARKER = r"(?i:кв\.|квартира|оф\.|офис)"
 _PREFIX_STREET_MARKED_HOUSE = (
     rf"{_STREET_TYPE}{_STREET_NAME}[,\.]?{_SPACE}{_HOUSE_MARKER}{_SPACE}{_HOUSE_NUMBER}"
 )
@@ -49,8 +51,8 @@ class RuAddressRecognizer(PatternRecognizer):
             name="ru_address_full",
             regex=(
                 rf"(?:{_PREFIX_STREET_MARKED_HOUSE}|{_PREFIX_STREET_BARE_HOUSE})"
-                rf"{_SPACE}(?:[,/]{_SPACE}(?:корп\.|корпус|стр\.){_SPACE}{_HOUSE_NUMBER})?"
-                rf"(?:{_SPACE}[,\.]?{_SPACE}(?:кв\.|квартира|оф\.|офис){_SPACE}\d+)?"
+                rf"{_SPACE}(?:[,/]{_SPACE}{_BUILDING_MARKER}{_SPACE}{_HOUSE_NUMBER})?"
+                rf"(?:{_SPACE}[,\.]?{_SPACE}{_UNIT_MARKER}{_SPACE}\d+)?"
             ),
             score=0.7,
         ),

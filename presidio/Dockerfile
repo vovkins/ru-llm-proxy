@@ -35,11 +35,16 @@ RUN python -m spacy download ru_core_news_sm
 ARG DEEPPAVLOV_NER_MODEL_URL="http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz"
 ARG DEEPPAVLOV_NER_MODEL_SHA256=""
 ARG DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS="120"
+ARG DEEPPAVLOV_NER_SKIP_DOWNLOAD_FOR_SMOKE="false"
 ENV DEEPPAVLOV_NER_MODEL_URL=${DEEPPAVLOV_NER_MODEL_URL}
 ENV DEEPPAVLOV_NER_MODEL_SHA256=${DEEPPAVLOV_NER_MODEL_SHA256}
 ENV DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS}
 COPY download_model.py .
-RUN python download_model.py
+RUN if [ "$DEEPPAVLOV_NER_SKIP_DOWNLOAD_FOR_SMOKE" = "true" ]; then \
+        echo "Skipping DeepPavlov model pre-download for production image smoke"; \
+    else \
+        python download_model.py; \
+    fi
 
 WORKDIR /app
 COPY analyzer_server.py .
