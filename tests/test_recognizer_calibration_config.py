@@ -41,6 +41,14 @@ def test_static_suite_runs_recognizer_calibration_regression():
     assert "download_model.py" not in test_stage
 
 
+def test_analyzer_api_threshold_tests_use_russian_nlp_engine():
+    test_source = (ROOT / "presidio" / "tests" / "test_analyzer_api_thresholds.py").read_text()
+
+    assert "RecognizerRegistry(supported_languages=[\"ru\"])" in test_source
+    assert "nlp_engine=analyzer_server.nlp_engine" in test_source
+    assert "supported_languages=[\"ru\"]" in test_source
+
+
 def _load_module_with_fake_presidio(monkeypatch, module_path, module_name):
     fake_presidio = types.ModuleType("presidio_analyzer")
 

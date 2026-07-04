@@ -11,7 +11,7 @@ pytest.importorskip("presidio_analyzer")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
-from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 
 from presidio import analyzer_server
 from recognizers.ru_address import RuAddressRecognizer
@@ -19,10 +19,14 @@ from recognizers.ru_inn import RuInnRecognizer
 
 
 def _build_analyzer(*recognizers):
-    engine = AnalyzerEngine()
+    registry = RecognizerRegistry(supported_languages=["ru"])
     for recognizer in recognizers:
-        engine.registry.add_recognizer(recognizer)
-    return engine
+        registry.add_recognizer(recognizer)
+    return AnalyzerEngine(
+        registry=registry,
+        nlp_engine=analyzer_server.nlp_engine,
+        supported_languages=["ru"],
+    )
 
 
 def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
