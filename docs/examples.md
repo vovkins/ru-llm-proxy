@@ -139,9 +139,9 @@ PII guardrail applies to Responses API top-level `instructions` / `input` string
 RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
 ```
 
-## Anthropic Messages API
+## Basic Anthropic Messages API
 
-Claude Code использует Anthropic-compatible Messages API:
+Это базовый non-streaming пример Anthropic Messages API через proxy:
 
 ```bash
 curl -s "$API_URL/v1/messages" \
@@ -164,6 +164,8 @@ curl -s "$API_URL/v1/messages" \
 ```bash
 MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
 ```
+
+Полный Claude Code gateway contract строже этого примера: `POST /v1/messages?beta=true`, streaming SSE responses, forwarding `anthropic-version` / `anthropic-beta`, optional token counting и model discovery. Его статус описан в [clients/claude-code.md](clients/claude-code.md).
 
 ## Прямая проверка Analyzer
 

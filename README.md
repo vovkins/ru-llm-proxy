@@ -9,7 +9,7 @@ LLM-прокси для командной работы с внешними LLM 
 ✅ **Готово в текущем `main`**:
 
 - LiteLLM gateway с server-funded upstream keys (`ZAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) и client access через LiteLLM virtual keys.
-- Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, Anthropic-compatible `messages[].content` и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
+- Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, базовых Anthropic Messages `content` string/text blocks и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
 - `PII_GUARDRAIL_MODE=mask|block`: reversible masking по умолчанию или безопасный `422` до provider call.
 - Non-streaming restoration для `content`, `reasoning_content`, response content blocks и tool/function arguments.
 - Streaming restoration для `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
