@@ -81,7 +81,7 @@ test-static: test-routing-diagnostics
 
 test-analyzer-api:
 	@echo "🧪 Analyzer API threshold regression tests"
-	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
 		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
 
 test-recognizers:

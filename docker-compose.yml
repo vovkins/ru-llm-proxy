@@ -85,6 +85,23 @@ services:
     networks:
       - ru-llm-proxy
 
+  # === Lightweight Analyzer API test runner ===
+  presidio-analyzer-tests:
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: analyzer-api-tests
+    profiles:
+      - test
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace:/workspace/presidio
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - .:/workspace:ro
+    networks:
+      - ru-llm-proxy
+
   # === PostgreSQL ===
   db:
     image: postgres:16-alpine

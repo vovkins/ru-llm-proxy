@@ -190,7 +190,7 @@ Recognizer calibration:
 
 - `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare 12-значный ИНН проходит дефолтный Analyzer API `score_threshold=0.35`; 10-значный ИНН без контекста остаётся ниже threshold. Это повышает recall для ИНН физлиц без типового 10% false-positive окна юридических ИНН.
 - В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
-- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений, `Тверская улица 7` без `дом/д.` и всех свободных российских адресов вне текущего scope.
+- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений, `Тверская улица 7` без `дом/д.`, multi-word street names без `дом/д.` и все свободные российские адреса вне текущего scope.
 
 Runtime dependency clients guardrail:
 

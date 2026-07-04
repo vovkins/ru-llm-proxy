@@ -1,0 +1,9 @@
+# Lightweight dependencies for Analyzer API regression tests.
+#
+# This test image intentionally skips DeepPavlov and torch dependencies: the
+# threshold tests exercise FastAPI + Presidio regex recognizers with NER disabled.
+presidio-analyzer>=2.2.362,<3.0
+spacy>=3.8,<3.9
+fastapi>=0.115,<0.116
+httpx>=0.27,<1.0
+pytest>=8.0,<9.0

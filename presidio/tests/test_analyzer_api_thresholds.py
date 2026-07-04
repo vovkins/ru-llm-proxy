@@ -28,6 +28,11 @@ def _build_analyzer(*recognizers):
 def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
     monkeypatch.setattr(analyzer_server, "analyzer", analyzer)
     monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+    monkeypatch.setattr(
+        analyzer_server.dp_recognizer,
+        "load_model",
+        lambda: pytest.fail("DeepPavlov model must not load in threshold tests"),
+    )
     client = TestClient(analyzer_server.app)
 
     response = client.post(
@@ -126,6 +131,8 @@ class TestAnalyzerAddressCorpus:
             "Тверская улица 10 лет была пешеходной",
             "Сидоров переулок 10 лет назад был тихим",
             "ул Ленина работает 10 лет",
+            "ул Ленина\nРаботает 10 лет",
+            "ул. Иванова Петрова 10 человек посетили встречу",
             "ул. Иванова и Петрова 10 человек посетили встречу",
         ],
     )

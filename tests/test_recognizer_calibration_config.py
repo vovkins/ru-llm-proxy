@@ -1,6 +1,7 @@
 """Static checks for recognizer calibration documentation and config."""
 
 import importlib.util
+import re
 import sys
 import types
 from pathlib import Path
@@ -23,13 +24,24 @@ def test_bare_inn_checksum_setting_is_exposed_to_analyzer_runtime():
 def test_static_suite_runs_recognizer_calibration_regression():
     makefile = (ROOT / "Makefile").read_text()
     baseline = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
+    compose = (ROOT / "docker-compose.yml").read_text()
+    dockerfile = (ROOT / "presidio" / "Dockerfile").read_text()
 
     assert "tests/test_recognizer_calibration_config.py" in makefile
     assert "test-analyzer-api:" in makefile
+    assert "presidio-analyzer-tests" in compose
+    assert "presidio-analyzer-tests" in makefile
     assert "make test-analyzer-api" in baseline
 
+    test_stage = dockerfile.split("FROM base AS analyzer-api-tests", 1)[1].split(
+        "FROM base AS analyzer",
+        1,
+    )[0]
+    assert "deeppavlov" not in test_stage.lower()
+    assert "download_model.py" not in test_stage
 
-def _load_ru_inn_with_fake_presidio(monkeypatch):
+
+def _load_module_with_fake_presidio(monkeypatch, module_path, module_name):
     fake_presidio = types.ModuleType("presidio_analyzer")
 
     class Pattern:
@@ -46,12 +58,14 @@ def _load_ru_inn_with_fake_presidio(monkeypatch):
             context,
             name,
             supported_language,
+            global_regex_flags=re.DOTALL | re.MULTILINE | re.IGNORECASE,
         ):
             self.supported_entity = supported_entity
             self.patterns = patterns
             self.context = context
             self.name = name
             self.supported_language = supported_language
+            self.global_regex_flags = global_regex_flags
 
         def enhance_score_with_context(self, text, patterns):
             return patterns
@@ -60,16 +74,28 @@ def _load_ru_inn_with_fake_presidio(monkeypatch):
     fake_presidio.PatternRecognizer = PatternRecognizer
     monkeypatch.setitem(sys.modules, "presidio_analyzer", fake_presidio)
 
-    module_name = "_ru_inn_config_test"
     sys.modules.pop(module_name, None)
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        ROOT / "presidio" / "recognizers" / "ru_inn.py",
-    )
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _load_ru_inn_with_fake_presidio(monkeypatch):
+    return _load_module_with_fake_presidio(
+        monkeypatch,
+        ROOT / "presidio" / "recognizers" / "ru_inn.py",
+        "_ru_inn_config_test",
+    )
+
+
+def _load_ru_address_with_fake_presidio(monkeypatch):
+    return _load_module_with_fake_presidio(
+        monkeypatch,
+        ROOT / "presidio" / "recognizers" / "ru_address.py",
+        "_ru_address_config_test",
+    )
 
 
 def test_strict_inn_checksum_validation_does_not_boost_valid_results(monkeypatch):
@@ -92,6 +118,53 @@ def test_default_inn_policy_keeps_bare_10_digit_below_api_threshold(monkeypatch)
     assert [pattern.score for pattern in recognizer.patterns] == [0.4, 0.2]
     assert recognizer.validate_result("1234567894") is None
     assert recognizer.invalidate_result("1234567894") is False
+
+
+def test_address_recognizer_keeps_street_names_case_sensitive(monkeypatch):
+    ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+
+    recognizer = ru_address.RuAddressRecognizer()
+
+    assert recognizer.global_regex_flags & re.IGNORECASE == 0
+
+
+def test_address_regex_rejects_prose_under_runtime_flags(monkeypatch):
+    ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+    recognizer = ru_address.RuAddressRecognizer()
+
+    false_positive_texts = [
+        "В отчете улица продаж выросла на 10 процентов",
+        "ул Ленина работает 10 лет",
+        "ул Ленина\nРаботает 10 лет",
+        "ул. Иванова Петрова 10 человек посетили встречу",
+    ]
+
+    for text in false_positive_texts:
+        matches = [
+            pattern.name
+            for pattern in recognizer.patterns
+            if re.search(pattern.regex, text, recognizer.global_regex_flags)
+        ]
+        assert matches == [], text
+
+
+def test_address_city_pattern_preserves_city_prefixed_house(monkeypatch):
+    ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+    recognizer = ru_address.RuAddressRecognizer()
+
+    patterns_by_name = {pattern.name: pattern for pattern in recognizer.patterns}
+    city_pattern = patterns_by_name["ru_address_city_street"]
+    full_pattern = patterns_by_name["ru_address_full"]
+
+    match = re.search(
+        city_pattern.regex,
+        "г. Москва, ул. Тверская, д. 1",
+        recognizer.global_regex_flags,
+    )
+
+    assert match is not None
+    assert match.group(0) == "г. Москва, ул. Тверская, д. 1"
+    assert city_pattern.score > full_pattern.score
 
 
 def test_docs_explain_inn_threshold_policy_and_address_limits():

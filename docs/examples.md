@@ -192,7 +192,7 @@ curl -s http://localhost:5001/api/v1/analyze \
 
 10-значный ИНН без контекста остаётся ниже `score_threshold=0.35` даже в default mode, потому что один checksum digit даёт слишком широкое false-positive окно для случайных чисел. Если выставить `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, strict mode требует контекст вроде `ИНН` или `налогоплательщик` для любого голого ИНН.
 
-`RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но unsupported cases включают полный разбор индексов, регионов, владений, `Тверская улица 7` без `дом/д.` и свободных адресов без явной street/house structure.
+`RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но unsupported cases включают полный разбор индексов, регионов, владений, `Тверская улица 7` без `дом/д.`, multi-word street names без `дом/д.` и свободные адреса без явной street/house structure.
 
 ## Фильтрация Analyzer по entity types
 
