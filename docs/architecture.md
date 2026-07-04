@@ -69,7 +69,7 @@ guardrails:
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "final_payload_leak_check_mode"
           type: "string"
-          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/functions schema keys/strings, prediction, response_format, text, and extra_body; off disables this final check."
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop and stop_sequences; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
           description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."

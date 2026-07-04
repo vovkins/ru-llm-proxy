@@ -1727,7 +1727,10 @@ class TestPreCallHook:
 
     @pytest.mark.asyncio
     async def test_pre_egress_off_allows_payload_to_pii_pipeline(self):
-        guardrail = RuPIIGuardrail(pre_egress_policy_mode="off")
+        guardrail = RuPIIGuardrail(
+            pre_egress_policy_mode="off",
+            final_payload_leak_check_mode="off",
+        )
         guardrail._redis = _mock_redis()
         payload = "OPENAI_API_KEY=sk-test-secret\nJWT_SECRET=local-secret"
         data = {"messages": [{"role": "user", "content": payload}]}
@@ -1972,6 +1975,15 @@ class TestPreCallHook:
                     }
                 }
             },
+            {
+                "stop": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "stop": ["clean", "RU_PROXY_TOOL_SCHEMA_CANARY"],
+            },
+            {
+                "stop_sequences": ["RU_PROXY_TOOL_SCHEMA_CANARY"],
+            },
         ],
     )
     async def test_final_payload_leak_check_blocks_schema_canary(
@@ -2007,6 +2019,63 @@ class TestPreCallHook:
         assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
         assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
         assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "request_fragment",
+        [
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "PASSWORD=local-password",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+            },
+            {
+                "extra_body": {
+                    "debug": "DATABASE_URL=postgres://user:pass@db.local/app",
+                },
+            },
+        ],
+        ids=["tool-description-env-secret", "extra-body-credential-url"],
+    )
+    async def test_final_payload_leak_check_blocks_structured_secret_markers(
+        self,
+        request_fragment,
+    ):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Use provider config."}],
+        }
+        data.update(request_fragment)
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with("Use provider config.")
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["env_secret_assignment"]}
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "local-password" not in serialized
+        assert "user:pass" not in serialized
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

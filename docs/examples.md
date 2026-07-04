@@ -355,7 +355,7 @@ make test-pre-egress-proxy
 
 ## Final payload leak check
 
-`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а provider-bound request containers `messages` / `input` / `instructions` / `system`, `tools` / legacy `functions` schema keys/strings, `prediction`, `response_format`, `text` и provider-specific `extra_body` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens и provider-key-like values.
+`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а provider-bound request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments.
 
 При срабатывании запрос не отправляется провайдеру. Canonical guardrail body:
 

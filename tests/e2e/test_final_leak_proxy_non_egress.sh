@@ -286,6 +286,57 @@ expect_no_provider_posts "$extra_body_capture"
 expect_json_value "$extra_body_capture" provider_saw_canary false
 
 reset_capture
+stop_body="$tmp_dir/stop-canary.json"
+stop_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Clean prompt."}],"stop":["RU_PROXY_FINAL_CANARY"]}'
+stop_status="$(post_json "/v1/chat/completions" "$stop_payload" "$stop_body")"
+if [ "$stop_status" != "422" ]; then
+    echo "Expected stop canary status 422, got $stop_status" >&2
+    cat "$stop_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$stop_body" "$CANARY"
+stop_capture="$tmp_dir/stop-canary-capture.json"
+capture_counts "$stop_capture"
+expect_json_value "$stop_capture" analyzer_requests 1
+expect_json_value "$stop_capture" analyzer_saw_canary false
+expect_no_provider_posts "$stop_capture"
+expect_json_value "$stop_capture" provider_saw_canary false
+
+reset_capture
+messages_stop_sequences_body="$tmp_dir/messages-stop-sequences-canary.json"
+messages_stop_sequences_payload='{"model":"mock-claude","max_tokens":16,"messages":[{"role":"user","content":"Clean prompt."}],"stop_sequences":["RU_PROXY_FINAL_CANARY"]}'
+messages_stop_sequences_status="$(post_json "/v1/messages" "$messages_stop_sequences_payload" "$messages_stop_sequences_body")"
+if [ "$messages_stop_sequences_status" != "422" ]; then
+    echo "Expected Anthropic stop_sequences canary status 422, got $messages_stop_sequences_status" >&2
+    cat "$messages_stop_sequences_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$messages_stop_sequences_body" "$CANARY"
+messages_stop_sequences_capture="$tmp_dir/messages-stop-sequences-canary-capture.json"
+capture_counts "$messages_stop_sequences_capture"
+expect_json_value "$messages_stop_sequences_capture" analyzer_requests 1
+expect_json_value "$messages_stop_sequences_capture" analyzer_saw_canary false
+expect_no_provider_posts "$messages_stop_sequences_capture"
+expect_json_value "$messages_stop_sequences_capture" provider_saw_canary false
+
+reset_capture
+tool_schema_secret_body="$tmp_dir/tool-schema-secret.json"
+tool_schema_secret_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Use the tool."}],"tools":[{"type":"function","function":{"name":"lookup_account","description":"PASSWORD=local-password","parameters":{"type":"object","properties":{"account_id":{"type":"string","description":"Account id"}}}}}]}'
+tool_schema_secret_status="$(post_json "/v1/chat/completions" "$tool_schema_secret_payload" "$tool_schema_secret_body")"
+if [ "$tool_schema_secret_status" != "422" ]; then
+    echo "Expected tool schema secret status 422, got $tool_schema_secret_status" >&2
+    cat "$tool_schema_secret_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$tool_schema_secret_body" "local-password"
+tool_schema_secret_capture="$tmp_dir/tool-schema-secret-capture.json"
+capture_counts "$tool_schema_secret_capture"
+expect_json_value "$tool_schema_secret_capture" analyzer_requests 1
+expect_json_value "$tool_schema_secret_capture" analyzer_saw_canary false
+expect_no_provider_posts "$tool_schema_secret_capture"
+expect_json_value "$tool_schema_secret_capture" provider_saw_canary false
+
+reset_capture
 messages_tool_use_body="$tmp_dir/messages-tool-use-canary.json"
 messages_tool_use_payload='{"model":"mock-claude","max_tokens":16,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"lookup_account","input":{"query":"RU_PROXY_FINAL_CANARY"}}]}]}'
 messages_tool_use_status="$(post_json "/v1/messages" "$messages_tool_use_payload" "$messages_tool_use_body")"

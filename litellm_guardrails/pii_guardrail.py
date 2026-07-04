@@ -203,6 +203,8 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "response_format",
     "text",
     "extra_body",
+    "stop",
+    "stop_sequences",
 )
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
     "messages",
@@ -1067,6 +1069,15 @@ class RuPIIGuardrail(CustomGuardrail):
                 findings,
                 seen_rules,
                 "provider_key",
+            )
+
+        if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_CREDENTIAL_URL_RE.search(
+            text
+        ):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "env_secret_assignment",
             )
 
         return findings

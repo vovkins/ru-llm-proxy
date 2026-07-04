@@ -1,9 +1,27 @@
 """Static checks for final provider-bound leak-check wiring."""
 
+import ast
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _runtime_provider_bound_fields() -> tuple[str, ...]:
+    source = (ROOT / "litellm_guardrails" / "pii_guardrail.py").read_text()
+    tree = ast.parse(source)
+    assignments = {
+        node.targets[0].id: ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id.startswith("FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND")
+    }
+    return (
+        *assignments["FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS"],
+        *assignments["FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS"],
+    )
 
 
 def test_env_compose_and_smoke_wire_final_payload_leak_check():
@@ -24,6 +42,9 @@ def test_env_compose_and_smoke_wire_final_payload_leak_check():
     assert "chat_image_url_payload" in script
     assert "responses_image_url_payload" in script
     assert "extra_body_payload" in script
+    assert "stop_payload" in script
+    assert "messages_stop_sequences_payload" in script
+    assert "tool_schema_secret_payload" in script
     assert "messages_tool_use_payload" in script
     assert "messages_tool_use_name_payload" in script
     assert "expect_no_provider_posts" in script
@@ -59,6 +80,7 @@ def test_docs_document_final_payload_leak_check():
     examples = (ROOT / "docs" / "examples.md").read_text()
     architecture = (ROOT / "docs" / "architecture.md").read_text()
     monitoring = (ROOT / "docs" / "monitoring.md").read_text()
+    litellm_config = (ROOT / "litellm-config.yaml").read_text()
 
     for text in (readme, examples):
         assert "FINAL_PAYLOAD_LEAK_CHECK_MODE" in text
@@ -66,9 +88,16 @@ def test_docs_document_final_payload_leak_check():
         assert "final_payload_leak_check_blocked" in text
         assert "ru_final_payload_leak_check_blocked_total" in text
 
+    documented_surfaces = (readme, examples, architecture, litellm_config)
+    for field in _runtime_provider_bound_fields():
+        for text in documented_surfaces:
+            assert field in text, field
+
     assert "Anthropic Messages `system`" in architecture
     assert "legacy `functions`" in architecture
     assert "extra_body" in architecture
+    assert "stop_sequences" in architecture
+    assert "env-secret-like" in readme
     assert "откатывает masked text" in architecture
     assert "ключевые вопросы" in monitoring
     assert "10. Если есть regression" in monitoring

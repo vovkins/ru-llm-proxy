@@ -257,11 +257,11 @@ Runtime dependency clients guardrail:
 
 ### Final payload leak check
 
-`FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / legacy `functions` schema keys/strings, `prediction`, `response_format`, `text` и provider-specific `extra_body` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.
+`FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.
 
 | Значение | Поведение |
 | --- | --- |
-| `block` | Значение по умолчанию. Guardrail отклоняет configured canaries и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens и provider-key-like values перед provider egress. |
+| `block` | Значение по умолчанию. Guardrail отклоняет configured canaries и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments перед provider egress. |
 | `off` | Отключает финальную проверку. PII mask/block и `PRE_EGRESS_POLICY_MODE` продолжают работать отдельно. |
 
 `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` задаёт deterministic canary tokens через запятую или newline. Это regression/smoke механизм для доказательства, что sanitizer miss не доходит до provider. Не используйте реальные секреты как canaries.
@@ -338,7 +338,7 @@ guardrails:
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "final_payload_leak_check_mode"
           type: "string"
-          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/functions schema keys/strings, prediction, response_format, text, and extra_body; off disables this final check."
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop and stop_sequences; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
           description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
