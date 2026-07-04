@@ -204,8 +204,8 @@ Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded
 ## Logs
 
 Guardrail пишет structured JSON logs без prompt text и без raw PII.
-Поле `request_id` в событиях guardrail — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
-При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
+Поле `request_id` в PII mask/block/restore событиях — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
+При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 
 Основные события:
 

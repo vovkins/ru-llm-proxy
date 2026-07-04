@@ -40,6 +40,8 @@ def test_docs_distinguish_pre_egress_policy_from_pii_modes():
     architecture = docs["docs/architecture.md"]
     assert "до `POST /api/v1/analyze`" in architecture
     assert "#28 Secondary DLP scan" in architecture
+    assert "force-recreate --no-deps litellm" in docs["README.md"]
+    assert "force-recreate --no-deps litellm" in docs["docs/examples.md"]
 
 
 def test_static_suite_runs_pre_egress_policy_config_regression():
@@ -67,7 +69,17 @@ def test_pre_egress_proxy_smoke_assets_are_wired():
     assert "\n        run: make test-pre-egress-proxy" in workflow
     assert "mock-upstream" in compose
     assert "PRE_EGRESS_POLICY_MODE=block" in compose
+    assert "ANTHROPIC_API_KEY=sk-test-anthropic" in compose
     assert "litellm_guardrails.pii_guardrail.RuPIIGuardrail" in config
+    assert "model: anthropic/mock-claude" in config
     assert "/v1/chat/completions" in script
+    assert "/v1/responses" in script
+    assert "/v1/messages" in script
+    assert "blocked-messages-tool-result" in script
+    assert "error.get(key)" in script
+    assert 'for key in ("message", "type", "code")' in script
+    assert "pre_egress_policy_violation" in script
+    assert "code == \"422\"" not in script
     assert "provider_requests" in script
+    assert "provider_request_paths" in script
     assert "analyzer_requests" in script

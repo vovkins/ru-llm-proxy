@@ -343,9 +343,9 @@ Raw PII, offsets и исходный текст в error body не возвра�
 }
 ```
 
-Ответ и structured logs содержат только bounded categories/rule ids/counts, без raw payload, snippets, offsets или secret values. Если нужно временно разрешить такие payloads в dev-среде, задайте `PRE_EGRESS_POLICY_MODE=off`; PII mask/block при этом продолжит работать отдельно.
+Ответ и structured logs содержат только bounded categories/rule ids/counts, без raw payload, snippets, offsets или secret values. Если нужно временно разрешить такие payloads в dev-среде, задайте `PRE_EGRESS_POLICY_MODE=off`; PII mask/block при этом продолжит работать отдельно. После изменения этой переменной в `.env` пересоздайте контейнер LiteLLM: `docker compose up -d --force-recreate --no-deps litellm`.
 
-Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream проверяет, что clean prompt доходит до Analyzer/provider, а blocked config payload не доходит ни до Analyzer, ни до provider:
+Black-box smoke с test-only LiteLLM proxy и mock upstream проверяет `/v1/chat/completions`, `/v1/responses` и `/v1/messages`: clean prompt доходит до Analyzer/provider, а blocked config payload не доходит ни до Analyzer, ни до provider:
 
 ```bash
 make test-pre-egress-proxy

@@ -1052,30 +1052,137 @@ class TestPreCallHook:
         }
 
     @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_tool_result_content_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-test-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": payload,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["messages"][0]["content"][0]["content"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-test-secret" not in serialized
+        assert "local-password" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_tool_result_content_blocks(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-test-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": [{"type": "text", "text": payload}],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["messages"][0]["content"][0]["content"][0]["text"] == payload
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "payload",
+        ("payload", "forbidden"),
         [
-            "API_KEY=sk-test-secret",
-            "TOKEN=local-token",
-            "PASSWORD=local-password",
-            "SECRET=local-secret",
-            "SECRET_KEY=local-secret",
-            "LITELLM_MASTER_KEY=sk-ru-admin",
-            "LITELLM_SALT_KEY=local-salt",
-            "ZAI_API_KEY_2=zai-second-account",
-            "MONGODB_URI=mongodb://user:pass@mongo.example/app",
-            "POSTGRES_DSN=postgres://user:pass@pg.example/app",
-            "PGPASSWORD=local-password",
-            "MYSQL_PWD=local-password",
-            "RABBITMQ_DEFAULT_PASS=local-password",
-            "DOCKER_AUTH_CONFIG={\"auths\":{\"registry.example\":{\"auth\":\"secret\"}}}",
-            "SERVICE_CONNECTION_STRING=postgresql://user:pass@db.example/app",
-            "SERVICE_DSN=https://user:pass@svc.example/db",
-            "SERVICE_URI=https://user:pass@svc.example/api",
-            "CUSTOM_API_KEY_12=sk-numbered",
+            ("API_KEY=sk-test-secret", "sk-test-secret"),
+            ("TOKEN=local-token", "local-token"),
+            ("PASSWORD=local-password", "local-password"),
+            ("SECRET=local-secret", "local-secret"),
+            ("SECRET_KEY=local-secret", "local-secret"),
+            ("LITELLM_MASTER_KEY=sk-ru-admin", "sk-ru-admin"),
+            ("LITELLM_SALT_KEY=local-salt", "local-salt"),
+            ("ZAI_API_KEY_2=zai-second-account", "zai-second-account"),
+            ("MONGODB_URI=mongodb://user:pass@mongo.example/app", "user:pass"),
+            ("POSTGRES_DSN=postgres://user:pass@pg.example/app", "user:pass"),
+            ("PGPASSWORD=local-password", "local-password"),
+            ("MYSQL_PWD=local-password", "local-password"),
+            ("RABBITMQ_DEFAULT_PASS=local-password", "local-password"),
+            (
+                'DOCKER_AUTH_CONFIG={"auths":{"registry.example":{"auth":"docker-auth-value"}}}',
+                "docker-auth-value",
+            ),
+            (
+                "SERVICE_CONNECTION_STRING=postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
+            ("SERVICE_DSN=https://user:pass@svc.example/db", "user:pass"),
+            ("SERVICE_URI=https://user:pass@svc.example/api", "user:pass"),
+            ("CUSTOM_API_KEY_12=sk-numbered", "sk-numbered"),
+            ("environment:\n  - PGPASSWORD=local-password", "local-password"),
+            ('environment:\n  - "PGPASSWORD=local-password"', "local-password"),
+            ('environment: ["PGPASSWORD=local-password"]', "local-password"),
+            ("environment:\n  PGPASSWORD: local-password", "local-password"),
+            ("environment: {PGPASSWORD: local-password}", "local-password"),
+            (
+                "environment:\n  DATABASE_URL: postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
+            (
+                "environment: {DATABASE_URL: postgresql://user:pass@db.example/app}",
+                "user:pass",
+            ),
+            (
+                "services:\n  app:\n    environment:\n      DATABASE_URL: postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
         ],
     )
-    async def test_pre_egress_blocks_common_env_secret_names(self, payload):
+    async def test_pre_egress_blocks_common_env_secret_names(self, payload, forbidden):
         guardrail = RuPIIGuardrail()
         guardrail._redis = _mock_redis()
         data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
@@ -1095,7 +1202,7 @@ class TestPreCallHook:
             "categories": ["config"],
             "rules": ["env_secret_assignment"],
         }
-        assert payload.split("=", 1)[1] not in json.dumps(
+        assert forbidden not in json.dumps(
             error_body,
             ensure_ascii=False,
         )
@@ -1129,6 +1236,20 @@ class TestPreCallHook:
                         "metadata:",
                         "  name: app-secrets",
                         "type: Opaque",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        'apiVersion: "v1"',
+                        'kind: "Secret"',
+                        "metadata:",
+                        "  name: app-secrets",
                         "stringData:",
                         "  password: local-password",
                     ]
@@ -1392,6 +1513,7 @@ class TestPreCallHook:
             "Объясни, что значит Failed password в ssh logs.",
             "What does authentication failure troubleshooting usually involve?",
             "What does pam_unix authentication failure mean in Ubuntu?",
+            "Failed password from users after the PAM migration; how should I troubleshoot?",
         ],
     )
     async def test_pre_egress_allows_incidental_operational_terms(self, text):

@@ -250,6 +250,12 @@ Runtime dependency clients guardrail:
 
 Этот слой не заменяет PII mask/block: PII policy работает по entity spans и может маскировать/восстанавливать данные, а pre-egress policy останавливает целые операционные артефакты, которые нельзя безопасно отправлять внешнему LLM даже после частичной маскировки.
 
+Если меняете `PRE_EGRESS_POLICY_MODE` в `.env`, пересоздайте контейнер LiteLLM, чтобы Docker Compose передал новое значение окружения:
+
+```bash
+docker compose up -d --force-recreate --no-deps litellm
+```
+
 ### litellm-config.yaml — настройки LiteLLM
 
 Монтируется через volume — можно менять без пересборки.

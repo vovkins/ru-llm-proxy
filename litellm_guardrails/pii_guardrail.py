@@ -187,8 +187,7 @@ PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 
-_ENV_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?im)^[ \t]*(?:export[ \t]+)?(?:"
+_ENV_SECRET_KEY_PATTERN = (
     r"DATABASE_URL|REDIS_URL|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|"
     r"PGPASSWORD|MYSQL_PWD|DOCKER_AUTH_CONFIG|"
     r"SECRET_KEY|JWT_SECRET|"
@@ -196,11 +195,25 @@ _ENV_SECRET_ASSIGNMENT_RE = re.compile(
     r"API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY|MASTER_KEY|SALT_KEY|"
     r"PASS|PWD|DSN|URI|CONNECTION_STRING|AUTH_CONFIG"
     r")(?:_[0-9]+)?"
-    r")[ \t]*=[ \t]*\S+"
+)
+_ENV_SECRET_ASSIGNMENT_RE = re.compile(
+    rf"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{{,][ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*[\"']?\S+"
+)
+_ENV_SECRET_YAML_MAPPING_RE = re.compile(
+    rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
 )
 _ENV_CREDENTIAL_URL_RE = re.compile(
-    r"(?im)^[ \t]*(?:export[ \t]+)?[A-Z][A-Z0-9_]*"
+    r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
+    r"[A-Z][A-Z0-9_]*"
     r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*=[ \t]*"
+    r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
+_ENV_CREDENTIAL_URL_YAML_MAPPING_RE = re.compile(
+    r"(?m)(?:^[ \t-]*[\"']?|[\[{,][ \t]*[\"']?)"
+    r"[A-Z][A-Z0-9_]*"
+    r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*:[ \t]*"
     r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
 )
 _ACCESS_LOG_RE = re.compile(
@@ -216,8 +229,10 @@ _STACK_TRACE_RE = re.compile(
 _SYSLOG_PREFIX_RE = r"[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+"
 _AUTH_LOG_RE = re.compile(
     r"(?im)^(?:"
-    rf"(?:{_SYSLOG_PREFIX_RE})?"
-    r"(?:sshd\[\d+\]:\s+)?(?:failed|accepted) password\b.*\bfrom\b|"
+    rf"{_SYSLOG_PREFIX_RE}(?:sshd\[\d+\]:\s+)?(?:failed|accepted) password\b"
+    r".*\bfrom\s+\S+\s+port\s+\d+\b|"
+    r"sshd\[\d+\]:\s+(?:failed|accepted) password\b"
+    r".*\bfrom\s+\S+\s+port\s+\d+\b|"
     rf"{_SYSLOG_PREFIX_RE}.*\bpam_unix\b.*\bauthentication failure\b|"
     rf"{_SYSLOG_PREFIX_RE}sudo:\s+.*\bCOMMAND="
     r")"
@@ -561,8 +576,8 @@ class RuPIIGuardrail(CustomGuardrail):
             return self._redis
         return _get_shared_redis_client()
 
-    @staticmethod
-    def _iter_text_content_block_targets(blocks: list) -> list[tuple[dict, str]]:
+    @classmethod
+    def _iter_text_content_block_targets(cls, blocks: list) -> list[tuple[dict, str]]:
         """Return mutable text fields from OpenAI-style content block lists."""
         targets: list[tuple[dict, str]] = []
         for block in blocks:
@@ -579,6 +594,13 @@ class RuPIIGuardrail(CustomGuardrail):
                 str,
             ):
                 targets.append((block, "text"))
+
+            if block_type == "tool_result":
+                content = block.get("content")
+                if isinstance(content, str):
+                    targets.append((block, "content"))
+                elif isinstance(content, list):
+                    targets.extend(cls._iter_text_content_block_targets(content))
         return targets
 
     @classmethod
@@ -701,7 +723,7 @@ class RuPIIGuardrail(CustomGuardrail):
     def _yaml_scalar_value(text: str, key: str) -> Optional[str]:
         """Return a simple YAML scalar value for a key without parsing snippets."""
         match = re.search(
-            rf"(?im)^[ \t-]*{re.escape(key)}[ \t]*:[ \t]*([A-Za-z][\w.-]*)[ \t]*$",
+            rf"(?im)^[ \t-]*{re.escape(key)}[ \t]*:[ \t]*[\"']?([A-Za-z][\w.-]*)[\"']?[ \t]*$",
             text,
         )
         if match is None:
@@ -721,8 +743,7 @@ class RuPIIGuardrail(CustomGuardrail):
         """Detect high-confidence kubeconfig payloads."""
         return (
             cls._has_yaml_key(text, "apiVersion")
-            and re.search(r"(?im)^[ \t-]*kind[ \t]*:[ \t]*Config[ \t]*$", text)
-            is not None
+            and cls._yaml_scalar_value(text, "kind") == "Config"
             and cls._has_yaml_key(text, "clusters")
             and cls._has_yaml_key(text, "contexts")
             and cls._has_yaml_key(text, "users")
@@ -771,8 +792,11 @@ class RuPIIGuardrail(CustomGuardrail):
         findings: list[dict[str, str]] = []
         seen_rules: set[str] = set()
 
-        if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_CREDENTIAL_URL_RE.search(
-            text
+        if (
+            _ENV_SECRET_ASSIGNMENT_RE.search(text)
+            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            or _ENV_CREDENTIAL_URL_RE.search(text)
+            or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
         ):
             cls._add_policy_finding(
                 findings,

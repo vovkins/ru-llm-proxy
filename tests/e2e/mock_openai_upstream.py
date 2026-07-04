@@ -1,4 +1,4 @@
-"""Tiny OpenAI-compatible mock upstream for pre-egress proxy smoke tests."""
+"""Tiny mock upstream for pre-egress proxy smoke tests."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -9,6 +9,7 @@ import time
 CAPTURE = {
     "analyzer_requests": 0,
     "provider_requests": 0,
+    "provider_request_paths": [],
 }
 
 
@@ -47,8 +48,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/capture/reset":
-            CAPTURE["analyzer_requests"] = 0
-            CAPTURE["provider_requests"] = 0
+            for key, value in CAPTURE.items():
+                if type(value) is int:
+                    CAPTURE[key] = 0
+                elif isinstance(value, list):
+                    CAPTURE[key] = []
             self._write_json(200, dict(CAPTURE))
             return
 
@@ -58,9 +62,11 @@ class Handler(BaseHTTPRequestHandler):
             self._write_json(200, {"entities": []})
             return
 
+        payload = self._read_json()
+
         if self.path == "/v1/chat/completions":
-            self._read_json()
             CAPTURE["provider_requests"] += 1
+            CAPTURE["provider_request_paths"].append(self.path)
             self._write_json(
                 200,
                 {
@@ -79,6 +85,62 @@ class Handler(BaseHTTPRequestHandler):
                         "prompt_tokens": 1,
                         "completion_tokens": 1,
                         "total_tokens": 2,
+                    },
+                },
+            )
+            return
+
+        if self.path == "/v1/responses":
+            CAPTURE["provider_requests"] += 1
+            CAPTURE["provider_request_paths"].append(self.path)
+            self._write_json(
+                200,
+                {
+                    "id": "resp_mock",
+                    "object": "response",
+                    "created_at": int(time.time()),
+                    "status": "completed",
+                    "model": payload.get("model", "mock-chat"),
+                    "output": [
+                        {
+                            "id": "msg_mock",
+                            "type": "message",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "ok",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                },
+            )
+            return
+
+        if self.path == "/v1/messages":
+            CAPTURE["provider_requests"] += 1
+            CAPTURE["provider_request_paths"].append(self.path)
+            self._write_json(
+                200,
+                {
+                    "id": "msg_mock",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": payload.get("model", "mock-claude"),
+                    "content": [{"type": "text", "text": "ok"}],
+                    "stop_reason": "end_turn",
+                    "stop_sequence": None,
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
                     },
                 },
             )

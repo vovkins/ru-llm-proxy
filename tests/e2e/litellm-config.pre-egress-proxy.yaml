@@ -4,6 +4,11 @@ model_list:
       model: openai/mock-chat
       api_base: http://mock-upstream:8080/v1
       api_key: os.environ/OPENAI_API_KEY
+  - model_name: mock-claude
+    litellm_params:
+      model: anthropic/mock-claude
+      api_base: http://mock-upstream:8080
+      api_key: os.environ/ANTHROPIC_API_KEY
 
 guardrails:
   - guardrail_name: "ru-pii-mask-pre"
