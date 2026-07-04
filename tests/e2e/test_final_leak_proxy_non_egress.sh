@@ -220,6 +220,40 @@ expect_json_value "$tool_schema_key_capture" provider_requests 0
 expect_json_value "$tool_schema_key_capture" provider_saw_canary false
 
 reset_capture
+extra_body_body="$tmp_dir/extra-body-canary.json"
+extra_body_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Use provider options."}],"extra_body":{"providerOptions":{"trace":"RU_PROXY_FINAL_CANARY"}}}'
+extra_body_status="$(post_json "/v1/chat/completions" "$extra_body_payload" "$extra_body_body")"
+if [ "$extra_body_status" != "422" ]; then
+    echo "Expected extra_body canary status 422, got $extra_body_status" >&2
+    cat "$extra_body_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$extra_body_body" "$CANARY"
+extra_body_capture="$tmp_dir/extra-body-canary-capture.json"
+capture_counts "$extra_body_capture"
+expect_json_value "$extra_body_capture" analyzer_requests 1
+expect_json_value "$extra_body_capture" analyzer_saw_canary false
+expect_json_value "$extra_body_capture" provider_requests 0
+expect_json_value "$extra_body_capture" provider_saw_canary false
+
+reset_capture
+messages_tool_use_body="$tmp_dir/messages-tool-use-canary.json"
+messages_tool_use_payload='{"model":"mock-claude","max_tokens":16,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"lookup_account","input":{"query":"RU_PROXY_FINAL_CANARY"}}]}]}'
+messages_tool_use_status="$(post_json "/v1/messages" "$messages_tool_use_payload" "$messages_tool_use_body")"
+if [ "$messages_tool_use_status" != "422" ]; then
+    echo "Expected Anthropic tool_use canary status 422, got $messages_tool_use_status" >&2
+    cat "$messages_tool_use_body" >&2
+    exit 1
+fi
+expect_safe_block_body "$messages_tool_use_body" "$CANARY"
+messages_tool_use_capture="$tmp_dir/messages-tool-use-canary-capture.json"
+capture_counts "$messages_tool_use_capture"
+expect_json_value "$messages_tool_use_capture" analyzer_requests 0
+expect_json_value "$messages_tool_use_capture" analyzer_saw_canary false
+expect_json_value "$messages_tool_use_capture" provider_requests 0
+expect_json_value "$messages_tool_use_capture" provider_saw_canary false
+
+reset_capture
 private_key_body="$tmp_dir/private-key.json"
 private_key_payload='{"model":"mock-chat","messages":[{"role":"user","content":"-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----"}]}'
 private_key_status="$(post_json "/v1/chat/completions" "$private_key_payload" "$private_key_body")"

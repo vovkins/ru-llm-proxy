@@ -202,6 +202,7 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "prediction",
     "response_format",
     "text",
+    "extra_body",
 )
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
@@ -1108,6 +1109,27 @@ class RuPIIGuardrail(CustomGuardrail):
                 texts.extend(cls._iter_nested_string_values(data[field]))
         return texts
 
+    @classmethod
+    def _iter_anthropic_tool_use_input_texts(cls, data: dict) -> list[str]:
+        """Return nested strings from Anthropic tool_use.input provider payloads."""
+        messages = data.get("messages")
+        if not isinstance(messages, list):
+            return []
+
+        texts: list[str] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                if "input" in block:
+                    texts.extend(cls._iter_nested_string_values(block["input"]))
+        return texts
+
     def _run_final_payload_leak_check(
         self,
         data: dict,
@@ -1124,6 +1146,7 @@ class RuPIIGuardrail(CustomGuardrail):
             if isinstance(target.get(field), str)
         ]
         final_texts.extend(self._iter_provider_bound_schema_texts(data))
+        final_texts.extend(self._iter_anthropic_tool_use_input_texts(data))
         final_leak_findings = self._classify_final_payload_leak_check_texts(
             final_texts
         )

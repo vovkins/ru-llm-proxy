@@ -21,11 +21,14 @@ def test_env_compose_and_smoke_wire_final_payload_leak_check():
     assert "provider_saw_canary" in script
     assert "tool_schema_payload" in script
     assert "tool_schema_key_payload" in script
+    assert "extra_body_payload" in script
+    assert "messages_tool_use_payload" in script
     assert "analyzer_saw_canary false" in script
     assert "grep -Fq" in script
     assert "provider_saw_phone_placeholder" in script
     assert "for key, item in value.items()" in mock
     assert '"/v1/responses"' in mock
+    assert '"/v1/messages"' in mock
     assert "provider_saw_private_key_marker" in mock
 
 
@@ -58,6 +61,8 @@ def test_docs_document_final_payload_leak_check():
 
     assert "Anthropic Messages `system`" in architecture
     assert "legacy `functions`" in architecture
+    assert "extra_body" in architecture
     assert "откатывает masked text" in architecture
     assert "ключевые вопросы" in monitoring
     assert "10. Если есть regression" in monitoring
+    assert "grep -E '^(litellm_|ru_)'" in examples

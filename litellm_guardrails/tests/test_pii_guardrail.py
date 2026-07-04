@@ -1827,6 +1827,42 @@ class TestPreCallHook:
         assert canary not in json.dumps(error_body, ensure_ascii=False)
 
     @pytest.mark.asyncio
+    async def test_final_payload_leak_check_blocks_extra_body_canary(self):
+        canary = "RU_PROXY_EXTRA_BODY_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Use provider options."}],
+            "extra_body": {
+                "providerOptions": {
+                    "trace": canary,
+                }
+            },
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with("Use provider options.")
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "request_fragment",
         [
@@ -2085,6 +2121,24 @@ class TestPreCallHook:
                                         "text": "RU_PROXY_MESSAGES_CANARY",
                                     }
                                 ],
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "model": "claude-opus",
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_1",
+                                "name": "lookup_account",
+                                "input": {
+                                    "query": "RU_PROXY_MESSAGES_CANARY",
+                                },
                             }
                         ],
                     }

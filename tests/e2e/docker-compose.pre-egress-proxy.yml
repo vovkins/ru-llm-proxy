@@ -36,6 +36,7 @@ services:
       - LITELLM_MASTER_KEY=sk-test-master
       - LITELLM_SALT_KEY=sk-test-salt
       - OPENAI_API_KEY=sk-test-upstream
+      - ANTHROPIC_API_KEY=sk-ant-test-upstream
       - REDIS_URL=redis://redis:6379
       - PRESIDIO_ANALYZER_URL=http://mock-upstream:8080
       - PII_GUARDRAIL_MODE=mask

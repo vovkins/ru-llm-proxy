@@ -193,6 +193,26 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if self.path == "/v1/messages":
+            _record_provider_payload(self._read_json())
+            self._write_json(
+                200,
+                {
+                    "id": "msg_mock",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "mock-claude",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "stop_reason": "end_turn",
+                    "stop_sequence": None,
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
+                    },
+                },
+            )
+            return
+
         self._write_json(404, {"error": "not found"})
 
 

@@ -355,7 +355,7 @@ make test-pre-egress-proxy
 
 ## Final payload leak check
 
-`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а `tools` / legacy `functions` schema keys/strings, `prediction`, `response_format` и Responses `text` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens и provider-key-like values.
+`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а `tools` / legacy `functions` schema keys/strings, `prediction`, `response_format`, Responses `text`, provider-specific `extra_body` и Anthropic Messages `tool_use.input` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens и provider-key-like values.
 
 При срабатывании запрос не отправляется провайдеру. Canonical guardrail body:
 
@@ -403,7 +403,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
 
 ```bash
-curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_pii_guardrail_)' | head
+curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 ```
 
 То же самое через Makefile:
