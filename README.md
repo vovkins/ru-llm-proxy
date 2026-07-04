@@ -255,6 +255,12 @@ Runtime dependency clients guardrail:
 
 Этот слой не заменяет PII mask/block: PII policy работает по entity spans и может маскировать/восстанавливать данные, а pre-egress policy останавливает целые операционные артефакты, которые нельзя безопасно отправлять внешнему LLM даже после частичной маскировки.
 
+Если меняете `PRE_EGRESS_POLICY_MODE` в `.env`, пересоздайте контейнер LiteLLM, чтобы Docker Compose передал новое значение окружения:
+
+```bash
+docker compose up -d --force-recreate --no-deps litellm
+```
+
 ### Final payload leak check
 
 `FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.

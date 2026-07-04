@@ -25,7 +25,7 @@ help:
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
-	@echo "  make test-pre-egress-proxy — Docker smoke: pre-egress block не доходит до mock provider"
+	@echo "  make test-pre-egress-proxy — Docker smoke: pre-egress no-egress для chat/responses/messages"
 	@echo "  make test-final-leak-proxy — Docker smoke: final leak-check не доходит до mock provider"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
