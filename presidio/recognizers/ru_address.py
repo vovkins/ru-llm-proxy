@@ -13,7 +13,10 @@ _NAME_WORDS_CAPITALIZED = (
 )
 _COUNT_NOUN_AFTER_HOUSE = (
     r"(?![ \t]*(?:лет|год(?:а|ов)?|раз|человек|"
-    r"процент(?:а|ов)?|час(?:а|ов)?|минут(?:а|ы)?|дн(?:я|ей))\b)"
+    r"процент(?:а|ов)?|час(?:а|ов)?|минут(?:а|ы)?|дн(?:я|ей)|"
+    r"метр(?:а|ов)?|километр(?:а|ов)?|км|рубл(?:ь|я|ей|ю|ем)|"
+    r"дом(?:а|ов)?|квартир(?:а|ы)?|этаж(?:а|ей)?|"
+    r"месяц(?:а|ев)?|недел(?:я|и|ь)|штук(?:а|и)?)\b)"
 )
 _HOUSE_NUMBER = rf"\d+[а-яё]?(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
 _HOUSE_EXPLICIT = rf"[,\.]?[ \t]*(?:д\.|дом)[ \t]*{_HOUSE_NUMBER}"
@@ -50,7 +53,7 @@ class RuAddressRecognizer(PatternRecognizer):
         Pattern(
             name="ru_address_street_house_bare",
             regex=rf"{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORD_CAPITALIZED}{_HOUSE_BARE}",
-            score=0.45,
+            score=0.3,
         ),
         # Street name followed by type and house number: "Тверская улица, дом 7"
         Pattern(

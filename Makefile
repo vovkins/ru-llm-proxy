@@ -18,7 +18,7 @@ help:
 	@echo "  make down     — остановить все сервисы"
 	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
 	@echo "  make logs     — логи всех сервисов"
-	@echo "  make test     — запустить весь локальный test suite"
+	@echo "  make test     — быстрый локальный suite: test-unit + test-static"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
@@ -101,8 +101,8 @@ test-flow:
 
 test-routing-diagnostics:
 	@echo "🧪 Makefile diagnostics static tests"
-	python3 tests/test_makefile_routing_smoke.py
-	python3 tests/test_makefile_guardrails_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_routing_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
 health:

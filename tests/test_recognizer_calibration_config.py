@@ -29,6 +29,10 @@ def test_static_suite_runs_recognizer_calibration_regression():
 
     assert "tests/test_recognizer_calibration_config.py" in makefile
     assert "test-recognizer-api:" in makefile
+    assert "make test     — быстрый локальный suite: test-unit + test-static" in makefile
+    assert "make test     — запустить весь локальный test suite" not in makefile
+    assert "$(PYTHON_LOCAL) tests/test_makefile_routing_smoke.py" in makefile
+    assert "$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py" in makefile
     assert "presidio-analyzer-tests" in makefile
     assert "presidio/tests/test_analyzer_api_thresholds.py" in makefile
     assert "make -n test-recognizer-api" in workflow
@@ -161,6 +165,10 @@ def test_default_inn_checksum_mode_keeps_bare_10_digit_below_threshold(monkeypat
 
 def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monkeypatch):
     ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+    patterns_by_name = {
+        pattern.name: pattern
+        for pattern in ru_address.RuAddressRecognizer.PATTERNS
+    }
 
     def matches(text):
         result = []
@@ -173,6 +181,7 @@ def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monk
                 result.append(match.group(0))
         return result
 
+    assert patterns_by_name["ru_address_street_house_bare"].score < 0.35
     assert matches("В отчете улица продаж выросла на 10 процентов") == []
     assert matches("Тверская улица 10 лет была пешеходной") == []
     assert matches("стул Иванова 10 раз ломался") == []
@@ -180,6 +189,12 @@ def test_address_patterns_are_safe_under_presidio_case_insensitive_matching(monk
     assert matches("ул. Иванова Петрова 10 человек посетили встречу") == []
     assert matches("Улица Ленина 10 лет была главной") == []
     assert matches("Адрес в строке выше\nул Ленина работает 10 лет") == []
+    assert matches("Улица Ленина 10 метров была в ремонте") == []
+    assert matches("ул Ленина 10 рублей стоит билет") == []
+    assert matches("проспект Ленина 10 домов осталось") == []
+    assert matches("ул Ленина 10 квартир продали") == []
+    assert matches("ул Ленина 10 этажей построили") == []
+    assert matches("ул Ленина 10 месяцев обсуждали") == []
     assert "ул.Ленина, д.10" in matches("Адрес: ул.Ленина, д.10")
     assert "ул. ленина, д. 10" in matches("Адрес: ул. ленина, д. 10")
     assert "Тверская улица, дом 7" in matches(
@@ -212,6 +227,11 @@ def test_docs_explain_inn_threshold_policy_and_address_limits():
 def test_readme_documents_recognizer_api_target():
     readme = (ROOT / "README.md").read_text()
 
+    assert "| `make test` | Быстрый локальный suite: `test-unit` и `test-static` |" in readme
+    assert "| `make test-static` | Host lightweight static/asyncio regression tests" in readme
     assert "| `make test-recognizer-api` |" in readme
     assert "make test-recognizer-api" in readme
     assert "recognizer-api" in readme
+    assert "host lightweight checks и Docker suites" in readme
+    assert "PYTHON_LOCAL" in readme
+    assert "Локальные тесты запускаются через Docker" not in readme
