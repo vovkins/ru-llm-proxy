@@ -11,22 +11,31 @@ _SPACE = r"[^\S\r\n]*"
 _SPACE_REQUIRED = r"[^\S\r\n]+"
 _SPACE_OR_COMMA_REQUIRED = r"(?:[^\S\r\n]|,)+"
 _STREET_TYPE = _LEFT_TOKEN_BOUNDARY + (
-    rf"(?:ул\.{_SPACE}|ул{_SPACE_REQUIRED}|улица{_SPACE_REQUIRED}"
-    rf"|пр-т{_SPACE_REQUIRED}|проспект{_SPACE_REQUIRED}"
-    rf"|пер\.{_SPACE}|пер{_SPACE_REQUIRED}|переулок{_SPACE_REQUIRED}"
-    rf"|б-р{_SPACE_REQUIRED}|бульвар{_SPACE_REQUIRED}"
-    rf"|ш\.{_SPACE}|ш{_SPACE_REQUIRED}|шоссе{_SPACE_REQUIRED})"
+    rf"(?:(?i:ул\.){_SPACE}|(?i:ул){_SPACE_REQUIRED}|(?i:улица){_SPACE_REQUIRED}"
+    rf"|(?i:пр-т){_SPACE_REQUIRED}|(?i:проспект){_SPACE_REQUIRED}"
+    rf"|(?i:пер\.){_SPACE}|(?i:пер){_SPACE_REQUIRED}|(?i:переулок){_SPACE_REQUIRED}"
+    rf"|(?i:б-р){_SPACE_REQUIRED}|(?i:бульвар){_SPACE_REQUIRED}"
+    rf"|(?i:ш\.){_SPACE}|(?i:ш){_SPACE_REQUIRED}|(?i:шоссе){_SPACE_REQUIRED})"
 )
-_STREET_NAME_WORD = r"[А-ЯЁ][а-яёА-ЯЁ-]+"
+_STREET_NAME_WORD = r"[А-ЯЁа-яё][а-яёА-ЯЁ-]+"
+_STREET_NAME_WORD_CAPITALIZED = r"[А-ЯЁ][а-яёА-ЯЁ-]+"
 _STREET_NAME = rf"{_STREET_NAME_WORD}(?:{_SPACE_REQUIRED}{_STREET_NAME_WORD}){{0,3}}"
-_STREET_NAME_TYPE = r"(?:ул\.?|улица|проспект|пер\.?|переулок|бульвар|шоссе)"
-_HOUSE_MARKER = r"(?:д\.|дом)"
-_HOUSE_NUMBER = r"\d+[а-яё]?"
+_STREET_NAME_CAPITALIZED = (
+    rf"{_STREET_NAME_WORD_CAPITALIZED}"
+    rf"(?:{_SPACE_REQUIRED}{_STREET_NAME_WORD}){{0,3}}"
+)
+_STREET_NAME_TYPE = r"(?i:ул\.?|улица|проспект|пер\.?|переулок|бульвар|шоссе)"
+_HOUSE_MARKER = r"(?i:д\.|дом)"
+_COUNT_NOUN_AFTER_HOUSE = (
+    r"(?![^\S\r\n]*(?:лет|год(?:а|ов)?|раз|человек|"
+    r"процент(?:а|ов)?|метр(?:а|ов)?|час(?:а|ов)?|минут(?:а|ы)?)\b)"
+)
+_HOUSE_NUMBER = rf"\d+[а-яё]?(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
 _PREFIX_STREET_MARKED_HOUSE = (
     rf"{_STREET_TYPE}{_STREET_NAME}[,\.]?{_SPACE}{_HOUSE_MARKER}{_SPACE}{_HOUSE_NUMBER}"
 )
 _PREFIX_STREET_BARE_HOUSE = (
-    rf"{_STREET_TYPE}{_STREET_NAME_WORD}[,\.]?{_SPACE}{_HOUSE_NUMBER}"
+    rf"{_STREET_TYPE}{_STREET_NAME_WORD_CAPITALIZED}[,\.]?{_SPACE}{_HOUSE_NUMBER}"
 )
 _ADDRESS_REGEX_FLAGS = re.DOTALL | re.MULTILINE
 
@@ -66,10 +75,10 @@ class RuAddressRecognizer(PatternRecognizer):
         Pattern(
             name="ru_address_city_street",
             regex=(
-                rf"(?:г\.|гор\.|пос\.|с\.|дер\.){_SPACE}[А-ЯЁ][а-яёА-ЯЁ\-]{{1,30}}"
+                rf"(?i:г\.|гор\.|пос\.|с\.|дер\.){_SPACE}[А-ЯЁ][а-яёА-ЯЁ\-]{{1,30}}"
                 rf"{_SPACE_OR_COMMA_REQUIRED}(?:"
                 rf"{_PREFIX_STREET_MARKED_HOUSE}|{_PREFIX_STREET_BARE_HOUSE}|"
-                rf"{_STREET_TYPE}{_STREET_NAME}"
+                rf"{_STREET_TYPE}{_STREET_NAME_CAPITALIZED}"
                 r")"
             ),
             score=0.75,

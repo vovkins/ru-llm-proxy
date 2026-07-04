@@ -355,8 +355,10 @@ make routing-smoke
 | `make restart` | Рестарт LiteLLM после изменения конфигурации |
 | `make logs` | Логи всех сервисов |
 | `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
-| `make test` | Локальный test suite: `test-unit` и Makefile diagnostics regression tests |
+| `make test` | Быстрый локальный suite: `test-unit` и `test-static` |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
+| `make test-static` | Lightweight static/asyncio regression tests; использует локальный `PYTHON_LOCAL` |
+| `make test-analyzer-api` | Docker API-level Analyzer recognizer regression tests; отдельный CI gate, не входит в быстрый `make test` |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
@@ -545,11 +547,15 @@ curl http://localhost:4000/health/liveliness
 
 ## Тестирование
 
-Локальные тесты запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста.
+Локальные тесты разделены на быстрые static checks и Docker suites. `make test-static`
+использует локальный `PYTHON_LOCAL` (`.venv/bin/python`, если есть), а Docker targets не
+устанавливают Python-пакеты в окружение хоста.
 
 ```bash
-make test             # test-unit + routing diagnostics regression test
+make test             # test-unit + test-static
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
+make test-static      # lightweight static/asyncio checks через локальный PYTHON_LOCAL
+make test-analyzer-api # API-level Analyzer recognizer tests; отдельный Docker/CI gate
 make test-recognizers
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM

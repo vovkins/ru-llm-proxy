@@ -5,9 +5,6 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("fastapi")
-pytest.importorskip("presidio_analyzer")
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
@@ -54,6 +51,35 @@ def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
 
 def _entity_texts(entities, entity_type):
     return [entity["text"] for entity in entities if entity["entity_type"] == entity_type]
+
+
+def test_production_analyzer_wiring_detects_registered_russian_recognizers(
+    monkeypatch,
+):
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+    monkeypatch.setattr(
+        analyzer_server.dp_recognizer,
+        "load_model",
+        lambda: pytest.fail("DeepPavlov model must not load in threshold tests"),
+    )
+    client = TestClient(analyzer_server.app)
+
+    response = client.post(
+        "/api/v1/analyze",
+        json={
+            "text": "ИНН: 500100732259. Адрес регистрации: ул Ленина 10",
+            "language": "ru",
+            "score_threshold": 0.35,
+        },
+    )
+
+    assert response.status_code == 200
+    entities = response.json()["entities"]
+    assert _entity_texts(entities, "RU_INN") == ["500100732259"]
+    assert any(
+        "ул Ленина 10" in address
+        for address in _entity_texts(entities, "RU_ADDRESS")
+    )
 
 
 class TestAnalyzerInnThresholdPolicy:
@@ -109,6 +135,11 @@ class TestAnalyzerAddressCorpus:
         "text, expected_fragment",
         [
             ("Проживает по адресу: ул. Ленина, д. 10, кв. 5", "ул. Ленина"),
+            ("Проживает по адресу: ул. ленина, д. 10", "ул. ленина"),
+            ("Адрес: Ул. Ленина, д. 10", "Ул. Ленина"),
+            ("Адрес: ул. Ленина, Дом 10", "ул. Ленина"),
+            ("Адрес: ул.Ленина, д.10", "ул.Ленина"),
+            ("г.Москва, ул.Тверская, д.1", "г.Москва, ул.Тверская"),
             ("Адрес: проспект Мира, дом 25", "проспект Мира"),
             ("г. Москва, ул. Тверская, д. 1", "г. Москва, ул. Тверская"),
             ("Адрес регистрации: ул Ленина 10", "ул Ленина 10"),
@@ -134,6 +165,7 @@ class TestAnalyzerAddressCorpus:
             "камыш Иванова 10 метров высотой",
             "Тверская улица 10 лет была пешеходной",
             "Сидоров переулок 10 лет назад был тихим",
+            "Улица Ленина 10 лет была главной",
             "ул Ленина работает 10 лет",
             "ул Ленина\nРаботает 10 лет",
             "ул. Иванова Петрова 10 человек посетили встречу",

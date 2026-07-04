@@ -26,12 +26,25 @@ def test_static_suite_runs_recognizer_calibration_regression():
     baseline = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     dockerfile = (ROOT / "presidio" / "Dockerfile").read_text()
+    runtime_requirements = (
+        ROOT / "presidio" / "requirements-analyzer.txt"
+    ).read_text()
+    api_test_requirements = (
+        ROOT / "presidio" / "requirements-analyzer-api-tests.txt"
+    ).read_text()
+    shared_requirements = (
+        ROOT / "presidio" / "requirements-analyzer-base.txt"
+    ).read_text()
 
     assert "tests/test_recognizer_calibration_config.py" in makefile
     assert "test-analyzer-api:" in makefile
     assert "presidio-analyzer-tests" in compose
     assert "presidio-analyzer-tests" in makefile
     assert "make test-analyzer-api" in baseline
+    assert "-r requirements-analyzer-base.txt" in runtime_requirements
+    assert "-r requirements-analyzer-base.txt" in api_test_requirements
+    assert "numpy>=1.26,<2.0" in shared_requirements
+    assert "presidio-analyzer>=2.2.362,<3.0" in shared_requirements
 
     test_stage = dockerfile.split("FROM base AS analyzer-api-tests", 1)[1].split(
         "FROM base AS analyzer",
@@ -44,9 +57,16 @@ def test_static_suite_runs_recognizer_calibration_regression():
 def test_analyzer_api_threshold_tests_use_russian_nlp_engine():
     test_source = (ROOT / "presidio" / "tests" / "test_analyzer_api_thresholds.py").read_text()
 
+    assert "importorskip" not in test_source
     assert "RecognizerRegistry(supported_languages=[\"ru\"])" in test_source
     assert "nlp_engine=analyzer_server.nlp_engine" in test_source
     assert "supported_languages=[\"ru\"]" in test_source
+    assert "test_production_analyzer_wiring_detects_registered_russian_recognizers" in test_source
+    production_smoke = test_source.split(
+        "def test_production_analyzer_wiring_detects_registered_russian_recognizers",
+        1,
+    )[1].split("\n\n", 1)[0]
+    assert "monkeypatch.setattr(analyzer_server, \"analyzer\"" not in production_smoke
 
 
 def _load_module_with_fake_presidio(monkeypatch, module_path, module_name):
@@ -128,7 +148,7 @@ def test_default_inn_policy_keeps_bare_10_digit_below_api_threshold(monkeypatch)
     assert recognizer.invalidate_result("1234567894") is False
 
 
-def test_address_recognizer_keeps_street_names_case_sensitive(monkeypatch):
+def test_address_recognizer_keeps_global_regex_case_sensitive(monkeypatch):
     ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
 
     recognizer = ru_address.RuAddressRecognizer()
@@ -145,6 +165,7 @@ def test_address_regex_rejects_prose_under_runtime_flags(monkeypatch):
         "ул Ленина работает 10 лет",
         "ул Ленина\nРаботает 10 лет",
         "ул. Иванова Петрова 10 человек посетили встречу",
+        "Улица Ленина 10 лет была главной",
     ]
 
     for text in false_positive_texts:
@@ -173,6 +194,27 @@ def test_address_city_pattern_preserves_city_prefixed_house(monkeypatch):
     assert match is not None
     assert match.group(0) == "г. Москва, ул. Тверская, д. 1"
     assert city_pattern.score > full_pattern.score
+
+
+def test_address_regex_accepts_common_marker_casing(monkeypatch):
+    ru_address = _load_ru_address_with_fake_presidio(monkeypatch)
+    recognizer = ru_address.RuAddressRecognizer()
+
+    positive_texts = [
+        "Адрес: ул. ленина, д. 10",
+        "Адрес: Ул. Ленина, д. 10",
+        "Адрес: ул. Ленина, Дом 10",
+        "Адрес: ул.Ленина, д.10",
+        "г.Москва, ул.Тверская, д.1",
+    ]
+
+    for text in positive_texts:
+        matches = [
+            pattern.name
+            for pattern in recognizer.patterns
+            if re.search(pattern.regex, text, recognizer.global_regex_flags)
+        ]
+        assert matches, text
 
 
 def test_docs_explain_inn_threshold_policy_and_address_limits():

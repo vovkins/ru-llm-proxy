@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer ===
 FROM base AS analyzer-api-tests
 
-COPY requirements-analyzer-api-tests.txt ./
+COPY requirements-analyzer-base.txt requirements-analyzer-api-tests.txt ./
 RUN pip install --no-cache-dir -r requirements-analyzer-api-tests.txt
 
 # Analyzer API tests import analyzer_server, which builds the Russian spaCy NLP engine.
@@ -17,7 +17,7 @@ RUN python -m spacy download ru_core_news_sm
 
 FROM base AS analyzer
 
-COPY requirements-analyzer.txt requirements-torchcrf.txt ./
+COPY requirements-analyzer-base.txt requirements-analyzer.txt requirements-torchcrf.txt ./
 RUN pip install --no-cache-dir -r requirements-analyzer.txt
 
 # Install DeepPavlov without deps. Its transitive pins include older packages
