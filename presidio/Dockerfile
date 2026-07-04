@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl gcc g++ &&
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# === Presidio Analyzer ===
-FROM base AS analyzer
+# === Presidio Analyzer dependencies ===
+FROM base AS analyzer-runtime
 
 COPY requirements-analyzer.txt requirements-torchcrf.txt ./
 RUN pip install --no-cache-dir -r requirements-analyzer.txt
@@ -21,6 +21,13 @@ RUN pip install --no-cache-dir -r requirements-torchcrf.txt
 
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_news_sm
+
+# Lightweight test target: Analyzer/FastAPI dependencies without the large
+# pre-downloaded DeepPavlov model archive.
+FROM analyzer-runtime AS analyzer-test
+
+# === Presidio Analyzer ===
+FROM analyzer-runtime AS analyzer
 
 # Pre-download DeepPavlov ner_rus_bert model (~1.4 GB)
 # Only download files, don't build model (avoids transformers compat issues at build time)

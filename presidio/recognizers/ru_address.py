@@ -3,6 +3,19 @@
 from presidio_analyzer import Pattern, PatternRecognizer
 
 
+_LEFT_TOKEN_BOUNDARY = r"(?<![0-9A-Za-zА-Яа-яЁё])"
+_CASED_CAPITAL = r"(?-i:[А-ЯЁ])"
+_NAME_TAIL = r"[а-яёА-ЯЁ\s\-]"
+_CITY_PREFIX = (
+    _LEFT_TOKEN_BOUNDARY
+    + rf"(?:г\.|гор\.|пос\.|с\.|дер\.)\s*{_CASED_CAPITAL}[а-яёА-ЯЁ\-]{{1,30}}[\s,]+"
+)
+_STREET_TYPE_PREFIX = (
+    _LEFT_TOKEN_BOUNDARY
+    + r"(?:улица|проспект|переулок|бульвар|шоссе|ул\.?|пр-т|пер\.?|б-р|ш\.?)(?=\s)"
+)
+
+
 class RuAddressRecognizer(PatternRecognizer):
     """Recognize Russian postal addresses (basic pattern matching)."""
 
@@ -10,25 +23,25 @@ class RuAddressRecognizer(PatternRecognizer):
         # Full address with street, house, apartment
         Pattern(
             name="ru_address_full",
-            regex=r"(?:ул\.?|улица|пр-т|проспект|пер\.?|переулок|б-р|бульвар|шоссе|ш\.?)\s*[А-ЯЁ][а-яёА-ЯЁ\s\-]{1,50}?[,\.]?\s*(?:д\.|дом)?\s*\d+[а-яё]?\s*(?:[,/]\s*(?:корп\.|корпус|стр\.)\s*\d+[а-яё]?)?(?:\s*[,\.]?\s*(?:кв\.|квартира|оф\.|офис)\s*\d+)?",
+            regex=rf"(?:{_CITY_PREFIX})?{_STREET_TYPE_PREFIX}\s+{_CASED_CAPITAL}{_NAME_TAIL}{{1,50}}?[,\.]?\s*(?:д\.|дом)?\s*\d+[а-яё]?\s*(?:[,/]\s*(?:корп\.|корпус|стр\.)\s*\d+[а-яё]?)?(?:\s*[,\.]?\s*(?:кв\.|квартира|оф\.|офис)\s*\d+)?",
             score=0.7,
         ),
         # Street + house (without apartment)
         Pattern(
             name="ru_address_street_house",
-            regex=r"(?:ул\.?|улица|пр-т|проспект|пер\.?|переулок|б-р|бульвар|шоссе|ш\.?)\s*[А-ЯЁ][а-яёА-ЯЁ\s\-]{1,50}?[,\.]?\s*(?:д\.|дом)?\s*\d+[а-яё]?",
+            regex=rf"{_STREET_TYPE_PREFIX}\s+{_CASED_CAPITAL}{_NAME_TAIL}{{1,50}}?[,\.]?\s*(?:д\.|дом)?\s*\d+[а-яё]?",
             score=0.6,
         ),
         # Street name followed by type and house number: "Тверская улица, дом 7"
         Pattern(
             name="ru_address_name_type_house",
-            regex=r"[А-ЯЁ][а-яёА-ЯЁ\s\-]{1,50}?\s+(?:ул\.?|улица|проспект|пер\.?|переулок|бульвар|шоссе)[,\.]?\s*(?:д\.|дом)?\s*\d+[а-яё]?",
+            regex=rf"{_CASED_CAPITAL}{_NAME_TAIL}{{1,50}}?\s+(?:улица|проспект|переулок|бульвар|шоссе|ул\.?|пер\.?)[,\.]?\s*(?:д\.|дом)\s*\d+[а-яё]?",
             score=0.6,
         ),
         # City/town + street
         Pattern(
             name="ru_address_city_street",
-            regex=r"(?:г\.|гор\.|пос\.|с\.|дер\.)\s*[А-ЯЁ][а-яёА-ЯЁ\-]{1,30}[\s,]+(?:ул\.?|улица|пр-т|проспект)\s*[А-ЯЁ][а-яёА-ЯЁ\s\-]{1,40}",
+            regex=rf"{_CITY_PREFIX}{_STREET_TYPE_PREFIX}\s+{_CASED_CAPITAL}{_NAME_TAIL}{{1,40}}",
             score=0.6,
         ),
     ]

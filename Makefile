@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -22,6 +22,7 @@ help:
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
+	@echo "  make test-recognizer-api — API-level Analyzer recognizer regression tests"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
@@ -82,6 +83,11 @@ test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"
 	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
 		$(PYTEST) presidio/tests
+
+test-recognizer-api:
+	@echo "🧪 Analyzer API recognizer threshold tests"
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
+		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
 
 test-guardrail:
 	@echo "🧪 LiteLLM guardrail unit tests"

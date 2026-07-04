@@ -11,7 +11,7 @@ pytest.importorskip("presidio_analyzer")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
-from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 
 from presidio import analyzer_server
 from recognizers.ru_address import RuAddressRecognizer
@@ -19,10 +19,14 @@ from recognizers.ru_inn import RuInnRecognizer
 
 
 def _build_analyzer(*recognizers):
-    engine = AnalyzerEngine()
+    registry = RecognizerRegistry(supported_languages=["ru"])
     for recognizer in recognizers:
-        engine.registry.add_recognizer(recognizer)
-    return engine
+        registry.add_recognizer(recognizer)
+    return AnalyzerEngine(
+        registry=registry,
+        nlp_engine=analyzer_server.nlp_engine,
+        supported_languages=["ru"],
+    )
 
 
 def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
@@ -48,13 +52,34 @@ def _entity_texts(entities, entity_type):
 
 
 class TestAnalyzerInnThresholdPolicy:
-    def test_default_detects_bare_valid_inn_by_checksum(self, monkeypatch):
+    def test_default_detects_bare_valid_12_digit_inn_by_checksum(self, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
         analyzer = _build_analyzer(RuInnRecognizer())
 
-        entities = _api_entities(monkeypatch, analyzer, "7707083893")
+        entities = _api_entities(monkeypatch, analyzer, "500100732259")
 
-        assert _entity_texts(entities, "RU_INN") == ["7707083893"]
+        assert _entity_texts(entities, "RU_INN") == ["500100732259"]
+
+    @pytest.mark.parametrize("bare_inn", ["1234567894", "2026070415"])
+    def test_default_requires_context_for_valid_10_digit_inn(
+        self,
+        monkeypatch,
+        bare_inn,
+    ):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+        analyzer = _build_analyzer(RuInnRecognizer())
+
+        entities = _api_entities(monkeypatch, analyzer, bare_inn)
+
+        assert _entity_texts(entities, "RU_INN") == []
+
+    def test_default_detects_valid_10_digit_inn_with_context(self, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+        analyzer = _build_analyzer(RuInnRecognizer())
+
+        entities = _api_entities(monkeypatch, analyzer, "ИНН: 1234567894")
+
+        assert _entity_texts(entities, "RU_INN") == ["1234567894"]
 
     def test_strict_mode_requires_context_for_bare_valid_inn(self, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "false")
@@ -107,6 +132,8 @@ class TestAnalyzerAddressCorpus:
             "В отчете улица продаж выросла на 10 процентов",
             "Дом культуры провел встречу в 10 часов",
             "Адрес вопроса не изменился",
+            "стул Иванова 10 раз ломался",
+            "Тверская улица 10 лет была пешеходной",
         ],
     )
     def test_address_false_positive_corpus(self, monkeypatch, text):
