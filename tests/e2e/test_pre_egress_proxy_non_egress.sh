@@ -58,6 +58,11 @@ with open(sys.argv[1], encoding="utf-8") as fh:
     body = json.load(fh)
 
 error = body.get("error")
+if isinstance(error, dict):
+    provider_fields = error.get("provider_specific_fields")
+    if isinstance(provider_fields, dict) and isinstance(provider_fields.get("error"), dict):
+        error = provider_fields["error"]
+
 if not isinstance(error, dict) and isinstance(body.get("detail"), dict):
     detail = body["detail"]
     error = detail.get("error", detail)
