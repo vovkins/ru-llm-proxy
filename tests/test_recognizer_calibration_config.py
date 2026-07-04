@@ -22,8 +22,11 @@ def test_bare_inn_checksum_setting_is_exposed_to_analyzer_runtime():
 
 def test_static_suite_runs_recognizer_calibration_regression():
     makefile = (ROOT / "Makefile").read_text()
+    baseline = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
 
     assert "tests/test_recognizer_calibration_config.py" in makefile
+    assert "test-analyzer-api:" in makefile
+    assert "make test-analyzer-api" in baseline
 
 
 def _load_ru_inn_with_fake_presidio(monkeypatch):
@@ -78,6 +81,17 @@ def test_strict_inn_checksum_validation_does_not_boost_valid_results(monkeypatch
     assert [pattern.score for pattern in recognizer.patterns] == [0.3, 0.2]
     assert recognizer.validate_result("7707083893") is None
     assert recognizer.invalidate_result("7707083894") is True
+
+
+def test_default_inn_policy_keeps_bare_10_digit_below_api_threshold(monkeypatch):
+    monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+    ru_inn = _load_ru_inn_with_fake_presidio(monkeypatch)
+
+    recognizer = ru_inn.RuInnRecognizer()
+
+    assert [pattern.score for pattern in recognizer.patterns] == [0.4, 0.2]
+    assert recognizer.validate_result("1234567894") is None
+    assert recognizer.invalidate_result("1234567894") is False
 
 
 def test_docs_explain_inn_threshold_policy_and_address_limits():

@@ -16,7 +16,7 @@ LLM-прокси с санитайзером персональных данны
 |-----------|--------|-------|
 | Телефоны | `PHONE_NUMBER` | Regex + валидация количества цифр |
 | Email | `EMAIL_ADDRESS` | Regex |
-| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр; bare INN включён по умолчанию |
+| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр; bare 12-значный ИНН включён по умолчанию |
 | СНИЛС | `RU_SNILS` | Regex + checksum |
 | Паспорт РФ | `RU_PASSPORT` | Regex + проверка региона |
 | Банковские карты | `CREDIT_CARD` | Regex + Luhn |
@@ -180,7 +180,7 @@ Runtime capacity Analyzer:
 | `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Максимум активных Analyzer requests внутри одного worker. Значение `1` безопаснее для DeepPavlov/PyTorch inference. |
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
-| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare INN без контекстного слова при API `score_threshold=0.35`. Если `false`, голый ИНН требует контекст вроде `ИНН` или `налогоплательщик`. |
+| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare 12-значный ИНН без контекстного слова при API `score_threshold=0.35`. 10-значный ИНН требует контекст вроде `ИНН` или `налогоплательщик`. Если `false`, любой голый ИНН требует контекст. |
 
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
@@ -188,9 +188,9 @@ Runtime capacity Analyzer:
 
 Recognizer calibration:
 
-- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare INN проходит дефолтный Analyzer API `score_threshold=0.35`. Это повышает recall, но может маскировать редкие случайные 10/12-значные последовательности, прошедшие checksum.
+- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare 12-значный ИНН проходит дефолтный Analyzer API `score_threshold=0.35`; 10-значный ИНН без контекста остаётся ниже threshold. Это повышает recall для ИНН физлиц без типового 10% false-positive окна юридических ИНН.
 - В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
-- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope.
+- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений, `Тверская улица 7` без `дом/д.` и всех свободных российских адресов вне текущего scope.
 
 Runtime dependency clients guardrail:
 

@@ -48,13 +48,26 @@ def _entity_texts(entities, entity_type):
 
 
 class TestAnalyzerInnThresholdPolicy:
-    def test_default_detects_bare_valid_inn_by_checksum(self, monkeypatch):
+    def test_default_detects_bare_valid_12_digit_inn_by_checksum(self, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
         analyzer = _build_analyzer(RuInnRecognizer())
 
-        entities = _api_entities(monkeypatch, analyzer, "7707083893")
+        entities = _api_entities(monkeypatch, analyzer, "500100732259")
 
-        assert _entity_texts(entities, "RU_INN") == ["7707083893"]
+        assert _entity_texts(entities, "RU_INN") == ["500100732259"]
+
+    @pytest.mark.parametrize("inn", ["1234567894", "2026070415", "7707083893"])
+    def test_default_requires_context_for_bare_valid_10_digit_inn(
+        self,
+        monkeypatch,
+        inn,
+    ):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
+        analyzer = _build_analyzer(RuInnRecognizer())
+
+        entities = _api_entities(monkeypatch, analyzer, inn)
+
+        assert _entity_texts(entities, "RU_INN") == []
 
     def test_strict_mode_requires_context_for_bare_valid_inn(self, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "false")
@@ -107,6 +120,13 @@ class TestAnalyzerAddressCorpus:
             "В отчете улица продаж выросла на 10 процентов",
             "Дом культуры провел встречу в 10 часов",
             "Адрес вопроса не изменился",
+            "стул Иванова 10 раз ломался",
+            "супер Иванова 10 раз обсуждали",
+            "камыш Иванова 10 метров высотой",
+            "Тверская улица 10 лет была пешеходной",
+            "Сидоров переулок 10 лет назад был тихим",
+            "ул Ленина работает 10 лет",
+            "ул. Иванова и Петрова 10 человек посетили встречу",
         ],
     )
     def test_address_false_positive_corpus(self, monkeypatch, text):

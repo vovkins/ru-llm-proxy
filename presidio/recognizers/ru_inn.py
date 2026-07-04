@@ -62,7 +62,7 @@ class RuInnRecognizer(PatternRecognizer):
         Pattern(
             name="ru_inn_10digit",
             regex=r"(?<!\d)\d{10}(?!\d)",
-            score=0.4,
+            score=0.2,
         ),
     ]
 
@@ -119,7 +119,7 @@ class RuInnRecognizer(PatternRecognizer):
 
 
 def _detect_bare_inn_by_checksum() -> bool:
-    """Return whether checksum-valid bare INN passes the default API threshold."""
+    """Return whether checksum-valid bare 12-digit INN passes the API threshold."""
     raw_value = os.getenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
     normalized = raw_value.strip().lower()
     return normalized not in {"0", "false", "no", "off"}

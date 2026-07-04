@@ -59,6 +59,7 @@ jobs:
         run: |
           make -n test-unit
           make -n test-static
+          make -n test-analyzer-api
           make -n test-routing-diagnostics
           make -n virtual-key-create MODELS=standard,zai KEY_ALIAS=smoke DURATION=30m
           make -n client-auth-smoke
@@ -72,6 +73,9 @@ jobs:
 
       - name: Run static regression tests
         run: make test-static
+
+      - name: Run Analyzer API threshold regression tests
+        run: make test-analyzer-api
 
   guardrail-unit:
     runs-on: ubuntu-latest

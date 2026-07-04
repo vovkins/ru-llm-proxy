@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-analyzer-api test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -21,6 +21,7 @@ help:
 	@echo "  make test     — запустить весь локальный test suite"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
+	@echo "  make test-analyzer-api — Analyzer API threshold regression tests в Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
@@ -77,6 +78,11 @@ test-static: test-routing-diagnostics
 		tests/test_recognizer_calibration_config.py \
 		tests/test_guardrail_dependency_config.py \
 		presidio/tests/test_capacity.py
+
+test-analyzer-api:
+	@echo "🧪 Analyzer API threshold regression tests"
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
+		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"
