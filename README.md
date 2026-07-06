@@ -1,12 +1,22 @@
 # ru-llm-proxy 🛡️
 
-LLM-прокси с санитайзером персональных данных (PII) для русского языка.
+LLM-прокси для командной работы с внешними LLM через серверные provider keys, LiteLLM virtual keys и русскоязычные PII guardrails.
 
-Обнаруживает и маскирует чувствительные данные в запросах к LLM перед отправкой провайдеру, а затем восстанавливает оригинальные данные в ответах, если модель вернула плейсхолдеры. Клиенты работают через OpenAI-compatible и Anthropic-compatible API, а внешний LLM получает обезличенный текст.
+Прокси обнаруживает и маскирует чувствительные данные в запросах перед отправкой провайдеру, умеет блокировать PII по policy mode и восстанавливает оригинальные данные в ответах, если модель вернула плейсхолдеры. Клиенты работают через OpenAI-compatible и Anthropic-compatible API, а внешний LLM получает обезличенный текст.
 
 ## Статус проекта
 
-✅ **MVP работает** — в проекте есть LiteLLM Proxy, Presidio Analyzer, русские PII recognizers, DeepPavlov NER, Redis-маппинг для обратимого восстановления, sticky routing к provider deployments и Docker-based тесты.
+✅ **Готово в текущем `main`**:
+
+- LiteLLM gateway с server-funded upstream keys (`ZAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) и client access через LiteLLM virtual keys.
+- Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, базовых Anthropic Messages `content` string/text blocks и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
+- `PII_GUARDRAIL_MODE=mask|block`: reversible masking по умолчанию или безопасный `422` до provider call.
+- Non-streaming restoration для `content`, `reasoning_content`, response content blocks и tool/function arguments.
+- Streaming restoration для `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
+- Bounded Presidio Analyzer capacity: worker count, concurrency limit, queue limit/timeout и fail-closed overload handling.
+- Reused Redis/httpx guardrail clients with pool limits for analyzer and mapping dependencies.
+- Calibrated Russian recognizer thresholds: checksum validation for `RU_INN` and a tighter baseline `RU_ADDRESS` corpus.
+- Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
 ⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются.
 
@@ -24,6 +34,8 @@ LLM-прокси с санитайзером персональных данны
 | ФИО | `PERSON` | DeepPavlov `ner_rus_bert`, если модель загружена |
 | Организации | `ORGANIZATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
 | Города/локации | `LOCATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
+
+Текущий `main` использует `score_threshold=0.35`. `RU_INN` всегда проходит checksum validation; по умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare ИНН без контекстного слова проходит дефолтный порог. Если включить strict mode (`false`), голый ИНН требует контекст вроде `ИНН` или `налоговый`. `RU_ADDRESS` остаётся ограниченным regex-based покрытием базовых российских адресных форматов.
 
 DeepPavlov NER соблюдает параметры Analyzer API: если в запросе указан `entities`, NER запускается только для `PERSON`, `ORGANIZATION` или `LOCATION`; если запрошены только regex-типы вроде `RU_INN`, NER пропускается. Так как DeepPavlov не возвращает per-entity confidence, проект присваивает NER-результатам фиксированный score `0.7` и не запускает NER при `score_threshold > 0.7`.
 
@@ -64,12 +76,15 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 2. LiteLLM запускает `ru-pii-mask-pre` в режиме `pre_call`.
 3. Guardrail отправляет строковые поля запроса в Presidio Analyzer: `message.content`, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 4. Analyzer возвращает entity spans, entity types и scores.
-5. Guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
-6. Guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
-7. Только после успешного Redis save исходные строковые поля заменяются на masked text.
-8. LiteLLM отправляет masked request LLM-провайдеру.
-9. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
-10. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+5. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
+6. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
+7. Guardrail генерирует server-side `pii_request_id` и сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
+8. Только после успешного Redis save исходные строковые поля заменяются на masked text.
+9. LiteLLM отправляет masked request LLM-провайдеру.
+10. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+11. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+12. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
+13. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
 
@@ -355,7 +370,7 @@ make routing-smoke
 | `make restart` | Рестарт LiteLLM после изменения конфигурации |
 | `make logs` | Логи всех сервисов |
 | `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
-| `make test` | Локальный test suite: `test-unit` и Makefile diagnostics regression tests |
+| `make test` | Локальный test suite: `test-unit` и `test-static` |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
@@ -363,7 +378,7 @@ make routing-smoke
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
-| `make client-auth-smoke` | Проверить client auth и `/v1` протоколы |
+| `make client-auth-smoke` | Проверить client auth и базовые `/v1` protocol smokes |
 | `make guardrails-list` | Показать guardrails, зарегистрированные в LiteLLM |
 | `make guardrails-smoke` | Live smoke guardrails: non-streaming, streaming SSE и Redis cleanup |
 | `make routing-smoke` | Live smoke sticky routing: один ключ должен попасть в один deployment |
@@ -545,10 +560,10 @@ curl http://localhost:4000/health/liveliness
 
 ## Тестирование
 
-Локальные тесты запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста.
+Unit/e2e проверки recognizers, guardrail и live flow запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста. Lightweight static diagnostics (`test-static`, Makefile regression tests, baseline CI equivalent) запускаются локальным Python.
 
 ```bash
-make test             # test-unit + routing diagnostics regression test
+make test             # test-unit + static diagnostics regression tests
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
 make test-recognizers
 make test-guardrail
@@ -556,12 +571,12 @@ make test-flow        # deterministic проверка без внешнего L
 make test-routing-diagnostics
 make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
 make routing-smoke    # live sticky routing smoke; нужны make up и provider key
-make client-auth-smoke # live проверка virtual keys и /v1 протоколов
+make client-auth-smoke # live проверка virtual keys и базовых /v1 protocol smokes
 RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke
 # fail, если нет provider key или live-validated model alias для любого /v1 протокола
 ```
 
-`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет, что `routing-smoke` ловит HTTP/network failures, использует `/v1/chat/completions` и не печатает proxy token. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
+`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
 
 ## Troubleshooting
 
