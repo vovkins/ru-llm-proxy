@@ -1177,6 +1177,71 @@ class TestPreCallHook:
         }
 
     @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_system_string_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-system-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "system": payload,
+            "messages": [{"role": "user", "content": "clean prompt"}],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["system"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-system-secret" not in serialized
+        assert "local-password" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_system_text_blocks_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-system-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "system": [{"type": "text", "text": payload}],
+            "messages": [{"role": "user", "content": "clean prompt"}],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["system"][0]["text"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("payload", "forbidden"),
         [
@@ -1464,6 +1529,33 @@ class TestPreCallHook:
                 "log_or_stacktrace_payload",
             ),
             (
+                json.dumps(
+                    {
+                        "level": "error",
+                        "stack": (
+                            "Traceback (most recent call last):\n"
+                            '  File "app.py", line 12, in handler\n'
+                            "RuntimeError: token verification failed"
+                        ),
+                    }
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                json.dumps(
+                    {
+                        "level": "error",
+                        "exception": (
+                            "TypeError: Cannot read properties of undefined\n"
+                            "    at handler (/app/index.js:12:3)"
+                        ),
+                    }
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
                 "Jul 01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
                 "USER=root ; COMMAND=/bin/cat /etc/shadow",
                 "log",
@@ -1472,6 +1564,25 @@ class TestPreCallHook:
             (
                 "Jul  1 12:00:01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
                 "USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01+03:00 host sshd[123]: Failed password for invalid user "
+                "admin from 2001:db8::10 port 51234 ssh2",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01.123Z host sudo: alice : TTY=pts/0 ; "
+                "PWD=/srv/app ; USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01Z host sshd[123]: pam_unix(sshd:auth): "
+                "authentication failure; logname= uid=0 euid=0 tty=ssh ruser= "
+                "rhost=2001:db8::10",
                 "log",
                 "log_or_stacktrace_payload",
             ),
@@ -1555,6 +1666,7 @@ class TestPreCallHook:
             "What does authentication failure troubleshooting usually involve?",
             "What does pam_unix authentication failure mean in Ubuntu?",
             "Failed password from users after the PAM migration; how should I troubleshoot?",
+            "2026-07-01T12:00:01Z host app[123]: user opened dashboard",
         ],
     )
     async def test_pre_egress_allows_incidental_operational_terms(self, text):

@@ -235,7 +235,17 @@ _STACK_TRACE_RE = re.compile(
     r"\s+at\s+(?:\S+\s+)?\(?[^)\n]+:\d+(?::\d+)?\)?|"
     r'\s+File "[^"\n]+", line \d+, in \w+)'
 )
-_SYSLOG_PREFIX_RE = r"[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+"
+_RFC3164_SYSLOG_PREFIX_RE = (
+    r"[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+"
+)
+_RFC3339_TIMESTAMP_RE = (
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})"
+)
+_RFC3339_SYSLOG_PREFIX_RE = rf"{_RFC3339_TIMESTAMP_RE}\s+\S+\s+"
+_SYSLOG_PREFIX_RE = (
+    rf"(?:{_RFC3164_SYSLOG_PREFIX_RE}|{_RFC3339_SYSLOG_PREFIX_RE})"
+)
 _AUTH_LOG_RE = re.compile(
     r"(?im)^(?:"
     rf"{_SYSLOG_PREFIX_RE}(?:sshd\[\d+\]:\s+)?(?:failed|accepted) password\b"
@@ -245,6 +255,9 @@ _AUTH_LOG_RE = re.compile(
     rf"{_SYSLOG_PREFIX_RE}.*\bpam_unix\b.*\bauthentication failure\b|"
     rf"{_SYSLOG_PREFIX_RE}sudo:\s+.*\bCOMMAND="
     r")"
+)
+_JSON_STACKTRACE_FIELD_RE = re.compile(
+    r"(?i)\b(?:stack|stacktrace|traceback|exception|error)\b"
 )
 
 
@@ -708,6 +721,13 @@ class RuPIIGuardrail(CustomGuardrail):
 
         targets.extend(cls._iter_responses_field_text_targets(data, "instructions"))
         targets.extend(cls._iter_responses_field_text_targets(data, "input"))
+
+        system = data.get("system")
+        if isinstance(system, str):
+            targets.append((data, "system"))
+        elif isinstance(system, list):
+            targets.extend(cls._iter_text_content_block_targets(system))
+
         return targets
 
     @staticmethod
@@ -746,6 +766,44 @@ class RuPIIGuardrail(CustomGuardrail):
             document = document.strip()
             if document:
                 yield document
+
+    @staticmethod
+    def _iter_json_stacktrace_field_values(value: Any) -> Iterable[str]:
+        """Return likely stack/exception string values from a parsed JSON payload."""
+        pending = [value]
+        visited = 0
+        while pending and visited < 512:
+            visited += 1
+            current = pending.pop()
+            if isinstance(current, dict):
+                for key, child in current.items():
+                    if (
+                        isinstance(key, str)
+                        and isinstance(child, str)
+                        and _JSON_STACKTRACE_FIELD_RE.search(key)
+                    ):
+                        yield child
+                    elif isinstance(child, (dict, list)):
+                        pending.append(child)
+            elif isinstance(current, list):
+                pending.extend(current)
+
+    @classmethod
+    def _looks_like_json_stacktrace_payload(cls, text: str) -> bool:
+        """Detect stack traces carried as JSON string values."""
+        stripped = text.strip()
+        if not stripped or stripped[0] not in "{[":
+            return False
+
+        try:
+            payload = json.loads(stripped)
+        except (TypeError, ValueError):
+            return False
+
+        return any(
+            _STACK_TRACE_RE.search(value)
+            for value in cls._iter_json_stacktrace_field_values(payload)
+        )
 
     @classmethod
     def _looks_like_kubeconfig_payload(cls, text: str) -> bool:
@@ -841,6 +899,7 @@ class RuPIIGuardrail(CustomGuardrail):
         if (
             _ACCESS_LOG_RE.search(text)
             or _STACK_TRACE_RE.search(text)
+            or cls._looks_like_json_stacktrace_payload(text)
             or _AUTH_LOG_RE.search(text)
         ):
             cls._add_policy_finding(

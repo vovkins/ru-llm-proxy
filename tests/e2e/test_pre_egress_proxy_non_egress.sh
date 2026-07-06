@@ -272,6 +272,14 @@ run_blocked_case \
     "user:pass"
 
 run_blocked_case \
+    "blocked-messages-system" \
+    "/v1/messages" \
+    '{"model":"mock-claude","max_tokens":16,"system":"API_KEY=sk-system-secret\nPASSWORD=local-password","messages":[{"role":"user","content":"Summarize the deployment plan."}]}' \
+    "config" \
+    "env_secret_assignment" \
+    "local-password"
+
+run_blocked_case \
     "blocked-messages-tool-result" \
     "/v1/messages" \
     '{"model":"mock-claude","max_tokens":16,"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"API_KEY=sk-test-secret\nPASSWORD=local-password"}]}]}' \

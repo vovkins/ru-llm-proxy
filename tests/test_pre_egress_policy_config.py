@@ -39,6 +39,11 @@ def test_docs_distinguish_pre_egress_policy_from_pii_modes():
 
     architecture = docs["docs/architecture.md"]
     assert "до `POST /api/v1/analyze`" in architecture
+    for path in ("README.md", "docs/architecture.md"):
+        text = docs[path]
+        pre_egress_pos = text.index("Pre-egress")
+        analyzer_pos = text.index("POST /api/v1/analyze")
+        assert pre_egress_pos < analyzer_pos, path
     assert "#28 Secondary DLP scan" in architecture
     assert "detail.error" in docs["README.md"]
     assert "detail.error" in docs["docs/examples.md"]
@@ -81,6 +86,7 @@ def test_pre_egress_proxy_smoke_assets_are_wired():
     assert "/v1/chat/completions" in script
     assert "/v1/responses" in script
     assert "/v1/messages" in script
+    assert "blocked-messages-system" in script
     assert "blocked-messages-tool-result" in script
     assert "provider_specific_fields" in script
     assert "pre_egress_policy" in script

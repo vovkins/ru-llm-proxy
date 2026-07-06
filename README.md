@@ -44,7 +44,7 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 ```text
 ┌──────────┐     ┌──────────────┐     ┌────────────────────┐     ┌──────────────┐
 │  Клиент  │────▶│ LiteLLM Proxy│────▶│  PII Guardrail     │────▶│ LLM Provider │
-│          │     │  порт 4000   │     │  mask / unmask     │     │   glm-5.1    │
+│          │     │  порт 4000   │     │ pre-egress + PII   │     │   glm-5.1    │
 │          │◀────│              │◀────│                    │◀────│              │
 └──────────┘     └──────┬───────┘     └─────────┬──────────┘     └──────────────┘
                         │                       │
@@ -74,17 +74,19 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 
 1. Клиент отправляет запрос в LiteLLM: `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages`.
 2. LiteLLM запускает `ru-pii-mask-pre` в режиме `pre_call`.
-3. Guardrail отправляет строковые поля запроса в Presidio Analyzer: `message.content`, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-4. Analyzer возвращает entity spans, entity types и scores.
-5. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
-6. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
-7. Guardrail генерирует server-side `pii_request_id` и сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
-8. Только после успешного Redis save исходные строковые поля заменяются на masked text.
-9. LiteLLM отправляет masked request LLM-провайдеру.
-10. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
-11. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-12. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
-13. Redis mapping удаляется после post-call или streaming-iterator обработки.
+3. Guardrail собирает provider-bound строковые поля: `message.content`, Anthropic top-level `system` string/text blocks, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+4. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
+5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
+6. Analyzer возвращает entity spans, entity types и scores.
+7. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
+8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
+9. Guardrail генерирует server-side `pii_request_id` и сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
+10. Только после успешного Redis save исходные строковые поля заменяются на masked text.
+11. LiteLLM отправляет masked request LLM-провайдеру.
+12. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+13. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+14. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
+15. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
 
@@ -324,7 +326,7 @@ guardrails:
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Anthropic top-level system string/text blocks, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
