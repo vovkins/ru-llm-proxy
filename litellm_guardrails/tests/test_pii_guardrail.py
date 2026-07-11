@@ -156,6 +156,23 @@ class TestPolicyMode:
         assert guardrail.pii_mode == "mask"
 
 
+# === regulated-topic policy mode ===
+
+
+class TestRegulatedTopicPolicyMode:
+    def test_defaults_to_off_mode(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.regulated_topic_policy_mode == "off"
+
+    def test_accepts_block_mode_alias(self):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="enabled")
+        assert guardrail.regulated_topic_policy_mode == "block"
+
+    def test_defaults_to_off_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="bad-value")
+        assert guardrail.regulated_topic_policy_mode == "off"
+
+
 # === pre-egress policy mode ===
 
 
@@ -1190,6 +1207,226 @@ class TestPreCallHook:
         assert "Обычный текст" not in "\n".join(
             record.getMessage() for record in caplog.records
         )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected_category", "expected_rule"),
+        [
+            (
+                "Опиши внутренний регламент ПОД/ФТ и процедуры контроля клиентов.",
+                "aml_cft",
+                "aml_cft_internal_controls",
+            ),
+            (
+                "Describe internal sanctions screening watchlist matching logic and threshold settings.",
+                "sanctions_screening",
+                "sanctions_watchlist_matching",
+            ),
+            (
+                "List transaction monitoring thresholds and trigger scenarios for high-risk transfers.",
+                "transaction_monitoring",
+                "transaction_monitoring_thresholds",
+            ),
+            (
+                "Give the suspicious activity investigation playbook and case workflow for SAR escalation.",
+                "suspicious_activity_investigation",
+                "suspicious_activity_playbook",
+            ),
+            (
+                "How can a client bypass AML monitoring and avoid detection alerts?",
+                "bypass_sensitive_procedure",
+                "compliance_bypass_procedure",
+            ),
+        ],
+    )
+    async def test_regulated_topic_policy_blocks_before_analyzer_and_redis(
+        self,
+        payload,
+        expected_category,
+        expected_rule,
+    ):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="block")
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        assert _status_code_from_exception(exc_info.value) == 422
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["code"] == "regulated_topic_policy_blocked"
+        assert error_body["error"]["type"] == "regulated_topic_policy_violation"
+        assert error_body["error"]["details"] == {
+            "categories": [expected_category],
+            "rules": [expected_rule],
+            "actions": ["block"],
+        }
+        assert payload not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_regulated_topic_policy_log_does_not_include_raw_payload(
+        self,
+        caplog,
+    ):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="block")
+        guardrail._redis = _mock_redis()
+        payload = "Опиши внутренний регламент ПОД/ФТ и процедуры контроля клиентов."
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data={"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]},
+                    )
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "regulated_topic_policy_blocked" in logs
+        assert "aml_cft_internal_controls" in logs
+        assert payload not in logs
+        assert "ПОД/ФТ" not in logs
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "blocked"
+        assert event["policy_result"] == "regulated_topic_policy_blocked"
+        assert event["block_reason"] == "regulated_topic_policy_violation"
+        assert event["error_code"] == "regulated_topic_policy_blocked"
+        assert event["regulated_topic_policy_mode"] == "block"
+        assert event["categories"] == ["aml_cft"]
+        assert event["rules"] == ["aml_cft_internal_controls"]
+        assert event["actions"] == ["block"]
+        assert event["category_counts"] == {"aml_cft": 1}
+        assert event["rule_counts"] == {"aml_cft_internal_controls": 1}
+        assert event["finding_count"] == 1
+        assert event["redaction_count"] == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "What is AML in banking?",
+            "Что такое публичные требования ПОД/ФТ для банков?",
+            "Explain sanctions screening at a high level using public sources.",
+            "Summarize common suspicious activity red flags from public guidance.",
+        ],
+    )
+    async def test_regulated_topic_policy_allows_public_educational_prompts(
+        self,
+        text,
+    ):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="block")
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(text)
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_regulated_topic_policy_off_allows_payload_to_pii_pipeline(self):
+        guardrail = RuPIIGuardrail(regulated_topic_policy_mode="off")
+        guardrail._redis = _mock_redis()
+        payload = "Опиши внутренний регламент ПОД/ФТ и процедуры контроля клиентов."
+        data = {"messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(payload)
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_regulated_topic_policy_extra_rules_are_block_only(self):
+        extra_rules = json.dumps(
+            [
+                {
+                    "category": "internal_watchlist",
+                    "rule_id": "codename_policy",
+                    "action": "block",
+                    "pattern": "PROJECT_MARS_WATCHLIST",
+                }
+            ]
+        )
+        guardrail = RuPIIGuardrail(
+            regulated_topic_policy_mode="block",
+            regulated_topic_policy_extra_rules_json=extra_rules,
+        )
+        guardrail._redis = _mock_redis()
+        payload = "Summarize PROJECT_MARS_WATCHLIST matching notes."
+        data = {"messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_not_awaited()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["internal_watchlist"],
+            "rules": ["codename_policy"],
+            "actions": ["block"],
+        }
+        assert "PROJECT_MARS_WATCHLIST" not in json.dumps(
+            error_body,
+            ensure_ascii=False,
+        )
+
+    def test_regulated_topic_block_metric_increments_once_per_finding(self):
+        label = MagicMock()
+        metric = MagicMock()
+        metric.labels.return_value = label
+
+        with patch.object(pii_guardrail, "REGULATED_TOPIC_POLICY_BLOCKED", metric):
+            RuPIIGuardrail._record_regulated_topic_policy_blocks(
+                [
+                    {
+                        "category": "aml_cft",
+                        "rule_id": "aml_cft_internal_controls",
+                        "action": "block",
+                    }
+                ],
+            )
+
+        metric.labels.assert_called_once_with(
+            category="aml_cft",
+            rule_id="aml_cft_internal_controls",
+        )
+        label.inc.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_pre_egress_blocks_env_payload_before_analyzer_and_redis(self):

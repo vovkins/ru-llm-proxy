@@ -104,6 +104,66 @@ if details != expected["details"]:
 PY
 }
 
+assert_regulated_topic_blocked_error() {
+    local file="$1"
+    local expected_category="$2"
+    local expected_rule="$3"
+
+    python3 - "$file" "$expected_category" "$expected_rule" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    body = json.load(fh)
+
+error = body.get("error")
+if isinstance(error, dict):
+    provider_fields = error.get("provider_specific_fields")
+    if isinstance(provider_fields, dict) and isinstance(provider_fields.get("error"), dict):
+        error = provider_fields["error"]
+    elif isinstance(error.get("param"), dict):
+        policy_param = error["param"].get("regulated_topic_policy")
+        if isinstance(policy_param, dict):
+            error = {
+                "message": error.get("message"),
+                "type": error.get("type"),
+                "code": policy_param.get("code"),
+                "details": policy_param.get("details"),
+            }
+
+if not isinstance(error, dict) and isinstance(body.get("detail"), dict):
+    detail = body["detail"]
+    error = detail.get("error", detail)
+
+if not isinstance(error, dict):
+    print("Expected JSON error object", file=sys.stderr)
+    print(json.dumps(body, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+
+details = error.get("details")
+expected = {
+    "message": "Request contains regulated internal compliance content and was blocked by regulated-topic policy.",
+    "type": "regulated_topic_policy_violation",
+    "code": "regulated_topic_policy_blocked",
+    "details": {
+        "categories": [sys.argv[2]],
+        "rules": [sys.argv[3]],
+        "actions": ["block"],
+    },
+}
+for key in ("message", "type", "code"):
+    if error.get(key) != expected[key]:
+        print(f"Expected error.{key}={expected[key]!r}, got {error.get(key)!r}", file=sys.stderr)
+        print(json.dumps(body, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+
+if details != expected["details"]:
+    print("Expected structured regulated-topic details", file=sys.stderr)
+    print(json.dumps(body, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 wait_for_http() {
     local url="$1"
     local description="$2"
@@ -238,6 +298,38 @@ run_blocked_case() {
     assert_litellm_logs_do_not_contain "$forbidden"
 }
 
+run_regulated_topic_blocked_case() {
+    local name="$1"
+    local path="$2"
+    local payload="$3"
+    local expected_category="$4"
+    local expected_rule="$5"
+    local forbidden="$6"
+    local body_file="$tmp_dir/${name}.json"
+    local capture_file="$tmp_dir/${name}-capture.json"
+    local status
+
+    reset_capture
+    status="$(post_json "$path" "$payload" "$body_file")"
+    if [ "$status" != "422" ]; then
+        echo "Expected $name status 422, got $status" >&2
+        cat "$body_file" >&2
+        exit 1
+    fi
+
+    assert_regulated_topic_blocked_error "$body_file" "$expected_category" "$expected_rule"
+    if grep -Fq -- "$forbidden" "$body_file"; then
+        echo "Blocked response leaked raw regulated-topic value for $name" >&2
+        cat "$body_file" >&2
+        exit 1
+    fi
+
+    capture_counts "$capture_file"
+    expect_json_value "$capture_file" analyzer_requests 0
+    expect_no_provider_posts "$capture_file"
+    assert_litellm_logs_do_not_contain "$forbidden"
+}
+
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d
 
 wait_for_http "$BASE_URL/health/liveliness" "LiteLLM proxy"
@@ -306,5 +398,13 @@ run_blocked_case \
     "log" \
     "log_or_stacktrace_payload" \
     "/internal/secret"
+
+run_regulated_topic_blocked_case \
+    "blocked-chat-regulated-topic" \
+    "/v1/chat/completions" \
+    '{"model":"mock-chat","messages":[{"role":"user","content":"Describe internal sanctions screening watchlist matching logic and threshold settings."}]}' \
+    "sanctions_screening" \
+    "sanctions_watchlist_matching" \
+    "watchlist matching logic"
 
 echo "pre-egress proxy non-egress smoke passed"

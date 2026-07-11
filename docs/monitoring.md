@@ -10,6 +10,7 @@
 - доступен ли Presidio Analyzer и загружен ли DeepPavlov NER;
 - доступны ли Redis и PostgreSQL;
 - применяются ли PII guardrails и сколько PII они маскируют;
+- включена ли regulated-topic policy для AML/CFT / ПОД/ФТ и какие bounded rule ids она блокирует;
 - стабильно ли клиенты попадают в свои provider deployments при sticky routing;
 - есть ли fail-open/fail-closed события, при которых PII-защита работает нештатно.
 
@@ -21,7 +22,7 @@ Security evidence и observability evidence проверяются разным�
 
 | Gate | Команда | Назначение |
 | --- | --- | --- |
-| Egress-security | `make test-egress-security` | Mock provider capture/no-egress: raw test values не должны попасть в provider-bound payload, а blocked-запросы не должны создавать provider request. |
+| Egress-security | `make test-egress-security` | Mock provider capture/no-egress: raw test values не должны попасть в provider-bound payload, а blocked-запросы, включая `regulated_topic_policy_blocked`, не должны создавать provider request. |
 | Observability | `make test-observability-gates` | Lightweight audit/logging wiring checks и проверка, что smoke-контуры не смешивают observability status с egress status. |
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Проверка реального LiteLLM/provider flow; live smoke не доказывает отсутствие утечки, потому что provider-bound payload внешнего провайдера не захватывается. |
 
@@ -140,14 +141,15 @@ make routing-smoke
 
 ## PII Guardrail Metrics
 
-Проект добавляет собственные низкокардинальные метрики. Они не содержат пользовательский текст, request id, PII или raw placeholders.
+Проект добавляет собственные низкокардинальные метрики. Они не содержат пользовательский текст, request id, PII, raw matched text или raw placeholders.
 
 | Metric | Type | Labels | Назначение |
 | --- | --- | --- | --- |
-| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `pre_egress_policy_blocked`, `final_payload_leak_check_blocked`, `clean`, `skipped`, `error` |
+| `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `regulated_topic_policy_blocked`, `pre_egress_policy_blocked`, `final_payload_leak_check_blocked`, `clean`, `skipped`, `error` |
 | `ru_pii_guardrail_post_calls_total` | Counter | `result` | Итог post-call: `restored`, `no_placeholders`, `no_mapping`, `skipped`, `unsupported_response`, `error` |
 | `ru_pii_guardrail_entities_detected_total` | Counter | `entity_type` | Количество замаскированных сущностей по типам |
 | `ru_pii_guardrail_blocked_total` | Counter | `entity_type` | Количество заблокированных сущностей по типам в `PII_GUARDRAIL_MODE=block` |
+| `ru_regulated_topic_policy_blocked_total` | Counter | `category`, `rule_id` | Количество AML/CFT / ПОД/ФТ regulated-topic blocks по bounded categories и rule ids |
 | `ru_pre_egress_policy_blocked_total` | Counter | `category` | Количество config/log payload blocks по bounded categories |
 | `ru_final_payload_leak_check_blocked_total` | Counter | `rule_id` | Количество final provider-bound leak-check blocks по bounded rule ids |
 | `ru_pii_guardrail_fail_open_total` | Counter | `operation` | Ошибки, после которых запрос продолжен в режиме `fail_open` |
@@ -232,6 +234,12 @@ sum(rate(ru_pii_guardrail_pre_calls_total{result="blocked"}[5m])) > 0
 Block mode отклоняет запросы с PII до вызова провайдера. Это ожидаемое policy event, но его стоит мониторить как security telemetry.
 
 ```promql
+sum(rate(ru_regulated_topic_policy_blocked_total[5m])) > 0
+```
+
+Regulated-topic policy блокирует AML/CFT / ПОД/ФТ или похожие internal compliance topics до Analyzer/provider egress. Это ожидаемое policy event при `REGULATED_TOPIC_POLICY_MODE=block`, но его стоит мониторить отдельно от PII и config/log blocks.
+
+```promql
 histogram_quantile(0.95, sum(rate(ru_pii_guardrail_analyzer_latency_seconds_bucket[5m])) by (le)) > 2
 ```
 
@@ -268,7 +276,8 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 дашбордов и алертов: `request_id`, `model`, `status`, `latency_ms`,
 `guardrail_mode`, `call_type`, `policy_mode`, `policy_result`,
 `redaction_count`, `entity_counts`, а для блокировок/ошибок также
-`block_reason`, `error_code`, bounded `categories`/`rules` и counts.
+`block_reason`, `error_code`, bounded `categories`/`rules`/`actions` и counts.
+При `REGULATED_TOPIC_POLICY_MODE=block` событие `regulated_topic_policy_blocked` фиксирует блокировку high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity или compliance-bypass topic до Analyzer/provider egress. Этот слой не является PII recognizer и не создаёт Redis mapping. В логах остаются только bounded categories, rule ids, action `block` и counts; raw prompt, raw matched text, snippets и offsets не пишутся.
 При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked` фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side mutation и до provider call. В логах остаются только bounded rule ids и counts; raw matched values, prompt snippets, offsets, provider keys и mapping contents не пишутся.
 
@@ -283,9 +292,10 @@ raw input text, raw entity values, offsets, API keys или proxy tokens.
 | Event | Уровень | Поля |
 | --- | --- | --- |
 | `presidio_analyzer_request` | `INFO` | `event_id`, `outcome`, `latency_ms`, `entity_count`, `entity_counts`, `language`, `score_threshold`, `ner`, `capacity`, optional `failure_reason` |
-| `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
+| `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `regulated_topic_policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
+| `regulated_topic_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `finding_count` |
 | `pre_egress_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `category_counts`, `finding_count` |
 | `final_payload_leak_check_blocked` | `INFO` | `request_id`, `rules`, `rule_counts`, `finding_count` |
 | `pii_guardrail_restored` | `INFO` | `request_id`, `mapping_size`, `restored_fields` |

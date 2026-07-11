@@ -11,6 +11,7 @@ LLM-прокси для командной работы с внешними LLM 
 - LiteLLM gateway с server-funded upstream keys (`ZAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) и client access через LiteLLM virtual keys.
 - Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, базовых Anthropic Messages `content` string/text blocks и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
 - `PII_GUARDRAIL_MODE=mask|block`: reversible masking по умолчанию или безопасный `422` до provider call.
+- `REGULATED_TOPIC_POLICY_MODE=off|block`: conservative block-only policy pack для high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем.
 - Non-streaming restoration для `content`, `reasoning_content`, response content blocks и tool/function arguments.
 - Streaming restoration для `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
 - Bounded Presidio Analyzer capacity: worker count, concurrency limit, queue limit/timeout и fail-closed overload handling.
@@ -21,7 +22,7 @@ LLM-прокси для командной работы с внешними LLM 
 - Production egress-control guidance and Kubernetes/Cilium templates for deny-by-default runtime networking: [docs/egress-controls.md](docs/egress-controls.md), [deploy/kubernetes/egress](deploy/kubernetes/egress).
 - Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
-⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются.
+⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются. Regulated-topic policy в первой версии block-only: mask/dictionary-substitute actions остаются будущим расширением после #25.
 
 ## Что маскируется
 
@@ -59,6 +60,8 @@ LLM-прокси для командной работы с внешними LLM 
 Реквизиты контрагентов детектируются консервативно. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный контекст вроде `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` или `к/с`, поэтому случайные 9- и 20-значные числа не проходят дефолтный порог. Для счетов при наличии контекстного БИК рядом проверяется российский контрольный ключ; справочник банков/актуальность БИК по ЦБ не запрашивается.
 
 Infrastructure/secret recognizers работают на entity-level внутри обычного `PII_GUARDRAIL_MODE=mask|block`: одиночный private IP, internal domain, JWT или bearer token может быть замаскирован или заблокирован без классификации всего prompt как `.env`/log/config artifact. Доменные suffixes задаются через `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`; публичные IP по умолчанию не считаются `INTERNAL_IP`, но могут быть включены через `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true`.
+
+Regulated-topic policy не является PII recognizer и не маскирует entity spans. При `REGULATED_TOPIC_POLICY_MODE=block` он блокирует high-confidence внутренние AML/CFT / ПОД/ФТ, санкционные, transaction-monitoring, suspicious-activity и compliance-bypass темы до Analyzer, Redis mapping и provider egress. Public defaults не содержат organization-specific confidential terms; свои block-only regex rules можно добавить через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`.
 
 DeepPavlov NER соблюдает параметры Analyzer API: если в запросе указан `entities`, NER запускается только для `PERSON`, `ORGANIZATION` или `LOCATION`; если запрошены только regex-типы вроде `RU_INN`, NER пропускается. Так как DeepPavlov не возвращает per-entity confidence, проект присваивает NER-результатам фиксированный score `0.7` и не запускает NER при `score_threshold > 0.7`.
 
@@ -98,19 +101,20 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 1. Клиент отправляет запрос в LiteLLM: `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages`.
 2. LiteLLM запускает `ru-pii-mask-pre` в режиме `pre_call`.
 3. Guardrail собирает provider-bound строковые поля: `message.content`, Anthropic top-level `system` string/text blocks, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-4. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
-5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
-6. Analyzer возвращает entity spans, entity types и scores.
-7. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
-8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>`, `<INTERNAL_IP_1>`, `<BEARER_TOKEN_1>` и применяет masked text к provider-bound request fields.
-9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
-10. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
-11. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
-12. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked request LLM-провайдеру.
-13. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
-14. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-15. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
-16. Redis mapping удаляется после post-call или streaming-iterator обработки.
+4. Regulated-topic policy, если включён, проверяет high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass темы. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
+5. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
+6. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
+7. Analyzer возвращает entity spans, entity types и scores.
+8. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
+9. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>`, `<INTERNAL_IP_1>`, `<BEARER_TOKEN_1>` и применяет masked text к provider-bound request fields.
+10. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
+11. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
+12. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
+13. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked request LLM-провайдеру.
+14. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+15. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+16. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
+17. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
 
@@ -192,6 +196,8 @@ PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local
 PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=false
 PII_GUARDRAIL_MODE=mask
+REGULATED_TOPIC_POLICY_MODE=off
+REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=
 PRE_EGRESS_POLICY_MODE=block
 FINAL_PAYLOAD_LEAK_CHECK_MODE=block
 FINAL_PAYLOAD_LEAK_CHECK_CANARIES=
@@ -206,7 +212,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -270,6 +276,35 @@ Runtime dependency clients guardrail:
 В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
 
 `PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
+
+### Regulated-topic policy
+
+`REGULATED_TOPIC_POLICY_MODE` управляет отдельным conservative policy pack для AML/CFT / ПОД/ФТ и похожих внутренних compliance topics. Этот слой не является PII recognizer: он не ищет entity spans, не создаёт placeholders и не сохраняет Redis mapping.
+
+| Значение | Поведение |
+| --- | --- |
+| `off` | Значение по умолчанию. Политика не блокирует business/compliance темы, PII и egress layers работают отдельно. |
+| `block` | Guardrail отклоняет high-confidence regulated-topic payloads до Presidio Analyzer, Redis mapping и provider egress. |
+
+Public defaults покрывают только rule families без organization-specific confidential terms: `aml_cft_internal_controls`, `sanctions_watchlist_matching`, `transaction_monitoring_thresholds`, `suspicious_activity_playbook` и `compliance_bypass_procedure`. Для ambiguity вроде публичного вопроса “What is AML?” classifier остаётся консервативным и пропускает запрос дальше.
+
+При блокировке клиент получает безопасную `422` ошибку с `code=regulated_topic_policy_blocked`, categories, rule ids и action `block`. Error body, `gateway_guardrail_audit` и structured logs не содержат raw prompt, raw matched text, snippets или offsets. Метрика `ru_regulated_topic_policy_blocked_total` использует bounded labels `category` и `rule_id`.
+
+`REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON` позволяет operator-defined block-only правила без изменения кода:
+
+```json
+[
+  {
+    "category": "internal_watchlist",
+    "rule_id": "custom_watchlist_codename",
+    "action": "block",
+    "pattern": "PROJECT_MARS_WATCHLIST",
+    "flags": "i"
+  }
+]
+```
+
+Mask и dictionary-substitute actions намеренно не включены в первую версию. Они должны добавляться отдельно вместе с reversible dictionary substitution из #25, чтобы не создавать ложного ожидания восстановления.
 
 ### Pre-egress config/log policy
 
@@ -641,6 +676,7 @@ make monitor-smoke
 - `ru_pii_guardrail_mapping_size_*`
 - `ru_pre_egress_policy_blocked_total`
 - `ru_final_payload_leak_check_blocked_total`
+- `ru_regulated_topic_policy_blocked_total`
 - `ru_presidio_analyzer_requests_total`
 - `ru_presidio_analyzer_latency_seconds_*`
 - `ru_presidio_analyzer_entities_detected_total`
@@ -651,7 +687,8 @@ Guardrail также пишет structured JSON logs без prompt text и бе�
 gateway-level мониторинга используйте `gateway_guardrail_audit`: один safe event
 на pre-call решение с `request_id`, `model`, `status`, `latency_ms`,
 `policy_result`, `redaction_count`, `entity_counts`, а для блокировок/ошибок —
-`block_reason` и `error_code`. Подробный DevOps guide:
+`block_reason` и `error_code`. Для regulated-topic blocks audit/logs содержат только
+bounded `categories`, `rules`, `actions` и counts без raw matched text. Подробный DevOps guide:
 [docs/monitoring.md](docs/monitoring.md).
 
 Presidio Analyzer отдельно пишет `presidio_analyzer_request` и отдает metrics на
@@ -707,7 +744,7 @@ RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL
 # fail, если нет provider key или live-validated model alias для любого /v1 протокола
 ```
 
-`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-egress-security` использует mock provider capture и доказывает, что raw test values не попадают в provider-bound payload. `make test-observability-gates` проверяет lightweight audit/observability wiring и safe-log assertions. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры, а сам live smoke не является leakage proof.
+`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-egress-security` использует mock provider capture и доказывает, что raw test values не попадают в provider-bound payload, включая regulated-topic block case с `regulated_topic_policy_blocked`. `make test-observability-gates` проверяет lightweight audit/observability wiring и safe-log assertions. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры, а сам live smoke не является leakage proof.
 
 `make test-static` также проверяет, что production egress-control guide и
 `deploy/kubernetes/egress` templates остаются связаны с основной документацией.

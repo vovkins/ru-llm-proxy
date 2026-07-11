@@ -186,6 +186,12 @@ FINAL_PAYLOAD_LEAK_CHECK_BLOCKED = _build_metric(
     "Final provider-bound payload leak-check blocks by rule id.",
     ["rule_id"],
 )
+REGULATED_TOPIC_POLICY_BLOCKED = _build_metric(
+    Counter,
+    "ru_regulated_topic_policy_blocked",
+    "Regulated-topic policy blocks by bounded category and rule id.",
+    ["category", "rule_id"],
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
@@ -194,6 +200,8 @@ FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
 PRE_EGRESS_POLICY_MODES = {"block", "off"}
 FINAL_PAYLOAD_LEAK_CHECK_MODES = {"block", "off"}
+REGULATED_TOPIC_POLICY_MODES = {"block", "off"}
+REGULATED_TOPIC_POLICY_ACTIONS = {"block"}
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "tools",
     "tool_choice",
@@ -224,6 +232,9 @@ PRE_EGRESS_POLICY_BLOCKED_MESSAGE = (
 )
 FINAL_PAYLOAD_LEAK_CHECK_BLOCKED_MESSAGE = (
     "Request contains a confirmed raw leak marker and was blocked before provider egress."
+)
+REGULATED_TOPIC_POLICY_BLOCKED_MESSAGE = (
+    "Request contains regulated internal compliance content and was blocked by regulated-topic policy."
 )
 PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
@@ -308,6 +319,108 @@ _JWT_TOKEN_RE = re.compile(
 )
 _PROVIDER_KEY_RE = re.compile(
     r"\b(?:sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,})\b"
+)
+_AML_CFT_TOPIC_RE = re.compile(
+    r"(?iu)(?:"
+    r"\bAML\b|\bCFT\b|anti[-\s]?money[-\s]?laundering|"
+    r"counter[-\s]?terror(?:ism)?[-\s]?financ(?:e|ing)|"
+    r"ПОД\s*/\s*ФТ|ПОД[-\s]?ФТ|"
+    r"противодейств\w*\s+легализац\w*|"
+    r"отмыван\w*\s+доход\w*|"
+    r"финансирован\w*\s+террор"
+    r")"
+)
+_REGULATED_INTERNAL_CONTEXT_RE = re.compile(
+    r"(?iu)\b(?:"
+    r"internal|non[-\s]?public|confidential|restricted|"
+    r"внутренн\w*|непубличн\w*|конфиденциальн\w*|служебн\w*|закрыт\w*"
+    r")\b"
+)
+_REGULATED_CONTROL_CONTEXT_RE = re.compile(
+    r"(?iu)\b(?:"
+    r"controls?|procedures?|polic(?:y|ies)|rules?|logic|algorithm|"
+    r"thresholds?|scenarios?|typolog(?:y|ies)|risk[-\s]?scor(?:e|ing)|playbooks?|"
+    r"регламент\w*|методик\w*|процедур\w*|контрол\w*|правил\w*|"
+    r"логик\w*|алгоритм\w*|порог\w*|сценари\w*|типолог\w*|"
+    r"скоринг\w*|риск[-\s]?модел\w*"
+    r")\b"
+)
+_SANCTIONS_TOPIC_RE = re.compile(
+    r"(?iu)(?:"
+    r"sanctions?\s+screening|\bsanctions?\b|"
+    r"санкционн\w+\s+скрининг\w*|"
+    r"провер\w+\s+по\s+санкционн\w+\s+списк\w*|"
+    r"санкци\w+"
+    r")"
+)
+_WATCHLIST_MATCHING_CONTEXT_RE = re.compile(
+    r"(?iu)(?:"
+    r"watch[-\s]?list|blacklist|deny[-\s]?list|stop[-\s]?list|\bSDN\b|\bOFAC\b|"
+    r"санкционн\w+\s+списк\w*|стоп[-\s]?лист|черн\w+\s+список|"
+    r"matching|fuzzy[-\s]?match|матчинг\w*|нечетк\w+\s+сравнен\w*"
+    r")"
+)
+_TRANSACTION_MONITORING_TOPIC_RE = re.compile(
+    r"(?iu)(?:"
+    r"transaction\s+monitoring|мониторинг\s+операц\w*|"
+    r"мониторинг\s+транзакц\w*|транзакционн\w+\s+мониторинг"
+    r")"
+)
+_THRESHOLD_SCENARIO_CONTEXT_RE = re.compile(
+    r"(?iu)\b(?:"
+    r"thresholds?|triggers?|rules?|scenarios?|typolog(?:y|ies)|alerts?|red[-\s]?flags?|"
+    r"порог\w*|триггер\w*|правил\w*|сценари\w*|типолог\w*|"
+    r"алерт\w*|сигнал\w*|красн\w+\s+флаг\w*"
+    r")\b"
+)
+_SUSPICIOUS_ACTIVITY_TOPIC_RE = re.compile(
+    r"(?iu)(?:"
+    r"suspicious\s+activity|\bSAR\b|\bSTR\b|"
+    r"подозрительн\w+\s+операц\w*|сомнительн\w+\s+операц\w*|"
+    r"сообщени\w+\s+о\s+подозрительн\w+"
+    r")"
+)
+_INVESTIGATION_PLAYBOOK_CONTEXT_RE = re.compile(
+    r"(?iu)(?:"
+    r"investigation\s+playbook|case\s+workflow|escalation\s+matrix|"
+    r"decision\s+tree|step[-\s]?by[-\s]?step|"
+    r"плейбук|маршрут\s+эскалац\w*|матриц\w+\s+эскалац\w*|"
+    r"дерев\w+\s+решен\w*|порядок\s+расследован\w*|шаг\w+\s+расследован\w*"
+    r")"
+)
+_BYPASS_SENSITIVE_CONTEXT_RE = re.compile(
+    r"(?iu)(?:"
+    r"bypass|evad(?:e|ing)|avoid\s+(?:detection|triggering|alerts?)|work\s+around|"
+    r"обойти|обход\w*|уклонит\w*|не\s+попасть|избежат\w+\s+срабатыван\w*|"
+    r"скрыть\s+от|как\s+пройти\s+провер"
+    r")"
+)
+REGULATED_TOPIC_POLICY_DEFAULT_RULES = (
+    {
+        "category": "aml_cft",
+        "rule_id": "aml_cft_internal_controls",
+        "action": "block",
+    },
+    {
+        "category": "sanctions_screening",
+        "rule_id": "sanctions_watchlist_matching",
+        "action": "block",
+    },
+    {
+        "category": "transaction_monitoring",
+        "rule_id": "transaction_monitoring_thresholds",
+        "action": "block",
+    },
+    {
+        "category": "suspicious_activity_investigation",
+        "rule_id": "suspicious_activity_playbook",
+        "action": "block",
+    },
+    {
+        "category": "bypass_sensitive_procedure",
+        "rule_id": "compliance_bypass_procedure",
+        "action": "block",
+    },
 )
 
 
@@ -399,6 +512,11 @@ PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open"
 PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
 PRE_EGRESS_POLICY_MODE = os.getenv("PRE_EGRESS_POLICY_MODE", "block")
 FINAL_PAYLOAD_LEAK_CHECK_MODE = os.getenv("FINAL_PAYLOAD_LEAK_CHECK_MODE", "block")
+REGULATED_TOPIC_POLICY_MODE = os.getenv("REGULATED_TOPIC_POLICY_MODE", "off")
+REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON = os.getenv(
+    "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON",
+    "",
+)
 FINAL_PAYLOAD_LEAK_CHECK_CANARIES = tuple(
     token.strip()
     for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
@@ -565,6 +683,8 @@ class RuPIIGuardrail(CustomGuardrail):
         pre_egress_policy_mode: Optional[str] = None,
         final_payload_leak_check_mode: Optional[str] = None,
         final_payload_leak_check_canaries: Optional[tuple[str, ...]] = None,
+        regulated_topic_policy_mode: Optional[str] = None,
+        regulated_topic_policy_extra_rules_json: Optional[str] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -589,6 +709,18 @@ class RuPIIGuardrail(CustomGuardrail):
                 else FINAL_PAYLOAD_LEAK_CHECK_CANARIES
             )
             if token
+        )
+        self.regulated_topic_policy_mode = (
+            self._normalize_regulated_topic_policy_mode(
+                regulated_topic_policy_mode or REGULATED_TOPIC_POLICY_MODE
+            )
+        )
+        self.regulated_topic_policy_extra_rules = (
+            self._load_regulated_topic_policy_extra_rules(
+                regulated_topic_policy_extra_rules_json
+                if regulated_topic_policy_extra_rules_json is not None
+                else REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON
+            )
         )
         self.mapping_ttl_seconds = _normalize_positive_int(
             "PII_MAPPING_TTL_SECONDS",
@@ -655,6 +787,114 @@ class RuPIIGuardrail(CustomGuardrail):
             return "block"
         return mode
 
+    @staticmethod
+    def _normalize_regulated_topic_policy_mode(value: str) -> str:
+        """Normalize and validate regulated-topic policy behavior."""
+        mode = value.strip().lower().replace("-", "_")
+        if mode in {"disabled", "disable", "false", "0"}:
+            mode = "off"
+        if mode in {"enabled", "enable", "true", "1"}:
+            mode = "block"
+        if mode not in REGULATED_TOPIC_POLICY_MODES:
+            logger.warning(
+                "Unknown REGULATED_TOPIC_POLICY_MODE=%r, falling back to off",
+                value,
+            )
+            return "off"
+        return mode
+
+    @staticmethod
+    def _normalize_policy_label(value: Any, fallback: str) -> str:
+        """Return a bounded label safe for logs and metrics."""
+        normalized = re.sub(
+            r"[^a-zA-Z0-9_:-]+",
+            "_",
+            str(value or "").strip().lower(),
+        ).strip("_:-")
+        return (normalized[:80] or fallback)
+
+    @classmethod
+    def _load_regulated_topic_policy_extra_rules(
+        cls,
+        raw_config: str,
+    ) -> list[dict[str, Any]]:
+        """Load operator-defined block-only regulated-topic regex rules."""
+        if not raw_config.strip():
+            return []
+
+        try:
+            parsed = json.loads(raw_config)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON, ignoring extra rules"
+            )
+            return []
+
+        if not isinstance(parsed, list):
+            logger.warning(
+                "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON must be a JSON array"
+            )
+            return []
+
+        rules: list[dict[str, Any]] = []
+        for index, entry in enumerate(parsed):
+            if not isinstance(entry, dict):
+                logger.warning(
+                    "Ignoring regulated-topic extra rule %s: expected object",
+                    index,
+                )
+                continue
+
+            action = str(entry.get("action") or "block").strip().lower()
+            action = action.replace("-", "_")
+            if action not in REGULATED_TOPIC_POLICY_ACTIONS:
+                logger.warning(
+                    "Ignoring regulated-topic extra rule %s: unsupported action",
+                    index,
+                )
+                continue
+
+            pattern = entry.get("pattern")
+            if not isinstance(pattern, str) or not pattern.strip():
+                logger.warning(
+                    "Ignoring regulated-topic extra rule %s: missing pattern",
+                    index,
+                )
+                continue
+
+            flags = re.IGNORECASE | re.UNICODE
+            raw_flags = str(entry.get("flags") or "")
+            if "m" in raw_flags.lower():
+                flags |= re.MULTILINE
+            if "s" in raw_flags.lower():
+                flags |= re.DOTALL
+
+            try:
+                compiled = re.compile(pattern, flags)
+            except re.error:
+                logger.warning(
+                    "Ignoring regulated-topic extra rule %s: invalid regex",
+                    index,
+                )
+                continue
+
+            rules.append(
+                {
+                    "category": cls._normalize_policy_label(
+                        entry.get("category"),
+                        "custom_regulated_topic",
+                    ),
+                    "rule_id": cls._normalize_policy_label(
+                        entry.get("rule_id"),
+                        f"custom_regulated_topic_{index + 1}",
+                    ),
+                    "action": "block",
+                    "pattern": compiled,
+                }
+            )
+
+        return rules
+
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
         """Apply configured fail-open/fail-closed behavior."""
         operation_label = operation.replace(" ", "_")
@@ -690,6 +930,7 @@ class RuPIIGuardrail(CustomGuardrail):
         error_code: Optional[str] = None,
         categories: Optional[list[str]] = None,
         rules: Optional[list[str]] = None,
+        actions: Optional[list[str]] = None,
         category_counts: Optional[dict[str, int]] = None,
         rule_counts: Optional[dict[str, int]] = None,
         finding_count: Optional[int] = None,
@@ -708,6 +949,7 @@ class RuPIIGuardrail(CustomGuardrail):
             "policy_mode": self.pii_mode,
             "pre_egress_policy_mode": self.pre_egress_policy_mode,
             "final_payload_leak_check_mode": self.final_payload_leak_check_mode,
+            "regulated_topic_policy_mode": self.regulated_topic_policy_mode,
             "failure_mode": self.failure_mode,
             "policy_result": policy_result,
             "redaction_count": int(redaction_count),
@@ -719,6 +961,7 @@ class RuPIIGuardrail(CustomGuardrail):
             "error_code": error_code,
             "categories": categories,
             "rules": rules,
+            "actions": actions,
             "category_counts": category_counts,
             "rule_counts": rule_counts,
             "finding_count": finding_count,
@@ -895,6 +1138,151 @@ class RuPIIGuardrail(CustomGuardrail):
             return
         seen_rules.add(rule_id)
         findings.append({"category": category, "rule_id": rule_id})
+
+    @staticmethod
+    def _add_regulated_topic_finding(
+        findings: list[dict[str, str]],
+        seen_rules: set[str],
+        category: str,
+        rule_id: str,
+        action: str = "block",
+    ) -> None:
+        """Add one bounded regulated-topic finding without source text or offsets."""
+        if rule_id in seen_rules:
+            return
+        seen_rules.add(rule_id)
+        findings.append(
+            {
+                "category": category,
+                "rule_id": rule_id,
+                "action": action,
+            }
+        )
+
+    @staticmethod
+    def _has_any_regulated_topic(text: str) -> bool:
+        """Return whether text mentions one of the regulated-topic families."""
+        return any(
+            pattern.search(text)
+            for pattern in (
+                _AML_CFT_TOPIC_RE,
+                _SANCTIONS_TOPIC_RE,
+                _TRANSACTION_MONITORING_TOPIC_RE,
+                _SUSPICIOUS_ACTIVITY_TOPIC_RE,
+            )
+        )
+
+    def _classify_regulated_topic_policy_text(
+        self,
+        text: str,
+    ) -> list[dict[str, str]]:
+        """Classify high-risk regulated AML/CFT topics before provider egress."""
+        if not text.strip():
+            return []
+
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+
+        if (
+            self._has_any_regulated_topic(text)
+            and _BYPASS_SENSITIVE_CONTEXT_RE.search(text)
+        ):
+            self._add_regulated_topic_finding(
+                findings,
+                seen_rules,
+                "bypass_sensitive_procedure",
+                "compliance_bypass_procedure",
+            )
+
+        if (
+            _AML_CFT_TOPIC_RE.search(text)
+            and _REGULATED_INTERNAL_CONTEXT_RE.search(text)
+            and _REGULATED_CONTROL_CONTEXT_RE.search(text)
+        ):
+            self._add_regulated_topic_finding(
+                findings,
+                seen_rules,
+                "aml_cft",
+                "aml_cft_internal_controls",
+            )
+
+        if (
+            _SANCTIONS_TOPIC_RE.search(text)
+            and _WATCHLIST_MATCHING_CONTEXT_RE.search(text)
+            and (
+                _REGULATED_INTERNAL_CONTEXT_RE.search(text)
+                or _REGULATED_CONTROL_CONTEXT_RE.search(text)
+                or _THRESHOLD_SCENARIO_CONTEXT_RE.search(text)
+            )
+        ):
+            self._add_regulated_topic_finding(
+                findings,
+                seen_rules,
+                "sanctions_screening",
+                "sanctions_watchlist_matching",
+            )
+
+        if (
+            _TRANSACTION_MONITORING_TOPIC_RE.search(text)
+            and _THRESHOLD_SCENARIO_CONTEXT_RE.search(text)
+        ):
+            self._add_regulated_topic_finding(
+                findings,
+                seen_rules,
+                "transaction_monitoring",
+                "transaction_monitoring_thresholds",
+            )
+
+        if (
+            _SUSPICIOUS_ACTIVITY_TOPIC_RE.search(text)
+            and (
+                _INVESTIGATION_PLAYBOOK_CONTEXT_RE.search(text)
+                or (
+                    _REGULATED_INTERNAL_CONTEXT_RE.search(text)
+                    and _REGULATED_CONTROL_CONTEXT_RE.search(text)
+                )
+            )
+        ):
+            self._add_regulated_topic_finding(
+                findings,
+                seen_rules,
+                "suspicious_activity_investigation",
+                "suspicious_activity_playbook",
+            )
+
+        for rule in self.regulated_topic_policy_extra_rules:
+            pattern = rule["pattern"]
+            if pattern.search(text):
+                self._add_regulated_topic_finding(
+                    findings,
+                    seen_rules,
+                    rule["category"],
+                    rule["rule_id"],
+                    rule["action"],
+                )
+
+        return findings
+
+    def _classify_regulated_topic_policy_targets(
+        self,
+        request_targets: list[tuple[dict, str]],
+    ) -> list[dict[str, str]]:
+        """Classify all request text targets and return bounded findings."""
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+        for target, field in request_targets:
+            content = target[field]
+            if not isinstance(content, str) or not content.strip():
+                continue
+            for finding in self._classify_regulated_topic_policy_text(content):
+                self._add_regulated_topic_finding(
+                    findings,
+                    seen_rules,
+                    finding["category"],
+                    finding["rule_id"],
+                    finding["action"],
+                )
+        return findings
 
     @staticmethod
     def _has_yaml_key(text: str, key: str) -> bool:
@@ -1540,10 +1928,32 @@ class RuPIIGuardrail(CustomGuardrail):
         return counts
 
     @staticmethod
+    def _rule_counts_from_policy_findings(
+        findings: list[dict[str, str]],
+    ) -> dict[str, int]:
+        """Return policy rule counts without exposing matched text."""
+        counts: dict[str, int] = {}
+        for finding in findings:
+            rule_id = finding["rule_id"]
+            counts[rule_id] = counts.get(rule_id, 0) + 1
+        return counts
+
+    @staticmethod
     def _record_pre_egress_policy_blocks(category_counts: dict[str, int]) -> None:
         """Increment pre-egress policy metrics with bounded category labels."""
         for category in category_counts:
             PRE_EGRESS_POLICY_BLOCKED.labels(category=category).inc()
+
+    @staticmethod
+    def _record_regulated_topic_policy_blocks(
+        findings: list[dict[str, str]],
+    ) -> None:
+        """Increment regulated-topic metrics with bounded labels."""
+        for finding in findings:
+            REGULATED_TOPIC_POLICY_BLOCKED.labels(
+                category=finding["category"],
+                rule_id=finding["rule_id"],
+            ).inc()
 
     @staticmethod
     def _rule_counts_from_final_leak_findings(
@@ -1561,6 +1971,83 @@ class RuPIIGuardrail(CustomGuardrail):
         """Increment final leak-check metrics with bounded rule labels."""
         for rule_id, count in rule_counts.items():
             FINAL_PAYLOAD_LEAK_CHECK_BLOCKED.labels(rule_id=rule_id).inc(count)
+
+    def _raise_regulated_topic_policy_blocked(
+        self,
+        data: dict,
+        request_id: str,
+        findings: list[dict[str, str]],
+        *,
+        audit_started_at: Optional[float] = None,
+        call_type: Optional[str] = None,
+    ) -> None:
+        """Raise a safe client error for blocked regulated-topic content."""
+        categories = sorted({finding["category"] for finding in findings})
+        rules = sorted({finding["rule_id"] for finding in findings})
+        actions = sorted({finding["action"] for finding in findings})
+        category_counts = self._category_counts_from_policy_findings(findings)
+        rule_counts = self._rule_counts_from_policy_findings(findings)
+        self._record_regulated_topic_policy_blocks(findings)
+        PII_PRE_CALLS.labels(result="regulated_topic_policy_blocked").inc()
+        _safe_log(
+            logging.INFO,
+            "regulated_topic_policy_blocked",
+            request_id=request_id,
+            categories=categories,
+            rules=rules,
+            actions=actions,
+            category_counts=category_counts,
+            rule_counts=rule_counts,
+            finding_count=len(findings),
+        )
+        if audit_started_at is not None:
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=audit_started_at,
+                status="blocked",
+                policy_result="regulated_topic_policy_blocked",
+                call_type=call_type,
+                block_reason="regulated_topic_policy_violation",
+                error_code="regulated_topic_policy_blocked",
+                categories=categories,
+                rules=rules,
+                actions=actions,
+                category_counts=category_counts,
+                rule_counts=rule_counts,
+                finding_count=len(findings),
+            )
+
+        error = {
+            "message": REGULATED_TOPIC_POLICY_BLOCKED_MESSAGE,
+            "type": "regulated_topic_policy_violation",
+            "code": "regulated_topic_policy_blocked",
+            "details": {
+                "categories": categories,
+                "rules": rules,
+                "actions": actions,
+            },
+        }
+        policy_param = {
+            "regulated_topic_policy": {
+                "code": error["code"],
+                "details": error["details"],
+            }
+        }
+        provider_specific_fields = {
+            "error": error,
+            "guardrail_name": self.guardrail_name,
+            "guardrail_mode": "pre_call",
+        }
+        exc = ProxyException(
+            message=REGULATED_TOPIC_POLICY_BLOCKED_MESSAGE,
+            type="regulated_topic_policy_violation",
+            param=policy_param,
+            code=422,
+            provider_specific_fields=provider_specific_fields,
+        )
+        exc.status_code = 422
+        raise exc
 
     def _raise_pre_egress_policy_blocked(
         self,
@@ -1781,6 +2268,19 @@ class RuPIIGuardrail(CustomGuardrail):
                 call_type=call_type,
             )
             return data
+
+        if self.regulated_topic_policy_mode == "block":
+            regulated_topic_findings = self._classify_regulated_topic_policy_targets(
+                request_targets
+            )
+            if regulated_topic_findings:
+                self._raise_regulated_topic_policy_blocked(
+                    data,
+                    request_id,
+                    regulated_topic_findings,
+                    audit_started_at=started_at,
+                    call_type=call_type,
+                )
 
         if self.pre_egress_policy_mode == "block":
             policy_findings = self._classify_pre_egress_policy_targets(request_targets)
