@@ -90,6 +90,7 @@ test-static: test-routing-diagnostics
 		tests/test_admin_auth_rbac_docs.py \
 		tests/test_regulated_topic_policy_config.py \
 		tests/test_synthetic_pii_allowlist_config.py \
+		tests/test_dictionary_substitution_config.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:

@@ -11,6 +11,7 @@ LLM-прокси для командной работы с внешними LLM 
 - LiteLLM gateway с server-funded upstream keys (`ZAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) и client access через LiteLLM virtual keys.
 - Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, базовых Anthropic Messages `content` string/text blocks и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
 - `PII_GUARDRAIL_MODE=mask|block`: reversible masking по умолчанию или безопасный `422` до provider call.
+- `DICTIONARY_SUBSTITUTIONS_ENABLED=true`: обратимые business dictionary substitutions до Analyzer; default seed содержит 10 крупных российских банков в `litellm_guardrails/dictionary-substitutions.default.json`.
 - `SYNTHETIC_PII_ALLOWLIST_MODE=off|allow`: выключенный по умолчанию narrow allowlist для явно заданных synthetic/test PII fixtures, которые нужны для проверок и демонстраций.
 - `REGULATED_TOPIC_POLICY_MODE=off|block`: conservative block-only policy pack для high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем.
 - Non-streaming restoration для `content`, `reasoning_content`, response content blocks и tool/function arguments.
@@ -24,7 +25,7 @@ LLM-прокси для командной работы с внешними LLM 
 - Production admin/operator access guidance: [docs/admin-access.md](docs/admin-access.md) separates client virtual keys, upstream provider keys, Admin UI credentials and `LITELLM_MASTER_KEY`.
 - Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
-⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются. Synthetic/test PII allowlist не является механизмом пропуска production PII и должен содержать только контролируемые тестовые значения. Regulated-topic policy в первой версии block-only: mask/dictionary-substitute actions остаются будущим расширением после #25.
+⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров или dictionary replacements, которые провайдер вернул в ответе точно. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются. Synthetic/test PII allowlist не является механизмом пропуска production PII и должен содержать только контролируемые тестовые значения. Regulated-topic policy остаётся block-only и не выполняет semantic rewriting.
 
 ## Что маскируется
 
@@ -67,6 +68,8 @@ Regulated-topic policy не является PII recognizer и не маскир
 
 Synthetic/test PII allowlist — это отдельная narrow exception после Presidio Analyzer и до `PII_GUARDRAIL_MODE=mask|block`. При `SYNTHETIC_PII_ALLOWLIST_MODE=allow` guardrail удаляет из результатов Analyzer только явно настроенные synthetic spans по exact values или anchored safe regex patterns. Остальная PII продолжает маскироваться или блокироваться по текущей политике.
 
+Dictionary substitutions — отдельная product policy до Presidio Analyzer, а не новый PII recognizer. При `DICTIONARY_SUBSTITUTIONS_ENABLED=true` guardrail сначала заменяет настроенные business terms на synthetic replacements, затем исключает эти replacement spans из PII mask/block, сохраняет restore mapping в Redis и восстанавливает replacement обратно клиенту в non-streaming и streaming ответах. Default seed заменяет 10 крупных российских банков; оператор может заменить файл или передать JSON через env. Восстановление exact-match: если модель склоняет, переводит или перефразирует replacement, proxy не сможет восстановить исходную форму.
+
 DeepPavlov NER соблюдает параметры Analyzer API: если в запросе указан `entities`, NER запускается только для `PERSON`, `ORGANIZATION` или `LOCATION`; если запрошены только regex-типы вроде `RU_INN`, NER пропускается. Так как DeepPavlov не возвращает per-entity confidence, проект присваивает NER-результатам фиксированный score `0.7` и не запускает NER при `score_threshold > 0.7`.
 
 ## Архитектура
@@ -107,19 +110,20 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 3. Guardrail собирает provider-bound строковые поля: `message.content`, Anthropic top-level `system` string/text blocks, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
 4. Regulated-topic policy, если включён, проверяет high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass темы. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
 5. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании запрос заканчивается безопасной `422` ошибкой до Analyzer, Redis mapping и провайдера.
-6. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
-7. Analyzer возвращает entity spans, entity types и scores.
-8. Если включён `SYNTHETIC_PII_ALLOWLIST_MODE=allow`, guardrail вычитает из результатов Analyzer только явно настроенные synthetic/test PII spans. Hits пишутся в safe logs/metrics без raw values.
-9. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
-10. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>`, `<INTERNAL_IP_1>`, `<BEARER_TOKEN_1>` и применяет masked text к provider-bound request fields.
-11. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
-12. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
-13. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
-14. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked request LLM-провайдеру.
-15. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
-16. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-17. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
-18. Redis mapping удаляется после post-call или streaming-iterator обработки.
+6. Dictionary substitution policy, включённая по умолчанию, заменяет configured business terms до Analyzer. Default file `dictionary-substitutions.default.json` содержит 10 крупных российских банков; replacement spans исключаются из последующего PII mask/block.
+7. Guardrail отправляет уже substituted строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
+8. Analyzer возвращает entity spans, entity types и scores.
+9. Если включён `SYNTHETIC_PII_ALLOWLIST_MODE=allow`, guardrail вычитает из результатов Analyzer только явно настроенные synthetic/test PII spans. Hits пишутся в safe logs/metrics без raw values.
+10. В `PII_GUARDRAIL_MODE=block` при найденной PII вне dictionary replacement spans поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
+11. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>`, `<INTERNAL_IP_1>`, `<BEARER_TOKEN_1>` и применяет masked text к provider-bound request fields.
+12. Final payload leak check сканирует уже provider-bound payload после dictionary substitution и masking, до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
+13. При final-check блокировке guardrail откатывает masked/substituted text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
+14. Если финальная проверка чистая, guardrail сохраняет combined restore mapping в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при Redis save failure guardrail откатывает mutated text обратно к исходному request, чтобы не отправлять необратимые placeholders/replacements без mapping. Для dictionary mapping failure default — `fail_closed`.
+15. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked/substituted request LLM-провайдеру.
+16. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+17. Guardrail восстанавливает плейсхолдеры и exact dictionary replacements в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+18. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders/replacements в `delta.content` и `delta.reasoning_content`, включая значения, разорванные между чанками.
+19. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
 
@@ -202,6 +206,10 @@ PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local
 PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=false
 PII_GUARDRAIL_MODE=mask
+DICTIONARY_SUBSTITUTIONS_ENABLED=true
+DICTIONARY_SUBSTITUTIONS_FILE=/app/litellm_guardrails/dictionary-substitutions.default.json
+DICTIONARY_SUBSTITUTIONS_JSON=
+DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed
 SYNTHETIC_PII_ALLOWLIST_MODE=off
 SYNTHETIC_PII_ALLOWLIST_JSON=[]
 REGULATED_TOPIC_POLICY_MODE=off
@@ -220,7 +228,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, `DISABLE_ADMIN_UI`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `SYNTHETIC_PII_ALLOWLIST_MODE`, `SYNTHETIC_PII_ALLOWLIST_JSON`, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, `DISABLE_ADMIN_UI`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, dictionary substitution env vars, `SYNTHETIC_PII_ALLOWLIST_MODE`, `SYNTHETIC_PII_ALLOWLIST_JSON`, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -284,6 +292,49 @@ Runtime dependency clients guardrail:
 В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
 
 `PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
+
+### Dictionary substitutions
+
+`DICTIONARY_SUBSTITUTIONS_ENABLED=true` по умолчанию. Этот слой запускается до Presidio Analyzer и заменяет business terms на synthetic replacements, не завися от DeepPavlov `ORGANIZATION` detection.
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `DICTIONARY_SUBSTITUTIONS_ENABLED` | `true` | Включает deterministic reversible substitutions. |
+| `DICTIONARY_SUBSTITUTIONS_FILE` | `/app/litellm_guardrails/dictionary-substitutions.default.json` | JSON-файл с правилами. |
+| `DICTIONARY_SUBSTITUTIONS_JSON` | empty | Inline JSON override; если задан, используется вместо файла. |
+| `DICTIONARY_SUBSTITUTIONS_FAILURE_MODE` | `fail_closed` | Поведение при invalid config, ambiguous request или Redis save failure для dictionary mapping. |
+
+Default seed содержит 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Список нужен как стартовая business dictionary policy и должен адаптироваться оператором под свой контур.
+
+Пример правила:
+
+```json
+{
+  "substitutions": [
+    {
+      "id": "tbank_to_zetta",
+      "enabled": true,
+      "source": "Т-Банк",
+      "replacement": "Зетта Групп",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    }
+  ]
+}
+```
+
+Поведение:
+
+```text
+Client request:   Проверь договор с Т-Банк.
+Provider request: Проверь договор с Зетта Групп.
+Client response:  ... Т-Банк ...
+```
+
+Dictionary replacement spans исключаются из последующего PII mask/block, поэтому synthetic replacement отправляется провайдеру как настроенное значение, а не как `<ORGANIZATION_1>`. Если в исходном запросе уже есть replacement text, например одновременно `Т-Банк` и `Зетта Групп`, запрос считается ambiguous и при default `fail_closed` останавливается: иначе post-call restore мог бы заменить чужое совпадение. Восстановление exact-match only: склонения, переводы, сокращения или paraphrase replacement не восстанавливаются.
 
 ### Synthetic/test PII allowlist
 
@@ -429,6 +480,9 @@ guardrails:
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+        - name: "dictionary_substitutions"
+          type: "string"
+          description: "DICTIONARY_SUBSTITUTIONS_ENABLED: true by default; applies reversible exact business-term replacements from dictionary-substitutions.default.json or DICTIONARY_SUBSTITUTIONS_JSON before Presidio analysis."
         - name: "synthetic_pii_allowlist_mode"
           type: "string"
           description: "SYNTHETIC_PII_ALLOWLIST_MODE: off by default; allow removes explicitly configured synthetic/test PII spans from Presidio results before mask/block handling."

@@ -17,6 +17,13 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
+from litellm_guardrails.dictionary_policy import (
+    DictionaryPolicyAmbiguousRequestError,
+    DictionaryPolicyConfigError,
+    DictionarySubstitutionPolicy,
+    DictionarySubstitutionResult,
+)
+
 try:
     from fastapi import HTTPException
 except ImportError:  # pragma: no cover - local lightweight test env without FastAPI.
@@ -198,9 +205,38 @@ SYNTHETIC_PII_ALLOWLIST_HITS = _build_metric(
     "Synthetic/test PII allowlist hits by bounded rule id and entity type.",
     ["rule_id", "entity_type"],
 )
+DICTIONARY_SUBSTITUTIONS_APPLIED = _build_metric(
+    Counter,
+    "ru_dictionary_substitution_applied",
+    "Dictionary substitutions applied by bounded rule id.",
+    ["rule_id"],
+)
+DICTIONARY_SUBSTITUTION_MAPPING_SIZE = _build_metric(
+    Histogram,
+    "ru_dictionary_substitution_mapping_size",
+    "Number of reversible dictionary mappings saved for a substituted request.",
+    buckets=(1, 2, 5, 10, 25, 50, 100, 250),
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
+DEFAULT_DICTIONARY_SUBSTITUTIONS_FILE = os.getenv(
+    "DICTIONARY_SUBSTITUTIONS_FILE",
+    os.path.join(
+        os.path.dirname(__file__),
+        "dictionary-substitutions.default.json",
+    ),
+)
+DICTIONARY_SUBSTITUTIONS_ENABLED = os.getenv(
+    "DICTIONARY_SUBSTITUTIONS_ENABLED",
+    "true",
+)
+DICTIONARY_SUBSTITUTIONS_FILE = DEFAULT_DICTIONARY_SUBSTITUTIONS_FILE
+DICTIONARY_SUBSTITUTIONS_JSON = os.getenv("DICTIONARY_SUBSTITUTIONS_JSON", "")
+DICTIONARY_SUBSTITUTIONS_FAILURE_MODE = os.getenv(
+    "DICTIONARY_SUBSTITUTIONS_FAILURE_MODE",
+    "fail_closed",
+)
 
 FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
@@ -709,6 +745,10 @@ class RuPIIGuardrail(CustomGuardrail):
         regulated_topic_policy_extra_rules_json: Optional[str] = None,
         synthetic_pii_allowlist_mode: Optional[str] = None,
         synthetic_pii_allowlist_json: Optional[str] = None,
+        dictionary_substitutions_enabled: Optional[Union[str, bool]] = None,
+        dictionary_substitutions_file: Optional[str] = None,
+        dictionary_substitutions_json: Optional[str] = None,
+        dictionary_substitutions_failure_mode: Optional[str] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -757,6 +797,28 @@ class RuPIIGuardrail(CustomGuardrail):
                 if synthetic_pii_allowlist_json is not None
                 else SYNTHETIC_PII_ALLOWLIST_JSON
             )
+        )
+        self.dictionary_substitutions_failure_mode = self._normalize_failure_mode(
+            dictionary_substitutions_failure_mode
+            or DICTIONARY_SUBSTITUTIONS_FAILURE_MODE
+        )
+        self.dictionary_substitutions_enabled = self._normalize_bool_setting(
+            dictionary_substitutions_enabled
+            if dictionary_substitutions_enabled is not None
+            else DICTIONARY_SUBSTITUTIONS_ENABLED,
+            default=True,
+        )
+        self.dictionary_substitution_policy = (
+            self._load_dictionary_substitution_policy(
+                dictionary_substitutions_file
+                if dictionary_substitutions_file is not None
+                else DICTIONARY_SUBSTITUTIONS_FILE,
+                dictionary_substitutions_json
+                if dictionary_substitutions_json is not None
+                else DICTIONARY_SUBSTITUTIONS_JSON,
+            )
+            if self.dictionary_substitutions_enabled
+            else DictionarySubstitutionPolicy([])
         )
         self.mapping_ttl_seconds = _normalize_positive_int(
             "PII_MAPPING_TTL_SECONDS",
@@ -856,6 +918,19 @@ class RuPIIGuardrail(CustomGuardrail):
         return mode
 
     @staticmethod
+    def _normalize_bool_setting(value: Union[str, bool], default: bool) -> bool:
+        """Normalize common env-style boolean values."""
+        if isinstance(value, bool):
+            return value
+        normalized = str(value or "").strip().lower()
+        if normalized in {"1", "true", "yes", "on", "enabled", "enable"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "disabled", "disable"}:
+            return False
+        logger.warning("Unknown boolean setting value=%r, falling back", value)
+        return default
+
+    @staticmethod
     def _normalize_policy_label(value: Any, fallback: str) -> str:
         """Return a bounded label safe for logs and metrics."""
         normalized = re.sub(
@@ -864,6 +939,29 @@ class RuPIIGuardrail(CustomGuardrail):
             str(value or "").strip().lower(),
         ).strip("_:-")
         return (normalized[:80] or fallback)
+
+    def _load_dictionary_substitution_policy(
+        self,
+        file_path: str,
+        raw_json: str,
+    ) -> DictionarySubstitutionPolicy:
+        """Load reversible dictionary substitutions from JSON env or file."""
+        try:
+            if raw_json and raw_json.strip():
+                return DictionarySubstitutionPolicy.from_json_text(raw_json)
+            if file_path and file_path.strip():
+                return DictionarySubstitutionPolicy.from_file(file_path)
+            return DictionarySubstitutionPolicy([])
+        except DictionaryPolicyConfigError as exc:
+            _safe_log(
+                logging.ERROR,
+                "dictionary_substitution_config_invalid",
+                failure_mode=self.dictionary_substitutions_failure_mode,
+                error_type=type(exc).__name__,
+            )
+            if self.dictionary_substitutions_failure_mode == "fail_closed":
+                raise
+            return DictionarySubstitutionPolicy([])
 
     @classmethod
     def _load_regulated_topic_policy_extra_rules(
@@ -1119,6 +1217,33 @@ class RuPIIGuardrail(CustomGuardrail):
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
 
+    def _handle_dictionary_failure(
+        self,
+        operation: str,
+        error: Exception,
+        data: dict,
+    ) -> dict:
+        """Apply dictionary substitution failure behavior."""
+        operation_label = operation.replace(" ", "_")
+        if self.dictionary_substitutions_failure_mode == "fail_closed":
+            PII_FAIL_CLOSED.labels(operation=f"dictionary_{operation_label}").inc()
+        else:
+            PII_FAIL_OPEN.labels(operation=f"dictionary_{operation_label}").inc()
+        _safe_log(
+            logging.ERROR,
+            "dictionary_substitution_failed_open"
+            if self.dictionary_substitutions_failure_mode == "fail_open"
+            else "dictionary_substitution_failed_closed",
+            operation=operation_label,
+            failure_mode=self.dictionary_substitutions_failure_mode,
+            error_type=type(error).__name__,
+        )
+        if self.dictionary_substitutions_failure_mode == "fail_closed":
+            raise RuntimeError(
+                f"Dictionary substitution {operation} failed"
+            ) from error
+        return data
+
     def _log_gateway_audit(
         self,
         *,
@@ -1142,6 +1267,9 @@ class RuPIIGuardrail(CustomGuardrail):
         synthetic_allowlist_entity_counts: Optional[dict[str, int]] = None,
         synthetic_allowlist_rule_counts: Optional[dict[str, int]] = None,
         synthetic_allowlist_hit_count: Optional[int] = None,
+        dictionary_substitution_rules: Optional[list[str]] = None,
+        dictionary_substitution_rule_counts: Optional[dict[str, int]] = None,
+        dictionary_substitution_count: Optional[int] = None,
         failure_operation: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> None:
@@ -1158,7 +1286,11 @@ class RuPIIGuardrail(CustomGuardrail):
             "pre_egress_policy_mode": self.pre_egress_policy_mode,
             "final_payload_leak_check_mode": self.final_payload_leak_check_mode,
             "regulated_topic_policy_mode": self.regulated_topic_policy_mode,
+            "dictionary_substitutions_enabled": self.dictionary_substitutions_enabled,
             "failure_mode": self.failure_mode,
+            "dictionary_substitutions_failure_mode": (
+                self.dictionary_substitutions_failure_mode
+            ),
             "policy_result": policy_result,
             "redaction_count": int(redaction_count),
             "entity_counts": entity_counts or {},
@@ -1177,6 +1309,9 @@ class RuPIIGuardrail(CustomGuardrail):
             "synthetic_allowlist_entity_counts": synthetic_allowlist_entity_counts,
             "synthetic_allowlist_rule_counts": synthetic_allowlist_rule_counts,
             "synthetic_allowlist_hit_count": synthetic_allowlist_hit_count,
+            "dictionary_substitution_rules": dictionary_substitution_rules,
+            "dictionary_substitution_rule_counts": dictionary_substitution_rule_counts,
+            "dictionary_substitution_count": dictionary_substitution_count,
             "failure_operation": failure_operation,
             "error_type": error_type,
         }
@@ -1840,6 +1975,7 @@ class RuPIIGuardrail(CustomGuardrail):
         redaction_count: int = 0,
         entity_counts: Optional[dict[str, int]] = None,
         synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
+        dictionary_rule_counts: Optional[dict[str, int]] = None,
     ) -> None:
         """Block confirmed leaks in actual provider-bound request text."""
         if self.final_payload_leak_check_mode != "block":
@@ -1859,6 +1995,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 redaction_count=redaction_count,
                 entity_counts=entity_counts,
                 synthetic_allowlist_findings=synthetic_allowlist_findings,
+                dictionary_rule_counts=dictionary_rule_counts,
             )
 
     @staticmethod
@@ -1942,6 +2079,7 @@ class RuPIIGuardrail(CustomGuardrail):
         text: str,
         entities: list[dict],
         entity_counts: Optional[dict[str, int]] = None,
+        exclusion_spans: Optional[tuple[tuple[int, int], ...]] = None,
     ) -> tuple[str, dict[str, str]]:
         """Mask text with unique placeholders and return placeholder mapping."""
         if not entities:
@@ -1950,7 +2088,11 @@ class RuPIIGuardrail(CustomGuardrail):
         if entity_counts is None:
             entity_counts = {}
 
-        normalized_entities = self._normalize_entities(text, entities)
+        normalized_entities = self._normalize_entities(
+            text,
+            entities,
+            exclusion_spans=exclusion_spans,
+        )
         if not normalized_entities:
             return text, {}
 
@@ -1971,6 +2113,7 @@ class RuPIIGuardrail(CustomGuardrail):
         self,
         text: str,
         entities: list[dict],
+        exclusion_spans: Optional[tuple[tuple[int, int], ...]] = None,
     ) -> list[tuple[int, int, str]]:
         """Return valid non-overlapping entity spans with normalized types."""
         normalized_entities = []
@@ -1982,6 +2125,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 continue
 
             if start < 0 or end > len(text) or start >= end:
+                continue
+            if self._span_overlaps_any(start, end, exclusion_spans or ()):
                 continue
 
             entity_type = self._normalize_entity_type(
@@ -2003,6 +2148,18 @@ class RuPIIGuardrail(CustomGuardrail):
             last_end = end
 
         return non_overlapping_entities
+
+    @staticmethod
+    def _span_overlaps_any(
+        start: int,
+        end: int,
+        spans: Iterable[tuple[int, int]],
+    ) -> bool:
+        """Return whether a span overlaps any excluded provider-bound range."""
+        return any(
+            start < span_end and end > span_start
+            for span_start, span_end in spans
+        )
 
     @staticmethod
     def _synthetic_pii_rule_matches(
@@ -2141,6 +2298,70 @@ class RuPIIGuardrail(CustomGuardrail):
             entity_counts=audit_fields["synthetic_allowlist_entity_counts"],
             rule_counts=audit_fields["synthetic_allowlist_rule_counts"],
             hit_count=audit_fields["synthetic_allowlist_hit_count"],
+        )
+
+    def _apply_dictionary_substitutions(
+        self,
+        text: str,
+    ) -> DictionarySubstitutionResult:
+        """Apply reversible dictionary policy to one provider-bound text field."""
+        if (
+            not self.dictionary_substitutions_enabled
+            or not self.dictionary_substitution_policy.rules
+        ):
+            return DictionarySubstitutionResult(text, {}, (), {})
+        return self.dictionary_substitution_policy.apply(text)
+
+    @staticmethod
+    def _merge_dictionary_rule_counts(
+        current: dict[str, int],
+        update: dict[str, int],
+    ) -> None:
+        """Merge bounded dictionary rule hit counts in-place."""
+        for rule_id, count in update.items():
+            current[rule_id] = current.get(rule_id, 0) + count
+
+    @staticmethod
+    def _dictionary_substitution_audit_fields(
+        rule_counts: dict[str, int],
+    ) -> dict[str, Any]:
+        """Build safe audit fields for dictionary substitutions."""
+        if not rule_counts:
+            return {}
+        return {
+            "dictionary_substitution_rules": sorted(rule_counts),
+            "dictionary_substitution_rule_counts": dict(sorted(rule_counts.items())),
+            "dictionary_substitution_count": sum(rule_counts.values()),
+        }
+
+    @staticmethod
+    def _record_dictionary_substitutions(rule_counts: dict[str, int]) -> None:
+        """Record dictionary substitutions by bounded rule id."""
+        for rule_id, count in rule_counts.items():
+            DICTIONARY_SUBSTITUTIONS_APPLIED.labels(rule_id=rule_id).inc(count)
+
+    @classmethod
+    def _emit_dictionary_substitution_applied(
+        cls,
+        request_id: str,
+        rule_counts: dict[str, int],
+        mapping_size: int,
+        mapping_ttl_seconds: int,
+    ) -> None:
+        """Emit safe logs/metrics when dictionary substitutions were applied."""
+        if not rule_counts:
+            return
+        cls._record_dictionary_substitutions(rule_counts)
+        DICTIONARY_SUBSTITUTION_MAPPING_SIZE.observe(mapping_size)
+        _safe_log(
+            logging.INFO,
+            "dictionary_substitution_applied",
+            request_id=request_id,
+            rules=sorted(rule_counts),
+            rule_counts=dict(sorted(rule_counts.items())),
+            substitution_count=sum(rule_counts.values()),
+            mapping_size=mapping_size,
+            mapping_ttl_seconds=mapping_ttl_seconds,
         )
 
     @staticmethod
@@ -2483,6 +2704,7 @@ class RuPIIGuardrail(CustomGuardrail):
         redaction_count: int = 0,
         entity_counts: Optional[dict[str, int]] = None,
         synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
+        dictionary_rule_counts: Optional[dict[str, int]] = None,
     ) -> None:
         """Raise a safe client error for confirmed final payload leaks."""
         rules = sorted({finding["rule_id"] for finding in findings})
@@ -2514,6 +2736,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 finding_count=len(findings),
                 **self._synthetic_pii_allowlist_audit_fields(
                     synthetic_allowlist_findings or []
+                ),
+                **self._dictionary_substitution_audit_fields(
+                    dictionary_rule_counts or {}
                 ),
             )
 
@@ -2551,6 +2776,7 @@ class RuPIIGuardrail(CustomGuardrail):
         audit_started_at: Optional[float] = None,
         call_type: Optional[str] = None,
         synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
+        dictionary_rule_counts: Optional[dict[str, int]] = None,
     ) -> None:
         """Raise a LiteLLM-compatible client error without raw PII."""
         entity_types = sorted(entity_counts)
@@ -2576,6 +2802,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 error_code="pii_blocked",
                 **self._synthetic_pii_allowlist_audit_fields(
                     synthetic_allowlist_findings or []
+                ),
+                **self._dictionary_substitution_audit_fields(
+                    dictionary_rule_counts or {}
                 ),
             )
 
@@ -2654,7 +2883,10 @@ class RuPIIGuardrail(CustomGuardrail):
                     call_type=call_type,
                 )
 
-        full_mapping = {}
+        full_mapping: dict[str, str] = {}
+        pii_mapping: dict[str, str] = {}
+        dictionary_mapping: dict[str, str] = {}
+        dictionary_rule_counts: dict[str, int] = {}
         entity_counts: dict[str, int] = {}
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
@@ -2666,20 +2898,41 @@ class RuPIIGuardrail(CustomGuardrail):
                 continue
 
             try:
-                entities = await self._analyze_text(content)
+                dictionary_result = self._apply_dictionary_substitutions(content)
+                provider_content = dictionary_result.text
+                if dictionary_result.rule_counts:
+                    self._merge_dictionary_rule_counts(
+                        dictionary_rule_counts,
+                        dictionary_result.rule_counts,
+                    )
+                if dictionary_result.mapping:
+                    dictionary_mapping.update(dictionary_result.mapping)
+
+                entities = await self._analyze_text(provider_content)
                 if not entities:
+                    if provider_content != content:
+                        pending_updates.append((target, field, content, provider_content))
                     continue
 
                 (
                     entities,
                     current_allowlist_findings,
-                ) = self._filter_synthetic_pii_allowlisted_entities(content, entities)
+                ) = self._filter_synthetic_pii_allowlisted_entities(
+                    provider_content,
+                    entities,
+                )
                 synthetic_allowlist_findings.extend(current_allowlist_findings)
                 if not entities:
+                    if provider_content != content:
+                        pending_updates.append((target, field, content, provider_content))
                     continue
 
                 if self.pii_mode == "block":
-                    normalized_entities = self._normalize_entities(content, entities)
+                    normalized_entities = self._normalize_entities(
+                        provider_content,
+                        entities,
+                        exclusion_spans=dictionary_result.replacement_spans,
+                    )
                     entity_counts_for_block = (
                         self._entity_counts_from_normalized_entities(
                             normalized_entities
@@ -2689,17 +2942,45 @@ class RuPIIGuardrail(CustomGuardrail):
                         blocked_entity_counts[entity_type] = (
                             blocked_entity_counts.get(entity_type, 0) + count
                         )
+                    if provider_content != content:
+                        pending_updates.append((target, field, content, provider_content))
                     continue
 
                 masked_text, mapping = self._mask_text(
-                    content,
+                    provider_content,
                     entities,
                     entity_counts,
+                    exclusion_spans=dictionary_result.replacement_spans,
                 )
                 if mapping:
-                    full_mapping.update(mapping)
+                    pii_mapping.update(mapping)
                     pending_updates.append((target, field, content, masked_text))
+                elif provider_content != content:
+                    pending_updates.append((target, field, content, provider_content))
 
+            except DictionaryPolicyAmbiguousRequestError as e:
+                PII_PRE_CALLS.labels(result="error").inc()
+                self._log_gateway_audit(
+                    request_id=request_id,
+                    data=data,
+                    started_at=started_at,
+                    status="blocked"
+                    if self.dictionary_substitutions_failure_mode == "fail_closed"
+                    else "allowed",
+                    policy_result=self.dictionary_substitutions_failure_mode,
+                    call_type=call_type,
+                    block_reason="dictionary_substitution_ambiguous"
+                    if self.dictionary_substitutions_failure_mode == "fail_closed"
+                    else None,
+                    error_code="dictionary_substitution_ambiguous",
+                    failure_operation="dictionary_substitution",
+                    error_type=type(e).__name__,
+                )
+                return self._handle_dictionary_failure(
+                    "ambiguous request",
+                    e,
+                    data,
+                )
             except AnalyzerOverloadedError as e:
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -2724,6 +3005,7 @@ class RuPIIGuardrail(CustomGuardrail):
                         audit_started_at=started_at,
                         call_type=call_type,
                         synthetic_allowlist_findings=synthetic_allowlist_findings,
+                        dictionary_rule_counts=dictionary_rule_counts,
                     )
                 self._run_final_payload_leak_check(
                     data,
@@ -2732,6 +3014,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     audit_started_at=started_at,
                     call_type=call_type,
                     synthetic_allowlist_findings=synthetic_allowlist_findings,
+                    dictionary_rule_counts=dictionary_rule_counts,
                 )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -2749,11 +3032,17 @@ class RuPIIGuardrail(CustomGuardrail):
                     error_code=f"guardrail_{self.failure_mode}",
                     failure_operation="masking",
                     error_type=type(e).__name__,
+                    **self._dictionary_substitution_audit_fields(
+                        dictionary_rule_counts
+                    ),
                     **self._synthetic_pii_allowlist_audit_fields(
                         synthetic_allowlist_findings
                     ),
                 )
                 return self._handle_failure("masking", e, data)
+
+        full_mapping.update(dictionary_mapping)
+        full_mapping.update(pii_mapping)
 
         if synthetic_allowlist_findings:
             self._emit_synthetic_pii_allowlist_applied(
@@ -2769,12 +3058,13 @@ class RuPIIGuardrail(CustomGuardrail):
                 audit_started_at=started_at,
                 call_type=call_type,
                 synthetic_allowlist_findings=synthetic_allowlist_findings,
+                dictionary_rule_counts=dictionary_rule_counts,
             )
 
         for target, field, _, masked_text in pending_updates:
             target[field] = masked_text
 
-        entity_counts_for_audit = self._entity_counts_from_mapping(full_mapping)
+        entity_counts_for_audit = self._entity_counts_from_mapping(pii_mapping)
         try:
             self._run_final_payload_leak_check(
                 data,
@@ -2782,9 +3072,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 request_id,
                 audit_started_at=started_at,
                 call_type=call_type,
-                redaction_count=len(full_mapping),
+                redaction_count=len(pii_mapping),
                 entity_counts=entity_counts_for_audit,
                 synthetic_allowlist_findings=synthetic_allowlist_findings,
+                dictionary_rule_counts=dictionary_rule_counts,
             )
         except litellm.UnprocessableEntityError:
             for target, field, original_text, _ in pending_updates:
@@ -2805,29 +3096,40 @@ class RuPIIGuardrail(CustomGuardrail):
                     audit_started_at=started_at,
                     call_type=call_type,
                     synthetic_allowlist_findings=synthetic_allowlist_findings,
+                    dictionary_rule_counts=dictionary_rule_counts,
                 )
                 PII_PRE_CALLS.labels(result="error").inc()
+                mapping_failure_mode = (
+                    self.dictionary_substitutions_failure_mode
+                    if dictionary_mapping
+                    else self.failure_mode
+                )
                 self._log_gateway_audit(
                     request_id=request_id,
                     data=data,
                     started_at=started_at,
                     status="allowed"
-                    if self.failure_mode == "fail_open"
+                    if mapping_failure_mode == "fail_open"
                     else "blocked",
-                    policy_result=self.failure_mode,
+                    policy_result=mapping_failure_mode,
                     call_type=call_type,
-                    redaction_count=len(full_mapping),
+                    redaction_count=len(pii_mapping),
                     entity_counts=entity_counts_for_audit,
                     block_reason="guardrail_failure"
-                    if self.failure_mode == "fail_closed"
+                    if mapping_failure_mode == "fail_closed"
                     else None,
-                    error_code=f"guardrail_{self.failure_mode}",
+                    error_code=f"guardrail_{mapping_failure_mode}",
                     failure_operation="mapping_save",
                     error_type=type(e).__name__,
+                    **self._dictionary_substitution_audit_fields(
+                        dictionary_rule_counts
+                    ),
                     **self._synthetic_pii_allowlist_audit_fields(
                         synthetic_allowlist_findings
                     ),
                 )
+                if dictionary_mapping:
+                    return self._handle_dictionary_failure("mapping save", e, data)
                 return self._handle_failure("mapping save", e, data)
 
             # Store internal mapping ID in data for post-call hooks.
@@ -2835,26 +3137,44 @@ class RuPIIGuardrail(CustomGuardrail):
                 data["metadata"] = {}
             data["metadata"][PII_REQUEST_ID_METADATA_KEY] = request_id
             entity_counts_for_log = entity_counts_for_audit
-            self._record_entities(entity_counts_for_log)
-            PII_MAPPING_SIZE.observe(len(full_mapping))
-            PII_PRE_CALLS.labels(result="masked").inc()
-            _safe_log(
-                logging.INFO,
-                "pii_guardrail_masked",
-                request_id=request_id,
-                masked_count=len(full_mapping),
-                entity_counts=entity_counts_for_log,
-                mapping_ttl_seconds=self.mapping_ttl_seconds,
+            if pii_mapping:
+                self._record_entities(entity_counts_for_log)
+                PII_MAPPING_SIZE.observe(len(pii_mapping))
+                _safe_log(
+                    logging.INFO,
+                    "pii_guardrail_masked",
+                    request_id=request_id,
+                    masked_count=len(pii_mapping),
+                    entity_counts=entity_counts_for_log,
+                    mapping_ttl_seconds=self.mapping_ttl_seconds,
+                )
+            if dictionary_rule_counts:
+                self._emit_dictionary_substitution_applied(
+                    request_id,
+                    dictionary_rule_counts,
+                    len(dictionary_mapping),
+                    self.mapping_ttl_seconds,
+                )
+            policy_result = (
+                "masked_and_dictionary_substituted"
+                if pii_mapping and dictionary_mapping
+                else "masked"
+                if pii_mapping
+                else "dictionary_substituted"
             )
+            PII_PRE_CALLS.labels(result=policy_result).inc()
             self._log_gateway_audit(
                 request_id=request_id,
                 data=data,
                 started_at=started_at,
                 status="allowed",
-                policy_result="masked",
+                policy_result=policy_result,
                 call_type=call_type,
-                redaction_count=len(full_mapping),
+                redaction_count=len(pii_mapping),
                 entity_counts=entity_counts_for_log,
+                **self._dictionary_substitution_audit_fields(
+                    dictionary_rule_counts
+                ),
                 **self._synthetic_pii_allowlist_audit_fields(
                     synthetic_allowlist_findings
                 ),
@@ -2868,6 +3188,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 status="allowed",
                 policy_result="clean",
                 call_type=call_type,
+                **self._dictionary_substitution_audit_fields(
+                    dictionary_rule_counts
+                ),
                 **self._synthetic_pii_allowlist_audit_fields(
                     synthetic_allowlist_findings
                 ),

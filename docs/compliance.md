@@ -48,10 +48,23 @@
 одиночных технических идентификаторов и секретов внутри обычных prompt'ов. Оно
 не является full source-code secret scanning, не классифицирует бинарные
 attachments и не заменяет production egress allowlist из #38. Семейство
-`code-identifiers-companies` остаётся в scope #25 и связанных policy tasks,
-если потребуется dictionary substitution для названий внутренних систем,
-организаций или кодовых идентификаторов. #30 отвечает за структуру evidence
-gates, а не за добавление новых entity detectors.
+`code-identifiers-companies` частично покрывается reversible dictionary substitution:
+названия организаций и business terms можно заменять exact rules до Analyzer без
+ожидания NER-срабатывания. Для class names, env vars и code identifiers нужны
+явные operator rules в dictionary config; generic source-code rewriting остаётся вне
+scope recognizers.
+
+`business-dictionary-substitution` покрывает требования к детерминированной замене
+организаций, банков и продуктовых/проектных терминов перед provider egress. По
+умолчанию `DICTIONARY_SUBSTITUTIONS_ENABLED=true`, а
+`dictionary-substitutions.default.json` содержит seed из 10 крупных российских
+банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`,
+`Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`,
+`Совкомбанк`. Это business policy, не PII recognizer: replacement spans
+исключаются из последующего mask/block, combined restore mapping хранится в Redis
+с TTL `PII_MAPPING_TTL_SECONDS`, logs/metrics содержат только bounded `rule_id`
+и counts. Restore exact-match only; склонения, переводы и paraphrase не являются
+гарантированно обратимыми.
 
 `regulated-topic-block` покрывает требование не раскрывать внутренние AML/CFT /
 ПОД/ФТ меры внешним моделям. Это не является PII: запрос может описывать внутренние
@@ -63,8 +76,8 @@ bounded categories/rule ids/action type, а organization-specific confidential t
 добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`. Metric
 `ru_regulated_topic_policy_blocked_total` считает blocks по bounded `category` и
 `rule_id`; logs не содержат raw prompt или raw matched text. Mask и
-dictionary-substitute actions остаются scope #25, чтобы reversible substitution не
-смешивалась с broad topic blocking.
+dictionary-substitute actions не смешиваются с broad topic blocking: reversible
+dictionary substitution реализован отдельным exact-match слоем.
 
 `synthetic-fixtures` покрывает эксплуатационную потребность использовать заранее
 согласованные тестовые PII-значения в smoke/demo/checklist сценариях. Это narrow

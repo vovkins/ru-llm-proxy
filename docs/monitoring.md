@@ -148,6 +148,8 @@ make routing-smoke
 
 Проект добавляет собственные низкокардинальные метрики. Они не содержат пользовательский текст, request id, PII, raw matched text или raw placeholders.
 
+Dictionary substitutions включены по умолчанию через `DICTIONARY_SUBSTITUTIONS_ENABLED=true` и default file `dictionary-substitutions.default.json`. Если оператор подменяет `DICTIONARY_SUBSTITUTIONS_FILE` или задаёт `DICTIONARY_SUBSTITUTIONS_JSON`, мониторинг должен отслеживать всплески `dictionary_substitution_failed_closed`, `ru_dictionary_substitution_applied_total` по новым `rule_id` и отсутствие raw source/replacement values в логах.
+
 | Metric | Type | Labels | Назначение |
 | --- | --- | --- | --- |
 | `ru_pii_guardrail_pre_calls_total` | Counter | `result` | Итог pre-call: `masked`, `blocked`, `regulated_topic_policy_blocked`, `pre_egress_policy_blocked`, `final_payload_leak_check_blocked`, `clean`, `skipped`, `error` |
@@ -156,6 +158,7 @@ make routing-smoke
 | `ru_pii_guardrail_blocked_total` | Counter | `entity_type` | Количество заблокированных сущностей по типам в `PII_GUARDRAIL_MODE=block` |
 | `ru_regulated_topic_policy_blocked_total` | Counter | `category`, `rule_id` | Количество AML/CFT / ПОД/ФТ regulated-topic blocks по bounded categories и rule ids |
 | `ru_synthetic_pii_allowlist_hits_total` | Counter | `rule_id`, `entity_type` | Количество synthetic/test PII allowlist hits по bounded rule id и entity type; raw allowed values не являются labels |
+| `ru_dictionary_substitution_applied_total` | Counter | `rule_id` | Количество applied dictionary substitutions по bounded rule id; raw source/replacement values не являются labels |
 | `ru_pre_egress_policy_blocked_total` | Counter | `category` | Количество config/log payload blocks по bounded categories |
 | `ru_final_payload_leak_check_blocked_total` | Counter | `rule_id` | Количество final provider-bound leak-check blocks по bounded rule ids |
 | `ru_pii_guardrail_fail_open_total` | Counter | `operation` | Ошибки, после которых запрос продолжен в режиме `fail_open` |
@@ -163,8 +166,9 @@ make routing-smoke
 | `ru_pii_guardrail_analyzer_latency_seconds_*` | Histogram | none | Latency вызовов Presidio Analyzer |
 | `ru_pii_guardrail_redis_latency_seconds_*` | Histogram | `operation` | Latency Redis операций `save`, `load`, `delete` |
 | `ru_pii_guardrail_mapping_size_*` | Histogram | none | Количество placeholder mappings на masked request |
+| `ru_dictionary_substitution_mapping_size_*` | Histogram | none | Количество reversible dictionary mappings на substituted request |
 
-PII guardrail метрики появятся в `/metrics` после первого запроса, который прошёл через guardrail.
+PII guardrail и dictionary substitution метрики появятся в `/metrics` после первого запроса, который прошёл через guardrail.
 
 ## Presidio Analyzer Metrics
 
@@ -305,8 +309,9 @@ raw input text, raw entity values, offsets, API keys или proxy tokens.
 | Event | Уровень | Поля |
 | --- | --- | --- |
 | `presidio_analyzer_request` | `INFO` | `event_id`, `outcome`, `latency_ms`, `entity_count`, `entity_counts`, `language`, `score_threshold`, `ner`, `capacity`, optional `failure_reason` |
-| `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `regulated_topic_policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
+| `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `regulated_topic_policy_mode`, `dictionary_substitutions_enabled`, `policy_result`, `redaction_count`, `entity_counts`, optional `dictionary_substitution_rules`, `dictionary_substitution_rule_counts`, `dictionary_substitution_count`, `block_reason`, `error_code`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
+| `dictionary_substitution_applied` | `INFO` | `request_id`, `rules`, `rule_counts`, `substitution_count`, `mapping_size`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
 | `synthetic_pii_allowlist_applied` | `INFO` | `request_id`, `rules`, `entity_counts`, `rule_counts`, `hit_count` |
 | `regulated_topic_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `finding_count` |
@@ -317,6 +322,9 @@ raw input text, raw entity values, offsets, API keys или proxy tokens.
 | `pii_guardrail_no_mapping` | `INFO` | `request_id` |
 | `pii_guardrail_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |
 | `pii_guardrail_failed_closed` | `ERROR` | `operation`, `failure_mode`, `error_type` |
+| `dictionary_substitution_failed_open` | `ERROR` | `operation`, `failure_mode`, `error_type` |
+| `dictionary_substitution_failed_closed` | `ERROR` | `operation`, `failure_mode`, `error_type` |
+| `dictionary_substitution_config_invalid` | `ERROR` | `failure_mode`, `error_type` |
 | `pii_guardrail_analyzer_overloaded` | `ERROR` | `failure_mode`, `reason` |
 | `pii_guardrail_cleanup_failed` | `WARNING` | `request_id`, `error_type` |
 | `pii_guardrail_unsupported_response` | `WARNING` | `request_id`, `response_type`, `mapping_size` |
