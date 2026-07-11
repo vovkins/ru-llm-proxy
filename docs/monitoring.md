@@ -218,6 +218,12 @@ Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded
 
 Guardrail пишет structured JSON logs без prompt text и без raw PII.
 Поле `request_id` в PII mask/block/restore событиях — server-generated PII mapping id из `metadata.pii_request_id`, а не клиентский `metadata.request_id`.
+Для gateway-level мониторинга используйте событие `gateway_guardrail_audit`: оно
+пишется один раз на pre-call решение и содержит общий safe-контракт для
+дашбордов и алертов: `request_id`, `model`, `status`, `latency_ms`,
+`guardrail_mode`, `call_type`, `policy_mode`, `policy_result`,
+`redaction_count`, `entity_counts`, а для блокировок/ошибок также
+`block_reason`, `error_code`, bounded `categories`/`rules` и counts.
 При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked` фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side mutation и до provider call. В логах остаются только bounded rule ids и counts; raw matched values, prompt snippets, offsets, provider keys и mapping contents не пишутся.
 
@@ -225,6 +231,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 
 | Event | Уровень | Поля |
 | --- | --- | --- |
+| `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
 | `pre_egress_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `category_counts`, `finding_count` |
@@ -241,7 +248,8 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 DevOps-рекомендации:
 
 - собирать stdout/stderr всех контейнеров через штатный log collector;
-- парсить JSON logs guardrail как отдельный источник security telemetry;
+- парсить `gateway_guardrail_audit` как основной vendor-neutral источник security telemetry;
+- использовать `policy_result`, `status`, `error_code` и bounded `rules`/`categories` для дашбордов; raw prompt/PII в logs отсутствуют намеренно;
 - не включать debug-логи внешнего LLM provider в production без отдельного privacy review;
 - хранить `request_id` как guardrail mapping id, но не использовать его как Prometheus label.
 

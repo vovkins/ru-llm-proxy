@@ -72,6 +72,18 @@ def _status_code_from_exception(error):
     return error.response.status_code
 
 
+def _json_log_events(caplog, event):
+    events = []
+    for record in caplog.records:
+        try:
+            payload = json.loads(record.getMessage())
+        except json.JSONDecodeError:
+            continue
+        if payload.get("event") == event:
+            events.append(payload)
+    return events
+
+
 @pytest.fixture
 def guardrail():
     """Create a guardrail instance with mocked Redis."""
@@ -1030,6 +1042,120 @@ class TestPreCallHook:
         assert "+79031234567" not in logs
 
     @pytest.mark.asyncio
+    async def test_gateway_audit_for_masked_request_has_required_fields(
+        self,
+        guardrail,
+        caplog,
+    ):
+        text = "Мой телефон +79031234567"
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": text}],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with patch.object(guardrail, "_save_mapping", AsyncMock()):
+                with caplog.at_level(
+                    logging.INFO,
+                    logger="litellm_guardrails.pii_guardrail",
+                ):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                        call_type="chat_completion",
+                    )
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        uuid.UUID(event["request_id"])
+        assert event["model"] == "glm-5.1"
+        assert event["status"] == "allowed"
+        assert event["policy_result"] == "masked"
+        assert event["guardrail_mode"] == "pre_call"
+        assert event["call_type"] == "chat_completion"
+        assert event["policy_mode"] == "mask"
+        assert event["pre_egress_policy_mode"] == "block"
+        assert event["final_payload_leak_check_mode"] == "block"
+        assert event["failure_mode"] == "fail_open"
+        assert event["redaction_count"] == 1
+        assert event["entity_counts"] == {"PHONE_NUMBER": 1}
+        assert event["latency_ms"] >= 0
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "+79031234567" not in logs
+
+    @pytest.mark.asyncio
+    async def test_gateway_audit_for_clean_request(self, guardrail, caplog):
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Суммируй релиз"}],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result == data
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "allowed"
+        assert event["policy_result"] == "clean"
+        assert event["redaction_count"] == 0
+        assert event["entity_counts"] == {}
+        assert "error_code" not in event
+
+    @pytest.mark.asyncio
+    async def test_gateway_audit_for_fail_open_error_is_safe(self, caplog):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Обычный текст"}],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(side_effect=RuntimeError("analyzer down")),
+        ):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result == data
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "allowed"
+        assert event["policy_result"] == "fail_open"
+        assert event["error_code"] == "guardrail_fail_open"
+        assert event["failure_operation"] == "masking"
+        assert event["error_type"] == "RuntimeError"
+        assert "Обычный текст" not in "\n".join(
+            record.getMessage() for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
     async def test_pre_egress_blocks_env_payload_before_analyzer_and_redis(self):
         guardrail = RuPIIGuardrail()
         guardrail._redis = _mock_redis()
@@ -1657,6 +1783,19 @@ class TestPreCallHook:
         assert "local-secret" not in logs
         assert payload not in logs
 
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "blocked"
+        assert event["policy_result"] == "pre_egress_policy_blocked"
+        assert event["block_reason"] == "pre_egress_policy_violation"
+        assert event["error_code"] == "pre_egress_policy_blocked"
+        assert event["categories"] == ["config"]
+        assert event["rules"] == ["env_secret_assignment"]
+        assert event["category_counts"] == {"config": 1}
+        assert event["finding_count"] == 1
+        assert event["redaction_count"] == 0
+
     @pytest.mark.asyncio
     async def test_pre_egress_allows_clean_prompt_and_still_runs_analyzer(self):
         guardrail = RuPIIGuardrail()
@@ -1791,6 +1930,18 @@ class TestPreCallHook:
         assert "final_payload_leak_check_blocked" in logs
         assert "configured_canary" in logs
         assert canary not in logs
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "blocked"
+        assert event["policy_result"] == "final_payload_leak_check_blocked"
+        assert event["block_reason"] == "final_payload_leak_check_violation"
+        assert event["error_code"] == "final_payload_leak_check_blocked"
+        assert event["rules"] == ["configured_canary"]
+        assert event["rule_counts"] == {"configured_canary": 1}
+        assert event["finding_count"] == 1
+        assert event["redaction_count"] == 0
 
     @pytest.mark.asyncio
     async def test_final_payload_leak_check_blocks_responses_input_canary(self):
@@ -2811,6 +2962,16 @@ class TestPreCallHook:
         assert "pii_guardrail_blocked" in logs
         assert "PHONE_NUMBER" in logs
         assert "+79031234567" not in logs
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["status"] == "blocked"
+        assert event["policy_result"] == "pii_blocked"
+        assert event["block_reason"] == "pii_detected"
+        assert event["error_code"] == "pii_blocked"
+        assert event["entity_counts"] == {"PHONE_NUMBER": 1}
+        assert event["redaction_count"] == 0
 
     @pytest.mark.asyncio
     async def test_block_mode_keeps_prior_pii_block_when_later_analysis_fails(self):
