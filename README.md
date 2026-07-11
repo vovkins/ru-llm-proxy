@@ -21,6 +21,7 @@ LLM-прокси для командной работы с внешними LLM 
 - Counterparty and bank-requisite recognizers: `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`.
 - Infrastructure/secret recognizers: `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD`.
 - Production egress-control guidance and Kubernetes/Cilium templates for deny-by-default runtime networking: [docs/egress-controls.md](docs/egress-controls.md), [deploy/kubernetes/egress](deploy/kubernetes/egress).
+- Production admin/operator access guidance: [docs/admin-access.md](docs/admin-access.md) separates client virtual keys, upstream provider keys, Admin UI credentials and `LITELLM_MASTER_KEY`.
 - Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
 ⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются. Synthetic/test PII allowlist не является механизмом пропуска production PII и должен содержать только контролируемые тестовые значения. Regulated-topic policy в первой версии block-only: mask/dictionary-substitute actions остаются будущим расширением после #25.
@@ -188,6 +189,7 @@ RESPONSES_MODEL=...             # опциональный live-validated alias 
 MESSAGES_MODEL=...              # опциональный live-validated alias для strict /v1/messages smoke
 UI_USERNAME=admin               # автогенерируется через make setup
 UI_PASSWORD=...                 # автогенерируется через make setup
+DISABLE_ADMIN_UI=False          # set True for API-only production deployments
 POSTGRES_PASSWORD=...           # автогенерируется через make setup
 LITELLM_DB_URL=postgresql://litellm:...@db:5432/litellm
 REDIS_URL=redis://redis:6379
@@ -218,7 +220,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `SYNTHETIC_PII_ALLOWLIST_MODE`, `SYNTHETIC_PII_ALLOWLIST_JSON`, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, `DISABLE_ADMIN_UI`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `SYNTHETIC_PII_ALLOWLIST_MODE`, `SYNTHETIC_PII_ALLOWLIST_JSON`, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -544,6 +546,14 @@ http://localhost:4000/ui
 Для входа используются `UI_USERNAME` и `UI_PASSWORD` из `.env`. Это отдельные credentials для UI; `LITELLM_MASTER_KEY` остаётся admin API key и не должен выдаваться пользователям.
 
 Через UI можно создавать virtual keys для пользователей, смотреть usage/spend и управлять ключами. Пользователям выдавайте virtual keys, а не `LITELLM_MASTER_KEY`.
+
+Production Admin UI/API нельзя считать защищёнными только за счёт shared `UI_USERNAME` / `UI_PASSWORD` или `LITELLM_MASTER_KEY`. В production закрывайте `/ui` и admin API routes внешней operator boundary: SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy или private network. Для API-only deployment можно отключить UI:
+
+```env
+DISABLE_ADMIN_UI=True
+```
+
+Подробный runbook: [docs/admin-access.md](docs/admin-access.md).
 
 Основной путь управления пользователями и ключами — LiteLLM Admin UI. CLI-helper остаётся вспомогательным путём для DevOps/CI/bootstrap/runbook-сценариев, когда UI недоступен или нужен автоматический short-lived key:
 

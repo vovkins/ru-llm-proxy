@@ -20,6 +20,7 @@ make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anth
 ```
 
 `LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
+Production Admin UI/API boundary, operator roles and credential rotation are covered in [admin-access.md](admin-access.md).
 
 ## Режимы авторизации
 
