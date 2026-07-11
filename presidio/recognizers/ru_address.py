@@ -22,15 +22,16 @@ _UNIT_AFTER_HOUSE_NUMBER = (
     r"(?![ \t]*(?:[%₽]|руб\.?|рубл(?:ь|я|ей|ю|ем)?|"
     r"коп\.?|копе(?:йка|йки|ек)|км\b|м\b))"
 )
-_HOUSE_NUMBER = (
+_HOUSE_BARE_NUMBER = (
     rf"\d+{_UNIT_AFTER_HOUSE_NUMBER}[а-яё]?"
     rf"(?![0-9А-Яа-яЁё-]){_COUNT_NOUN_AFTER_HOUSE}"
 )
-_HOUSE_EXPLICIT = rf"[,\.]?[ \t]*(?:д\.|дом)[ \t]*{_HOUSE_NUMBER}"
-_HOUSE_BARE = rf"[,\.]?[ \t]*{_HOUSE_NUMBER}"
+_HOUSE_EXPLICIT_NUMBER = r"\d+(?:[-–/]\d+)?[а-яё]?(?![0-9А-Яа-яЁё-])"
+_HOUSE_EXPLICIT = rf"[,\.]?[ \t]*(?:д\.?|дом)[ \t]*{_HOUSE_EXPLICIT_NUMBER}"
+_HOUSE_BARE = rf"[,\.]?[ \t]*{_HOUSE_BARE_NUMBER}"
 _CITY_PREFIX = (
     _LEFT_TOKEN_BOUNDARY
-    + rf"(?:г\.|гор\.|пос\.|с\.|дер\.)[ \t]*{_NAME_WORD_CAPITALIZED}[ \t,]+"
+    + rf"(?:г\.|гор\.|пос\.|с\.|дер\.)[ \t]*{_NAME_WORD}[ \t,]+"
 )
 _STREET_TYPE_PREFIX = (
     _LEFT_TOKEN_BOUNDARY
@@ -47,7 +48,7 @@ class RuAddressRecognizer(PatternRecognizer):
         # Full address with street, house, apartment
         Pattern(
             name="ru_address_full",
-            regex=rf"(?:{_CITY_PREFIX})?{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORDS}{_HOUSE_EXPLICIT}[ \t]*(?:[,/][ \t]*(?:корп\.|корпус|стр\.)[ \t]*\d+[а-яё]?)?(?:[ \t]*[,\.]?[ \t]*(?:кв\.|квартира|оф\.|офис)[ \t]*\d+)?",
+            regex=rf"(?:{_CITY_PREFIX})?{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORDS}{_HOUSE_EXPLICIT}[ \t]*(?:[,/][ \t]*(?:корп\.?|корпус|стр\.?)[ \t]*\d+[а-яё]?)?(?:[ \t]*[,\.]?[ \t]*(?:кв\.?|квартира|оф\.?|офис)[ \t]*\d+)?",
             score=0.7,
         ),
         # Street + explicit house without apartment.
@@ -59,7 +60,7 @@ class RuAddressRecognizer(PatternRecognizer):
         # Street + bare house: stricter to avoid ordinary prose like "улица ... 10 лет".
         Pattern(
             name="ru_address_street_house_bare",
-            regex=rf"{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORD_CAPITALIZED}{_HOUSE_BARE}",
+            regex=rf"{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORDS_CAPITALIZED}{_HOUSE_BARE}",
             score=0.3,
         ),
         # Street name followed by type and house number: "Тверская улица, дом 7"
@@ -71,7 +72,7 @@ class RuAddressRecognizer(PatternRecognizer):
         # City/town + street
         Pattern(
             name="ru_address_city_street",
-            regex=rf"{_CITY_PREFIX}{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORDS_CAPITALIZED}",
+            regex=rf"{_CITY_PREFIX}{_STREET_TYPE_PREFIX}[ \t]*{_NAME_WORDS}",
             score=0.6,
         ),
     ]
