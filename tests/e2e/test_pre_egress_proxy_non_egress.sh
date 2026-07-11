@@ -172,6 +172,17 @@ expect_no_provider_posts() {
     expect_json_value "$file" provider_request_paths '[]'
 }
 
+assert_litellm_logs_do_not_contain() {
+    local forbidden="$1"
+    local logs_file="$tmp_dir/litellm-logs.txt"
+
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --no-color litellm >"$logs_file"
+    if grep -Fq -- "$forbidden" "$logs_file"; then
+        echo "LiteLLM logs leaked forbidden value: $forbidden" >&2
+        exit 1
+    fi
+}
+
 run_clean_case() {
     local name="$1"
     local path="$2"
@@ -224,6 +235,7 @@ run_blocked_case() {
     capture_counts "$capture_file"
     expect_json_value "$capture_file" analyzer_requests 0
     expect_no_provider_posts "$capture_file"
+    assert_litellm_logs_do_not_contain "$forbidden"
 }
 
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d
@@ -286,5 +298,13 @@ run_blocked_case \
     "config" \
     "env_secret_assignment" \
     "local-password"
+
+run_blocked_case \
+    "blocked-chat-access-log" \
+    "/v1/chat/completions" \
+    '{"model":"mock-chat","messages":[{"role":"user","content":"10.0.0.5 - - [10/Jul/2026:10:00:00 +0000] \"POST /internal/secret HTTP/1.1\" 401 123 \"-\" \"curl/8.0\""}]}' \
+    "log" \
+    "log_or_stacktrace_payload" \
+    "/internal/secret"
 
 echo "pre-egress proxy non-egress smoke passed"

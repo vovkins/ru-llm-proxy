@@ -426,6 +426,8 @@ make routing-smoke
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
 | `make test-pre-egress-proxy` | Docker smoke с mock provider: pre-egress block не доходит до Analyzer/provider |
 | `make test-final-leak-proxy` | Docker smoke с mock provider: final leak-check не доходит до provider после Analyzer miss |
+| `make test-egress-security` | Docker egress-security gate: mock provider capture доказывает no raw provider egress |
+| `make test-observability-gates` | Lightweight observability/audit gate checks |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и базовые `/v1` protocol smokes |
@@ -555,6 +557,27 @@ smoke-owned `pii_mapping:*` ключей с уникальным PII-марке�
 
 LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`. Для production monitoring используйте `/metrics`, health checks и structured logs.
 
+## Compliance Evidence
+
+Проверки разделены на три контура: egress-security, observability и live-provider
+smoke. Для доказательства отсутствия raw provider egress используйте mock-provider
+контур:
+
+```bash
+make test-egress-security
+```
+
+Для lightweight проверки observability/audit wiring:
+
+```bash
+make test-observability-gates
+```
+
+Live smoke (`make guardrails-smoke`, `make test-e2e`, `make routing-smoke`) проверяет
+совместимость с реальным LiteLLM/provider flow, но не доказывает отсутствие утечки,
+потому что фактический provider-bound payload внешнего провайдера проект не
+захватывает. Подробная карта evidence gates: [docs/compliance.md](docs/compliance.md).
+
 ## Monitoring
 
 Prometheus включён через `litellm_settings.callbacks: ["prometheus"]`. Метрики доступны на:
@@ -625,6 +648,8 @@ make test-recognizer-api  # API-level Analyzer recognizer tests; отдельн�
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM
 make test-routing-diagnostics
+make test-egress-security # Docker mock-provider egress-security gate
+make test-observability-gates # lightweight observability/audit gate checks
 make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
 make routing-smoke    # live sticky routing smoke; нужны make up и provider key
 make client-auth-smoke # live проверка virtual keys и базовых /v1 protocol smokes
@@ -632,7 +657,7 @@ RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL
 # fail, если нет provider key или live-validated model alias для любого /v1 протокола
 ```
 
-`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры.
+`make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-egress-security` использует mock provider capture и доказывает, что raw test values не попадают в provider-bound payload. `make test-observability-gates` проверяет lightweight audit/observability wiring и safe-log assertions. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры, а сам live smoke не является leakage proof.
 
 ## Troubleshooting
 

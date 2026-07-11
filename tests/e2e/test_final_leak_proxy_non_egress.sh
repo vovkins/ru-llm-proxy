@@ -124,6 +124,17 @@ expect_provider_paths() {
     expect_json_value "$file" provider_request_paths "$expected"
 }
 
+assert_litellm_logs_do_not_contain() {
+    local forbidden="$1"
+    local logs_file="$tmp_dir/litellm-logs.txt"
+
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --no-color litellm >"$logs_file"
+    if grep -Fq -- "$forbidden" "$logs_file"; then
+        echo "LiteLLM logs leaked forbidden value: $forbidden" >&2
+        exit 1
+    fi
+}
+
 expect_safe_block_body() {
     local body_file="$1"
     local forbidden="$2"
@@ -141,6 +152,7 @@ expect_safe_block_body() {
         cat "$body_file" >&2
         exit 1
     fi
+    assert_litellm_logs_do_not_contain "$forbidden"
 }
 
 expect_final_block_no_provider() {
@@ -453,5 +465,6 @@ if grep -Fq -- "$RAW_PHONE" "$masked_body"; then
     cat "$masked_body" >&2
     exit 1
 fi
+assert_litellm_logs_do_not_contain "$RAW_PHONE"
 
 echo "final payload leak-check proxy non-egress smoke passed"
