@@ -18,21 +18,22 @@
 1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
 2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
 3. Guardrail собирает provider-bound строковые поля: `message.content`, Anthropic top-level `system` string/text blocks, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-4. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании guardrail возвращает безопасную `422` ошибку до `POST /api/v1/analyze`, Redis mapping save и provider egress.
-5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
-6. Analyzer возвращает entity spans, entity types и scores.
-7. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
-8. Guardrail применяет masked text к provider-bound request fields.
-9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
-10. При final-check block guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
-11. Если final-check чистый, guardrail генерирует server-side `pii_request_id` и сохраняет placeholder -> original mappings в Redis. Если Redis save падает в `fail_open`, guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
-12. LiteLLM отправляет masked request настроенному LLM-провайдеру.
-13. LiteLLM запускает ru-pii-mask-post в режиме post_call.
-14. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-15. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders в `delta.content` и `delta.reasoning_content` с учетом разрыва placeholder между чанками.
-16. Redis mapping удаляется после post-call или streaming-iterator обработки.
+4. Pre-egress regulated-topic policy, если включён, проверяет high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass темы. При срабатывании guardrail возвращает безопасную `422` ошибку до `POST /api/v1/analyze`, Redis mapping save и provider egress.
+5. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании guardrail возвращает безопасную `422` ошибку до `POST /api/v1/analyze`, Redis mapping save и provider egress.
+6. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
+7. Analyzer возвращает entity spans, entity types и scores.
+8. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке исходного текста.
+9. Guardrail применяет masked text к provider-bound request fields.
+10. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
+11. При final-check block guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
+12. Если final-check чистый, guardrail генерирует server-side `pii_request_id` и сохраняет placeholder -> original mappings в Redis. Если Redis save падает в `fail_open`, guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
+13. LiteLLM отправляет masked request настроенному LLM-провайдеру.
+14. LiteLLM запускает ru-pii-mask-post в режиме post_call.
+15. Guardrail загружает Redis mapping и заменяет placeholders в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+16. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders в `delta.content` и `delta.reasoning_content` с учетом разрыва placeholder между чанками.
+17. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
-В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 6, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
+В `PII_GUARDRAIL_MODE=block` поток заканчивается на шаге 7, если PII найдена: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
 ```
 
 Пример трансформации:
@@ -64,6 +65,12 @@ guardrails:
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+        - name: "regulated_topic_policy_mode"
+          type: "string"
+          description: "REGULATED_TOPIC_POLICY_MODE: off by default; block rejects high-confidence AML/CFT, sanctions-screening, transaction-monitoring, suspicious-activity, and compliance-bypass topics before Presidio analysis and provider calls."
+        - name: "regulated_topic_policy_extra_rules"
+          type: "string"
+          description: "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON: optional operator-defined block-only regex rules with bounded category, rule_id, action, pattern, and flags fields."
         - name: "pre_egress_policy_mode"
           type: "string"
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
@@ -126,7 +133,7 @@ litellm_settings:
   drop_params: true
 ```
 
-Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size. Structured logs guardrail пишутся в JSON без prompt text и без raw PII. Подробный DevOps guide: [monitoring.md](monitoring.md).
+Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size, а также `ru_regulated_topic_policy_blocked_total` для regulated-topic blocks. Structured logs guardrail пишутся в JSON без prompt text, raw PII и raw matched text. Подробный DevOps guide: [monitoring.md](monitoring.md).
 
 References:
 
@@ -197,6 +204,16 @@ Guardrail поддерживает два режима через `PII_GUARDRAIL
 | `fail_closed` | При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
 
 TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
+
+## Regulated-topic policy
+
+`REGULATED_TOPIC_POLICY_MODE=block` включает conservative block-only policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем. По умолчанию режим `off`, потому что включение широкой business/compliance блокировки должно быть deployment decision.
+
+Этот слой не является PII recognizer: он не создаёт entity spans, placeholders или Redis mapping и не участвует в response restoration. Он работает после сбора request text targets, но до `POST /api/v1/analyze`, pre-egress config/log policy, Redis mapping save и provider egress.
+
+Public defaults содержат только rule ids/categories/action type `block`, без organization-specific confidential terms. Operator-defined block-only rules добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`; они также логируются только через bounded `category`, `rule_id`, `action` и counts. При срабатывании guardrail возвращает `422` с `code=regulated_topic_policy_blocked`; тело ответа, `gateway_guardrail_audit`, metric `ru_regulated_topic_policy_blocked_total` и structured logs не содержат raw prompt, raw matched text, snippets или offsets.
+
+Mask и dictionary-substitute actions не включены в первую версию. Их стоит добавлять только вместе с reversible dictionary substitution из #25.
 
 ## Pre-egress config/log policy
 

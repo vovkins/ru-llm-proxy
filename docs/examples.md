@@ -374,6 +374,45 @@ make restart
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
 
+## Regulated-topic policy
+
+`REGULATED_TOPIC_POLICY_MODE=off` по умолчанию. Это отдельный policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем; он не является PII recognizer, не маскирует entity spans и не создаёт Redis mapping.
+
+Чтобы включить conservative block-only режим:
+
+```env
+REGULATED_TOPIC_POLICY_MODE=block
+```
+
+```bash
+docker compose up -d --force-recreate --no-deps litellm
+```
+
+При срабатывании запрос не отправляется в Analyzer и провайдеру:
+
+```json
+{
+  "error": {
+    "message": "Request contains regulated internal compliance content and was blocked by regulated-topic policy.",
+    "type": "regulated_topic_policy_violation",
+    "code": "regulated_topic_policy_blocked",
+    "details": {
+      "categories": ["sanctions_screening"],
+      "rules": ["sanctions_watchlist_matching"],
+      "actions": ["block"]
+    }
+  }
+}
+```
+
+Ответ, structured logs, `gateway_guardrail_audit` и метрика `ru_regulated_topic_policy_blocked_total` содержат только bounded categories/rule ids/actions/counts, без raw prompt, raw matched text, snippets или offsets. Public defaults не содержат organization-specific confidential terms. Если нужны внутренние правила, добавьте operator-defined block-only regex rules через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`.
+
+```env
+REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=[{"category":"internal_watchlist","rule_id":"custom_watchlist_codename","action":"block","pattern":"PROJECT_MARS_WATCHLIST","flags":"i"}]
+```
+
+Mask и dictionary-substitute actions в первой версии не включены; они должны добавляться отдельно вместе с reversible dictionary substitution из #25.
+
 ## Pre-egress config/log policy
 
 `PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio Analyzer. Он останавливает целые operational payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces.
