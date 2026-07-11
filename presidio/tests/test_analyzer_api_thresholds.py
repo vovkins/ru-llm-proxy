@@ -11,6 +11,14 @@ from fastapi.testclient import TestClient
 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 
 from presidio import analyzer_server
+from recognizers.ru_bank_requisites import (
+    RuBikRecognizer,
+    RuCorrespondentAccountRecognizer,
+    RuKppRecognizer,
+    RuOgrnRecognizer,
+    RuOgrnipRecognizer,
+    RuSettlementAccountRecognizer,
+)
 from recognizers.ru_address import RuAddressRecognizer
 from recognizers.ru_inn import RuInnRecognizer
 
@@ -58,7 +66,13 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
     response = client.post(
         "/api/v1/analyze",
         json={
-            "text": "ИНН: 500100732259. Адрес регистрации: ул Ленина 10",
+            "text": (
+                "ИНН: 500100732259. "
+                "Адрес регистрации: ул Ленина 10. "
+                "ОГРН 1027700132195. "
+                "БИК 044525225. "
+                "Расчетный счет 40702810900000000000"
+            ),
             "language": "ru",
             "score_threshold": 0.35,
         },
@@ -71,6 +85,96 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
         "ул Ленина 10" in address
         for address in _entity_texts(entities, "RU_ADDRESS")
     )
+    assert _entity_texts(entities, "RU_OGRN") == ["1027700132195"]
+    assert _entity_texts(entities, "RU_BIK") == ["044525225"]
+    assert _entity_texts(entities, "RU_SETTLEMENT_ACCOUNT") == [
+        "40702810900000000000"
+    ]
+
+
+class TestAnalyzerCounterpartyRequisiteThresholdPolicy:
+    def test_detects_counterparty_and_bank_requisites_with_context(self, monkeypatch):
+        analyzer = _build_analyzer(
+            RuKppRecognizer(),
+            RuOgrnRecognizer(),
+            RuOgrnipRecognizer(),
+            RuBikRecognizer(),
+            RuSettlementAccountRecognizer(),
+            RuCorrespondentAccountRecognizer(),
+        )
+        text = (
+            "Реквизиты: КПП 770801001, ОГРН 1027700132195, "
+            "ОГРНИП 304500116000157, БИК 044525225, "
+            "расчетный счет 40702810900000000000, "
+            "к/с 30101810400000000225."
+        )
+
+        entities = _api_entities(monkeypatch, analyzer, text)
+
+        assert _entity_texts(entities, "RU_KPP") == ["770801001"]
+        assert _entity_texts(entities, "RU_OGRN") == ["1027700132195"]
+        assert _entity_texts(entities, "RU_OGRNIP") == ["304500116000157"]
+        assert _entity_texts(entities, "RU_BIK") == ["044525225"]
+        assert _entity_texts(entities, "RU_SETTLEMENT_ACCOUNT") == [
+            "40702810900000000000"
+        ]
+        assert _entity_texts(entities, "RU_CORRESPONDENT_ACCOUNT") == [
+            "30101810400000000225"
+        ]
+
+    @pytest.mark.parametrize(
+        "text, entity_type",
+        [
+            ("770801001", "RU_KPP"),
+            ("044525225", "RU_BIK"),
+            ("40702810900000000000", "RU_SETTLEMENT_ACCOUNT"),
+            ("30101810400000000225", "RU_CORRESPONDENT_ACCOUNT"),
+        ],
+    )
+    def test_context_bound_requisites_do_not_match_bare_digit_runs(
+        self,
+        monkeypatch,
+        text,
+        entity_type,
+    ):
+        analyzer = _build_analyzer(
+            RuKppRecognizer(),
+            RuBikRecognizer(),
+            RuSettlementAccountRecognizer(),
+            RuCorrespondentAccountRecognizer(),
+        )
+
+        entities = _api_entities(monkeypatch, analyzer, text)
+
+        assert _entity_texts(entities, entity_type) == []
+
+    @pytest.mark.parametrize(
+        "text, entity_type",
+        [
+            ("ОГРН 1027700132196", "RU_OGRN"),
+            ("ОГРНИП 304500116000158", "RU_OGRNIP"),
+            (
+                "Расчетный счет 40702810900000000001, БИК 044525225",
+                "RU_SETTLEMENT_ACCOUNT",
+            ),
+            (
+                "БИК 044525225, к/с 30101810400000000226",
+                "RU_CORRESPONDENT_ACCOUNT",
+            ),
+        ],
+    )
+    def test_invalid_checksums_are_rejected(self, monkeypatch, text, entity_type):
+        analyzer = _build_analyzer(
+            RuOgrnRecognizer(),
+            RuOgrnipRecognizer(),
+            RuBikRecognizer(),
+            RuSettlementAccountRecognizer(),
+            RuCorrespondentAccountRecognizer(),
+        )
+
+        entities = _api_entities(monkeypatch, analyzer, text)
+
+        assert _entity_texts(entities, entity_type) == []
 
 
 class TestAnalyzerInnThresholdPolicy:

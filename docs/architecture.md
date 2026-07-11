@@ -233,7 +233,7 @@ Analyzer имеет явную process-local capacity model:
 
 | Источник | Entity types |
 | --- | --- |
-| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
+| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
 | DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
 
 ### Recognizer Threshold Policy
@@ -241,6 +241,8 @@ Analyzer имеет явную process-local capacity model:
 Analyzer API по умолчанию использует `score_threshold=0.35`. Для `RU_INN` checksum validation всегда обязательна: невалидный контрольный разряд не детектируется даже рядом с контекстом. Настройка `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` включает более sensitive default для 12-digit INN: checksum-valid bare 12-digit INN без контекстного слова проходит `score_threshold=0.35`. Bare 10-digit INN остаётся ниже threshold даже в default mode, потому что checksum пропускает слишком много случайных 10-значных чисел.
 
 Если `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, включается strict mode: любой голый ИНН остаётся ниже `score_threshold=0.35`, а детекция требует контекст вроде `ИНН`, `индивидуальный номер налогоплательщика`, `налоговый`, `КПП` или `ОГРН`. Это снижает false positives для длинных числовых последовательностей, но может пропустить bare INN в коротких prompt'ах.
+
+Counterparty/bank-requisite recognizers also use conservative thresholds. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` and `RU_CORRESPONDENT_ACCOUNT` require explicit context such as `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` or `к/с`; bare 9- and 20-digit runs stay below `score_threshold=0.35`. `RU_OGRN` and `RU_OGRNIP` are checksum-gated. Settlement and correspondent account recognizers validate the Russian account control key when a contextual BIK is nearby; without BIK they rely on strong context and structural constraints. The Analyzer does not perform online lookup in the Bank of Russia BIK directory.
 
 `RU_ADDRESS` intentionally limited: это regex recognizer для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Street-type сокращения требуют границу слева, а форма `name + type + number` требует явное `дом`/`д.`, чтобы не ловить обычные фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`. Unsupported/ограниченные случаи: полный парсинг индексов, регионов, владений, корпусов без улицы, свободные адреса без street/house structure и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
 

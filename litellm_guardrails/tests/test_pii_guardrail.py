@@ -543,6 +543,23 @@ class TestMaskText:
             "RU_INN": 1,
         }
 
+    def test_masks_custom_requisite_entity_names(self, guardrail):
+        text = "БИК 044525225, расчетный счет 40702810900000000000"
+        entities = [
+            _entity(text, "044525225", "RU_BIK"),
+            _entity(text, "40702810900000000000", "RU_SETTLEMENT_ACCOUNT"),
+        ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == (
+            "БИК <RU_BIK_1>, расчетный счет <RU_SETTLEMENT_ACCOUNT_1>"
+        )
+        assert mapping == {
+            "<RU_BIK_1>": "044525225",
+            "<RU_SETTLEMENT_ACCOUNT_1>": "40702810900000000000",
+        }
+
 
 # === _save_mapping / _load_mapping ===
 
@@ -2807,6 +2824,40 @@ class TestPreCallHook:
             }
         }
         assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_bank_requisites_without_raw_values(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = "БИК 044525225, расчетный счет 40702810900000000000"
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "044525225", "RU_BIK"),
+                _entity(text, "40702810900000000000", "RU_SETTLEMENT_ACCOUNT"),
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == text
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "pii_blocked"
+        assert error_body["error"]["details"]["entities"] == [
+            "RU_BIK",
+            "RU_SETTLEMENT_ACCOUNT",
+        ]
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "044525225" not in serialized
+        assert "40702810900000000000" not in serialized
 
     @pytest.mark.asyncio
     async def test_block_mode_rejects_pii_in_text_content_blocks_without_mutating(self):

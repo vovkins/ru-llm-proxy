@@ -7,6 +7,14 @@ from recognizers.ru_snils import RuSnilsRecognizer
 from recognizers.ru_passport import RuPassportRecognizer
 from recognizers.ru_bank_card import RuBankCardRecognizer
 from recognizers.ru_address import RuAddressRecognizer
+from recognizers.ru_bank_requisites import (
+    RuBikRecognizer,
+    RuCorrespondentAccountRecognizer,
+    RuKppRecognizer,
+    RuOgrnRecognizer,
+    RuOgrnipRecognizer,
+    RuSettlementAccountRecognizer,
+)
 
 ALL_RECOGNIZERS = [
     RuPhoneRecognizer,
@@ -16,4 +24,10 @@ ALL_RECOGNIZERS = [
     RuPassportRecognizer,
     RuBankCardRecognizer,
     RuAddressRecognizer,
+    RuKppRecognizer,
+    RuOgrnRecognizer,
+    RuOgrnipRecognizer,
+    RuBikRecognizer,
+    RuSettlementAccountRecognizer,
+    RuCorrespondentAccountRecognizer,
 ]
