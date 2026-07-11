@@ -222,6 +222,8 @@ Analyzer имеет явную process-local capacity model:
 | `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Количество активных analyzer jobs внутри одного worker. Default `1` избегает параллельного доступа к одной DeepPavlov model instance. |
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Максимум запросов, ожидающих свободный slot внутри worker. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Максимальное ожидание slot перед `503 analyzer_overloaded`. |
+| `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Internal suffix allowlist для `INTERNAL_DOMAIN`. |
+| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | Опционально считать global public IP чувствительными наряду с internal/private ranges. |
 
 Эффективная ёмкость активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память планируйте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`, потому что uvicorn workers не шарят загруженный DeepPavlov model instance.
 
@@ -233,7 +235,7 @@ Analyzer имеет явную process-local capacity model:
 
 | Источник | Entity types |
 | --- | --- |
-| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS` |
+| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS`, `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD` |
 | DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
 
 ### Recognizer Threshold Policy
@@ -243,6 +245,8 @@ Analyzer API по умолчанию использует `score_threshold=0.35`
 Если `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, включается strict mode: любой голый ИНН остаётся ниже `score_threshold=0.35`, а детекция требует контекст вроде `ИНН`, `индивидуальный номер налогоплательщика`, `налоговый`, `КПП` или `ОГРН`. Это снижает false positives для длинных числовых последовательностей, но может пропустить bare INN в коротких prompt'ах.
 
 Counterparty/bank-requisite recognizers also use conservative thresholds. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` and `RU_CORRESPONDENT_ACCOUNT` require explicit context such as `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` or `к/с`; bare 9- and 20-digit runs stay below `score_threshold=0.35`. `RU_OGRN` and `RU_OGRNIP` are checksum-gated. Settlement and correspondent account recognizers validate the Russian account control key when a contextual BIK is nearby; without BIK they rely on strong context and structural constraints. The Analyzer does not perform online lookup in the Bank of Russia BIK directory.
+
+Infrastructure/secret recognizers are entity-level rules, not a whole-payload classifier. `INTERNAL_IP` validates candidates with Python `ipaddress` and defaults to private/loopback/link-local/CGNAT/ULA ranges; `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true` extends it to global public IPs when deployment policy treats them as sensitive. `INTERNAL_DOMAIN` only matches configured suffixes from `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`. `HOSTNAME`, `LOGIN` and `PASSWORD` require key-value style context. `DB_URL` matches credential-bearing DB/service URLs, `JWT` requires decodable JSON header/payload, and `API_KEY` focuses on provider-specific keys or context-bound token assignments while rejecting obvious documentation placeholders.
 
 `RU_ADDRESS` intentionally limited: это regex recognizer для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Street-type сокращения требуют границу слева, а форма `name + type + number` требует явное `дом`/`д.`, чтобы не ловить обычные фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`. Unsupported/ограниченные случаи: полный парсинг индексов, регионов, владений, корпусов без улицы, свободные адреса без street/house structure и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
 

@@ -15,6 +15,18 @@ from recognizers.ru_bank_requisites import (
     RuOgrnipRecognizer,
     RuSettlementAccountRecognizer,
 )
+from recognizers.infra_secrets import (
+    ApiKeyRecognizer,
+    BearerTokenRecognizer,
+    CredentialUrlRecognizer,
+    HostnameRecognizer,
+    InternalDomainRecognizer,
+    InternalIpRecognizer,
+    JwtRecognizer,
+    LoginRecognizer,
+    PasswordRecognizer,
+    PrivateKeyRecognizer,
+)
 
 ALL_RECOGNIZERS = [
     RuPhoneRecognizer,
@@ -30,4 +42,14 @@ ALL_RECOGNIZERS = [
     RuBikRecognizer,
     RuSettlementAccountRecognizer,
     RuCorrespondentAccountRecognizer,
+    InternalIpRecognizer,
+    InternalDomainRecognizer,
+    HostnameRecognizer,
+    CredentialUrlRecognizer,
+    JwtRecognizer,
+    BearerTokenRecognizer,
+    PrivateKeyRecognizer,
+    ApiKeyRecognizer,
+    LoginRecognizer,
+    PasswordRecognizer,
 ]

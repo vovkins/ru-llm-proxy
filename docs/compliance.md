@@ -32,16 +32,23 @@
 | `auth-secrets` deterministic markers | final leak smoke | Private key/env-secret-like markers in provider-bound fields block before provider. |
 | `repeated-and-placeholder-collision` | guardrail unit tests and flow tests | Placeholder replacement remains deterministic; broader egress evidence should stay in mock-provider smoke when new fixtures are added. |
 
-Не все compliance families из внешних требований уже имеют полный
-recognizer-level coverage. `counterparty-full-profile` теперь частично покрыт
-Presidio recognizers для российских реквизитов: `RU_KPP`, `RU_OGRN`,
-`RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и
-`RU_CORRESPONDENT_ACCOUNT`. Эти recognizers закрывают налоговые и банковские
-реквизиты, но не заменяют словарную замену названий организаций из #25 и не
-трактуют generic domains/API hostnames как данные контрагента. Семейства
-`infrastructure-internal` и `code-identifiers-companies` остаются в scope
-будущих recognizers/policies в #34, #38 и #25. #30 отвечает за структуру
-evidence gates, а не за добавление новых entity detectors.
+Не все compliance families из внешних требований уже имеют полный coverage.
+`counterparty-full-profile` теперь частично покрыт Presidio recognizers для
+российских реквизитов: `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`,
+`RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT`. Эти recognizers закрывают
+налоговые и банковские реквизиты, но не заменяют словарную замену названий
+организаций из #25.
+
+`infrastructure-internal` теперь имеет entity-level coverage через
+`INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`,
+`PRIVATE_KEY`, `API_KEY`, `LOGIN` и `PASSWORD`. Это покрытие предназначено для
+одиночных технических идентификаторов и секретов внутри обычных prompt'ов. Оно
+не является full source-code secret scanning, не классифицирует бинарные
+attachments и не заменяет production egress allowlist из #38. Семейство
+`code-identifiers-companies` остаётся в scope #25 и связанных policy tasks,
+если потребуется dictionary substitution для названий внутренних систем,
+организаций или кодовых идентификаторов. #30 отвечает за структуру evidence
+gates, а не за добавление новых entity detectors.
 
 ## Observability Evidence
 

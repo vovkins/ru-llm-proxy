@@ -560,6 +560,25 @@ class TestMaskText:
             "<RU_SETTLEMENT_ACCOUNT_1>": "40702810900000000000",
         }
 
+    def test_masks_infrastructure_secret_entity_names(self, guardrail):
+        text = (
+            "Endpoint 10.24.3.7 uses Authorization: Bearer "
+            "abcdefghijklmnopqrstuvwxyz123456"
+        )
+        bearer = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
+        entities = [
+            _entity(text, "10.24.3.7", "INTERNAL_IP"),
+            _entity(text, bearer, "BEARER_TOKEN"),
+        ]
+
+        masked_text, mapping = guardrail._mask_text(text, entities)
+
+        assert masked_text == "Endpoint <INTERNAL_IP_1> uses <BEARER_TOKEN_1>"
+        assert mapping == {
+            "<INTERNAL_IP_1>": "10.24.3.7",
+            "<BEARER_TOKEN_1>": bearer,
+        }
+
 
 # === _save_mapping / _load_mapping ===
 
@@ -2858,6 +2877,44 @@ class TestPreCallHook:
         serialized = json.dumps(error_body, ensure_ascii=False)
         assert "044525225" not in serialized
         assert "40702810900000000000" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_block_mode_rejects_infrastructure_secrets_without_raw_values(self):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = (
+            "Internal endpoint 10.24.3.7 uses Authorization: Bearer "
+            "abcdefghijklmnopqrstuvwxyz123456"
+        )
+        bearer = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "10.24.3.7", "INTERNAL_IP"),
+                _entity(text, bearer, "BEARER_TOKEN"),
+            ],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == text
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "pii_blocked"
+        assert error_body["error"]["details"]["entities"] == [
+            "BEARER_TOKEN",
+            "INTERNAL_IP",
+        ]
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "10.24.3.7" not in serialized
+        assert "abcdefghijklmnopqrstuvwxyz123456" not in serialized
 
     @pytest.mark.asyncio
     async def test_block_mode_rejects_pii_in_text_content_blocks_without_mutating(self):
