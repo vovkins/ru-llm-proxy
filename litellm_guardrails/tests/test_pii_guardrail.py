@@ -12,7 +12,15 @@ import pytest
 import pytest_asyncio
 
 import litellm_guardrails.pii_guardrail as pii_guardrail
-from litellm_guardrails.pii_guardrail import AnalyzerOverloadedError, RuPIIGuardrail
+from litellm_guardrails.pii_guardrail import (
+    AnalyzerOverloadedError,
+    HTTPException,
+    ProxyException,
+    RuPIIGuardrail,
+)
+
+
+PRE_EGRESS_BLOCK_EXCEPTION_TYPES = (HTTPException, ProxyException)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -39,6 +47,29 @@ def _mock_redis(get_value=None):
     redis.get = AsyncMock(return_value=get_value)
     redis.delete = AsyncMock()
     return redis
+
+
+def _error_body_from_exception(error):
+    if isinstance(error, HTTPException):
+        detail = error.detail
+        if isinstance(detail, dict) and "error" in detail:
+            return detail
+        return {"error": detail}
+    if isinstance(error, ProxyException):
+        provider_fields = error.provider_specific_fields or {}
+        structured_error = provider_fields.get("error")
+        if isinstance(structured_error, dict):
+            return {"error": structured_error}
+        return {"error": error.to_dict()}
+    return error.response.json()
+
+
+def _status_code_from_exception(error):
+    if isinstance(error, HTTPException):
+        return error.status_code
+    if isinstance(error, ProxyException):
+        return int(error.status_code)
+    return error.response.status_code
 
 
 @pytest.fixture
@@ -111,6 +142,40 @@ class TestPolicyMode:
     def test_defaults_to_mask_for_unknown_value(self):
         guardrail = RuPIIGuardrail(pii_mode="bad-value")
         assert guardrail.pii_mode == "mask"
+
+
+# === pre-egress policy mode ===
+
+
+class TestPreEgressPolicyMode:
+    def test_defaults_to_block_mode(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.pre_egress_policy_mode == "block"
+
+    def test_accepts_off_alias(self):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="off")
+        assert guardrail.pre_egress_policy_mode == "off"
+
+    def test_defaults_to_block_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="bad-value")
+        assert guardrail.pre_egress_policy_mode == "block"
+
+
+# === final payload leak-check mode ===
+
+
+class TestFinalPayloadLeakCheckMode:
+    def test_defaults_to_block_mode(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.final_payload_leak_check_mode == "block"
+
+    def test_accepts_off_alias(self):
+        guardrail = RuPIIGuardrail(final_payload_leak_check_mode="off")
+        assert guardrail.final_payload_leak_check_mode == "off"
+
+    def test_defaults_to_block_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(final_payload_leak_check_mode="bad-value")
+        assert guardrail.final_payload_leak_check_mode == "block"
 
 
 # === _analyze_text ===
@@ -965,6 +1030,1600 @@ class TestPreCallHook:
         assert "+79031234567" not in logs
 
     @pytest.mark.asyncio
+    async def test_pre_egress_blocks_env_payload_before_analyzer_and_redis(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "\n".join(
+            [
+                "OPENAI_API_KEY=sk-test-secret",
+                "DATABASE_URL=postgresql://user:pass@db.example/app",
+                "JWT_SECRET=local-secret",
+            ]
+        )
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert _status_code_from_exception(exc_info.value) == 422
+        assert error_body == {
+            "error": {
+                "message": "Request contains configuration or log data and was blocked by pre-egress policy.",
+                "type": "pre_egress_policy_violation",
+                "code": "pre_egress_policy_blocked",
+                "details": {
+                    "categories": ["config"],
+                    "rules": ["env_secret_assignment"],
+                },
+            }
+        }
+        if isinstance(exc_info.value, ProxyException):
+            assert exc_info.value.param == {
+                "pre_egress_policy": {
+                    "code": "pre_egress_policy_blocked",
+                    "details": {
+                        "categories": ["config"],
+                        "rules": ["env_secret_assignment"],
+                    },
+                }
+            }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-test-secret" not in serialized
+        assert "postgresql://user:pass@db.example/app" not in serialized
+        assert "local-secret" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_responses_input_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "ANTHROPIC_API_KEY=sk-ant-test\nZAI_API_KEY=zai-secret"
+        data = {"model": "openai-gpt-5.4-mini", "input": payload}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert data["input"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["code"] == "pre_egress_policy_blocked"
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_tool_result_content_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-test-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": payload,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["messages"][0]["content"][0]["content"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-test-secret" not in serialized
+        assert "local-password" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_tool_result_content_blocks(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-test-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": [{"type": "text", "text": payload}],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["messages"][0]["content"][0]["content"][0]["text"] == payload
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_system_string_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-system-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "system": payload,
+            "messages": [{"role": "user", "content": "clean prompt"}],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["system"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "sk-system-secret" not in serialized
+        assert "local-password" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_blocks_anthropic_system_text_blocks_before_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "API_KEY=sk-system-secret\nPASSWORD=local-password"
+        data = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 16,
+            "system": [{"type": "text", "text": payload}],
+            "messages": [{"role": "user", "content": "clean prompt"}],
+        }
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="messages",
+                )
+
+        assert data["system"][0]["text"] == payload
+        assert "metadata" not in data
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "forbidden"),
+        [
+            ("API_KEY=sk-test-secret", "sk-test-secret"),
+            ("TOKEN=local-token", "local-token"),
+            ("PASSWORD=local-password", "local-password"),
+            ("SECRET=local-secret", "local-secret"),
+            ("SECRET_KEY=local-secret", "local-secret"),
+            ("LITELLM_MASTER_KEY=sk-ru-admin", "sk-ru-admin"),
+            ("LITELLM_SALT_KEY=local-salt", "local-salt"),
+            ("ZAI_API_KEY_2=zai-second-account", "zai-second-account"),
+            ("MONGODB_URI=mongodb://user:pass@mongo.example/app", "user:pass"),
+            ("POSTGRES_DSN=postgres://user:pass@pg.example/app", "user:pass"),
+            ("PGPASSWORD=local-password", "local-password"),
+            ("MYSQL_PWD=local-password", "local-password"),
+            ("RABBITMQ_DEFAULT_PASS=local-password", "local-password"),
+            (
+                'DOCKER_AUTH_CONFIG={"auths":{"registry.example":{"auth":"docker-auth-value"}}}',
+                "docker-auth-value",
+            ),
+            (
+                "SERVICE_CONNECTION_STRING=postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
+            ("SERVICE_DSN=https://user:pass@svc.example/db", "user:pass"),
+            ("SERVICE_URI=https://user:pass@svc.example/api", "user:pass"),
+            ("CUSTOM_API_KEY_12=sk-numbered", "sk-numbered"),
+            ("environment:\n  - PGPASSWORD=local-password", "local-password"),
+            ('environment:\n  - "PGPASSWORD=local-password"', "local-password"),
+            ('environment: ["PGPASSWORD=local-password"]', "local-password"),
+            ("environment:\n  PGPASSWORD: local-password", "local-password"),
+            ("environment: {PGPASSWORD: local-password}", "local-password"),
+            (
+                "environment:\n  DATABASE_URL: postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
+            (
+                "environment: {DATABASE_URL: postgresql://user:pass@db.example/app}",
+                "user:pass",
+            ),
+            (
+                "services:\n  app:\n    environment:\n      DATABASE_URL: postgresql://user:pass@db.example/app",
+                "user:pass",
+            ),
+        ],
+    )
+    async def test_pre_egress_blocks_common_env_secret_names(self, payload, forbidden):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        assert forbidden not in json.dumps(
+            error_body,
+            ensure_ascii=False,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected_category", "expected_rule"),
+        [
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Config",
+                        "clusters:",
+                        "- cluster:",
+                        "    server: https://k8s.example",
+                        "contexts:",
+                        "- context:",
+                        "users:",
+                        "- name: prod-admin",
+                    ]
+                ),
+                "config",
+                "kubeconfig_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Secret",
+                        "metadata:",
+                        "  name: app-secrets",
+                        "type: Opaque",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        'apiVersion: "v1"',
+                        'kind: "Secret"',
+                        "metadata:",
+                        "  name: app-secrets",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: ConfigMap",
+                        "metadata:",
+                        "  name: nginx-config",
+                        "data:",
+                        "  nginx.conf: |",
+                        "    server { listen 80; }",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Pod",
+                        "metadata:",
+                        "  name: app",
+                        "spec:",
+                        "  containers:",
+                        "  - name: app",
+                        "    image: example/app:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: batch/v1",
+                        "kind: Job",
+                        "metadata:",
+                        "  name: db-migrate",
+                        "spec:",
+                        "  template:",
+                        "    spec:",
+                        "      containers:",
+                        "      - name: migrate",
+                        "        image: example/migrate:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: batch/v1",
+                        "kind: CronJob",
+                        "metadata:",
+                        "  name: nightly",
+                        "spec:",
+                        "  schedule: '0 1 * * *'",
+                        "  jobTemplate:",
+                        "    spec:",
+                        "      template:",
+                        "        spec:",
+                        "          containers:",
+                        "          - name: nightly",
+                        "            image: example/nightly:latest",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "apiVersion: v1",
+                        "kind: Pod",
+                        "metadata:",
+                        "  name: app",
+                        "spec:",
+                        "  containers:",
+                        "  - name: app",
+                        "    image: example/app:latest",
+                        "---",
+                        "apiVersion: v1",
+                        "kind: Secret",
+                        "metadata:",
+                        "  name: app-secret",
+                        "stringData:",
+                        "  password: local-password",
+                    ]
+                ),
+                "config",
+                "service_manifest_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 443 ssl;",
+                        "  location /api {",
+                        "    proxy_pass http://backend;",
+                        "  }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 80;",
+                        "  root /var/www/html;",
+                        "  location / { try_files $uri $uri/ =404; }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "server {",
+                        "  listen 443 ssl;",
+                        "  location /api { proxy_pass http://backend; }",
+                        "}",
+                    ]
+                ),
+                "config",
+                "nginx_config_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        '10.0.0.7 - - [01/Jul/2026:12:00:00 +0300] "POST /login HTTP/1.1" 401 32',
+                        "Traceback (most recent call last):",
+                        '  File "app.py", line 12, in handler',
+                        "RuntimeError: token verification failed",
+                    ]
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                '2001:db8::10 - - [01/Jul/2026:12:00:00 +0300] "GET /admin HTTP/1.1" 403 128',
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul  1 12:00:01 host sshd[123]: Failed password for invalid user "
+                "admin from 2001:db8::10 port 51234 ssh2",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "\n".join(
+                    [
+                        "TypeError: Cannot read properties of undefined",
+                        "    at handler (/app/index.js:12:3)",
+                    ]
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                json.dumps(
+                    {
+                        "level": "error",
+                        "stack": (
+                            "Traceback (most recent call last):\n"
+                            '  File "app.py", line 12, in handler\n'
+                            "RuntimeError: token verification failed"
+                        ),
+                    }
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                json.dumps(
+                    {
+                        "level": "error",
+                        "exception": (
+                            "TypeError: Cannot read properties of undefined\n"
+                            "    at handler (/app/index.js:12:3)"
+                        ),
+                    }
+                ),
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul 01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
+                "USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "Jul  1 12:00:01 host sudo: alice : TTY=pts/0 ; PWD=/srv/app ; "
+                "USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01+03:00 host sshd[123]: Failed password for invalid user "
+                "admin from 2001:db8::10 port 51234 ssh2",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01.123Z host sudo: alice : TTY=pts/0 ; "
+                "PWD=/srv/app ; USER=root ; COMMAND=/bin/cat /etc/shadow",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+            (
+                "2026-07-01T12:00:01Z host sshd[123]: pam_unix(sshd:auth): "
+                "authentication failure; logname= uid=0 euid=0 tty=ssh ruser= "
+                "rhost=2001:db8::10",
+                "log",
+                "log_or_stacktrace_payload",
+            ),
+        ],
+    )
+    async def test_pre_egress_blocks_operational_payloads(
+        self,
+        payload,
+        expected_category,
+        expected_rule,
+    ):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == payload
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["details"] == {
+            "categories": [expected_category],
+            "rules": [expected_rule],
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_block_log_does_not_include_raw_payload(self, caplog):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        payload = "OPENAI_API_KEY=sk-test-secret\nJWT_SECRET=local-secret"
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES):
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data={"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]},
+                    )
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pre_egress_policy_blocked" in logs
+        assert "env_secret_assignment" in logs
+        assert "sk-test-secret" not in logs
+        assert "local-secret" not in logs
+        assert payload not in logs
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_allows_clean_prompt_and_still_runs_analyzer(self):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": "Суммируй требования к задаче"}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with("Суммируй требования к задаче")
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Объясни, чем OPENAI_API_KEY отличается от LITELLM_MASTER_KEY.",
+            "Объясни, что значит Failed password в ssh logs.",
+            "What does authentication failure troubleshooting usually involve?",
+            "What does pam_unix authentication failure mean in Ubuntu?",
+            "Failed password from users after the PAM migration; how should I troubleshoot?",
+            "2026-07-01T12:00:01Z host app[123]: user opened dashboard",
+        ],
+    )
+    async def test_pre_egress_allows_incidental_operational_terms(self, text):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(text)
+        guardrail._redis.setex.assert_not_called()
+
+    def test_pre_egress_block_metric_increments_once_per_category(self):
+        labels = {
+            "config": MagicMock(),
+            "log": MagicMock(),
+        }
+        metric = MagicMock()
+        metric.labels.side_effect = lambda category: labels[category]
+
+        with patch.object(pii_guardrail, "PRE_EGRESS_POLICY_BLOCKED", metric):
+            RuPIIGuardrail._record_pre_egress_policy_blocks(
+                {
+                    "config": 2,
+                    "log": 1,
+                },
+            )
+
+        labels["config"].inc.assert_called_once_with()
+        labels["log"].inc.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_pre_egress_off_allows_payload_to_pii_pipeline(self):
+        guardrail = RuPIIGuardrail(
+            pre_egress_policy_mode="off",
+            final_payload_leak_check_mode="off",
+        )
+        guardrail._redis = _mock_redis()
+        payload = "OPENAI_API_KEY=sk-test-secret\nJWT_SECRET=local-secret"
+        data = {"messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(payload)
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_blocks_configured_canary_after_analyzer(
+        self,
+        caplog,
+    ):
+        canary = "RU_PROXY_CANARY_DO_NOT_SEND"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": f"Summarize {canary}"}],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                    )
+
+        analyze_text.assert_awaited_once_with(f"Summarize {canary}")
+        guardrail._redis.setex.assert_not_called()
+        assert "metadata" not in data
+        error_body = exc_info.value.response.json()
+        assert exc_info.value.response.status_code == 422
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert canary not in serialized
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "final_payload_leak_check_blocked" in logs
+        assert "configured_canary" in logs
+        assert canary not in logs
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_blocks_responses_input_canary(self):
+        canary = "RU_PROXY_RESPONSES_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "openai-gpt-5.4-mini",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": canary}],
+                }
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        analyze_text.assert_awaited_once_with(canary)
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_blocks_extra_body_canary(self):
+        canary = "RU_PROXY_EXTRA_BODY_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Use provider options."}],
+            "extra_body": {
+                "providerOptions": {
+                    "trace": canary,
+                }
+            },
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with("Use provider options.")
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "request_fragment",
+        [
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "Use RU_PROXY_TOOL_SCHEMA_CANARY internally.",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+            },
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "Lookup account.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "account_id": {
+                                        "type": "string",
+                                        "description": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ],
+            },
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "Lookup account.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "RU_PROXY_TOOL_SCHEMA_CANARY": {
+                                        "type": "string",
+                                        "description": "Account id",
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ],
+            },
+            {
+                "functions": [
+                    {
+                        "name": "lookup_account",
+                        "description": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                        "parameters": {"type": "object"},
+                    }
+                ],
+            },
+            {
+                "function_call": {
+                    "name": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                },
+            },
+            {
+                "prediction": {
+                    "type": "content",
+                    "content": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                },
+            },
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "account_lookup",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                                }
+                            },
+                        },
+                    },
+                }
+            },
+            {
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "account_lookup",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                                }
+                            },
+                        },
+                    }
+                }
+            },
+            {
+                "stop": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "stop": ["clean", "RU_PROXY_TOOL_SCHEMA_CANARY"],
+            },
+            {
+                "stop_sequences": ["RU_PROXY_TOOL_SCHEMA_CANARY"],
+            },
+            {
+                "prompt_cache_key": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "safety_identifier": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "user": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "web_search_options": {
+                    "user_location": {
+                        "type": "approximate",
+                        "city": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                    }
+                },
+            },
+            {
+                "metadata": {
+                    "user_id": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                },
+            },
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_schema_canary(
+        self,
+        request_fragment,
+    ):
+        canary = "RU_PROXY_TOOL_SCHEMA_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Use the tool."}],
+        }
+        data.update(request_fragment)
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with("Use the tool.")
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "request_fragment",
+        [
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "PASSWORD=local-password",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+            },
+            {
+                "extra_body": {
+                    "debug": "DATABASE_URL=postgres://user:pass@db.local/app",
+                },
+            },
+            {
+                "extra_body": {
+                    "DATABASE_URL": "postgres://user:pass@db.local/app",
+                },
+            },
+            {
+                "extra_body": {
+                    "PASSWORD": "local-password",
+                },
+            },
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "Lookup account",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "DATABASE_URL": {
+                                        "type": "string",
+                                        "default": "postgres://user:pass@db.local/app",
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ],
+            },
+        ],
+        ids=[
+            "tool-description-env-secret",
+            "extra-body-credential-url",
+            "extra-body-secret-key-url-value",
+            "extra-body-secret-key-scalar-value",
+            "tool-schema-secret-key-default",
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_structured_secret_markers(
+        self,
+        request_fragment,
+    ):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "glm-5.1",
+            "messages": [{"role": "user", "content": "Use provider config."}],
+        }
+        data.update(request_fragment)
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with("Use provider config.")
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["env_secret_assignment"]}
+        serialized = json.dumps(error_body, ensure_ascii=False)
+        assert "local-password" not in serialized
+        assert "user:pass" not in serialized
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "request_fragment",
+        [
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "RU_PROXY_SCHEMA_ONLY_CANARY",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+            },
+            {
+                "functions": [
+                    {
+                        "name": "lookup_account",
+                        "description": "RU_PROXY_SCHEMA_ONLY_CANARY",
+                        "parameters": {"type": "object"},
+                    }
+                ],
+            },
+            {
+                "function_call": {
+                    "name": "RU_PROXY_SCHEMA_ONLY_CANARY",
+                },
+            },
+            {
+                "prediction": {
+                    "type": "content",
+                    "content": "RU_PROXY_SCHEMA_ONLY_CANARY",
+                },
+            },
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_schema_without_message_targets(
+        self,
+        request_fragment,
+    ):
+        canary = "RU_PROXY_SCHEMA_ONLY_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1"}
+        data.update(request_fragment)
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_not_awaited()
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "model": "claude-opus",
+                "system": "RU_PROXY_MESSAGES_CANARY",
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+            {
+                "model": "claude-opus",
+                "system": [{"type": "text", "text": "RU_PROXY_MESSAGES_CANARY"}],
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+            {
+                "model": "claude-opus",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": "RU_PROXY_MESSAGES_CANARY",
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "model": "claude-opus",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "RU_PROXY_MESSAGES_CANARY",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "model": "claude-opus",
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_1",
+                                "name": "lookup_account",
+                                "input": {
+                                    "query": "RU_PROXY_MESSAGES_CANARY",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_anthropic_messages_canary(
+        self,
+        payload,
+    ):
+        canary = "RU_PROXY_MESSAGES_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=payload,
+                    call_type="anthropic_messages",
+                )
+
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "call_type", "expected_analyzer_texts"),
+        [
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Clean prompt"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": "RU_PROXY_FINAL_CANARY"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                None,
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Clean prompt"},
+                                {
+                                    "type": "file",
+                                    "file": {"file_id": "RU_PROXY_FINAL_CANARY"},
+                                },
+                            ],
+                        }
+                    ],
+                },
+                None,
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "glm-5.1",
+                    "messages": [
+                        {
+                            "role": "tool",
+                            "tool_call_id": "RU_PROXY_FINAL_CANARY",
+                            "content": "Clean tool result",
+                        }
+                    ],
+                },
+                None,
+                ["Clean tool result"],
+            ),
+            (
+                {
+                    "model": "openai-gpt-5.4-mini",
+                    "input": [
+                        {
+                            "type": "function_call_output",
+                            "call_id": "RU_PROXY_FINAL_CANARY",
+                            "output": "Clean function output",
+                        }
+                    ],
+                },
+                "responses",
+                ["Clean function output"],
+            ),
+            (
+                {
+                    "model": "openai-gpt-5.4-mini",
+                    "input": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": "Clean prompt"},
+                                {
+                                    "type": "input_image",
+                                    "image_url": "RU_PROXY_FINAL_CANARY",
+                                },
+                            ],
+                        }
+                    ],
+                },
+                "responses",
+                ["Clean prompt"],
+            ),
+            (
+                {
+                    "model": "claude-opus",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "RU_PROXY_FINAL_CANARY",
+                                    "name": "lookup_account",
+                                    "input": {"query": "clean"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "anthropic_messages",
+                [],
+            ),
+            (
+                {
+                    "model": "claude-opus",
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_1",
+                                    "name": "RU_PROXY_FINAL_CANARY",
+                                    "input": {"query": "clean"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "anthropic_messages",
+                [],
+            ),
+        ],
+        ids=[
+            "chat-image-url",
+            "chat-file-id",
+            "chat-tool-call-id",
+            "responses-call-id",
+            "responses-input-image-url",
+            "anthropic-tool-use-id",
+            "anthropic-tool-use-name",
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_provider_bound_non_text_strings(
+        self,
+        payload,
+        call_type,
+        expected_analyzer_texts,
+    ):
+        canary = "RU_PROXY_FINAL_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=payload,
+                    call_type=call_type,
+                )
+
+        assert [
+            call.args[0] for call in analyze_text.await_args_list
+        ] == expected_analyzer_texts
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("payload", "expected_rule"),
+        [
+            ("-----BEGIN PRIVATE KEY-----\nredacted\n-----END PRIVATE KEY-----", "private_key_marker"),
+            (
+                "-----BEGIN PGP PRIVATE KEY BLOCK-----\nredacted\n"
+                "-----END PGP PRIVATE KEY BLOCK-----",
+                "private_key_marker",
+            ),
+            (
+                "-----BEGIN SSH2 ENCRYPTED PRIVATE KEY-----\nredacted\n"
+                "-----END SSH2 ENCRYPTED PRIVATE KEY-----",
+                "private_key_marker",
+            ),
+            ("Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456", "bearer_token"),
+            (
+                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+                "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+                "jwt_token",
+            ),
+            ("sk-1234567890abcdef1234567890abcdef", "provider_key"),
+            ("sk-ant-1234567890abcdef1234567890abcdef", "provider_key"),
+        ],
+    )
+    async def test_final_payload_leak_check_blocks_high_confidence_markers(
+        self,
+        payload,
+        expected_rule,
+    ):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with(payload)
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": [expected_rule]}
+        assert payload not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_runs_on_masked_provider_bound_text(self):
+        canary = "RU_PROXY_CANARY_AFTER_MASK"
+        phone = "+79031234567"
+        text = f"Мой телефон {phone}. Canary {canary}."
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[_entity(text, phone)]),
+        ) as analyze_text:
+            with patch.object(
+                guardrail,
+                "_classify_final_payload_leak_check_texts",
+                wraps=guardrail._classify_final_payload_leak_check_texts,
+            ) as classify_final:
+                with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                    )
+
+        analyze_text.assert_awaited_once_with(text)
+        guardrail._redis.setex.assert_not_called()
+        assert data["messages"][0]["content"] == text
+        assert "metadata" not in data
+        final_texts = classify_final.call_args.args[0]
+        assert f"Мой телефон <PHONE_NUMBER_1>. Canary {canary}." in final_texts
+        assert phone not in "\n".join(final_texts)
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_blocks_canary_on_analyzer_fail_open(self):
+        canary = "RU_PROXY_CANARY_ANALYZER_DOWN"
+        guardrail = RuPIIGuardrail(
+            failure_mode="fail_open",
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": canary}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(side_effect=Exception("connection error")),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_awaited_once_with(canary)
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+        assert canary not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    async def test_final_payload_leak_check_off_allows_configured_canary(self):
+        canary = "RU_PROXY_CANARY_ALLOWED_IN_DEV"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_mode="off",
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {"messages": [{"role": "user", "content": canary}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result == data
+        analyze_text.assert_awaited_once_with(canary)
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_block_mode_rejects_pii_without_mutating_or_saving(self):
         guardrail = RuPIIGuardrail(pii_mode="block")
         guardrail._redis = _mock_redis()
@@ -1408,20 +3067,124 @@ class TestPreCallHook:
                 )
 
     @pytest.mark.asyncio
-    async def test_redis_save_error_fails_open_without_partial_mutation(self, guardrail):
+    @pytest.mark.parametrize(
+        "payload_factory",
+        [
+            lambda text: {"messages": [{"role": "user", "content": text}]},
+            lambda text: {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": text}],
+                    }
+                ]
+            },
+            lambda text: {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "lookup_account",
+                                    "arguments": text,
+                                },
+                            }
+                        ],
+                    }
+                ]
+            },
+            lambda text: {"instructions": text, "input": "Clean input"},
+            lambda text: {"input": text},
+            lambda text: {
+                "input": [
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call-1",
+                        "output": text,
+                    }
+                ]
+            },
+            lambda text: {
+                "system": text,
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+            lambda text: {
+                "system": [{"type": "text", "text": text}],
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+            lambda text: {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": text,
+                            }
+                        ],
+                    }
+                ],
+            },
+            lambda text: {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": [{"type": "text", "text": text}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+        ids=[
+            "chat-message",
+            "chat-content-block",
+            "tool-call-arguments",
+            "responses-instructions",
+            "responses-input-string",
+            "responses-tool-output",
+            "anthropic-system",
+            "anthropic-system-block",
+            "anthropic-tool-result",
+            "anthropic-tool-result-block",
+        ],
+    )
+    async def test_redis_save_error_fails_open_without_irreversible_placeholders(
+        self,
+        guardrail,
+        payload_factory,
+    ):
         text = "Мой телефон +79031234567"
         guardrail._redis.setex.side_effect = RuntimeError("redis down")
+        data = payload_factory(text)
 
-        with patch.object(guardrail, "_analyze_text", return_value=[_entity(text, "+79031234567")]):
-            data = {"messages": [{"role": "user", "content": text}]}
+        async def analyze_text(content):
+            if "+79031234567" not in content:
+                return []
+            return [_entity(content, "+79031234567")]
 
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(side_effect=analyze_text),
+        ):
             result = await guardrail.async_pre_call_hook(
                 user_api_key_dict=MagicMock(),
                 cache=MagicMock(),
                 data=data,
             )
 
-        assert result["messages"][0]["content"] == text
+        serialized = json.dumps(result, ensure_ascii=False)
+        assert "<PHONE_NUMBER" not in serialized
+        assert "+79031234567" in serialized
         assert "metadata" not in result
 
     @pytest.mark.asyncio

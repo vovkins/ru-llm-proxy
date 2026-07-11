@@ -1,11 +1,18 @@
 # Claude Code
 
-Claude Code connects to this proxy through the Anthropic Messages API.
+This guide tracks Claude Code as a gateway target for ru-llm-proxy. The default repo config validates the basic Anthropic Messages auth path only; it is not a fully validated Claude Code gateway yet.
 
-Supported scope:
+Validation scope today:
 
-- Claude Code CLI.
-- Anthropic-compatible clients that can set `ANTHROPIC_BASE_URL`.
+- Basic Anthropic Messages clients that can set `ANTHROPIC_BASE_URL` and send a LiteLLM virtual key.
+- Claude Code CLI setup as a target path, pending dedicated gateway validation.
+
+Not fully validated yet:
+
+- Claude Code's full `POST /v1/messages?beta=true` gateway contract.
+- Streaming SSE behavior through the proxy.
+- Forwarding `anthropic-version` and `anthropic-beta` in the default config.
+- Optional token counting and model discovery endpoints.
 
 Not covered here:
 
@@ -30,7 +37,7 @@ scripts/create_virtual_key.sh --alias claude-code-local --models anthropic,stand
 
 ## Server-Funded Token Setup
 
-Use this mode when the proxy should pay with its server-side `ANTHROPIC_API_KEY`. Point Claude Code at the proxy:
+Use this mode when the proxy should pay with its server-side `ANTHROPIC_API_KEY`. Point Claude Code at the proxy for the basic Anthropic Messages path:
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
@@ -46,7 +53,7 @@ export ANTHROPIC_MODEL="claude-opus-4.8"
 
 The `claude-*` names here are proxy-facing aliases. Verify the raw Anthropic model ID behind each alias against the current LiteLLM image and your provider account before using it in production.
 
-Claude Code sends the virtual key to the proxy. The proxy then uses its server-side `ANTHROPIC_API_KEY` to call Anthropic.
+Claude Code sends the virtual key to the proxy. The proxy then uses its server-side `ANTHROPIC_API_KEY` to call Anthropic. Treat this as a setup target until the dedicated Claude Code gateway smoke covers `?beta=true`, SSE streaming, and `anthropic-*` header forwarding.
 
 ## Anthropic API-Key BYOK
 
@@ -96,21 +103,32 @@ Claude Code supports `apiKeyHelper` for CLI workflows. Use it when a local comma
 
 The helper must print the LiteLLM virtual key, not the upstream Anthropic API key.
 
-## Required Proxy Endpoints
+## Anthropic Messages Gateway Surface
 
-Claude Code requires the Anthropic-compatible gateway surface:
+For a fully validated Claude Code gateway via `ANTHROPIC_BASE_URL`, the core inference path is:
 
 ```text
-POST /v1/messages
-POST /v1/messages/count_tokens
-GET /v1/models
+POST /v1/messages?beta=true
 ```
 
-`make client-auth-smoke` checks `/v1/messages` only when `ANTHROPIC_API_KEY` is configured and `MESSAGES_MODEL` is set to a live-validated proxy alias:
+The gateway must preserve Anthropic Messages semantics, relay streaming SSE responses, and forward `anthropic-version` and `anthropic-beta` unchanged. LiteLLM supports the Anthropic-compatible `/v1/messages` endpoint, but this repository has not yet added a dedicated Claude Code gateway smoke for the `?beta=true` streaming path or default-config header forwarding.
+
+Optional Claude Code gateway endpoints:
+
+```text
+POST /v1/messages/count_tokens
+GET /v1/models?limit=1000
+```
+
+`POST /v1/messages/count_tokens` is optional; Claude Code can fall back to local context estimates when it is absent. `GET /v1/models?limit=1000` is optional model discovery when gateway model discovery is enabled.
+
+`make client-auth-smoke` is a basic Anthropic Messages auth smoke. It sends a non-streaming `POST /v1/messages` with a LiteLLM virtual key only when `ANTHROPIC_API_KEY` is configured and `MESSAGES_MODEL` is set to a live-validated proxy alias:
 
 ```bash
 MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
 ```
+
+It does not validate Claude Code's `?beta=true` query, `anthropic-*` header forwarding, SSE streaming, token counting, or model discovery. Add a separate Claude Code gateway smoke before marking this surface fully validated.
 
 ## References
 
