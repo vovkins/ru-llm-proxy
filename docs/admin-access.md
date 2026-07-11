@@ -190,4 +190,3 @@ Before exposing a production instance:
   admin secrets.
 - Backups cover PostgreSQL because LiteLLM users, virtual keys, budgets, and
   spend live there.
-
