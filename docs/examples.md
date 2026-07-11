@@ -196,6 +196,27 @@ curl -s http://localhost:5001/api/v1/analyze \
 
 `RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, требует границу слева у street-type сокращений и явное `дом`/`д.` для `Тверская улица, дом 7`; unsupported cases включают полный разбор индексов, регионов, владений и свободных адресов без явной street/house structure.
 
+Реквизиты контрагента покрываются отдельными entity types:
+
+- `RU_KPP`;
+- `RU_OGRN`;
+- `RU_OGRNIP`;
+- `RU_BIK`;
+- `RU_SETTLEMENT_ACCOUNT`;
+- `RU_CORRESPONDENT_ACCOUNT`.
+
+`RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный реквизитный контекст. `RU_OGRN` и `RU_OGRNIP` проходят checksum validation. Для расчётных и корреспондентских счетов при наличии БИК рядом Analyzer дополнительно проверяет контрольный ключ; без БИК используется сильный контекст и структурные ограничения, без online lookup по справочнику банков.
+
+```bash
+curl -s http://localhost:5001/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "КПП 770801001, ОГРН 1027700132195, БИК 044525225, расчетный счет 40702810900000000000, к/с 30101810400000000225",
+    "language": "ru",
+    "score_threshold": 0.35
+  }' | jq
+```
+
 ## Фильтрация Analyzer по entity types
 
 Analyzer API поддерживает стандартный Presidio-параметр `entities`. Regex recognizers и DeepPavlov NER соблюдают этот список одинаково: если запрошен только `RU_INN`, NER-типы `PERSON`, `LOCATION` и `ORGANIZATION` не вычисляются.

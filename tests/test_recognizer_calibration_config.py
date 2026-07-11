@@ -252,6 +252,57 @@ def test_docs_explain_inn_threshold_policy_and_address_limits():
         assert "огранич" in text or "unsupported" in text, path
 
 
+def test_counterparty_requisite_recognizers_are_wired_and_documented():
+    recognizers_init = (ROOT / "presidio" / "recognizers" / "__init__.py").read_text()
+    requisites = (
+        ROOT / "presidio" / "recognizers" / "ru_bank_requisites.py"
+    ).read_text()
+    readme = (ROOT / "README.md").read_text()
+    architecture = (ROOT / "docs" / "architecture.md").read_text()
+    examples = (ROOT / "docs" / "examples.md").read_text()
+    compliance = (ROOT / "docs" / "compliance.md").read_text()
+
+    for class_name in (
+        "RuKppRecognizer",
+        "RuOgrnRecognizer",
+        "RuOgrnipRecognizer",
+        "RuBikRecognizer",
+        "RuSettlementAccountRecognizer",
+        "RuCorrespondentAccountRecognizer",
+    ):
+        assert class_name in recognizers_init
+
+    for entity_type in (
+        "RU_KPP",
+        "RU_OGRN",
+        "RU_OGRNIP",
+        "RU_BIK",
+        "RU_SETTLEMENT_ACCOUNT",
+        "RU_CORRESPONDENT_ACCOUNT",
+    ):
+        assert entity_type in requisites
+        assert entity_type in readme
+        assert entity_type in architecture
+        assert entity_type in examples
+        assert entity_type in compliance
+
+    assert "_account_checksum_valid" in requisites
+    assert "_find_contextual_biks" in requisites
+    assert "_required_context_re" in requisites
+    assert "score_threshold=0.35" in readme
+    assert "score_threshold=0.35" in architecture
+    assert '"score_threshold": 0.35' in examples
+    assert "online lookup" in readme
+    assert "online lookup" in architecture
+
+
+def test_phone_recognizer_requires_digit_boundaries_for_country_code_pattern():
+    source = (ROOT / "presidio" / "recognizers" / "ru_phone.py").read_text()
+
+    assert r"(?<!\d)(?:\+?7|8)" in source
+    assert r"(?!\d)" in source
+
+
 def test_readme_documents_recognizer_api_target():
     readme = (ROOT / "README.md").read_text()
 

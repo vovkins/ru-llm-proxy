@@ -8,6 +8,10 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio.recognizers import ALL_RECOGNIZERS
 
 
+def _entity_texts(text, results, entity_type):
+    return [text[result.start:result.end] for result in results if result.entity_type == entity_type]
+
+
 @pytest.fixture
 def analyzer():
     """Create analyzer with all Russian recognizers registered."""
@@ -43,6 +47,15 @@ class TestRuPhone:
 
     def test_no_false_positive_short(self, analyzer):
         results = analyzer.analyze("Цена: 12345 рублей", language="ru")
+        phone_results = [r for r in results if r.entity_type == "PHONE_NUMBER"]
+        assert len(phone_results) == 0
+
+    def test_no_false_positive_inside_long_digit_run(self, analyzer):
+        results = analyzer.analyze(
+            "Идентификатор операции 40702810900000000000",
+            language="ru",
+            score_threshold=0.35,
+        )
         phone_results = [r for r in results if r.entity_type == "PHONE_NUMBER"]
         assert len(phone_results) == 0
 
@@ -82,6 +95,94 @@ class TestRuInn:
         results = analyzer.analyze("ИНН: 7707083894", language="ru")
         inn_results = [r for r in results if r.entity_type == "RU_INN"]
         assert len(inn_results) == 0
+
+
+# === Counterparty and bank requisites ===
+
+class TestRuCounterpartyRequisites:
+    def test_kpp_requires_context(self, analyzer):
+        positive_text = "КПП получателя: 770801001"
+        results = analyzer.analyze(
+            positive_text,
+            language="ru",
+            score_threshold=0.35,
+        )
+        assert _entity_texts(positive_text, results, "RU_KPP") == ["770801001"]
+
+        negative_text = "Код строки 770801001 указан в таблице"
+        results = analyzer.analyze(
+            negative_text,
+            language="ru",
+            score_threshold=0.35,
+        )
+        assert _entity_texts(negative_text, results, "RU_KPP") == []
+
+    def test_ogrn_valid_checksum(self, analyzer):
+        text = "ОГРН контрагента 1027700132195"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_OGRN") == ["1027700132195"]
+
+    def test_ogrn_invalid_checksum(self, analyzer):
+        text = "ОГРН контрагента 1027700132196"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_OGRN") == []
+
+    def test_ogrnip_valid_checksum(self, analyzer):
+        text = "ОГРНИП предпринимателя 304500116000157"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_OGRNIP") == ["304500116000157"]
+
+    def test_ogrnip_invalid_checksum(self, analyzer):
+        text = "ОГРНИП предпринимателя 304500116000158"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_OGRNIP") == []
+
+    def test_bik_requires_context(self, analyzer):
+        positive_text = "БИК банка получателя 044525225"
+        results = analyzer.analyze(
+            positive_text,
+            language="ru",
+            score_threshold=0.35,
+        )
+        assert _entity_texts(positive_text, results, "RU_BIK") == ["044525225"]
+
+        negative_text = "В таблице есть номер 044525225 без банковского контекста"
+        results = analyzer.analyze(
+            negative_text,
+            language="ru",
+            score_threshold=0.35,
+        )
+        assert _entity_texts(negative_text, results, "RU_BIK") == []
+
+    def test_settlement_account_with_bik_checksum(self, analyzer):
+        text = "Расчетный счет 40702810900000000000, БИК 044525225"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_SETTLEMENT_ACCOUNT") == [
+            "40702810900000000000"
+        ]
+        assert _entity_texts(text, results, "RU_BIK") == ["044525225"]
+
+    def test_settlement_account_rejects_invalid_bik_checksum(self, analyzer):
+        text = "Расчетный счет 40702810900000000001, БИК 044525225"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_SETTLEMENT_ACCOUNT") == []
+
+    def test_settlement_account_rejects_generic_twenty_digit_number(self, analyzer):
+        text = "Идентификатор операции 40702810900000000000 сохранен"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_SETTLEMENT_ACCOUNT") == []
+
+    def test_correspondent_account_with_bik_checksum(self, analyzer):
+        text = "БИК 044525225, к/с 30101810400000000225"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_CORRESPONDENT_ACCOUNT") == [
+            "30101810400000000225"
+        ]
+
+    def test_correspondent_account_rejects_invalid_bik_checksum(self, analyzer):
+        text = "БИК 044525225, к/с 30101810400000000226"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_CORRESPONDENT_ACCOUNT") == []
 
 
 # === SNILS ===

@@ -21,7 +21,7 @@ class RuPhoneRecognizer(PatternRecognizer):
         # +7 (XXX) XXX-XX-XX or variations
         Pattern(
             name="ru_phone_with_country_code",
-            regex=r"(?:\+?7|8)[\s\-\.]?\(?\d{3}\)?[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}",
+            regex=r"(?<!\d)(?:\+?7|8)[\s\-\.]?\(?\d{3}\)?[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}(?!\d)",
             score=0.85,
         ),
         # 10-digit number starting with 9 (mobile without prefix)
