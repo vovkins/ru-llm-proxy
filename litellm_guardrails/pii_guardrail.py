@@ -205,6 +205,11 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "extra_body",
     "stop",
     "stop_sequences",
+    "prompt_cache_key",
+    "safety_identifier",
+    "web_search_options",
+    "user",
+    "metadata",
 )
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
     "messages",
@@ -241,6 +246,7 @@ _ENV_SECRET_YAML_MAPPING_RE = re.compile(
     rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
     rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
 )
+_ENV_SECRET_KEY_RE = re.compile(rf"^(?:{_ENV_SECRET_KEY_PATTERN})$")
 _ENV_CREDENTIAL_URL_RE = re.compile(
     r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
     r"[A-Z][A-Z0-9_]*"
@@ -252,6 +258,9 @@ _ENV_CREDENTIAL_URL_YAML_MAPPING_RE = re.compile(
     r"[A-Z][A-Z0-9_]*"
     r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*:[ \t]*"
     r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
+_RAW_CREDENTIAL_URL_RE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
 )
 _ACCESS_LOG_RE = re.compile(
     r'(?m)^\S+\s+\S+\s+\S+\s+\[[^\]\n]+\]\s+"'
@@ -1071,8 +1080,12 @@ class RuPIIGuardrail(CustomGuardrail):
                 "provider_key",
             )
 
-        if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_CREDENTIAL_URL_RE.search(
-            text
+        if (
+            _ENV_SECRET_ASSIGNMENT_RE.search(text)
+            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            or _ENV_CREDENTIAL_URL_RE.search(text)
+            or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
+            or _RAW_CREDENTIAL_URL_RE.search(text)
         ):
             self._add_final_leak_finding(
                 findings,
@@ -1112,10 +1125,32 @@ class RuPIIGuardrail(CustomGuardrail):
             texts = []
             for key, item in value.items():
                 if isinstance(key, str):
+                    if key in {
+                        PII_REQUEST_ID_METADATA_KEY,
+                        PII_STREAMING_RESTORATION_DONE_METADATA_KEY,
+                    }:
+                        continue
                     texts.append(key)
+                    if _ENV_SECRET_KEY_RE.fullmatch(key) and cls._has_value(item):
+                        if isinstance(item, str):
+                            texts.append(f"{key}={item}")
+                            texts.append(f"{key}: {item}")
+                        else:
+                            texts.append(f"{key}=structured")
                 texts.extend(cls._iter_nested_string_values(item))
             return texts
         return []
+
+    @staticmethod
+    def _has_value(value: Any) -> bool:
+        """Return whether a structured provider value is meaningfully non-empty."""
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set, dict)):
+            return bool(value)
+        return True
 
     @classmethod
     def _iter_provider_bound_final_payload_texts(cls, data: dict) -> list[str]:

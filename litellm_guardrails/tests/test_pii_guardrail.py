@@ -1984,6 +1984,28 @@ class TestPreCallHook:
             {
                 "stop_sequences": ["RU_PROXY_TOOL_SCHEMA_CANARY"],
             },
+            {
+                "prompt_cache_key": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "safety_identifier": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "user": "RU_PROXY_TOOL_SCHEMA_CANARY",
+            },
+            {
+                "web_search_options": {
+                    "user_location": {
+                        "type": "approximate",
+                        "city": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                    }
+                },
+            },
+            {
+                "metadata": {
+                    "user_id": "RU_PROXY_TOOL_SCHEMA_CANARY",
+                },
+            },
         ],
     )
     async def test_final_payload_leak_check_blocks_schema_canary(
@@ -2041,8 +2063,44 @@ class TestPreCallHook:
                     "debug": "DATABASE_URL=postgres://user:pass@db.local/app",
                 },
             },
+            {
+                "extra_body": {
+                    "DATABASE_URL": "postgres://user:pass@db.local/app",
+                },
+            },
+            {
+                "extra_body": {
+                    "PASSWORD": "local-password",
+                },
+            },
+            {
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lookup_account",
+                            "description": "Lookup account",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "DATABASE_URL": {
+                                        "type": "string",
+                                        "default": "postgres://user:pass@db.local/app",
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ],
+            },
         ],
-        ids=["tool-description-env-secret", "extra-body-credential-url"],
+        ids=[
+            "tool-description-env-secret",
+            "extra-body-credential-url",
+            "extra-body-secret-key-url-value",
+            "extra-body-secret-key-scalar-value",
+            "tool-schema-secret-key-default",
+        ],
     )
     async def test_final_payload_leak_check_blocks_structured_secret_markers(
         self,

@@ -143,6 +143,32 @@ expect_safe_block_body() {
     fi
 }
 
+expect_final_block_no_provider() {
+    local label="$1"
+    local path="$2"
+    local payload="$3"
+    local forbidden="$4"
+    local expected_analyzer_requests="$5"
+    local expected_analyzer_saw_canary="$6"
+
+    reset_capture
+    local body_file="$tmp_dir/${label}.json"
+    local status
+    status="$(post_json "$path" "$payload" "$body_file")"
+    if [ "$status" != "422" ]; then
+        echo "Expected $label status 422, got $status" >&2
+        cat "$body_file" >&2
+        exit 1
+    fi
+    expect_safe_block_body "$body_file" "$forbidden"
+    local capture_file="$tmp_dir/${label}-capture.json"
+    capture_counts "$capture_file"
+    expect_json_value "$capture_file" analyzer_requests "$expected_analyzer_requests"
+    expect_json_value "$capture_file" analyzer_saw_canary "$expected_analyzer_saw_canary"
+    expect_no_provider_posts "$capture_file"
+    expect_json_value "$capture_file" provider_saw_canary false
+}
+
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d
 
 wait_for_http "$BASE_URL/health/liveliness" "LiteLLM proxy"
@@ -318,6 +344,27 @@ expect_json_value "$messages_stop_sequences_capture" analyzer_requests 1
 expect_json_value "$messages_stop_sequences_capture" analyzer_saw_canary false
 expect_no_provider_posts "$messages_stop_sequences_capture"
 expect_json_value "$messages_stop_sequences_capture" provider_saw_canary false
+
+extra_body_key_secret_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Use provider options."}],"extra_body":{"DATABASE_URL":"postgres://user:pass@db.local/app"}}'
+expect_final_block_no_provider "extra-body-key-secret" "/v1/chat/completions" "$extra_body_key_secret_payload" "user:pass" 1 false
+
+extra_body_password_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Use provider options."}],"extra_body":{"PASSWORD":"local-password"}}'
+expect_final_block_no_provider "extra-body-password" "/v1/chat/completions" "$extra_body_password_payload" "local-password" 1 false
+
+prompt_cache_key_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Clean prompt."}],"prompt_cache_key":"RU_PROXY_FINAL_CANARY"}'
+expect_final_block_no_provider "prompt-cache-key-canary" "/v1/chat/completions" "$prompt_cache_key_payload" "$CANARY" 1 false
+
+safety_identifier_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Clean prompt."}],"safety_identifier":"RU_PROXY_FINAL_CANARY"}'
+expect_final_block_no_provider "safety-identifier-canary" "/v1/chat/completions" "$safety_identifier_payload" "$CANARY" 1 false
+
+web_search_options_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Clean prompt."}],"web_search_options":{"user_location":{"type":"approximate","city":"RU_PROXY_FINAL_CANARY"}}}'
+expect_final_block_no_provider "web-search-options-canary" "/v1/chat/completions" "$web_search_options_payload" "$CANARY" 1 false
+
+user_payload='{"model":"mock-chat","messages":[{"role":"user","content":"Clean prompt."}],"user":"RU_PROXY_FINAL_CANARY"}'
+expect_final_block_no_provider "user-canary" "/v1/chat/completions" "$user_payload" "$CANARY" 1 false
+
+metadata_payload='{"model":"mock-claude","max_tokens":16,"messages":[{"role":"user","content":"Clean prompt."}],"metadata":{"user_id":"RU_PROXY_FINAL_CANARY"}}'
+expect_final_block_no_provider "messages-metadata-canary" "/v1/messages" "$metadata_payload" "$CANARY" 1 false
 
 reset_capture
 tool_schema_secret_body="$tmp_dir/tool-schema-secret.json"

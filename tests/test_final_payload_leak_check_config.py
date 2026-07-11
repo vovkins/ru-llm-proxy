@@ -42,6 +42,13 @@ def test_env_compose_and_smoke_wire_final_payload_leak_check():
     assert "chat_image_url_payload" in script
     assert "responses_image_url_payload" in script
     assert "extra_body_payload" in script
+    assert "extra_body_key_secret_payload" in script
+    assert "extra_body_password_payload" in script
+    assert "prompt_cache_key_payload" in script
+    assert "safety_identifier_payload" in script
+    assert "web_search_options_payload" in script
+    assert "user_payload" in script
+    assert "metadata_payload" in script
     assert "stop_payload" in script
     assert "messages_stop_sequences_payload" in script
     assert "tool_schema_secret_payload" in script

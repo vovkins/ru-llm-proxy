@@ -80,7 +80,7 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 6. Analyzer возвращает entity spans, entity types и scores.
 7. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
 8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>` и применяет masked text к provider-bound request fields.
-9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
+9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
 10. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
 11. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
 12. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked request LLM-провайдеру.
@@ -181,7 +181,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE`, `FINAL_PAYLOAD_LEAK_CHECK_MODE` и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -263,7 +263,7 @@ docker compose up -d --force-recreate --no-deps litellm
 
 ### Final payload leak check
 
-`FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` и `stop_sequences` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.
+`FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.
 
 | Значение | Поведение |
 | --- | --- |
@@ -344,7 +344,7 @@ guardrails:
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
         - name: "final_payload_leak_check_mode"
           type: "string"
-          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop and stop_sequences; off disables this final check."
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user, and provider metadata; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
           description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
