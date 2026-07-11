@@ -217,6 +217,36 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
+Infrastructure/secret recognizers работают на том же Analyzer API и возвращают
+entity-level spans для одиночных технических идентификаторов и секретов:
+
+- `INTERNAL_IP`;
+- `INTERNAL_DOMAIN`;
+- `HOSTNAME`;
+- `DB_URL`;
+- `JWT`;
+- `BEARER_TOKEN`;
+- `PRIVATE_KEY`;
+- `API_KEY`;
+- `LOGIN`;
+- `PASSWORD`.
+
+```bash
+curl -s http://localhost:5001/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Internal endpoint 10.24.3.7, api.payments.corp.local, Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456, DATABASE_URL=postgresql://svc_user:S3curePass42@db.internal:5432/app",
+    "language": "ru",
+    "score_threshold": 0.35
+  }' | jq
+```
+
+`INTERNAL_DOMAIN` использует suffix list из
+`PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`. По умолчанию публичные IP не
+детектируются как `INTERNAL_IP`; если deployment policy считает любые IP
+чувствительными, включите `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true` и
+пересоздайте контейнер `presidio-analyzer`.
+
 ## Фильтрация Analyzer по entity types
 
 Analyzer API поддерживает стандартный Presidio-параметр `entities`. Regex recognizers и DeepPavlov NER соблюдают этот список одинаково: если запрошен только `RU_INN`, NER-типы `PERSON`, `LOCATION` и `ORGANIZATION` не вычисляются.

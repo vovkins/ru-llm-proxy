@@ -19,6 +19,18 @@ from recognizers.ru_bank_requisites import (
     RuOgrnipRecognizer,
     RuSettlementAccountRecognizer,
 )
+from recognizers.infra_secrets import (
+    ApiKeyRecognizer,
+    BearerTokenRecognizer,
+    CredentialUrlRecognizer,
+    HostnameRecognizer,
+    InternalDomainRecognizer,
+    InternalIpRecognizer,
+    JwtRecognizer,
+    LoginRecognizer,
+    PasswordRecognizer,
+    PrivateKeyRecognizer,
+)
 from recognizers.ru_address import RuAddressRecognizer
 from recognizers.ru_inn import RuInnRecognizer
 
@@ -71,7 +83,10 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
                 "Адрес регистрации: ул Ленина 10. "
                 "ОГРН 1027700132195. "
                 "БИК 044525225. "
-                "Расчетный счет 40702810900000000000"
+                "Расчетный счет 40702810900000000000. "
+                "Внутренний IP 10.24.3.7. "
+                "Endpoint api.payments.corp.local. "
+                "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
             ),
             "language": "ru",
             "score_threshold": 0.35,
@@ -89,6 +104,13 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
     assert _entity_texts(entities, "RU_BIK") == ["044525225"]
     assert _entity_texts(entities, "RU_SETTLEMENT_ACCOUNT") == [
         "40702810900000000000"
+    ]
+    assert _entity_texts(entities, "INTERNAL_IP") == ["10.24.3.7"]
+    assert _entity_texts(entities, "INTERNAL_DOMAIN") == [
+        "api.payments.corp.local"
+    ]
+    assert _entity_texts(entities, "BEARER_TOKEN") == [
+        "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
     ]
 
 
@@ -175,6 +197,117 @@ class TestAnalyzerCounterpartyRequisiteThresholdPolicy:
         entities = _api_entities(monkeypatch, analyzer, text)
 
         assert _entity_texts(entities, entity_type) == []
+
+
+class TestAnalyzerInfrastructureSecretThresholdPolicy:
+    JWT = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJzdWIiOiJzdmMtdXNlciIsImlzcyI6ImlkcCJ9."
+        "c2lnbmF0dXJl"
+    )
+
+    def test_detects_infrastructure_identifiers_and_secrets(self, monkeypatch):
+        analyzer = _build_analyzer(
+            InternalIpRecognizer(),
+            InternalDomainRecognizer(),
+            HostnameRecognizer(),
+            CredentialUrlRecognizer(),
+            JwtRecognizer(),
+            BearerTokenRecognizer(),
+            PrivateKeyRecognizer(),
+            ApiKeyRecognizer(),
+            LoginRecognizer(),
+            PasswordRecognizer(),
+        )
+        private_key = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
+            "-----END PRIVATE KEY-----"
+        )
+        api_key = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        text = (
+            "IP 10.24.3.7, endpoint api.payments.corp.local, "
+            "hostname=app-prod-01, "
+            "DATABASE_URL=postgresql://svc_user:S3curePass42@db.internal:5432/app, "
+            f"JWT {self.JWT}, "
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456, "
+            f"provider key {api_key}, "
+            "login=svc-bot password=S3cure-Value42\n"
+            f"{private_key}"
+        )
+
+        entities = _api_entities(monkeypatch, analyzer, text)
+
+        assert _entity_texts(entities, "INTERNAL_IP") == ["10.24.3.7"]
+        assert _entity_texts(entities, "INTERNAL_DOMAIN") == [
+            "api.payments.corp.local"
+        ]
+        assert _entity_texts(entities, "HOSTNAME") == ["hostname=app-prod-01"]
+        assert _entity_texts(entities, "DB_URL") == [
+            "postgresql://svc_user:S3curePass42@db.internal:5432/app"
+        ]
+        assert _entity_texts(entities, "JWT") == [self.JWT]
+        assert _entity_texts(entities, "BEARER_TOKEN") == [
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
+        ]
+        assert _entity_texts(entities, "PRIVATE_KEY") == [private_key]
+        assert _entity_texts(entities, "API_KEY") == [api_key]
+        assert _entity_texts(entities, "LOGIN") == ["login=svc-bot"]
+        assert _entity_texts(entities, "PASSWORD") == ["password=S3cure-Value42"]
+
+    @pytest.mark.parametrize(
+        "text, entity_type",
+        [
+            ("8.8.8.8", "INTERNAL_IP"),
+            ("docs.github.com", "INTERNAL_DOMAIN"),
+            ("app-prod-01", "HOSTNAME"),
+            ("https://api.example.com/docs", "DB_URL"),
+            ("Объясни, что такое bearer token", "BEARER_TOKEN"),
+            ("Объясни, чем API key отличается от password", "API_KEY"),
+            ("Объясни, чем API key отличается от password", "PASSWORD"),
+        ],
+    )
+    def test_default_policy_avoids_low_signal_false_positives(
+        self,
+        monkeypatch,
+        text,
+        entity_type,
+    ):
+        analyzer = _build_analyzer(
+            InternalIpRecognizer(),
+            InternalDomainRecognizer(),
+            HostnameRecognizer(),
+            CredentialUrlRecognizer(),
+            BearerTokenRecognizer(),
+            ApiKeyRecognizer(),
+            PasswordRecognizer(),
+        )
+
+        entities = _api_entities(monkeypatch, analyzer, text)
+
+        assert _entity_texts(entities, entity_type) == []
+
+    def test_public_ip_detection_can_be_enabled(self, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "true")
+        analyzer = _build_analyzer(InternalIpRecognizer())
+
+        entities = _api_entities(monkeypatch, analyzer, "Public endpoint 8.8.8.8")
+
+        assert _entity_texts(entities, "INTERNAL_IP") == ["8.8.8.8"]
+
+    def test_internal_domain_suffixes_are_configurable(self, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES", "bank.example")
+        analyzer = _build_analyzer(InternalDomainRecognizer())
+
+        entities = _api_entities(
+            monkeypatch,
+            analyzer,
+            "Internal endpoint scoring.bank.example",
+        )
+
+        assert _entity_texts(entities, "INTERNAL_DOMAIN") == [
+            "scoring.bank.example"
+        ]
 
 
 class TestAnalyzerInnThresholdPolicy:

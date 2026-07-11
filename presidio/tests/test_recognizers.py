@@ -185,6 +185,139 @@ class TestRuCounterpartyRequisites:
         assert _entity_texts(text, results, "RU_CORRESPONDENT_ACCOUNT") == []
 
 
+# === Infrastructure identifiers and secrets ===
+
+class TestInfrastructureSecrets:
+    JWT = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJzdWIiOiJzdmMtdXNlciIsImlzcyI6ImlkcCJ9."
+        "c2lnbmF0dXJl"
+    )
+
+    def test_private_ipv4_is_detected(self, analyzer):
+        text = "Внутренний endpoint 10.24.3.7 доступен только из VPN"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == ["10.24.3.7"]
+
+    def test_private_ipv4_before_sentence_punctuation_is_detected(self, analyzer):
+        text = "Внутренний endpoint 10.24.3.7."
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == ["10.24.3.7"]
+
+    def test_public_ipv4_is_not_detected_by_default(self, analyzer):
+        text = "Публичный DNS 8.8.8.8 указан как пример"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == []
+
+    def test_public_ipv4_detection_is_policy_controlled(self, analyzer, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "true")
+        text = "Публичный endpoint 8.8.8.8 тоже считаем чувствительным"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == ["8.8.8.8"]
+
+    def test_internal_ipv6_is_detected(self, analyzer):
+        text = "Service IP fd00::10 используется в overlay network"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == ["fd00::10"]
+
+    def test_invalid_ip_is_rejected(self, analyzer):
+        text = "Версия 999.999.999.999 не является IP"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == []
+
+    def test_internal_domain_suffix_is_detected(self, analyzer):
+        text = "Endpoint api.payments.corp.local вызывает backend"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_DOMAIN") == [
+            "api.payments.corp.local"
+        ]
+
+    def test_internal_domain_before_sentence_punctuation_is_detected(self, analyzer):
+        text = "Endpoint api.payments.corp.local."
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_DOMAIN") == [
+            "api.payments.corp.local"
+        ]
+
+    def test_external_domain_is_not_internal_domain(self, analyzer):
+        text = "Документация лежит на docs.github.com"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_DOMAIN") == []
+
+    def test_context_bound_hostname_is_detected(self, analyzer):
+        text = "hostname=app-prod-01 обрабатывает платежи"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "HOSTNAME") == ["hostname=app-prod-01"]
+
+    def test_bare_hostname_like_word_is_not_detected(self, analyzer):
+        text = "app-prod-01 выглядит как имя, но контекста хоста нет"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "HOSTNAME") == []
+
+    def test_credential_url_is_detected(self, analyzer):
+        text = "DATABASE_URL=postgresql://svc_user:S3curePass42@db.internal:5432/app"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "DB_URL") == [
+            "postgresql://svc_user:S3curePass42@db.internal:5432/app"
+        ]
+
+    def test_url_without_credentials_is_not_db_url(self, analyzer):
+        text = "Документация: https://api.example.com/docs"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "DB_URL") == []
+
+    def test_jwt_is_detected_and_invalid_jwt_is_rejected(self, analyzer):
+        positive_text = f"OIDC token {self.JWT}"
+        results = analyzer.analyze(positive_text, language="ru", score_threshold=0.35)
+        assert _entity_texts(positive_text, results, "JWT") == [self.JWT]
+
+        negative_text = "token eyJnotreally.abcdefghi.signature"
+        results = analyzer.analyze(negative_text, language="ru", score_threshold=0.35)
+        assert _entity_texts(negative_text, results, "JWT") == []
+
+    def test_bearer_token_is_detected(self, analyzer):
+        token = "Bearer abcdefghijklmnopqrstuvwxyz123456"
+        text = f"Authorization: {token}"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "BEARER_TOKEN") == [
+            f"Authorization: {token}"
+        ]
+
+    def test_private_key_block_is_detected(self, analyzer):
+        key = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n"
+            "-----END PRIVATE KEY-----"
+        )
+        text = f"Ключ:\n{key}"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "PRIVATE_KEY") == [key]
+
+    def test_api_key_is_detected_but_placeholders_are_rejected(self, analyzer):
+        key = "sk-abcdefghijklmnopqrstuvwxyz123456"
+        text = f"Provider key {key}"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "API_KEY") == [key]
+
+        placeholder_text = "OPENAI_API_KEY=your-api-key-placeholder"
+        results = analyzer.analyze(placeholder_text, language="ru", score_threshold=0.35)
+        assert _entity_texts(placeholder_text, results, "API_KEY") == []
+
+    def test_login_and_password_assignments_are_detected(self, analyzer):
+        text = "login=svc-bot password=S3cure-Value42"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "LOGIN") == ["login=svc-bot"]
+        assert _entity_texts(text, results, "PASSWORD") == [
+            "password=S3cure-Value42"
+        ]
+
+    def test_incidental_secret_words_are_not_detected(self, analyzer):
+        text = "Объясни, чем API key отличается от bearer token и password."
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        for entity_type in ("API_KEY", "BEARER_TOKEN", "PASSWORD", "LOGIN"):
+            assert _entity_texts(text, results, entity_type) == []
+
+
 # === SNILS ===
 
 class TestRuSnils:

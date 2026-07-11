@@ -21,6 +21,29 @@ def test_bare_inn_checksum_setting_is_exposed_to_analyzer_runtime():
     assert f'ensure_key_exists "{env_name}" "true"' in setup_script
 
 
+def test_infrastructure_secret_settings_are_exposed_to_analyzer_runtime():
+    domain_env = "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES"
+    public_ip_env = "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS"
+    env_example = (ROOT / ".env.example").read_text()
+    compose = (ROOT / "docker-compose.yml").read_text()
+    setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
+
+    domain_default_prefix = "internal,local,lan,corp,corp.local"
+    assert f"{domain_env}={domain_default_prefix}" in env_example
+    assert (
+        f"{domain_env}=${{" + domain_env + f":-{domain_default_prefix}"
+        in compose
+    )
+    assert (
+        f'ensure_key_exists "{domain_env}" "{domain_default_prefix}'
+        in setup_script
+    )
+
+    assert f"{public_ip_env}=false" in env_example
+    assert f"{public_ip_env}=${{{public_ip_env}:-false}}" in compose
+    assert f'ensure_key_exists "{public_ip_env}" "false"' in setup_script
+
+
 def test_static_suite_runs_recognizer_calibration_regression():
     makefile = (ROOT / "Makefile").read_text()
     workflow = (ROOT / ".github" / "workflows" / "baseline.yml").read_text()
@@ -294,6 +317,58 @@ def test_counterparty_requisite_recognizers_are_wired_and_documented():
     assert '"score_threshold": 0.35' in examples
     assert "online lookup" in readme
     assert "online lookup" in architecture
+
+
+def test_infrastructure_secret_recognizers_are_wired_and_documented():
+    recognizers_init = (ROOT / "presidio" / "recognizers" / "__init__.py").read_text()
+    infra_secrets = (
+        ROOT / "presidio" / "recognizers" / "infra_secrets.py"
+    ).read_text()
+    readme = (ROOT / "README.md").read_text()
+    architecture = (ROOT / "docs" / "architecture.md").read_text()
+    examples = (ROOT / "docs" / "examples.md").read_text()
+    compliance = (ROOT / "docs" / "compliance.md").read_text()
+
+    for class_name in (
+        "InternalIpRecognizer",
+        "InternalDomainRecognizer",
+        "HostnameRecognizer",
+        "CredentialUrlRecognizer",
+        "JwtRecognizer",
+        "BearerTokenRecognizer",
+        "PrivateKeyRecognizer",
+        "ApiKeyRecognizer",
+        "LoginRecognizer",
+        "PasswordRecognizer",
+    ):
+        assert class_name in recognizers_init
+
+    for entity_type in (
+        "INTERNAL_IP",
+        "INTERNAL_DOMAIN",
+        "HOSTNAME",
+        "DB_URL",
+        "JWT",
+        "BEARER_TOKEN",
+        "PRIVATE_KEY",
+        "API_KEY",
+        "LOGIN",
+        "PASSWORD",
+    ):
+        assert entity_type in infra_secrets
+        assert entity_type in readme
+        assert entity_type in architecture
+        assert entity_type in examples
+        assert entity_type in compliance
+
+    assert "ipaddress.ip_address" in infra_secrets
+    assert "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES" in infra_secrets
+    assert "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS" in infra_secrets
+    assert "score_threshold=0.35" in readme
+    assert "score_threshold=0.35" in architecture
+    assert '"score_threshold": 0.35' in examples
+    assert "not a whole-payload classifier" in architecture
+    assert "full source-code secret scanning" in compliance
 
 
 def test_phone_recognizer_requires_digit_boundaries_for_country_code_pattern():

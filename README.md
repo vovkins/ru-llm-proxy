@@ -17,6 +17,7 @@ LLM-прокси для командной работы с внешними LLM 
 - Reused Redis/httpx guardrail clients with pool limits for analyzer and mapping dependencies.
 - Calibrated Russian recognizer thresholds: checksum validation for `RU_INN` and a tighter baseline `RU_ADDRESS` corpus.
 - Counterparty and bank-requisite recognizers: `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`.
+- Infrastructure/secret recognizers: `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD`.
 - Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
 ⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются.
@@ -37,6 +38,16 @@ LLM-прокси для командной работы с внешними LLM 
 | БИК | `RU_BIK` | Regex + банковский контекст + базовая структурная проверка |
 | Расчётный счёт | `RU_SETTLEMENT_ACCOUNT` | Regex + сильный контекст; при наличии БИК рядом проверяется контрольный ключ |
 | Корреспондентский счёт | `RU_CORRESPONDENT_ACCOUNT` | Regex + сильный контекст/prefix `301`; при наличии БИК рядом проверяется контрольный ключ |
+| Внутренние IP | `INTERNAL_IP` | Regex + `ipaddress` validation для private/loopback/link-local/CGNAT/ULA ranges; public IP опционален |
+| Внутренние домены | `INTERNAL_DOMAIN` | Regex по настраиваемым internal suffixes |
+| Hostname | `HOSTNAME` | Context-bound key/value hostname patterns |
+| DB/service URL с credentials | `DB_URL` | Credential-bearing URL patterns |
+| JWT | `JWT` | Base64url JSON header/payload validation |
+| Bearer token | `BEARER_TOKEN` | Authorization/Bearer token patterns |
+| Private key | `PRIVATE_KEY` | PEM private key block patterns |
+| API key/token | `API_KEY` | Provider-specific keys и context-bound token assignments |
+| Login | `LOGIN` | Context-bound login/user key-value pairs |
+| Password | `PASSWORD` | Context-bound password/passwd/pwd key-value pairs |
 | Адреса | `RU_ADDRESS` | Ограниченный regex corpus российских адресов |
 | ФИО | `PERSON` | DeepPavlov `ner_rus_bert`, если модель загружена |
 | Организации | `ORGANIZATION` | DeepPavlov `ner_rus_bert`, если модель загружена |
@@ -45,6 +56,8 @@ LLM-прокси для командной работы с внешними LLM 
 Текущий `main` использует `score_threshold=0.35`. `RU_INN` всегда проходит checksum validation; по умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare ИНН без контекстного слова проходит дефолтный порог. Если включить strict mode (`false`), голый ИНН требует контекст вроде `ИНН` или `налоговый`. `RU_ADDRESS` остаётся ограниченным regex-based покрытием базовых российских адресных форматов.
 
 Реквизиты контрагентов детектируются консервативно. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный контекст вроде `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` или `к/с`, поэтому случайные 9- и 20-значные числа не проходят дефолтный порог. Для счетов при наличии контекстного БИК рядом проверяется российский контрольный ключ; справочник банков/актуальность БИК по ЦБ не запрашивается.
+
+Infrastructure/secret recognizers работают на entity-level внутри обычного `PII_GUARDRAIL_MODE=mask|block`: одиночный private IP, internal domain, JWT или bearer token может быть замаскирован или заблокирован без классификации всего prompt как `.env`/log/config artifact. Доменные suffixes задаются через `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`; публичные IP по умолчанию не считаются `INTERNAL_IP`, но могут быть включены через `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true`.
 
 DeepPavlov NER соблюдает параметры Analyzer API: если в запросе указан `entities`, NER запускается только для `PERSON`, `ORGANIZATION` или `LOCATION`; если запрошены только regex-типы вроде `RU_INN`, NER пропускается. Так как DeepPavlov не возвращает per-entity confidence, проект присваивает NER-результатам фиксированный score `0.7` и не запускает NER при `score_threshold > 0.7`.
 
@@ -88,7 +101,7 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
 6. Analyzer возвращает entity spans, entity types и scores.
 7. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
-8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>` и применяет masked text к provider-bound request fields.
+8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`, `<RU_BIK_1>`, `<INTERNAL_IP_1>`, `<BEARER_TOKEN_1>` и применяет masked text к provider-bound request fields.
 9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
 10. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
 11. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
@@ -109,7 +122,7 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 | `ru_core_news_sm` | Presidio Analyzer / spaCy NLP engine | Токенизация и базовая языковая обработка для Presidio |
 | DeepPavlov `ner_rus_bert` | `presidio/ner/deeppavlov_recognizer.py` | NER для `PERSON`, `LOCATION`, `ORGANIZATION` |
 
-Regex recognizers отвечают за структурированные российские PII и реквизиты: телефоны, ИНН, КПП, ОГРН/ОГРНИП, БИК, расчётные/корреспондентские счета, СНИЛС, паспорта, карты, email и адреса. DeepPavlov добавляет NER-сущности поверх этого результата.
+Regex recognizers отвечают за структурированные российские PII, реквизиты и infrastructure/secret entities: телефоны, ИНН, КПП, ОГРН/ОГРНИП, БИК, расчётные/корреспондентские счета, СНИЛС, паспорта, карты, email, адреса, private/internal IP/domain/hostname markers, DB/service URLs с credentials, JWT/bearer/API keys, private keys, login/password pairs. DeepPavlov добавляет NER-сущности поверх этого результата.
 
 Подробности: [docs/architecture.md](docs/architecture.md).
 
@@ -175,6 +188,8 @@ PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=1
 PRESIDIO_ANALYZER_QUEUE_LIMIT=8
 PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
 PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
+PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local
+PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=false
 PII_GUARDRAIL_MODE=mask
 PRE_EGRESS_POLICY_MODE=block
 FINAL_PAYLOAD_LEAK_CHECK_MODE=block
@@ -211,6 +226,8 @@ Runtime capacity Analyzer:
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
 | `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare 12-digit INN без контекстного слова при API `score_threshold=0.35`. 10-digit INN требует контекст вроде `ИНН` или `налогоплательщик` даже в default mode. Если `false`, любой голый ИНН требует контекст. |
+| `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Comma/space-separated suffixes, которые `INTERNAL_DOMAIN` считает внутренними. |
+| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | Если `true`, `INTERNAL_IP` также детектирует global public IP; по умолчанию ловятся только private/internal ranges. |
 
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
@@ -221,6 +238,7 @@ Recognizer calibration:
 - `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare 12-digit INN проходит дефолтный Analyzer API `score_threshold=0.35`; 10-digit INN без контекста остаётся ниже threshold, потому что около 10% случайных 10-значных чисел проходят checksum. Для 10-digit detection нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
 - В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) любой голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст.
 - `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют сильный контекст и не детектируют голые digit runs при `score_threshold=0.35`. `RU_OGRN` и `RU_OGRNIP` проходят checksum validation; невалидный контрольный разряд отбрасывается. Для расчётных и корреспондентских счетов при наличии БИК рядом выполняется cross-field проверка контрольного ключа; без БИК используется только сильный контекст и структурные ограничения. Проект не делает online lookup по справочнику БИК ЦБ.
+- Infrastructure/secret recognizers используют high-confidence правила. `INTERNAL_IP` по умолчанию покрывает private/loopback/link-local/CGNAT/ULA ranges, `INTERNAL_DOMAIN` ограничен `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`, `HOSTNAME`, `LOGIN` и `PASSWORD` требуют key-value context, `JWT` проверяет decodable JSON header/payload, а generic API token assignments отбрасывают obvious placeholder values.
 - `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope. Сокращения street type требуют границу слева, а форма `Тверская улица, дом 7` требует явное `дом`/`д.`, чтобы не маскировать фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`.
 
 Runtime dependency clients guardrail:
