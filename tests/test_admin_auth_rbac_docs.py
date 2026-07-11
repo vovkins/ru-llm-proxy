@@ -72,6 +72,9 @@ def test_user_facing_client_docs_do_not_use_master_key_as_client_credential():
         "docs/clients/claude-code.md": (
             ROOT / "docs" / "clients" / "claude-code.md"
         ).read_text(),
+        "docs/clients/zcode.md": (
+            ROOT / "docs" / "clients" / "zcode.md"
+        ).read_text(),
         "docs/clients/opencode.md": (
             ROOT / "docs" / "clients" / "opencode.md"
         ).read_text(),
@@ -100,6 +103,9 @@ def test_user_facing_client_docs_do_not_use_master_key_as_client_credential():
     ]
     assert "Do not put `ANTHROPIC_API_KEY` or `LITELLM_MASTER_KEY`" in docs[
         "docs/clients/claude-code.md"
+    ]
+    assert "Do not put `ZAI_API_KEY` or `LITELLM_MASTER_KEY`" in docs[
+        "docs/clients/zcode.md"
     ]
 
 

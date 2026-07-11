@@ -625,6 +625,7 @@ make virtual-key-create KEY_ALIAS=local-coding MODELS=standard,zai,openai DURATI
 
 - Codex CLI / Codex App local tasks: [docs/clients/codex.md](docs/clients/codex.md)
 - Claude Code: [docs/clients/claude-code.md](docs/clients/claude-code.md)
+- ZCode: [docs/clients/zcode.md](docs/clients/zcode.md)
 - OpenCode CLI / Desktop: [docs/clients/opencode.md](docs/clients/opencode.md)
 - Kilo Code VS Code / CLI: [docs/clients/kilo-code.md](docs/clients/kilo-code.md)
 - JWT/OIDC proxy auth: [docs/clients/jwt.md](docs/clients/jwt.md)
@@ -636,6 +637,8 @@ make virtual-key-create KEY_ALIAS=local-coding MODELS=standard,zai,openai DURATI
 - Anthropic Messages: `POST /v1/messages`
 
 Proxy auth по умолчанию основан на LiteLLM virtual keys. JWT/OIDC — отдельный enterprise deployment path: он включается только при наличии IdP/JWKS и не заменяет upstream provider keys.
+
+ZCode подключается в API Key mode как OpenAI-compatible клиент: Base URL указывает на proxy `/v1`, а API Key — это `RU_LLM_PROXY_TOKEN`. Серверный `ZAI_API_KEY` остаётся только на proxy; account login `Continue with Z.ai` через proxy не считается поддержанным режимом.
 
 Есть два режима upstream auth:
 

@@ -582,9 +582,12 @@ PII guardrail метрики `ru_pii_guardrail_*` появятся после п
 
 - Codex CLI / Codex App local tasks: [clients/codex.md](clients/codex.md)
 - Claude Code: [clients/claude-code.md](clients/claude-code.md)
+- ZCode: [clients/zcode.md](clients/zcode.md)
 - OpenCode CLI / Desktop: [clients/opencode.md](clients/opencode.md)
 - Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
 - JWT/OIDC proxy auth: [clients/jwt.md](clients/jwt.md)
+
+Для ZCode используйте `Use API Key` / OpenAI-compatible provider settings: `OpenAI Base URL = http://localhost:4000/v1`, `API Key = $RU_LLM_PROXY_TOKEN`, model `zai-glm-5.1` или `glm-5.1`. `ZAI_API_KEY` остаётся только в окружении proxy.
 
 ## Добавление моделей
 

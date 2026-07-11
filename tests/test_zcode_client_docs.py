@@ -1,0 +1,71 @@
+"""Static checks for the ZCode client integration guide."""
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read_repo_file(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_zcode_client_doc_is_linked_from_top_level_docs():
+    readme = read_repo_file("README.md")
+    examples = read_repo_file("docs/examples.md")
+
+    assert "docs/clients/zcode.md" in readme
+    assert "clients/zcode.md" in examples
+    assert "ZCode" in readme
+    assert "ZCode" in examples
+
+
+def test_zcode_doc_documents_api_key_mode_contract():
+    doc = read_repo_file("docs/clients/zcode.md")
+
+    for required in (
+        "ZCode",
+        "Use API Key",
+        "OpenAI Base URL",
+        "http://localhost:4000/v1",
+        "https://<proxy-host>/v1",
+        "RU_LLM_PROXY_TOKEN",
+        "LiteLLM virtual key",
+        "zai-glm-5.1",
+        "glm-5.1",
+        "CHAT_MODEL=zai-glm-5.1 make client-auth-smoke",
+        "CHAT_MODEL=zai-glm-5.1 make guardrails-smoke",
+    ):
+        assert required in doc
+
+
+def test_zcode_doc_separates_client_and_upstream_credentials():
+    doc = read_repo_file("docs/clients/zcode.md")
+
+    assert "ZAI_API_KEY" in doc
+    assert "Do not put `ZAI_API_KEY` or `LITELLM_MASTER_KEY` into ZCode" in doc
+    assert "ZCode receives only the proxy token" in doc
+    assert "ZCode should call the proxy `/v1` endpoint" in doc
+
+    forbidden_client_credentials = (
+        "API Key: $ZAI_API_KEY",
+        "API Key: ZAI_API_KEY",
+        "API Key: $LITELLM_MASTER_KEY",
+        "API Key: LITELLM_MASTER_KEY",
+        "Authorization: Bearer $ZAI_API_KEY",
+        "Authorization: Bearer $LITELLM_MASTER_KEY",
+        "RU_LLM_PROXY_TOKEN=$LITELLM_MASTER_KEY",
+    )
+
+    for pattern in forbidden_client_credentials:
+        assert pattern not in doc
+
+
+def test_zcode_doc_does_not_claim_account_login_or_glm_52_support():
+    doc = read_repo_file("docs/clients/zcode.md")
+
+    assert "Continue with Z.ai" in doc
+    assert "not covered" in doc.lower()
+    assert "Do not type `glm-5.2` into ZCode until the proxy exposes a matching alias" in doc
+    assert "live-validated" in doc
+    assert "litellm-config.yaml" in doc
