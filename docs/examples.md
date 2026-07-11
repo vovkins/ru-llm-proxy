@@ -131,7 +131,7 @@ curl -s "$API_URL/v1/responses" \
   }' | jq
 ```
 
-PII guardrail applies to Responses API top-level `instructions` / `input` strings, message-like `input[]` items with string `content`, tool-call `arguments`, tool-output items with string/list `output`, and text blocks with `text`, `input_text`, or `output_text` types. Non-text inputs such as images/files are passed through unchanged.
+PII guardrail applies to Anthropic top-level `system` string/text blocks, Responses API top-level `instructions` / `input` strings, message-like `input[]` items with string `content`, tool-call `arguments`, tool-output items with string/list `output`, and text blocks with `text`, `input_text`, or `output_text` types. Non-text inputs such as images/files are passed through unchanged.
 
 Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
 
@@ -322,6 +322,36 @@ make restart
 ```
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
+
+## Pre-egress config/log policy
+
+`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio Analyzer. Он останавливает целые operational payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces.
+
+При срабатывании запрос не отправляется в Analyzer и провайдеру, а Redis mapping `pii_mapping:*` не создаётся:
+
+```json
+{
+  "error": {
+    "message": "Request contains configuration or log data and was blocked by pre-egress policy.",
+    "type": "pre_egress_policy_violation",
+    "code": "pre_egress_policy_blocked",
+    "details": {
+      "categories": ["config"],
+      "rules": ["env_secret_assignment"]
+    }
+  }
+}
+```
+
+Ответ и structured logs содержат только bounded categories/rule ids/counts, без raw payload, snippets, offsets или secret values. Если нужно временно разрешить такие payloads в dev-среде, задайте `PRE_EGRESS_POLICY_MODE=off`; PII mask/block при этом продолжит работать отдельно. После изменения этой переменной в `.env` пересоздайте контейнер LiteLLM: `docker compose up -d --force-recreate --no-deps litellm`.
+
+В зависимости от LiteLLM/FastAPI wrapper JSON может быть обёрнут как `detail.error`, `error.provider_specific_fields.error` или `error.param.pre_egress_policy`, но поля `message`, `type`, `code`, `details.categories` и `details.rules` остаются обязательными.
+
+Black-box smoke с test-only LiteLLM proxy и mock upstream проверяет `/v1/chat/completions`, `/v1/responses` и `/v1/messages`: clean prompt доходит до Analyzer/provider, а blocked config payload не доходит ни до Analyzer, ни до provider:
+
+```bash
+make test-pre-egress-proxy
+```
 
 ## Sticky routing
 

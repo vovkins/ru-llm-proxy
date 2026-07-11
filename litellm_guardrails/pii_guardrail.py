@@ -8,14 +8,23 @@ import json
 import logging
 import re
 import time
-from typing import Optional, Union, Any
+from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
 import httpx
 import litellm
 from litellm.integrations.custom_guardrail import CustomGuardrail
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
+
+try:
+    from fastapi import HTTPException
+except ImportError:  # pragma: no cover - local lightweight test env without FastAPI.
+    class HTTPException(Exception):
+        def __init__(self, status_code: int, detail: Any):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
 
 logger = logging.getLogger(__name__)
 
@@ -165,17 +174,91 @@ PII_BLOCKED_ENTITIES = _build_metric(
     "PII entities blocked by entity type.",
     ["entity_type"],
 )
+PRE_EGRESS_POLICY_BLOCKED = _build_metric(
+    Counter,
+    "ru_pre_egress_policy_blocked",
+    "Pre-egress policy blocks by category.",
+    ["category"],
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
 
 FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
+PRE_EGRESS_POLICY_MODES = {"block", "off"}
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
+PRE_EGRESS_POLICY_BLOCKED_MESSAGE = (
+    "Request contains configuration or log data and was blocked by pre-egress policy."
+)
 PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
+
+_ENV_SECRET_KEY_PATTERN = (
+    r"DATABASE_URL|REDIS_URL|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|"
+    r"PGPASSWORD|MYSQL_PWD|DOCKER_AUTH_CONFIG|"
+    r"SECRET_KEY|JWT_SECRET|"
+    r"(?:[A-Z][A-Z0-9_]*_)?(?:"
+    r"API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY|MASTER_KEY|SALT_KEY|"
+    r"PASS|PWD|DSN|URI|CONNECTION_STRING|AUTH_CONFIG"
+    r")(?:_[0-9]+)?"
+)
+_ENV_SECRET_ASSIGNMENT_RE = re.compile(
+    rf"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{{,][ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*[\"']?\S+"
+)
+_ENV_SECRET_YAML_MAPPING_RE = re.compile(
+    rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
+)
+_ENV_CREDENTIAL_URL_RE = re.compile(
+    r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
+    r"[A-Z][A-Z0-9_]*"
+    r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*=[ \t]*"
+    r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
+_ENV_CREDENTIAL_URL_YAML_MAPPING_RE = re.compile(
+    r"(?m)(?:^[ \t-]*[\"']?|[\[{,][ \t]*[\"']?)"
+    r"[A-Z][A-Z0-9_]*"
+    r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*:[ \t]*"
+    r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
+_ACCESS_LOG_RE = re.compile(
+    r'(?m)^\S+\s+\S+\s+\S+\s+\[[^\]\n]+\]\s+"'
+    r"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+\S+\s+HTTP/\d(?:\.\d)?"
+    r'"\s+\d{3}\b'
+)
+_STACK_TRACE_RE = re.compile(
+    r"(?m)^(?:Traceback \(most recent call last\):|"
+    r"\s+at\s+(?:\S+\s+)?\(?[^)\n]+:\d+(?::\d+)?\)?|"
+    r'\s+File "[^"\n]+", line \d+, in \w+)'
+)
+_RFC3164_SYSLOG_PREFIX_RE = (
+    r"[A-Z][a-z]{2}\s+\d{1,2}\s+(?:\d{2}:\d{2}:\d{2}\s+)?\S+\s+"
+)
+_RFC3339_TIMESTAMP_RE = (
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})"
+)
+_RFC3339_SYSLOG_PREFIX_RE = rf"{_RFC3339_TIMESTAMP_RE}\s+\S+\s+"
+_SYSLOG_PREFIX_RE = (
+    rf"(?:{_RFC3164_SYSLOG_PREFIX_RE}|{_RFC3339_SYSLOG_PREFIX_RE})"
+)
+_AUTH_LOG_RE = re.compile(
+    r"(?im)^(?:"
+    rf"{_SYSLOG_PREFIX_RE}(?:sshd\[\d+\]:\s+)?(?:failed|accepted) password\b"
+    r".*\bfrom\s+\S+\s+port\s+\d+\b|"
+    r"sshd\[\d+\]:\s+(?:failed|accepted) password\b"
+    r".*\bfrom\s+\S+\s+port\s+\d+\b|"
+    rf"{_SYSLOG_PREFIX_RE}.*\bpam_unix\b.*\bauthentication failure\b|"
+    rf"{_SYSLOG_PREFIX_RE}sudo:\s+.*\bCOMMAND="
+    r")"
+)
+_JSON_STACKTRACE_FIELD_RE = re.compile(
+    r"(?i)\b(?:stack|stacktrace|traceback|exception|error)\b"
+)
 
 
 class AnalyzerOverloadedError(RuntimeError):
@@ -264,6 +347,7 @@ PII_MAPPING_TTL_SECONDS = _get_int_env(
 )
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
 PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
+PRE_EGRESS_POLICY_MODE = os.getenv("PRE_EGRESS_POLICY_MODE", "block")
 _REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
 
@@ -416,6 +500,7 @@ class RuPIIGuardrail(CustomGuardrail):
         self,
         failure_mode: Optional[str] = None,
         pii_mode: Optional[str] = None,
+        pre_egress_policy_mode: Optional[str] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -424,6 +509,9 @@ class RuPIIGuardrail(CustomGuardrail):
             failure_mode or PII_GUARDRAIL_FAILURE_MODE
         )
         self.pii_mode = self._normalize_policy_mode(pii_mode or PII_GUARDRAIL_MODE)
+        self.pre_egress_policy_mode = self._normalize_pre_egress_policy_mode(
+            pre_egress_policy_mode or PRE_EGRESS_POLICY_MODE
+        )
         self.mapping_ttl_seconds = _normalize_positive_int(
             "PII_MAPPING_TTL_SECONDS",
             mapping_ttl_seconds
@@ -455,6 +543,22 @@ class RuPIIGuardrail(CustomGuardrail):
                 value,
             )
             return "mask"
+        return mode
+
+    @staticmethod
+    def _normalize_pre_egress_policy_mode(value: str) -> str:
+        """Normalize and validate config/log pre-egress policy behavior."""
+        mode = value.strip().lower().replace("-", "_")
+        if mode in {"disabled", "disable", "false", "0"}:
+            mode = "off"
+        if mode in {"enabled", "enable", "true", "1"}:
+            mode = "block"
+        if mode not in PRE_EGRESS_POLICY_MODES:
+            logger.warning(
+                "Unknown PRE_EGRESS_POLICY_MODE=%r, falling back to block",
+                value,
+            )
+            return "block"
         return mode
 
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
@@ -494,8 +598,8 @@ class RuPIIGuardrail(CustomGuardrail):
             return self._redis
         return _get_shared_redis_client()
 
-    @staticmethod
-    def _iter_text_content_block_targets(blocks: list) -> list[tuple[dict, str]]:
+    @classmethod
+    def _iter_text_content_block_targets(cls, blocks: list) -> list[tuple[dict, str]]:
         """Return mutable text fields from OpenAI-style content block lists."""
         targets: list[tuple[dict, str]] = []
         for block in blocks:
@@ -512,6 +616,13 @@ class RuPIIGuardrail(CustomGuardrail):
                 str,
             ):
                 targets.append((block, "text"))
+
+            if block_type == "tool_result":
+                content = block.get("content")
+                if isinstance(content, str):
+                    targets.append((block, "content"))
+                elif isinstance(content, list):
+                    targets.extend(cls._iter_text_content_block_targets(content))
         return targets
 
     @classmethod
@@ -610,7 +721,216 @@ class RuPIIGuardrail(CustomGuardrail):
 
         targets.extend(cls._iter_responses_field_text_targets(data, "instructions"))
         targets.extend(cls._iter_responses_field_text_targets(data, "input"))
+
+        system = data.get("system")
+        if isinstance(system, str):
+            targets.append((data, "system"))
+        elif isinstance(system, list):
+            targets.extend(cls._iter_text_content_block_targets(system))
+
         return targets
+
+    @staticmethod
+    def _add_policy_finding(
+        findings: list[dict[str, str]],
+        seen_rules: set[str],
+        category: str,
+        rule_id: str,
+    ) -> None:
+        """Add one bounded policy finding without source text or offsets."""
+        if rule_id in seen_rules:
+            return
+        seen_rules.add(rule_id)
+        findings.append({"category": category, "rule_id": rule_id})
+
+    @staticmethod
+    def _has_yaml_key(text: str, key: str) -> bool:
+        """Return whether text contains a top-level or nested YAML-like key."""
+        return re.search(rf"(?im)^[ \t-]*{re.escape(key)}[ \t]*:", text) is not None
+
+    @staticmethod
+    def _yaml_scalar_value(text: str, key: str) -> Optional[str]:
+        """Return a simple YAML scalar value for a key without parsing snippets."""
+        match = re.search(
+            rf"(?im)^[ \t-]*{re.escape(key)}[ \t]*:[ \t]*[\"']?([A-Za-z][\w.-]*)[\"']?[ \t]*$",
+            text,
+        )
+        if match is None:
+            return None
+        return match.group(1)
+
+    @staticmethod
+    def _iter_yaml_documents(text: str) -> Iterable[str]:
+        """Return non-empty YAML-ish documents split on standard doc separators."""
+        for document in re.split(r"(?m)^[ \t]*---[ \t]*(?:#.*)?$", text):
+            document = document.strip()
+            if document:
+                yield document
+
+    @staticmethod
+    def _iter_json_stacktrace_field_values(value: Any) -> Iterable[str]:
+        """Return likely stack/exception string values from a parsed JSON payload."""
+        pending = [value]
+        visited = 0
+        while pending and visited < 512:
+            visited += 1
+            current = pending.pop()
+            if isinstance(current, dict):
+                for key, child in current.items():
+                    if (
+                        isinstance(key, str)
+                        and isinstance(child, str)
+                        and _JSON_STACKTRACE_FIELD_RE.search(key)
+                    ):
+                        yield child
+                    elif isinstance(child, (dict, list)):
+                        pending.append(child)
+            elif isinstance(current, list):
+                pending.extend(current)
+
+    @classmethod
+    def _looks_like_json_stacktrace_payload(cls, text: str) -> bool:
+        """Detect stack traces carried as JSON string values."""
+        stripped = text.strip()
+        if not stripped or stripped[0] not in "{[":
+            return False
+
+        try:
+            payload = json.loads(stripped)
+        except (TypeError, ValueError):
+            return False
+
+        return any(
+            _STACK_TRACE_RE.search(value)
+            for value in cls._iter_json_stacktrace_field_values(payload)
+        )
+
+    @classmethod
+    def _looks_like_kubeconfig_payload(cls, text: str) -> bool:
+        """Detect high-confidence kubeconfig payloads."""
+        return (
+            cls._has_yaml_key(text, "apiVersion")
+            and cls._yaml_scalar_value(text, "kind") == "Config"
+            and cls._has_yaml_key(text, "clusters")
+            and cls._has_yaml_key(text, "contexts")
+            and cls._has_yaml_key(text, "users")
+        )
+
+    @staticmethod
+    def _looks_like_nginx_config_payload(text: str) -> bool:
+        """Detect high-confidence nginx virtual host snippets."""
+        if re.search(r"(?is)\bserver\s*\{", text) is None:
+            return False
+
+        directives = re.findall(
+            r"(?im)(?:^|[;{]\s*)(listen|server_name|root|location|proxy_pass|"
+            r"ssl_certificate|try_files|access_log|error_log|return)\b",
+            text,
+        )
+        return len(set(directives)) >= 2
+
+    @classmethod
+    def _looks_like_service_manifest_payload(cls, text: str) -> bool:
+        """Detect high-confidence Kubernetes service/application manifests."""
+        for document in cls._iter_yaml_documents(text):
+            if not cls._has_yaml_key(document, "apiVersion") or not cls._has_yaml_key(
+                document,
+                "metadata",
+            ):
+                continue
+
+            kind = cls._yaml_scalar_value(document, "kind")
+            if not kind:
+                continue
+
+            if any(
+                cls._has_yaml_key(document, key)
+                for key in ("data", "stringData", "binaryData", "spec")
+            ):
+                return True
+        return False
+
+    @classmethod
+    def _classify_pre_egress_policy_text(cls, text: str) -> list[dict[str, str]]:
+        """Classify high-risk config/log payloads before Analyzer/provider egress."""
+        if not text.strip():
+            return []
+
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+
+        if (
+            _ENV_SECRET_ASSIGNMENT_RE.search(text)
+            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            or _ENV_CREDENTIAL_URL_RE.search(text)
+            or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
+        ):
+            cls._add_policy_finding(
+                findings,
+                seen_rules,
+                "config",
+                "env_secret_assignment",
+            )
+
+        if cls._looks_like_kubeconfig_payload(text):
+            cls._add_policy_finding(
+                findings,
+                seen_rules,
+                "config",
+                "kubeconfig_payload",
+            )
+
+        if cls._looks_like_nginx_config_payload(text):
+            cls._add_policy_finding(
+                findings,
+                seen_rules,
+                "config",
+                "nginx_config_payload",
+            )
+
+        if cls._looks_like_service_manifest_payload(text):
+            cls._add_policy_finding(
+                findings,
+                seen_rules,
+                "config",
+                "service_manifest_payload",
+            )
+
+        if (
+            _ACCESS_LOG_RE.search(text)
+            or _STACK_TRACE_RE.search(text)
+            or cls._looks_like_json_stacktrace_payload(text)
+            or _AUTH_LOG_RE.search(text)
+        ):
+            cls._add_policy_finding(
+                findings,
+                seen_rules,
+                "log",
+                "log_or_stacktrace_payload",
+            )
+
+        return findings
+
+    @classmethod
+    def _classify_pre_egress_policy_targets(
+        cls,
+        request_targets: list[tuple[dict, str]],
+    ) -> list[dict[str, str]]:
+        """Classify all request text targets and return bounded findings."""
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+        for target, field in request_targets:
+            content = target[field]
+            if not isinstance(content, str) or not content.strip():
+                continue
+            for finding in cls._classify_pre_egress_policy_text(content):
+                cls._add_policy_finding(
+                    findings,
+                    seen_rules,
+                    finding["category"],
+                    finding["rule_id"],
+                )
+        return findings
 
     @staticmethod
     def _get_container_field(container: Any, field: str) -> Any:
@@ -881,6 +1201,75 @@ class RuPIIGuardrail(CustomGuardrail):
             counts[entity_type] = counts.get(entity_type, 0) + 1
         return counts
 
+    @staticmethod
+    def _category_counts_from_policy_findings(
+        findings: list[dict[str, str]],
+    ) -> dict[str, int]:
+        """Return policy category counts without exposing matched text."""
+        counts: dict[str, int] = {}
+        for finding in findings:
+            category = finding["category"]
+            counts[category] = counts.get(category, 0) + 1
+        return counts
+
+    @staticmethod
+    def _record_pre_egress_policy_blocks(category_counts: dict[str, int]) -> None:
+        """Increment pre-egress policy metrics with bounded category labels."""
+        for category in category_counts:
+            PRE_EGRESS_POLICY_BLOCKED.labels(category=category).inc()
+
+    def _raise_pre_egress_policy_blocked(
+        self,
+        data: dict,
+        request_id: str,
+        findings: list[dict[str, str]],
+    ) -> None:
+        """Raise a safe client error for blocked config/log payloads."""
+        categories = sorted({finding["category"] for finding in findings})
+        rules = sorted({finding["rule_id"] for finding in findings})
+        category_counts = self._category_counts_from_policy_findings(findings)
+        self._record_pre_egress_policy_blocks(category_counts)
+        PII_PRE_CALLS.labels(result="pre_egress_policy_blocked").inc()
+        _safe_log(
+            logging.INFO,
+            "pre_egress_policy_blocked",
+            request_id=request_id,
+            categories=categories,
+            rules=rules,
+            category_counts=category_counts,
+            finding_count=len(findings),
+        )
+
+        error = {
+            "message": PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
+            "type": "pre_egress_policy_violation",
+            "code": "pre_egress_policy_blocked",
+            "details": {
+                "categories": categories,
+                "rules": rules,
+            },
+        }
+        policy_param = {
+            "pre_egress_policy": {
+                "code": error["code"],
+                "details": error["details"],
+            }
+        }
+        provider_specific_fields = {
+            "error": error,
+            "guardrail_name": self.guardrail_name,
+            "guardrail_mode": "pre_call",
+        }
+        exc = ProxyException(
+            message=PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
+            type="pre_egress_policy_violation",
+            param=policy_param,
+            code=422,
+            provider_specific_fields=provider_specific_fields,
+        )
+        exc.status_code = 422
+        raise exc
+
     def _raise_blocked_request(
         self,
         data: dict,
@@ -934,6 +1323,15 @@ class RuPIIGuardrail(CustomGuardrail):
             return data
 
         request_id = self._get_request_id(data)
+        if self.pre_egress_policy_mode == "block":
+            policy_findings = self._classify_pre_egress_policy_targets(request_targets)
+            if policy_findings:
+                self._raise_pre_egress_policy_blocked(
+                    data,
+                    request_id,
+                    policy_findings,
+                )
+
         full_mapping = {}
         entity_counts: dict[str, int] = {}
         blocked_entity_counts: dict[str, int] = {}
