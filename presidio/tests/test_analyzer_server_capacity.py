@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import HTTPException
 
+from capacity import AnalyzerCapacityLimiter
 from presidio import analyzer_server
-from presidio.capacity import AnalyzerCapacityLimiter
 
 
 def test_analyze_rejects_concurrent_request_when_queue_is_full(monkeypatch):

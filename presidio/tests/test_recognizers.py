@@ -2,14 +2,22 @@
 
 import pytest
 
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.nlp_engine import NlpEngineProvider
+
 from presidio.recognizers import ALL_RECOGNIZERS
 
 
 @pytest.fixture
 def analyzer():
     """Create analyzer with all Russian recognizers registered."""
-    engine = AnalyzerEngine()
+    nlp_engine = NlpEngineProvider(
+        nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "ru", "model_name": "ru_core_news_sm"}],
+        }
+    ).create_engine()
+    engine = AnalyzerEngine(nlp_engine=nlp_engine)
     for recognizer_cls in ALL_RECOGNIZERS:
         engine.registry.add_recognizer(recognizer_cls())
     return engine

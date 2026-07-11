@@ -15,6 +15,18 @@
 
 LiteLLM Admin UI полезен для операционных действий, ключей, usage/spend и просмотра логов. Он не должен быть единственным источником observability для guardrails.
 
+## Evidence Gates
+
+Security evidence и observability evidence проверяются разными контурами:
+
+| Gate | Команда | Назначение |
+| --- | --- | --- |
+| Egress-security | `make test-egress-security` | Mock provider capture/no-egress: raw test values не должны попасть в provider-bound payload, а blocked-запросы не должны создавать provider request. |
+| Observability | `make test-observability-gates` | Lightweight audit/logging wiring checks и проверка, что smoke-контуры не смешивают observability status с egress status. |
+| Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Проверка реального LiteLLM/provider flow; live smoke не доказывает отсутствие утечки, потому что provider-bound payload внешнего провайдера не захватывается. |
+
+Подробная traceability-карта для проверок и ручных артефактов: [docs/compliance.md](compliance.md).
+
 ## Health Checks
 
 Host-side проверка:

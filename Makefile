@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -28,6 +28,8 @@ help:
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
 	@echo "  make test-pre-egress-proxy — Docker smoke: pre-egress no-egress для chat/responses/messages"
 	@echo "  make test-final-leak-proxy — Docker smoke: final leak-check не доходит до mock provider"
+	@echo "  make test-egress-security — Docker egress-security gate: mock provider capture/no-egress"
+	@echo "  make test-observability-gates — lightweight observability/audit gate checks"
 	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
 	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
 	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
@@ -82,6 +84,7 @@ test-static: test-routing-diagnostics
 		tests/test_guardrail_dependency_config.py \
 		tests/test_pre_egress_policy_config.py \
 		tests/test_final_payload_leak_check_config.py \
+		tests/test_compliance_gate_config.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:
@@ -111,6 +114,15 @@ test-pre-egress-proxy:
 test-final-leak-proxy:
 	@echo "🧪 Final payload leak-check proxy non-egress smoke"
 	bash tests/e2e/test_final_leak_proxy_non_egress.sh
+
+test-egress-security:
+	@echo "🧪 Egress-security gate: mock provider capture/no-egress"
+	@$(MAKE) test-pre-egress-proxy
+	@$(MAKE) test-final-leak-proxy
+
+test-observability-gates:
+	@echo "🧪 Observability gate: audit/logging contract checks"
+	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q tests/test_compliance_gate_config.py
 
 test-routing-diagnostics:
 	@echo "🧪 Makefile diagnostics static tests"
