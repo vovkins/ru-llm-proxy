@@ -192,6 +192,12 @@ REGULATED_TOPIC_POLICY_BLOCKED = _build_metric(
     "Regulated-topic policy blocks by bounded category and rule id.",
     ["category", "rule_id"],
 )
+SYNTHETIC_PII_ALLOWLIST_HITS = _build_metric(
+    Counter,
+    "ru_synthetic_pii_allowlist_hits",
+    "Synthetic/test PII allowlist hits by bounded rule id and entity type.",
+    ["rule_id", "entity_type"],
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
@@ -202,6 +208,20 @@ PRE_EGRESS_POLICY_MODES = {"block", "off"}
 FINAL_PAYLOAD_LEAK_CHECK_MODES = {"block", "off"}
 REGULATED_TOPIC_POLICY_MODES = {"block", "off"}
 REGULATED_TOPIC_POLICY_ACTIONS = {"block"}
+SYNTHETIC_PII_ALLOWLIST_MODES = {"allow", "off"}
+SYNTHETIC_PII_ALLOWLIST_POLICIES = {"pii"}
+SYNTHETIC_PII_ALLOWLIST_SAFE_PATTERN_MARKERS = (
+    "EXAMPLE\\.TEST",
+    "EXAMPLE\\.COM",
+    "EXAMPLE\\.ORG",
+    "EXAMPLE\\.NET",
+    "\\.TEST",
+    "TEST_",
+    "RU_PROXY_",
+    "SYNTHETIC_",
+    "CANARY_",
+)
+SYNTHETIC_PII_ALLOWLIST_MAX_PATTERN_LENGTH = 256
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "tools",
     "tool_choice",
@@ -517,6 +537,8 @@ REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON = os.getenv(
     "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON",
     "",
 )
+SYNTHETIC_PII_ALLOWLIST_MODE = os.getenv("SYNTHETIC_PII_ALLOWLIST_MODE", "off")
+SYNTHETIC_PII_ALLOWLIST_JSON = os.getenv("SYNTHETIC_PII_ALLOWLIST_JSON", "[]")
 FINAL_PAYLOAD_LEAK_CHECK_CANARIES = tuple(
     token.strip()
     for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
@@ -685,6 +707,8 @@ class RuPIIGuardrail(CustomGuardrail):
         final_payload_leak_check_canaries: Optional[tuple[str, ...]] = None,
         regulated_topic_policy_mode: Optional[str] = None,
         regulated_topic_policy_extra_rules_json: Optional[str] = None,
+        synthetic_pii_allowlist_mode: Optional[str] = None,
+        synthetic_pii_allowlist_json: Optional[str] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -720,6 +744,18 @@ class RuPIIGuardrail(CustomGuardrail):
                 regulated_topic_policy_extra_rules_json
                 if regulated_topic_policy_extra_rules_json is not None
                 else REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON
+            )
+        )
+        self.synthetic_pii_allowlist_mode = (
+            self._normalize_synthetic_pii_allowlist_mode(
+                synthetic_pii_allowlist_mode or SYNTHETIC_PII_ALLOWLIST_MODE
+            )
+        )
+        self.synthetic_pii_allowlist_rules = (
+            self._load_synthetic_pii_allowlist_rules(
+                synthetic_pii_allowlist_json
+                if synthetic_pii_allowlist_json is not None
+                else SYNTHETIC_PII_ALLOWLIST_JSON
             )
         )
         self.mapping_ttl_seconds = _normalize_positive_int(
@@ -798,6 +834,22 @@ class RuPIIGuardrail(CustomGuardrail):
         if mode not in REGULATED_TOPIC_POLICY_MODES:
             logger.warning(
                 "Unknown REGULATED_TOPIC_POLICY_MODE=%r, falling back to off",
+                value,
+            )
+            return "off"
+        return mode
+
+    @staticmethod
+    def _normalize_synthetic_pii_allowlist_mode(value: str) -> str:
+        """Normalize and validate synthetic/test PII allowlist behavior."""
+        mode = value.strip().lower().replace("-", "_")
+        if mode in {"disabled", "disable", "false", "0"}:
+            mode = "off"
+        if mode in {"enabled", "enable", "true", "1"}:
+            mode = "allow"
+        if mode not in SYNTHETIC_PII_ALLOWLIST_MODES:
+            logger.warning(
+                "Unknown SYNTHETIC_PII_ALLOWLIST_MODE=%r, falling back to off",
                 value,
             )
             return "off"
@@ -895,6 +947,158 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return rules
 
+    @staticmethod
+    def _normalize_policy_list(value: Any, default: tuple[str, ...]) -> set[str]:
+        """Normalize a JSON policy list to lowercase bounded names."""
+        if value is None:
+            items = list(default)
+        elif isinstance(value, str):
+            items = [value]
+        elif isinstance(value, list):
+            items = value
+        else:
+            return set()
+
+        policies = set()
+        for item in items:
+            normalized = re.sub(
+                r"[^a-z0-9_:-]+",
+                "_",
+                str(item or "").strip().lower(),
+            ).strip("_:-")
+            if normalized:
+                policies.add(normalized)
+        return policies
+
+    @staticmethod
+    def _safe_string_list(value: Any) -> list[str]:
+        """Return non-empty strings without logging their raw contents."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, str) and item]
+
+    @staticmethod
+    def _synthetic_pattern_has_required_anchors(pattern: str) -> bool:
+        """Return whether a regex is anchored to the complete synthetic value."""
+        stripped = pattern.strip()
+        starts = stripped.startswith("^") or stripped.startswith(r"\A")
+        ends = stripped.endswith("$") or stripped.endswith(r"\Z")
+        return starts and ends
+
+    @staticmethod
+    def _synthetic_pattern_has_safe_namespace(pattern: str) -> bool:
+        """Return whether a regex references an approved synthetic namespace."""
+        upper_pattern = pattern.upper()
+        return any(
+            marker in upper_pattern
+            for marker in SYNTHETIC_PII_ALLOWLIST_SAFE_PATTERN_MARKERS
+        )
+
+    @classmethod
+    def _is_safe_synthetic_allowlist_pattern(cls, pattern: str) -> bool:
+        """Reject broad regexes; allow only anchored controlled namespaces."""
+        stripped = pattern.strip()
+        if not stripped or len(stripped) > SYNTHETIC_PII_ALLOWLIST_MAX_PATTERN_LENGTH:
+            return False
+        if stripped in {".*", ".+", "^.*$", "^.+$", r"\A.*\Z", r"\A.+\Z"}:
+            return False
+        return (
+            cls._synthetic_pattern_has_required_anchors(stripped)
+            and cls._synthetic_pattern_has_safe_namespace(stripped)
+        )
+
+    @classmethod
+    def _load_synthetic_pii_allowlist_rules(
+        cls,
+        raw_config: str,
+    ) -> list[dict[str, Any]]:
+        """Load exact-value and safe-pattern synthetic/test PII allowlist rules."""
+        if not raw_config.strip():
+            return []
+
+        try:
+            parsed = json.loads(raw_config)
+        except (TypeError, ValueError):
+            logger.warning("Invalid SYNTHETIC_PII_ALLOWLIST_JSON, ignoring rules")
+            return []
+
+        if not isinstance(parsed, list):
+            logger.warning("SYNTHETIC_PII_ALLOWLIST_JSON must be a JSON array")
+            return []
+
+        rules: list[dict[str, Any]] = []
+        for index, entry in enumerate(parsed):
+            if not isinstance(entry, dict):
+                logger.warning(
+                    "Ignoring synthetic PII allowlist rule %s: expected object",
+                    index,
+                )
+                continue
+
+            policies = cls._normalize_policy_list(
+                entry.get("policies"),
+                tuple(SYNTHETIC_PII_ALLOWLIST_POLICIES),
+            )
+            if not policies.intersection(SYNTHETIC_PII_ALLOWLIST_POLICIES):
+                continue
+
+            raw_entity_types = cls._safe_string_list(entry.get("entity_types"))
+            entity_types = {
+                cls._normalize_entity_type(entity_type)
+                for entity_type in raw_entity_types
+            }
+            if not entity_types:
+                logger.warning(
+                    "Ignoring synthetic PII allowlist rule %s: missing entity_types",
+                    index,
+                )
+                continue
+
+            values = frozenset(cls._safe_string_list(entry.get("values")))
+
+            compiled_patterns = []
+            for pattern in cls._safe_string_list(entry.get("patterns")):
+                if not cls._is_safe_synthetic_allowlist_pattern(pattern):
+                    logger.warning(
+                        "Ignoring synthetic PII allowlist pattern in rule %s: unsafe pattern",
+                        index,
+                    )
+                    continue
+                try:
+                    compiled_patterns.append(re.compile(pattern, re.UNICODE))
+                except re.error:
+                    logger.warning(
+                        "Ignoring synthetic PII allowlist pattern in rule %s: invalid regex",
+                        index,
+                    )
+
+            if not values and not compiled_patterns:
+                logger.warning(
+                    "Ignoring synthetic PII allowlist rule %s: no exact values or safe patterns",
+                    index,
+                )
+                continue
+
+            rule_id = cls._normalize_policy_label(
+                entry.get("rule_id"),
+                f"synthetic_pii_allowlist_{index + 1}",
+            )
+            rules.append(
+                {
+                    "rule_id": rule_id,
+                    "entity_types": frozenset(entity_types),
+                    "values": values,
+                    "patterns": tuple(compiled_patterns),
+                    "policies": frozenset(SYNTHETIC_PII_ALLOWLIST_POLICIES),
+                }
+            )
+
+        return rules
+
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
         """Apply configured fail-open/fail-closed behavior."""
         operation_label = operation.replace(" ", "_")
@@ -934,6 +1138,10 @@ class RuPIIGuardrail(CustomGuardrail):
         category_counts: Optional[dict[str, int]] = None,
         rule_counts: Optional[dict[str, int]] = None,
         finding_count: Optional[int] = None,
+        synthetic_allowlist_rules: Optional[list[str]] = None,
+        synthetic_allowlist_entity_counts: Optional[dict[str, int]] = None,
+        synthetic_allowlist_rule_counts: Optional[dict[str, int]] = None,
+        synthetic_allowlist_hit_count: Optional[int] = None,
         failure_operation: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> None:
@@ -965,6 +1173,10 @@ class RuPIIGuardrail(CustomGuardrail):
             "category_counts": category_counts,
             "rule_counts": rule_counts,
             "finding_count": finding_count,
+            "synthetic_allowlist_rules": synthetic_allowlist_rules,
+            "synthetic_allowlist_entity_counts": synthetic_allowlist_entity_counts,
+            "synthetic_allowlist_rule_counts": synthetic_allowlist_rule_counts,
+            "synthetic_allowlist_hit_count": synthetic_allowlist_hit_count,
             "failure_operation": failure_operation,
             "error_type": error_type,
         }
@@ -1627,6 +1839,7 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
         redaction_count: int = 0,
         entity_counts: Optional[dict[str, int]] = None,
+        synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
     ) -> None:
         """Block confirmed leaks in actual provider-bound request text."""
         if self.final_payload_leak_check_mode != "block":
@@ -1645,6 +1858,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 call_type=call_type,
                 redaction_count=redaction_count,
                 entity_counts=entity_counts,
+                synthetic_allowlist_findings=synthetic_allowlist_findings,
             )
 
     @staticmethod
@@ -1789,6 +2003,145 @@ class RuPIIGuardrail(CustomGuardrail):
             last_end = end
 
         return non_overlapping_entities
+
+    @staticmethod
+    def _synthetic_pii_rule_matches(
+        rule: dict[str, Any],
+        entity_type: str,
+        value: str,
+    ) -> bool:
+        """Return whether one configured allowlist rule matches one PII span."""
+        if entity_type not in rule["entity_types"]:
+            return False
+        if value in rule["values"]:
+            return True
+        return any(pattern.fullmatch(value) for pattern in rule["patterns"])
+
+    def _filter_synthetic_pii_allowlisted_entities(
+        self,
+        text: str,
+        entities: list[dict],
+    ) -> tuple[list[dict], list[dict[str, str]]]:
+        """Remove explicitly allowlisted synthetic/test PII spans."""
+        if (
+            self.synthetic_pii_allowlist_mode != "allow"
+            or not self.synthetic_pii_allowlist_rules
+            or not entities
+        ):
+            return entities, []
+
+        filtered_entities: list[dict] = []
+        findings: list[dict[str, str]] = []
+        for entity in entities:
+            try:
+                start = int(entity["start"])
+                end = int(entity["end"])
+            except (KeyError, TypeError, ValueError):
+                filtered_entities.append(entity)
+                continue
+
+            if start < 0 or end > len(text) or start >= end:
+                filtered_entities.append(entity)
+                continue
+
+            entity_type = self._normalize_entity_type(
+                str(entity.get("entity_type") or "PII")
+            )
+            value = text[start:end]
+            matching_rule_id = None
+            for rule in self.synthetic_pii_allowlist_rules:
+                if self._synthetic_pii_rule_matches(rule, entity_type, value):
+                    matching_rule_id = rule["rule_id"]
+                    break
+
+            if matching_rule_id is None:
+                filtered_entities.append(entity)
+                continue
+
+            findings.append(
+                {
+                    "rule_id": matching_rule_id,
+                    "entity_type": entity_type,
+                }
+            )
+
+        return filtered_entities, findings
+
+    @staticmethod
+    def _synthetic_allowlist_entity_counts(
+        findings: list[dict[str, str]],
+    ) -> dict[str, int]:
+        """Return allowlist hit counts by normalized entity type."""
+        counts: dict[str, int] = {}
+        for finding in findings:
+            entity_type = finding["entity_type"]
+            counts[entity_type] = counts.get(entity_type, 0) + 1
+        return counts
+
+    @staticmethod
+    def _synthetic_allowlist_rule_counts(
+        findings: list[dict[str, str]],
+    ) -> dict[str, int]:
+        """Return allowlist hit counts by bounded rule id."""
+        counts: dict[str, int] = {}
+        for finding in findings:
+            rule_id = finding["rule_id"]
+            counts[rule_id] = counts.get(rule_id, 0) + 1
+        return counts
+
+    @classmethod
+    def _synthetic_pii_allowlist_audit_fields(
+        cls,
+        findings: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Build safe audit fields for synthetic/test PII allowlist hits."""
+        if not findings:
+            return {}
+        return {
+            "synthetic_allowlist_rules": sorted(
+                {finding["rule_id"] for finding in findings}
+            ),
+            "synthetic_allowlist_entity_counts": (
+                cls._synthetic_allowlist_entity_counts(findings)
+            ),
+            "synthetic_allowlist_rule_counts": (
+                cls._synthetic_allowlist_rule_counts(findings)
+            ),
+            "synthetic_allowlist_hit_count": len(findings),
+        }
+
+    @classmethod
+    def _record_synthetic_pii_allowlist_hits(
+        cls,
+        findings: list[dict[str, str]],
+    ) -> None:
+        """Record synthetic/test PII allowlist hits by bounded labels."""
+        for finding in findings:
+            SYNTHETIC_PII_ALLOWLIST_HITS.labels(
+                rule_id=finding["rule_id"],
+                entity_type=finding["entity_type"],
+            ).inc()
+
+    @classmethod
+    def _emit_synthetic_pii_allowlist_applied(
+        cls,
+        request_id: str,
+        findings: list[dict[str, str]],
+    ) -> None:
+        """Emit safe logs/metrics when synthetic/test PII was allowlisted."""
+        if not findings:
+            return
+        cls._record_synthetic_pii_allowlist_hits(findings)
+        audit_fields = cls._synthetic_pii_allowlist_audit_fields(findings)
+        _safe_log(
+            logging.INFO,
+            "synthetic_pii_allowlist_applied",
+            request_id=request_id,
+            rules=audit_fields["synthetic_allowlist_rules"],
+            entity_counts=audit_fields["synthetic_allowlist_entity_counts"],
+            rule_counts=audit_fields["synthetic_allowlist_rule_counts"],
+            hit_count=audit_fields["synthetic_allowlist_hit_count"],
+        )
 
     @staticmethod
     def _normalize_entity_type(entity_type: str) -> str:
@@ -2129,6 +2482,7 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
         redaction_count: int = 0,
         entity_counts: Optional[dict[str, int]] = None,
+        synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
     ) -> None:
         """Raise a safe client error for confirmed final payload leaks."""
         rules = sorted({finding["rule_id"] for finding in findings})
@@ -2158,6 +2512,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 rules=rules,
                 rule_counts=rule_counts,
                 finding_count=len(findings),
+                **self._synthetic_pii_allowlist_audit_fields(
+                    synthetic_allowlist_findings or []
+                ),
             )
 
         body = {
@@ -2193,6 +2550,7 @@ class RuPIIGuardrail(CustomGuardrail):
         *,
         audit_started_at: Optional[float] = None,
         call_type: Optional[str] = None,
+        synthetic_allowlist_findings: Optional[list[dict[str, str]]] = None,
     ) -> None:
         """Raise a LiteLLM-compatible client error without raw PII."""
         entity_types = sorted(entity_counts)
@@ -2216,6 +2574,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 entity_counts=entity_counts,
                 block_reason="pii_detected",
                 error_code="pii_blocked",
+                **self._synthetic_pii_allowlist_audit_fields(
+                    synthetic_allowlist_findings or []
+                ),
             )
 
         body = {
@@ -2296,6 +2657,7 @@ class RuPIIGuardrail(CustomGuardrail):
         full_mapping = {}
         entity_counts: dict[str, int] = {}
         blocked_entity_counts: dict[str, int] = {}
+        synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
 
         for target, field in request_targets:
@@ -2305,6 +2667,14 @@ class RuPIIGuardrail(CustomGuardrail):
 
             try:
                 entities = await self._analyze_text(content)
+                if not entities:
+                    continue
+
+                (
+                    entities,
+                    current_allowlist_findings,
+                ) = self._filter_synthetic_pii_allowlisted_entities(content, entities)
+                synthetic_allowlist_findings.extend(current_allowlist_findings)
                 if not entities:
                     continue
 
@@ -2353,6 +2723,7 @@ class RuPIIGuardrail(CustomGuardrail):
                         blocked_entity_counts,
                         audit_started_at=started_at,
                         call_type=call_type,
+                        synthetic_allowlist_findings=synthetic_allowlist_findings,
                     )
                 self._run_final_payload_leak_check(
                     data,
@@ -2360,6 +2731,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     request_id,
                     audit_started_at=started_at,
                     call_type=call_type,
+                    synthetic_allowlist_findings=synthetic_allowlist_findings,
                 )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -2377,8 +2749,17 @@ class RuPIIGuardrail(CustomGuardrail):
                     error_code=f"guardrail_{self.failure_mode}",
                     failure_operation="masking",
                     error_type=type(e).__name__,
+                    **self._synthetic_pii_allowlist_audit_fields(
+                        synthetic_allowlist_findings
+                    ),
                 )
                 return self._handle_failure("masking", e, data)
+
+        if synthetic_allowlist_findings:
+            self._emit_synthetic_pii_allowlist_applied(
+                request_id,
+                synthetic_allowlist_findings,
+            )
 
         if blocked_entity_counts:
             self._raise_blocked_request(
@@ -2387,6 +2768,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 blocked_entity_counts,
                 audit_started_at=started_at,
                 call_type=call_type,
+                synthetic_allowlist_findings=synthetic_allowlist_findings,
             )
 
         for target, field, _, masked_text in pending_updates:
@@ -2402,6 +2784,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 call_type=call_type,
                 redaction_count=len(full_mapping),
                 entity_counts=entity_counts_for_audit,
+                synthetic_allowlist_findings=synthetic_allowlist_findings,
             )
         except litellm.UnprocessableEntityError:
             for target, field, original_text, _ in pending_updates:
@@ -2421,6 +2804,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     request_id,
                     audit_started_at=started_at,
                     call_type=call_type,
+                    synthetic_allowlist_findings=synthetic_allowlist_findings,
                 )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -2440,6 +2824,9 @@ class RuPIIGuardrail(CustomGuardrail):
                     error_code=f"guardrail_{self.failure_mode}",
                     failure_operation="mapping_save",
                     error_type=type(e).__name__,
+                    **self._synthetic_pii_allowlist_audit_fields(
+                        synthetic_allowlist_findings
+                    ),
                 )
                 return self._handle_failure("mapping save", e, data)
 
@@ -2468,6 +2855,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 call_type=call_type,
                 redaction_count=len(full_mapping),
                 entity_counts=entity_counts_for_log,
+                **self._synthetic_pii_allowlist_audit_fields(
+                    synthetic_allowlist_findings
+                ),
             )
         else:
             PII_PRE_CALLS.labels(result="clean").inc()
@@ -2478,6 +2868,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 status="allowed",
                 policy_result="clean",
                 call_type=call_type,
+                **self._synthetic_pii_allowlist_audit_fields(
+                    synthetic_allowlist_findings
+                ),
             )
 
         return data

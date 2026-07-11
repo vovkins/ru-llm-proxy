@@ -31,6 +31,7 @@
 | `regulated-topic-block` | pre-egress smoke, regulated-topic case | `422`, `regulated_topic_policy_blocked`, bounded category/rule/action, Analyzer/provider requests равны `0`. |
 | `dlp-canary-leak` | final leak smoke | `422`, `final_payload_leak_check_blocked`, provider requests равны `0`. |
 | `auth-secrets` deterministic markers | final leak smoke | Private key/env-secret-like markers in provider-bound fields block before provider. |
+| `synthetic-fixtures` | guardrail unit tests and manual/demo smoke | Explicit synthetic/test PII values can be allowlisted without masking, while non-allowlisted PII in the same request is still masked or blocked. |
 | `repeated-and-placeholder-collision` | guardrail unit tests and flow tests | Placeholder replacement remains deterministic; broader egress evidence should stay in mock-provider smoke when new fixtures are added. |
 
 Не все compliance families из внешних требований уже имеют полный coverage.
@@ -63,6 +64,16 @@ bounded categories/rule ids/action type, а organization-specific confidential t
 `rule_id`; logs не содержат raw prompt или raw matched text. Mask и
 dictionary-substitute actions остаются scope #25, чтобы reversible substitution не
 смешивалась с broad topic blocking.
+
+`synthetic-fixtures` покрывает эксплуатационную потребность использовать заранее
+согласованные тестовые PII-значения в smoke/demo/checklist сценариях. Это narrow
+exception после Analyzer и до обычного `mask`/`block` поведения, а не способ
+пропускать реальные персональные данные. По умолчанию `SYNTHETIC_PII_ALLOWLIST_MODE=off`;
+rules задаются через `SYNTHETIC_PII_ALLOWLIST_JSON`, broad regex patterns
+игнорируются, а logs/metrics пишут только bounded `rule_id`, entity type и counts без
+raw values. Если в production traffic появляются
+`ru_synthetic_pii_allowlist_hits_total`, это должно быть ожидаемым тестовым контуром
+или отдельным incident/usage review.
 
 ## Production Network Egress Evidence
 
@@ -98,7 +109,8 @@ Gateway audit logging из #29 пишет `gateway_guardrail_audit` один р�
 `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`,
 `regulated_topic_policy_mode`, `policy_result`,
 `redaction_count`, `entity_counts`, а для блокировок/ошибок — `block_reason`,
-`error_code`, bounded `categories`/`rules`/`actions` и counts. Он не содержит raw prompt
+`error_code`, bounded `categories`/`rules`/`actions`, synthetic allowlist rule/entity counts
+и counts. Он не содержит raw prompt
 text, raw PII, raw matched text, snippets, offsets, provider keys или Redis mapping contents.
 
 Per-request telemetry Presidio Analyzer из #31 пишет `presidio_analyzer_request`

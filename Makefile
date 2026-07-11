@@ -88,6 +88,7 @@ test-static: test-routing-diagnostics
 		tests/test_compliance_gate_config.py \
 		tests/test_production_egress_controls_docs.py \
 		tests/test_regulated_topic_policy_config.py \
+		tests/test_synthetic_pii_allowlist_config.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:

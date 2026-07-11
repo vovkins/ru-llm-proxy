@@ -133,7 +133,7 @@ litellm_settings:
   drop_params: true
 ```
 
-Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size, а также `ru_regulated_topic_policy_blocked_total` для regulated-topic blocks. Structured logs guardrail пишутся в JSON без prompt text, raw PII и raw matched text. Подробный DevOps guide: [monitoring.md](monitoring.md).
+Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size, `ru_regulated_topic_policy_blocked_total` для regulated-topic blocks и `ru_synthetic_pii_allowlist_hits_total` для synthetic/test PII allowlist hits. Structured logs guardrail пишутся в JSON без prompt text, raw PII и raw matched text. Подробный DevOps guide: [monitoring.md](monitoring.md).
 
 References:
 
@@ -204,6 +204,16 @@ Guardrail поддерживает два режима через `PII_GUARDRAIL
 | `fail_closed` | При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
 
 TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
+
+## Synthetic/test PII allowlist
+
+`SYNTHETIC_PII_ALLOWLIST_MODE=allow` включает узкое исключение для явно заданных synthetic/test PII fixtures. По умолчанию режим выключен (`off`), поэтому production behavior совпадает с обычным `PII_GUARDRAIL_MODE`.
+
+Allowlist запускается после `POST /api/v1/analyze`, когда Presidio уже вернул entity spans, и до ветвления `mask`/`block`. Если найденный span совпадает с правилом из `SYNTHETIC_PII_ALLOWLIST_JSON`, guardrail удаляет только этот span из списка PII. Остальные entity spans в том же запросе остаются в обработке: в `mask` mode они получают placeholders и Redis mapping, в `block` mode запрос блокируется безопасной `422` ошибкой до provider egress.
+
+Правило должно быть PII-only: поле `policies` по умолчанию равно `["pii"]`, а значения для других policy families игнорируются этим слоем. Regex patterns принимаются только в безопасной форме: полный anchor (`^...$` или `\A...\Z`) и контролируемый synthetic namespace (`example.test`, `example.com`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Broad patterns вроде `^.*$` и слишком длинные patterns игнорируются.
+
+Allowlist не отключает `REGULATED_TOPIC_POLICY_MODE`, `PRE_EGRESS_POLICY_MODE` или `FINAL_PAYLOAD_LEAK_CHECK_MODE`. Он также не должен использоваться для реальных персональных данных: raw allowlisted values не пишутся в logs/metrics/audit, но сам механизм предназначен только для тестовых наборов и демонстраций.
 
 ## Regulated-topic policy
 

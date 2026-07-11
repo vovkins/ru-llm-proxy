@@ -41,6 +41,10 @@ def _entity(text, value, entity_type="PHONE_NUMBER", score=1.0):
     }
 
 
+def _synthetic_allowlist(*rules):
+    return json.dumps(list(rules), ensure_ascii=False)
+
+
 def _mock_redis(get_value=None):
     redis = AsyncMock()
     redis.setex = AsyncMock()
@@ -154,6 +158,78 @@ class TestPolicyMode:
     def test_defaults_to_mask_for_unknown_value(self):
         guardrail = RuPIIGuardrail(pii_mode="bad-value")
         assert guardrail.pii_mode == "mask"
+
+
+# === synthetic/test PII allowlist mode ===
+
+
+class TestSyntheticPIIAllowlistMode:
+    def test_defaults_to_off_mode_and_no_rules(self):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.synthetic_pii_allowlist_mode == "off"
+        assert guardrail.synthetic_pii_allowlist_rules == []
+
+    def test_accepts_allow_alias(self):
+        guardrail = RuPIIGuardrail(synthetic_pii_allowlist_mode="enabled")
+        assert guardrail.synthetic_pii_allowlist_mode == "allow"
+
+    def test_defaults_to_off_for_unknown_value(self):
+        guardrail = RuPIIGuardrail(synthetic_pii_allowlist_mode="bad-value")
+        assert guardrail.synthetic_pii_allowlist_mode == "off"
+
+    def test_loads_exact_values_and_safe_patterns(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "docs_synthetic_contacts",
+                    "entity_types": ["PHONE_NUMBER", "EMAIL_ADDRESS"],
+                    "values": ["+79031234567"],
+                    "patterns": [r"^[A-Za-z0-9._%+-]+@example\.test$"],
+                }
+            ),
+        )
+
+        assert len(guardrail.synthetic_pii_allowlist_rules) == 1
+        rule = guardrail.synthetic_pii_allowlist_rules[0]
+        assert rule["rule_id"] == "docs_synthetic_contacts"
+        assert rule["entity_types"] == frozenset({"PHONE_NUMBER", "EMAIL_ADDRESS"})
+        assert rule["values"] == frozenset({"+79031234567"})
+        assert len(rule["patterns"]) == 1
+
+    def test_ignores_invalid_json_and_unsafe_patterns(self):
+        invalid = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json="{bad json",
+        )
+        unsafe = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "unsafe",
+                    "entity_types": ["EMAIL_ADDRESS"],
+                    "patterns": ["^.*$"],
+                }
+            ),
+        )
+
+        assert invalid.synthetic_pii_allowlist_rules == []
+        assert unsafe.synthetic_pii_allowlist_rules == []
+
+    def test_ignores_non_pii_policy_rules(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "final_only",
+                    "policies": ["final_payload"],
+                    "entity_types": ["PHONE_NUMBER"],
+                    "values": ["+79031234567"],
+                }
+            ),
+        )
+
+        assert guardrail.synthetic_pii_allowlist_rules == []
 
 
 # === regulated-topic policy mode ===
@@ -681,6 +757,273 @@ class TestPreCallHook:
         assert saved_mapping == {
             "<PHONE_NUMBER_1>": "+79031234567",
             "<PHONE_NUMBER_2>": "89031234567",
+        }
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_keeps_exact_value_and_masks_other_pii(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "docs_synthetic_phone",
+                    "entity_types": ["PHONE_NUMBER"],
+                    "values": ["+79031234567"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Тестовый телефон +79031234567, реальный +79035551234"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "+79031234567"),
+                _entity(text, "+79035551234"),
+            ],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": text}]}
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == (
+            "Тестовый телефон +79031234567, реальный <PHONE_NUMBER_1>"
+        )
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79035551234",
+        }
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_block_mode_allows_allowlisted_only_pii(
+        self,
+        caplog,
+    ):
+        guardrail = RuPIIGuardrail(
+            pii_mode="block",
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "docs_synthetic_phone",
+                    "entity_types": ["PHONE_NUMBER"],
+                    "values": ["+79031234567"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Тестовый телефон +79031234567"
+        metric_label = MagicMock()
+        metric = MagicMock()
+        metric.labels.return_value = metric_label
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with patch.object(
+                pii_guardrail,
+                "SYNTHETIC_PII_ALLOWLIST_HITS",
+                metric,
+            ):
+                with caplog.at_level(
+                    logging.INFO,
+                    logger="litellm_guardrails.pii_guardrail",
+                ):
+                    data = {"messages": [{"role": "user", "content": text}]}
+                    result = await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                    )
+
+        assert result["messages"][0]["content"] == text
+        assert "metadata" not in result
+        guardrail._redis.setex.assert_not_called()
+        metric.labels.assert_called_once_with(
+            rule_id="docs_synthetic_phone",
+            entity_type="PHONE_NUMBER",
+        )
+        metric_label.inc.assert_called_once_with()
+
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "synthetic_pii_allowlist_applied" in logs
+        assert "docs_synthetic_phone" in logs
+        assert "PHONE_NUMBER" in logs
+        assert "+79031234567" not in logs
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["policy_result"] == "clean"
+        assert event["synthetic_allowlist_rules"] == ["docs_synthetic_phone"]
+        assert event["synthetic_allowlist_entity_counts"] == {"PHONE_NUMBER": 1}
+        assert event["synthetic_allowlist_rule_counts"] == {
+            "docs_synthetic_phone": 1,
+        }
+        assert event["synthetic_allowlist_hit_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_block_mode_still_blocks_remaining_real_pii(
+        self,
+        caplog,
+    ):
+        guardrail = RuPIIGuardrail(
+            pii_mode="block",
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "docs_synthetic_phone",
+                    "entity_types": ["PHONE_NUMBER"],
+                    "values": ["+79031234567"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Тестовый телефон +79031234567, реальный +79035551234"
+        data = {"messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[
+                _entity(text, "+79031234567"),
+                _entity(text, "+79035551234"),
+            ],
+        ):
+            with caplog.at_level(
+                logging.INFO,
+                logger="litellm_guardrails.pii_guardrail",
+            ):
+                with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                    )
+
+        assert data["messages"][0]["content"] == text
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["code"] == "pii_blocked"
+        assert error_body["error"]["details"] == {"entities": ["PHONE_NUMBER"]}
+        assert "+79031234567" not in json.dumps(error_body, ensure_ascii=False)
+        assert "+79035551234" not in json.dumps(error_body, ensure_ascii=False)
+
+        audit_events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(audit_events) == 1
+        event = audit_events[0]
+        assert event["policy_result"] == "pii_blocked"
+        assert event["entity_counts"] == {"PHONE_NUMBER": 1}
+        assert event["synthetic_allowlist_rules"] == ["docs_synthetic_phone"]
+        assert event["synthetic_allowlist_hit_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_allows_safe_email_pattern(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "example_test_emails",
+                    "entity_types": ["EMAIL_ADDRESS"],
+                    "patterns": [r"^[A-Za-z0-9._%+-]+@example\.test$"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Synthetic email qa@example.test"
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "qa@example.test", "EMAIL_ADDRESS")],
+        ):
+            data = {"messages": [{"role": "user", "content": text}]}
+            result = await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+        assert result["messages"][0]["content"] == text
+        assert "metadata" not in result
+        guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_rejects_broad_pattern_and_masks_pii(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "unsafe_all_emails",
+                    "entity_types": ["EMAIL_ADDRESS"],
+                    "patterns": ["^.*$"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Email alice@example.com"
+        save_mapping = AsyncMock()
+
+        assert guardrail.synthetic_pii_allowlist_rules == []
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "alice@example.com", "EMAIL_ADDRESS")],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": text}]}
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == "Email <EMAIL_ADDRESS_1>"
+        assert save_mapping.call_args[0][1] == {
+            "<EMAIL_ADDRESS_1>": "alice@example.com",
+        }
+
+    @pytest.mark.asyncio
+    async def test_synthetic_allowlist_non_pii_policy_rule_does_not_allow_pii(self):
+        guardrail = RuPIIGuardrail(
+            synthetic_pii_allowlist_mode="allow",
+            synthetic_pii_allowlist_json=_synthetic_allowlist(
+                {
+                    "rule_id": "final_only",
+                    "policies": ["final_payload"],
+                    "entity_types": ["PHONE_NUMBER"],
+                    "values": ["+79031234567"],
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        text = "Мой телефон +79031234567"
+        save_mapping = AsyncMock()
+
+        assert guardrail.synthetic_pii_allowlist_rules == []
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, "+79031234567")],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": text}]}
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == "Мой телефон <PHONE_NUMBER_1>"
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79031234567",
         }
 
     @pytest.mark.asyncio

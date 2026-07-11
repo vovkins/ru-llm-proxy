@@ -10,6 +10,7 @@
 - доступен ли Presidio Analyzer и загружен ли DeepPavlov NER;
 - доступны ли Redis и PostgreSQL;
 - применяются ли PII guardrails и сколько PII они маскируют;
+- применяются ли synthetic/test PII allowlist rules и не используются ли они вне ожидаемых тестовых контуров;
 - включена ли regulated-topic policy для AML/CFT / ПОД/ФТ и какие bounded rule ids она блокирует;
 - стабильно ли клиенты попадают в свои provider deployments при sticky routing;
 - есть ли fail-open/fail-closed события, при которых PII-защита работает нештатно.
@@ -150,6 +151,7 @@ make routing-smoke
 | `ru_pii_guardrail_entities_detected_total` | Counter | `entity_type` | Количество замаскированных сущностей по типам |
 | `ru_pii_guardrail_blocked_total` | Counter | `entity_type` | Количество заблокированных сущностей по типам в `PII_GUARDRAIL_MODE=block` |
 | `ru_regulated_topic_policy_blocked_total` | Counter | `category`, `rule_id` | Количество AML/CFT / ПОД/ФТ regulated-topic blocks по bounded categories и rule ids |
+| `ru_synthetic_pii_allowlist_hits_total` | Counter | `rule_id`, `entity_type` | Количество synthetic/test PII allowlist hits по bounded rule id и entity type; raw allowed values не являются labels |
 | `ru_pre_egress_policy_blocked_total` | Counter | `category` | Количество config/log payload blocks по bounded categories |
 | `ru_final_payload_leak_check_blocked_total` | Counter | `rule_id` | Количество final provider-bound leak-check blocks по bounded rule ids |
 | `ru_pii_guardrail_fail_open_total` | Counter | `operation` | Ошибки, после которых запрос продолжен в режиме `fail_open` |
@@ -240,6 +242,12 @@ sum(rate(ru_regulated_topic_policy_blocked_total[5m])) > 0
 Regulated-topic policy блокирует AML/CFT / ПОД/ФТ или похожие internal compliance topics до Analyzer/provider egress. Это ожидаемое policy event при `REGULATED_TOPIC_POLICY_MODE=block`, но его стоит мониторить отдельно от PII и config/log blocks.
 
 ```promql
+sum(rate(ru_synthetic_pii_allowlist_hits_total[5m])) > 0
+```
+
+Synthetic/test PII allowlist применяется к запросам. Это ожидаемо для smoke/demo/test contours, но в production traffic должно быть явно согласовано: allowlist не предназначен для пропуска реальных персональных данных.
+
+```promql
 histogram_quantile(0.95, sum(rate(ru_pii_guardrail_analyzer_latency_seconds_bucket[5m])) by (le)) > 2
 ```
 
@@ -280,6 +288,7 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 При `REGULATED_TOPIC_POLICY_MODE=block` событие `regulated_topic_policy_blocked` фиксирует блокировку high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity или compliance-bypass topic до Analyzer/provider egress. Этот слой не является PII recognizer и не создаёт Redis mapping. В логах остаются только bounded categories, rule ids, action `block` и counts; raw prompt, raw matched text, snippets и offsets не пишутся.
 При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked` фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side mutation и до provider call. В логах остаются только bounded rule ids и counts; raw matched values, prompt snippets, offsets, provider keys и mapping contents не пишутся.
+При `SYNTHETIC_PII_ALLOWLIST_MODE=allow` правила из `SYNTHETIC_PII_ALLOWLIST_JSON` могут вычитать только явно заданные synthetic/test PII spans из результатов Analyzer. Событие `synthetic_pii_allowlist_applied` фиксирует только bounded `rule_id`, entity type и counts. `gateway_guardrail_audit` дополнительно получает optional поля `synthetic_allowlist_rules`, `synthetic_allowlist_entity_counts`, `synthetic_allowlist_rule_counts` и `synthetic_allowlist_hit_count`. Raw allowlisted values, prompt snippets и offsets не пишутся.
 
 Presidio Analyzer пишет отдельный structured JSON event
 `presidio_analyzer_request` на каждый `/api/v1/analyze` request. Event содержит
@@ -295,6 +304,7 @@ raw input text, raw entity values, offsets, API keys или proxy tokens.
 | `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `regulated_topic_policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
+| `synthetic_pii_allowlist_applied` | `INFO` | `request_id`, `rules`, `entity_counts`, `rule_counts`, `hit_count` |
 | `regulated_topic_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `actions`, `category_counts`, `rule_counts`, `finding_count` |
 | `pre_egress_policy_blocked` | `INFO` | `request_id`, `categories`, `rules`, `category_counts`, `finding_count` |
 | `final_payload_leak_check_blocked` | `INFO` | `request_id`, `rules`, `rule_counts`, `finding_count` |
