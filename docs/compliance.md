@@ -9,7 +9,7 @@
 
 | Gate | Команда | Что доказывает | Что не доказывает |
 | --- | --- | --- | --- |
-| Egress-security gate | `make test-egress-security` | Mock provider capture показывает, что raw PII, секреты, config/log payloads и final leak canaries не доходят до provider-bound request; blocked-запросы дают zero provider capture. | Полноту audit schema и production log shipping. |
+| Egress-security gate | `make test-egress-security` | Mock provider capture показывает, что raw PII, секреты, config/log payloads и final leak canaries не доходят до provider-bound request; blocked-запросы дают zero provider capture. | Полноту audit schema, production log shipping и production network firewall/CNI enforcement. |
 | Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema и Analyzer telemetry описаны, а документация не смешивает live smoke с leakage proof. | Production log shipping и vendor-specific dashboards. |
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный LiteLLM image, guardrail hooks, provider protocol и sticky routing работают в live окружении. | Live-provider smoke не доказывает отсутствие утечки, потому что проект не видит фактический provider-bound payload у внешнего провайдера. |
 
@@ -49,6 +49,25 @@ attachments и не заменяет production egress allowlist из #38. Се�
 если потребуется dictionary substitution для названий внутренних систем,
 организаций или кодовых идентификаторов. #30 отвечает за структуру evidence
 gates, а не за добавление новых entity detectors.
+
+## Production Network Egress Evidence
+
+Production egress controls покрываются отдельным инфраструктурным слоем, а не только
+application smoke-тестами. Требуемое целевое состояние и стартовые manifests описаны в
+[docs/egress-controls.md](egress-controls.md) и
+[deploy/kubernetes/egress](../deploy/kubernetes/egress):
+
+- namespace/pod-level default deny egress;
+- allowlist для текущих provider FQDNs (`api.z.ai`, `api.openai.com`,
+  `api.anthropic.com`) и явно настроенных `api_base` hosts;
+- internal-only egress от `litellm` к `presidio-analyzer`, Redis и PostgreSQL;
+- отсутствие runtime internet egress у `presidio-analyzer`, Redis и PostgreSQL;
+- CNI/egress/firewall logs для denied outbound flows и DNS drift.
+
+Этот слой не заменяет `PRE_EGRESS_POLICY_MODE`, `FINAL_PAYLOAD_LEAK_CHECK_MODE` и
+`make test-egress-security`: он ограничивает сеть, а application gates доказывают, что
+provider-bound payload очищается или блокируется до внешнего вызова. Local Docker
+Compose bridge network не считается evidence для production deny-all outbound egress.
 
 ## Observability Evidence
 

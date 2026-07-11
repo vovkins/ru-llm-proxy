@@ -26,6 +26,9 @@ Security evidence и observability evidence проверяются разным�
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Проверка реального LiteLLM/provider flow; live smoke не доказывает отсутствие утечки, потому что provider-bound payload внешнего провайдера не захватывается. |
 
 Подробная traceability-карта для проверок и ручных артефактов: [docs/compliance.md](compliance.md).
+Production deny-by-default egress controls и Kubernetes/Cilium templates описаны
+отдельно: [docs/egress-controls.md](egress-controls.md) и
+[deploy/kubernetes/egress](../deploy/kubernetes/egress).
 
 ## Health Checks
 
@@ -328,6 +331,23 @@ streaming response. Таймауты можно переопределить ч�
 `async_post_call_streaming_iterator_hook`.
 
 Для production monitoring используйте Prometheus metrics и structured logs, а UI рассматривайте как вспомогательный административный инструмент.
+
+## Production Egress Controls
+
+Application-level egress gates должны дополняться инфраструктурным deny-by-default
+egress layer. DevOps-команде нужно мониторить не только `/metrics` и structured logs,
+но и сетевые события CNI/egress gateway/firewall:
+
+- разрешенные provider FQDNs из `litellm-config.yaml`: `api.z.ai`, `api.openai.com`,
+  `api.anthropic.com` и явно заданные `api_base` hosts;
+- denied outbound connections из `litellm` к новым внешним FQDNs;
+- любые outbound internet attempts из `presidio-analyzer`, Redis или PostgreSQL;
+- DNS query drift при LiteLLM/provider upgrades;
+- соответствие production manifests шаблонам из `deploy/kubernetes/egress`.
+
+Сетевые логи не должны содержать prompt text или raw PII; для корреляции используйте
+bounded service/deployment labels, destination FQDN, port и policy decision. Подробный
+runbook и validation checklist: [docs/egress-controls.md](egress-controls.md).
 
 ## Обновление LiteLLM
 
