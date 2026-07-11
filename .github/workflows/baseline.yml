@@ -67,6 +67,7 @@ jobs:
         run: |
           make -n test-unit
           make -n test-static
+          make -n test-recognizer-api
           make -n test-routing-diagnostics
           make -n virtual-key-create MODELS=standard,zai KEY_ALIAS=smoke DURATION=30m
           make -n client-auth-smoke
@@ -92,6 +93,17 @@ jobs:
 
       - name: Run LiteLLM guardrail unit tests
         run: make test-guardrail
+
+  recognizer-api:
+    runs-on: ubuntu-latest
+    needs: baseline
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Run Analyzer API recognizer threshold tests
+        run: make test-recognizer-api
 
   pre-egress-proxy:
     runs-on: ubuntu-latest

@@ -140,6 +140,23 @@ services:
     networks:
       - ru-llm-proxy
 
+  # === Test runner for Analyzer API recognizer regression tests ===
+  presidio-analyzer-tests:
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: analyzer-test
+    profiles:
+      - test
+    working_dir: /workspace
+    environment:
+      - PYTHONPATH=/workspace:/workspace/presidio
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - .:/workspace:ro
+    networks:
+      - ru-llm-proxy
+
 volumes:
   pgdata:
 

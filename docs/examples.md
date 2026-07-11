@@ -180,21 +180,21 @@ curl -s http://localhost:5001/api/v1/analyze \
 
 Ожидаемые entity types: `PHONE_NUMBER` и `RU_INN`.
 
-По умолчанию Analyzer API использует `score_threshold=0.35`, а `RU_INN` проходит checksum validation. При `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` checksum-valid bare INN детектируется даже без контекстного слова:
+По умолчанию Analyzer API использует `score_threshold=0.35`, а `RU_INN` проходит checksum validation. При `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` checksum-valid bare 12-digit INN детектируется даже без контекстного слова:
 
 ```bash
 curl -s http://localhost:5001/api/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "text": "7707083893",
+    "text": "500100732259",
     "language": "ru",
     "score_threshold": 0.35
   }' | jq
 ```
 
-Если выставить `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, strict mode требует контекст вроде `ИНН` или `налогоплательщик`; голый ИНН без контекста не проходит `score_threshold=0.35`. Это снижает false positives для случайных длинных числовых последовательностей, которые прошли checksum.
+10-digit INN требует контекст даже в default mode, потому что checksum пропускает заметную долю случайных 10-значных чисел. Если выставить `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, strict mode требует контекст вроде `ИНН` или `налогоплательщик` для любого голого ИНН; bare INN без контекста не проходит `score_threshold=0.35`. Это снижает false positives для случайных длинных числовых последовательностей, которые прошли checksum.
 
-`RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но unsupported cases включают полный разбор индексов, регионов, владений и свободных адресов без явной street/house structure.
+`RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, требует границу слева у street-type сокращений и явное `дом`/`д.` для `Тверская улица, дом 7`; unsupported cases включают полный разбор индексов, регионов, владений и свободных адресов без явной street/house structure.
 
 ## Фильтрация Analyzer по entity types
 

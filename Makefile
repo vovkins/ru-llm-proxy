@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -18,10 +18,11 @@ help:
 	@echo "  make down     — остановить все сервисы"
 	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
 	@echo "  make logs     — логи всех сервисов"
-	@echo "  make test     — запустить весь локальный test suite"
+	@echo "  make test     — быстрый локальный suite: test-unit + test-static"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
+	@echo "  make test-recognizer-api — API-level Analyzer recognizer regression tests"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
@@ -88,6 +89,11 @@ test-recognizers:
 	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
 		$(PYTEST) presidio/tests
 
+test-recognizer-api:
+	@echo "🧪 Analyzer API recognizer threshold tests"
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
+		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
+
 test-guardrail:
 	@echo "🧪 LiteLLM guardrail unit tests"
 	docker compose run $(PYTEST_DOCKER_FLAGS) guardrail-tests \
@@ -108,8 +114,8 @@ test-final-leak-proxy:
 
 test-routing-diagnostics:
 	@echo "🧪 Makefile diagnostics static tests"
-	python3 tests/test_makefile_routing_smoke.py
-	python3 tests/test_makefile_guardrails_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_routing_smoke.py
+	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
 health:

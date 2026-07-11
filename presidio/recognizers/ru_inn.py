@@ -62,7 +62,7 @@ class RuInnRecognizer(PatternRecognizer):
         Pattern(
             name="ru_inn_10digit",
             regex=r"(?<!\d)\d{10}(?!\d)",
-            score=0.4,
+            score=0.3,
         ),
     ]
 

@@ -26,7 +26,7 @@ LLM-прокси для командной работы с внешними LLM 
 |-----------|--------|-------|
 | Телефоны | `PHONE_NUMBER` | Regex + валидация количества цифр |
 | Email | `EMAIL_ADDRESS` | Regex |
-| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр; bare INN включён по умолчанию |
+| ИНН | `RU_INN` | Regex + checksum для 10/12 цифр; bare 12-digit INN включён по умолчанию, 10-digit требует контекст |
 | СНИЛС | `RU_SNILS` | Regex + checksum |
 | Паспорт РФ | `RU_PASSPORT` | Regex + проверка региона |
 | Банковские карты | `CREDIT_CARD` | Regex + Luhn |
@@ -201,7 +201,7 @@ Runtime capacity Analyzer:
 | `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Максимум активных Analyzer requests внутри одного worker. Значение `1` безопаснее для DeepPavlov/PyTorch inference. |
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
-| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare INN без контекстного слова при API `score_threshold=0.35`. Если `false`, голый ИНН требует контекст вроде `ИНН` или `налогоплательщик`. |
+| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare 12-digit INN без контекстного слова при API `score_threshold=0.35`. 10-digit INN требует контекст вроде `ИНН` или `налогоплательщик` даже в default mode. Если `false`, любой голый ИНН требует контекст. |
 
 Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
 
@@ -209,9 +209,9 @@ Runtime capacity Analyzer:
 
 Recognizer calibration:
 
-- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare INN проходит дефолтный Analyzer API `score_threshold=0.35`. Это повышает recall, но может маскировать редкие случайные 10/12-значные последовательности, прошедшие checksum.
-- В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
-- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope.
+- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare 12-digit INN проходит дефолтный Analyzer API `score_threshold=0.35`; 10-digit INN без контекста остаётся ниже threshold, потому что около 10% случайных 10-значных чисел проходят checksum. Для 10-digit detection нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
+- В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) любой голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст.
+- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope. Сокращения street type требуют границу слева, а форма `Тверская улица, дом 7` требует явное `дом`/`д.`, чтобы не маскировать фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`.
 
 Runtime dependency clients guardrail:
 
@@ -416,9 +416,11 @@ make routing-smoke
 | `make restart` | Рестарт LiteLLM после изменения конфигурации |
 | `make logs` | Логи всех сервисов |
 | `make health` | Проверить LiteLLM, Analyzer, PostgreSQL и Redis |
-| `make test` | Локальный test suite: `test-unit` и `test-static` |
+| `make test` | Быстрый локальный suite: `test-unit` и `test-static` |
 | `make test-unit` | Recognizers/NER, guardrail unit tests и deterministic flow |
+| `make test-static` | Host lightweight static/asyncio regression tests через локальный `PYTHON_LOCAL` |
 | `make test-recognizers` | Unit-тесты recognizers и NER helpers |
+| `make test-recognizer-api` | Docker API-level Analyzer recognizer regression tests; отдельный CI gate `recognizer-api`, не входит в быстрый `make test` |
 | `make test-guardrail` | Unit-тесты LiteLLM guardrail |
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
@@ -610,12 +612,16 @@ curl http://localhost:4000/health/liveliness
 
 ## Тестирование
 
-Unit/e2e проверки recognizers, guardrail и live flow запускаются через Docker и не устанавливают Python-пакеты в локальное окружение хоста. Lightweight static diagnostics (`test-static`, Makefile regression tests, baseline CI equivalent) запускаются локальным Python.
+Локальный test flow разделен на host lightweight checks и Docker suites. `make test-static`
+использует локальный `PYTHON_LOCAL` (`.venv/bin/python`, если есть), а Docker targets не
+устанавливают Python-пакеты в окружение хоста.
 
 ```bash
-make test             # test-unit + static diagnostics regression tests
+make test             # test-unit + test-static
 make test-unit        # recognizers, NER helpers, guardrail unit tests, deterministic flow
+make test-static      # lightweight static/asyncio checks через локальный PYTHON_LOCAL
 make test-recognizers
+make test-recognizer-api  # API-level Analyzer recognizer tests; отдельный CI gate recognizer-api
 make test-guardrail
 make test-flow        # deterministic проверка без внешнего LLM
 make test-routing-diagnostics
