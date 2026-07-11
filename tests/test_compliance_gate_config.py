@@ -91,7 +91,13 @@ def test_docs_define_compliance_gate_boundaries():
         "config-env-block",
         "logs-block",
         "dlp-canary-leak",
+        "gateway_guardrail_audit",
+        "policy_result",
+        "redaction_count",
+        "error_code",
         "#29",
         "#31",
     ):
         assert required in compliance
+
+    assert "будет реализован в #29" not in compliance

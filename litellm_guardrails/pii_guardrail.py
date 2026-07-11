@@ -544,6 +544,11 @@ def _safe_log(level: int, event: str, **fields) -> None:
     )
 
 
+def _latency_ms(started_at: float) -> float:
+    """Return elapsed milliseconds rounded for stable structured logs."""
+    return round((time.perf_counter() - started_at) * 1000, 3)
+
+
 class RuPIIGuardrail(CustomGuardrail):
     """LiteLLM custom guardrail that masks or blocks Russian PII using Presidio.
 
@@ -669,6 +674,66 @@ class RuPIIGuardrail(CustomGuardrail):
         if self.failure_mode == "fail_closed":
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
+
+    def _log_gateway_audit(
+        self,
+        *,
+        request_id: str,
+        data: dict,
+        started_at: float,
+        status: str,
+        policy_result: str,
+        call_type: Optional[str] = None,
+        redaction_count: int = 0,
+        entity_counts: Optional[dict[str, int]] = None,
+        block_reason: Optional[str] = None,
+        error_code: Optional[str] = None,
+        categories: Optional[list[str]] = None,
+        rules: Optional[list[str]] = None,
+        category_counts: Optional[dict[str, int]] = None,
+        rule_counts: Optional[dict[str, int]] = None,
+        finding_count: Optional[int] = None,
+        failure_operation: Optional[str] = None,
+        error_type: Optional[str] = None,
+    ) -> None:
+        """Emit one safe gateway-level audit event for a pre-call decision."""
+        fields: dict[str, Any] = {
+            "request_id": request_id,
+            "model": str(data.get("model") or "unknown"),
+            "status": status,
+            "latency_ms": _latency_ms(started_at),
+            "guardrail_name": str(getattr(self, "guardrail_name", None) or "unknown"),
+            "guardrail_mode": "pre_call",
+            "call_type": str(call_type or "unknown"),
+            "policy_mode": self.pii_mode,
+            "pre_egress_policy_mode": self.pre_egress_policy_mode,
+            "final_payload_leak_check_mode": self.final_payload_leak_check_mode,
+            "failure_mode": self.failure_mode,
+            "policy_result": policy_result,
+            "redaction_count": int(redaction_count),
+            "entity_counts": entity_counts or {},
+        }
+
+        optional_fields = {
+            "block_reason": block_reason,
+            "error_code": error_code,
+            "categories": categories,
+            "rules": rules,
+            "category_counts": category_counts,
+            "rule_counts": rule_counts,
+            "finding_count": finding_count,
+            "failure_operation": failure_operation,
+            "error_type": error_type,
+        }
+        fields.update(
+            {
+                key: value
+                for key, value in optional_fields.items()
+                if value is not None
+            }
+        )
+
+        _safe_log(logging.INFO, "gateway_guardrail_audit", **fields)
 
     def _raise_analyzer_overloaded(self, error: AnalyzerOverloadedError) -> None:
         """Fail closed on capacity overload even when other failures fail open."""
@@ -1169,6 +1234,11 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         request_targets: list[tuple[dict, str]],
         request_id: str,
+        *,
+        audit_started_at: Optional[float] = None,
+        call_type: Optional[str] = None,
+        redaction_count: int = 0,
+        entity_counts: Optional[dict[str, int]] = None,
     ) -> None:
         """Block confirmed leaks in actual provider-bound request text."""
         if self.final_payload_leak_check_mode != "block":
@@ -1183,6 +1253,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 data,
                 request_id,
                 final_leak_findings,
+                audit_started_at=audit_started_at,
+                call_type=call_type,
+                redaction_count=redaction_count,
+                entity_counts=entity_counts,
             )
 
     @staticmethod
@@ -1493,6 +1567,9 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         request_id: str,
         findings: list[dict[str, str]],
+        *,
+        audit_started_at: Optional[float] = None,
+        call_type: Optional[str] = None,
     ) -> None:
         """Raise a safe client error for blocked config/log payloads."""
         categories = sorted({finding["category"] for finding in findings})
@@ -1509,6 +1586,21 @@ class RuPIIGuardrail(CustomGuardrail):
             category_counts=category_counts,
             finding_count=len(findings),
         )
+        if audit_started_at is not None:
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=audit_started_at,
+                status="blocked",
+                policy_result="pre_egress_policy_blocked",
+                call_type=call_type,
+                block_reason="pre_egress_policy_violation",
+                error_code="pre_egress_policy_blocked",
+                categories=categories,
+                rules=rules,
+                category_counts=category_counts,
+                finding_count=len(findings),
+            )
 
         error = {
             "message": PRE_EGRESS_POLICY_BLOCKED_MESSAGE,
@@ -1545,6 +1637,11 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         request_id: str,
         findings: list[dict[str, str]],
+        *,
+        audit_started_at: Optional[float] = None,
+        call_type: Optional[str] = None,
+        redaction_count: int = 0,
+        entity_counts: Optional[dict[str, int]] = None,
     ) -> None:
         """Raise a safe client error for confirmed final payload leaks."""
         rules = sorted({finding["rule_id"] for finding in findings})
@@ -1559,6 +1656,22 @@ class RuPIIGuardrail(CustomGuardrail):
             rule_counts=rule_counts,
             finding_count=len(findings),
         )
+        if audit_started_at is not None:
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=audit_started_at,
+                status="blocked",
+                policy_result="final_payload_leak_check_blocked",
+                call_type=call_type,
+                redaction_count=redaction_count,
+                entity_counts=entity_counts,
+                block_reason="final_payload_leak_check_violation",
+                error_code="final_payload_leak_check_blocked",
+                rules=rules,
+                rule_counts=rule_counts,
+                finding_count=len(findings),
+            )
 
         body = {
             "error": {
@@ -1590,6 +1703,9 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         request_id: str,
         entity_counts: dict[str, int],
+        *,
+        audit_started_at: Optional[float] = None,
+        call_type: Optional[str] = None,
     ) -> None:
         """Raise a LiteLLM-compatible client error without raw PII."""
         entity_types = sorted(entity_counts)
@@ -1602,6 +1718,18 @@ class RuPIIGuardrail(CustomGuardrail):
             entity_types=entity_types,
             entity_counts=entity_counts,
         )
+        if audit_started_at is not None:
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=audit_started_at,
+                status="blocked",
+                policy_result="pii_blocked",
+                call_type=call_type,
+                entity_counts=entity_counts,
+                block_reason="pii_detected",
+                error_code="pii_blocked",
+            )
 
         body = {
             "error": {
@@ -1631,12 +1759,27 @@ class RuPIIGuardrail(CustomGuardrail):
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
         """Apply request-time PII policy before sending to LLM."""
+        started_at = time.perf_counter()
         self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
         request_id = self._get_request_id(data)
         if not request_targets:
-            self._run_final_payload_leak_check(data, request_targets, request_id)
+            self._run_final_payload_leak_check(
+                data,
+                request_targets,
+                request_id,
+                audit_started_at=started_at,
+                call_type=call_type,
+            )
             PII_PRE_CALLS.labels(result="skipped").inc()
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=started_at,
+                status="allowed",
+                policy_result="skipped",
+                call_type=call_type,
+            )
             return data
 
         if self.pre_egress_policy_mode == "block":
@@ -1646,6 +1789,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     data,
                     request_id,
                     policy_findings,
+                    audit_started_at=started_at,
+                    call_type=call_type,
                 )
 
         full_mapping = {}
@@ -1687,6 +1832,18 @@ class RuPIIGuardrail(CustomGuardrail):
 
             except AnalyzerOverloadedError as e:
                 PII_PRE_CALLS.labels(result="error").inc()
+                self._log_gateway_audit(
+                    request_id=request_id,
+                    data=data,
+                    started_at=started_at,
+                    status="blocked",
+                    policy_result="analyzer_overloaded",
+                    call_type=call_type,
+                    block_reason="analyzer_overloaded",
+                    error_code="analyzer_overloaded",
+                    failure_operation="analyzer",
+                    error_type=type(e).__name__,
+                )
                 self._raise_analyzer_overloaded(e)
             except Exception as e:
                 if self.pii_mode == "block" and blocked_entity_counts:
@@ -1694,19 +1851,58 @@ class RuPIIGuardrail(CustomGuardrail):
                         data,
                         request_id,
                         blocked_entity_counts,
+                        audit_started_at=started_at,
+                        call_type=call_type,
                     )
-                self._run_final_payload_leak_check(data, request_targets, request_id)
+                self._run_final_payload_leak_check(
+                    data,
+                    request_targets,
+                    request_id,
+                    audit_started_at=started_at,
+                    call_type=call_type,
+                )
                 PII_PRE_CALLS.labels(result="error").inc()
+                self._log_gateway_audit(
+                    request_id=request_id,
+                    data=data,
+                    started_at=started_at,
+                    status="allowed"
+                    if self.failure_mode == "fail_open"
+                    else "blocked",
+                    policy_result=self.failure_mode,
+                    call_type=call_type,
+                    block_reason="guardrail_failure"
+                    if self.failure_mode == "fail_closed"
+                    else None,
+                    error_code=f"guardrail_{self.failure_mode}",
+                    failure_operation="masking",
+                    error_type=type(e).__name__,
+                )
                 return self._handle_failure("masking", e, data)
 
         if blocked_entity_counts:
-            self._raise_blocked_request(data, request_id, blocked_entity_counts)
+            self._raise_blocked_request(
+                data,
+                request_id,
+                blocked_entity_counts,
+                audit_started_at=started_at,
+                call_type=call_type,
+            )
 
         for target, field, _, masked_text in pending_updates:
             target[field] = masked_text
 
+        entity_counts_for_audit = self._entity_counts_from_mapping(full_mapping)
         try:
-            self._run_final_payload_leak_check(data, request_targets, request_id)
+            self._run_final_payload_leak_check(
+                data,
+                request_targets,
+                request_id,
+                audit_started_at=started_at,
+                call_type=call_type,
+                redaction_count=len(full_mapping),
+                entity_counts=entity_counts_for_audit,
+            )
         except litellm.UnprocessableEntityError:
             for target, field, original_text, _ in pending_updates:
                 target[field] = original_text
@@ -1719,15 +1915,39 @@ class RuPIIGuardrail(CustomGuardrail):
             except Exception as e:
                 for target, field, original_text, _ in pending_updates:
                     target[field] = original_text
-                self._run_final_payload_leak_check(data, request_targets, request_id)
+                self._run_final_payload_leak_check(
+                    data,
+                    request_targets,
+                    request_id,
+                    audit_started_at=started_at,
+                    call_type=call_type,
+                )
                 PII_PRE_CALLS.labels(result="error").inc()
+                self._log_gateway_audit(
+                    request_id=request_id,
+                    data=data,
+                    started_at=started_at,
+                    status="allowed"
+                    if self.failure_mode == "fail_open"
+                    else "blocked",
+                    policy_result=self.failure_mode,
+                    call_type=call_type,
+                    redaction_count=len(full_mapping),
+                    entity_counts=entity_counts_for_audit,
+                    block_reason="guardrail_failure"
+                    if self.failure_mode == "fail_closed"
+                    else None,
+                    error_code=f"guardrail_{self.failure_mode}",
+                    failure_operation="mapping_save",
+                    error_type=type(e).__name__,
+                )
                 return self._handle_failure("mapping save", e, data)
 
             # Store internal mapping ID in data for post-call hooks.
             if not isinstance(data.get("metadata"), dict):
                 data["metadata"] = {}
             data["metadata"][PII_REQUEST_ID_METADATA_KEY] = request_id
-            entity_counts_for_log = self._entity_counts_from_mapping(full_mapping)
+            entity_counts_for_log = entity_counts_for_audit
             self._record_entities(entity_counts_for_log)
             PII_MAPPING_SIZE.observe(len(full_mapping))
             PII_PRE_CALLS.labels(result="masked").inc()
@@ -1739,8 +1959,26 @@ class RuPIIGuardrail(CustomGuardrail):
                 entity_counts=entity_counts_for_log,
                 mapping_ttl_seconds=self.mapping_ttl_seconds,
             )
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=started_at,
+                status="allowed",
+                policy_result="masked",
+                call_type=call_type,
+                redaction_count=len(full_mapping),
+                entity_counts=entity_counts_for_log,
+            )
         else:
             PII_PRE_CALLS.labels(result="clean").inc()
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=started_at,
+                status="allowed",
+                policy_result="clean",
+                call_type=call_type,
+            )
 
         return data
 

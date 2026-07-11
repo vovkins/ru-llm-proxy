@@ -274,7 +274,7 @@ docker compose up -d --force-recreate --no-deps litellm
 
 При блокировке клиент получает безопасную `422` ошибку; guardrail body использует `code=final_payload_leak_check_blocked`, но LiteLLM proxy может завернуть её как `code=422`. Error body и structured logs не содержат raw matched values, snippets, offsets, prompt text, provider keys или Redis mapping contents. Подтверждённые final-check hits не fail-open’ятся: `PII_GUARDRAIL_FAILURE_MODE` применяется к инфраструктурным сбоям, а не к найденной утечке.
 
-Этот слой не является enterprise DLP и не заменяет downstream DLP/SIEM. Его задача уже внутри proxy остановить deterministic canaries и высокосигнальные raw secret markers перед внешним provider call.
+Этот слой не является enterprise DLP и не заменяет внешние контрольные контуры. Его задача уже внутри proxy остановить deterministic canaries и высокосигнальные raw secret markers перед внешним provider call.
 
 ### litellm-config.yaml — настройки LiteLLM
 
@@ -607,7 +607,12 @@ make monitor-smoke
 - `ru_pre_egress_policy_blocked_total`
 - `ru_final_payload_leak_check_blocked_total`
 
-Guardrail также пишет structured JSON logs без prompt text и без raw PII. Подробный DevOps guide: [docs/monitoring.md](docs/monitoring.md).
+Guardrail также пишет structured JSON logs без prompt text и без raw PII. Для
+gateway-level мониторинга используйте `gateway_guardrail_audit`: один safe event
+на pre-call решение с `request_id`, `model`, `status`, `latency_ms`,
+`policy_result`, `redaction_count`, `entity_counts`, а для блокировок/ошибок —
+`block_reason` и `error_code`. Подробный DevOps guide:
+[docs/monitoring.md](docs/monitoring.md).
 
 Для routing диагностики используйте `make routing-smoke`, response header `x-litellm-model-id` и LiteLLM deployment metrics (`litellm_deployment_*`). Подробности: [docs/routing.md](docs/routing.md).
 

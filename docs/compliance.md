@@ -10,7 +10,7 @@
 | Gate | Команда | Что доказывает | Что не доказывает |
 | --- | --- | --- | --- |
 | Egress-security gate | `make test-egress-security` | Mock provider capture показывает, что raw PII, секреты, config/log payloads и final leak canaries не доходят до provider-bound request; blocked-запросы дают zero provider capture. | Полноту audit schema и production log shipping. |
-| Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, а документация не смешивает live smoke с leakage proof. | Полную gateway audit schema из #29 и analyzer request telemetry из #31. |
+| Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema описана, а документация не смешивает live smoke с leakage proof. | Per-request telemetry Presidio Analyzer из #31. |
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный LiteLLM image, guardrail hooks, provider protocol и sticky routing работают в live окружении. | Live-provider smoke не доказывает отсутствие утечки, потому что проект не видит фактический provider-bound payload у внешнего провайдера. |
 
 ## Egress-security Fixtures
@@ -47,9 +47,12 @@
   схлопываются в один target;
 - документация явно говорит, что live-provider smoke не является leakage proof.
 
-Полноценный gateway audit event будет реализован в #29. Он должен добавить safe
-decision fields вроде `request_id`, `model`, `status`, `latency_ms`,
-`policy_result`, `block_reason`, `error_code` и redaction/entity counts.
+Gateway audit logging из #29 пишет `gateway_guardrail_audit` один раз на pre-call
+решение. Event содержит safe decision fields: `request_id`, `model`, `status`,
+`latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `policy_result`,
+`redaction_count`, `entity_counts`, а для блокировок/ошибок — `block_reason`,
+`error_code`, bounded `categories`/`rules` и counts. Он не содержит raw prompt
+text, raw PII, snippets, offsets, provider keys или Redis mapping contents.
 
 Per-request telemetry Presidio Analyzer будет реализована в #31. Она должна
 добавить safe outcome/latency/entity-count/failure telemetry без raw input text,
