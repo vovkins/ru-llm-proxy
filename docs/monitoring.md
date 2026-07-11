@@ -13,9 +13,13 @@
 - применяются ли synthetic/test PII allowlist rules и не используются ли они вне ожидаемых тестовых контуров;
 - включена ли regulated-topic policy для AML/CFT / ПОД/ФТ и какие bounded rule ids она блокирует;
 - стабильно ли клиенты попадают в свои provider deployments при sticky routing;
+- защищён ли Admin UI/API отдельной operator boundary и аудируются ли admin actions;
 - есть ли fail-open/fail-closed события, при которых PII-защита работает нештатно.
 
 LiteLLM Admin UI полезен для операционных действий, ключей, usage/spend и просмотра логов. Он не должен быть единственным источником observability для guardrails.
+
+Admin/operator access model, SSO/reverse-proxy boundary, rotation and break-glass
+requirements are documented separately: [admin-access.md](admin-access.md).
 
 ## Evidence Gates
 
@@ -322,12 +326,18 @@ DevOps-рекомендации:
 - собирать stdout/stderr всех контейнеров через штатный log collector;
 - парсить `gateway_guardrail_audit` как основной vendor-neutral источник security telemetry;
 - использовать `policy_result`, `status`, `error_code` и bounded `rules`/`categories` для дашбордов; raw prompt/PII в logs отсутствуют намеренно;
+- собирать admin action audit отдельно от request guardrail audit: LiteLLM audit logs where available, reverse-proxy/SSO access logs for `/ui` and admin API routes, CI bootstrap logs with secrets redacted, and GitOps/ticket records for config/model/provider changes;
 - не включать debug-логи внешнего LLM provider в production без отдельного privacy review;
 - хранить `request_id` как guardrail mapping id, но не использовать его как Prometheus label.
 
 ## Guardrails UI
 
 `guardrail_info` в LiteLLM config возвращается через `GET /guardrails/list`. Текущий LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
+
+Do not expose the full Admin UI just to monitor guardrails. For production,
+protect `/ui` and admin API routes with the operator boundary described in
+[admin-access.md](admin-access.md), or set `DISABLE_ADMIN_UI=True` for API-only
+deployments.
 
 Для проверки registration metadata используйте:
 

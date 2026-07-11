@@ -350,6 +350,10 @@ LiteLLM Admin UI доступен на `/ui`. Для входа использу
 
 `LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
 
+В production Admin UI и admin API routes должны жить за отдельной operator boundary: SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy или private network. Shared `UI_USERNAME` / `UI_PASSWORD` и `LITELLM_MASTER_KEY` не считаются достаточной public internet boundary. Для API-only deployment LiteLLM UI можно отключить через `DISABLE_ADMIN_UI=True`.
+
+Operator access model, role split, rotation and admin audit expectations are documented in [admin-access.md](admin-access.md).
+
 Для обычного server-funded режима client virtual key передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает upstream через серверные provider keys. Для BYOK passthrough режима client virtual key передаётся как `x-litellm-api-key`, чтобы поддерживаемые provider-specific headers (`x-api-key`, `api-key`, `x-goog-api-key` и аналогичные) могли быть переданы upstream. Этот режим не включён в default config: header forwarding должен включаться явно в отдельном deployment и проходить live validation на текущем LiteLLM image.
 
 Codex/ChatGPT и Claude subscription OAuth обычно требуют provider `Authorization`. Обычный LiteLLM route не считается подтверждённым passthrough для такого header; если live validation покажет, что OAuth `Authorization` не форвардится, нужен pass-through route, sidecar или custom adapter. Shared Codex/Claude auth files на proxy не являются частью этой модели.

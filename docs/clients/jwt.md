@@ -14,6 +14,10 @@ JWT/OIDC auth is not enabled in the default `litellm-config.yaml` because it req
 
 The default runnable setup stays on LiteLLM virtual keys. Use JWT/OIDC when the deployment needs SSO-backed access instead of distributing proxy keys to developers.
 
+Admin/operator access to `/ui` and admin API routes is a separate boundary from
+client JWT/OIDC auth. Protect it with the controls described in
+[../admin-access.md](../admin-access.md).
+
 ## Base OIDC Auth
 
 Set IdP discovery values on the proxy host:

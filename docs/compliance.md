@@ -32,6 +32,7 @@
 | `dlp-canary-leak` | final leak smoke | `422`, `final_payload_leak_check_blocked`, provider requests равны `0`. |
 | `auth-secrets` deterministic markers | final leak smoke | Private key/env-secret-like markers in provider-bound fields block before provider. |
 | `synthetic-fixtures` | guardrail unit tests and manual/demo smoke | Explicit synthetic/test PII values can be allowlisted without masking, while non-allowlisted PII in the same request is still masked or blocked. |
+| `admin-operator-boundary` | docs/static checks and production deployment evidence | Client credentials, provider credentials and admin credentials are separated; Admin UI/API is protected by SSO/reverse-proxy/private-network boundary or disabled. |
 | `repeated-and-placeholder-collision` | guardrail unit tests and flow tests | Placeholder replacement remains deterministic; broader egress evidence should stay in mock-provider smoke when new fixtures are added. |
 
 Не все compliance families из внешних требований уже имеют полный coverage.
@@ -74,6 +75,15 @@ rules задаются через `SYNTHETIC_PII_ALLOWLIST_JSON`, broad regex pa
 raw values. Если в production traffic появляются
 `ru_synthetic_pii_allowlist_hits_total`, это должно быть ожидаемым тестовым контуром
 или отдельным incident/usage review.
+
+`admin-operator-boundary` покрывает требование отделить пользовательский доступ к
+proxy от administrator/operator access. Нормальные пользователи и приложения получают
+LiteLLM virtual keys или validated JWT/OIDC tokens; upstream provider keys остаются
+только на proxy; `LITELLM_MASTER_KEY`, `UI_USERNAME` и `UI_PASSWORD` считаются
+privileged admin credentials. Production Admin UI/API должны быть закрыты
+operator-only boundary (SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy,
+private network) или UI должен быть отключён через `DISABLE_ADMIN_UI=True`.
+Подробный runbook: [docs/admin-access.md](admin-access.md).
 
 ## Production Network Egress Evidence
 
@@ -134,6 +144,16 @@ input text, raw entity values, reconstructable offsets, API keys или proxy to
 4. Capture summary из mock upstream: `provider_requests=0` для block/no-egress
    сценариев или `provider_saw_raw_phone=false` для mask сценариев.
 5. Подтверждение log safety: raw forbidden value отсутствует в LiteLLM logs.
+
+Для admin/operator boundary дополнительно прикладывайте:
+
+1. Схему ingress/reverse-proxy/SSO, которая показывает, что `/ui` и admin API routes
+   не являются публичными без operator boundary.
+2. Список operator roles/groups и break-glass owners.
+3. Evidence ротации `LITELLM_MASTER_KEY` и `UI_PASSWORD` в staging.
+4. Пример admin action audit события или ticket/change record для key/budget/model change.
+5. Подтверждение, что client docs and configs use `RU_LLM_PROXY_TOKEN` or OIDC/JWT,
+   not `LITELLM_MASTER_KEY`, as the client credential.
 
 Если egress-security gate проходит, а observability gate падает, это означает, что
 защита provider egress может быть корректной, но evidence/logging недостаточны для
