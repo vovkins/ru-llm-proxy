@@ -1,0 +1,114 @@
+{
+  "substitutions": [
+    {
+      "id": "sberbank_to_severny_trust",
+      "enabled": true,
+      "source": "Сбербанк",
+      "replacement": "Северный Траст",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "vtb_to_vostochny_kontur",
+      "enabled": true,
+      "source": "ВТБ",
+      "replacement": "Восточный Контур",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "gazprombank_to_energia_capital",
+      "enabled": true,
+      "source": "Газпромбанк",
+      "replacement": "Энергия Капитал",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "alfabank_to_ladoga_finance",
+      "enabled": true,
+      "source": "Альфа-Банк",
+      "replacement": "Ладога Финанс",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "psb_to_prizma_capital",
+      "enabled": true,
+      "source": "ПСБ",
+      "replacement": "Призма Капитал",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "rosselkhozbank_to_agro_finance",
+      "enabled": true,
+      "source": "Россельхозбанк",
+      "replacement": "Агро Финанс",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "tbank_to_zetta_group",
+      "enabled": true,
+      "source": "Т-Банк",
+      "replacement": "Зетта Групп",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "mkb_to_city_trust",
+      "enabled": true,
+      "source": "Московский кредитный банк",
+      "replacement": "Городской Траст",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "domrf_to_domus_finance",
+      "enabled": true,
+      "source": "Банк Дом.РФ",
+      "replacement": "Домус Финанс",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    },
+    {
+      "id": "sovcombank_to_soyuz_capital",
+      "enabled": true,
+      "source": "Совкомбанк",
+      "replacement": "Союз Капитал",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    }
+  ]
+}

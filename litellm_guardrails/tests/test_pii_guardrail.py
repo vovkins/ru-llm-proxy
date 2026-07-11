@@ -45,6 +45,10 @@ def _synthetic_allowlist(*rules):
     return json.dumps(list(rules), ensure_ascii=False)
 
 
+def _dictionary_substitutions(*rules):
+    return json.dumps({"substitutions": list(rules)}, ensure_ascii=False)
+
+
 def _mock_redis(get_value=None):
     redis = AsyncMock()
     redis.setex = AsyncMock()
@@ -758,6 +762,147 @@ class TestPreCallHook:
             "<PHONE_NUMBER_1>": "+79031234567",
             "<PHONE_NUMBER_2>": "89031234567",
         }
+
+    @pytest.mark.asyncio
+    async def test_dictionary_substitution_runs_before_analyzer_and_saves_mapping(
+        self,
+    ):
+        guardrail = RuPIIGuardrail(
+            dictionary_substitutions_enabled=True,
+            dictionary_substitutions_file="",
+            dictionary_substitutions_json=_dictionary_substitutions(
+                {
+                    "id": "tbank_to_zetta",
+                    "source": "Т-Банк",
+                    "replacement": "Зетта Групп",
+                    "match": {"case_sensitive": False, "whole_phrase": True},
+                    "restore": True,
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        save_mapping = AsyncMock()
+
+        with patch.object(guardrail, "_analyze_text", return_value=[]) as analyze:
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": "Проверь Т-Банк"}]}
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == "Проверь Зетта Групп"
+        analyze.assert_awaited_once_with("Проверь Зетта Групп")
+        assert result["metadata"]["pii_request_id"]
+        assert save_mapping.call_args[0][1] == {"Зетта Групп": "Т-Банк"}
+
+    @pytest.mark.asyncio
+    async def test_dictionary_replacement_span_is_not_remasked_as_pii(self):
+        guardrail = RuPIIGuardrail(
+            dictionary_substitutions_enabled=True,
+            dictionary_substitutions_file="",
+            dictionary_substitutions_json=_dictionary_substitutions(
+                {
+                    "id": "tbank_to_zetta",
+                    "source": "Т-Банк",
+                    "replacement": "Зетта Групп",
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        provider_text = "Проверь Зетта Групп"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(provider_text, "Зетта Групп", "ORGANIZATION")],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": "Проверь Т-Банк"}]}
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == provider_text
+        assert "<ORGANIZATION_1>" not in result["messages"][0]["content"]
+        assert save_mapping.call_args[0][1] == {"Зетта Групп": "Т-Банк"}
+
+    @pytest.mark.asyncio
+    async def test_dictionary_substitution_block_mode_allows_replacement_span(self):
+        guardrail = RuPIIGuardrail(
+            pii_mode="block",
+            dictionary_substitutions_enabled=True,
+            dictionary_substitutions_file="",
+            dictionary_substitutions_json=_dictionary_substitutions(
+                {
+                    "id": "tbank_to_zetta",
+                    "source": "Т-Банк",
+                    "replacement": "Зетта Групп",
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        provider_text = "Проверь Зетта Групп"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(provider_text, "Зетта Групп", "ORGANIZATION")],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": "Проверь Т-Банк"}]}
+
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert result["messages"][0]["content"] == provider_text
+        assert save_mapping.call_args[0][1] == {"Зетта Групп": "Т-Банк"}
+
+    @pytest.mark.asyncio
+    async def test_dictionary_substitution_ambiguous_request_fails_closed(self):
+        guardrail = RuPIIGuardrail(
+            dictionary_substitutions_enabled=True,
+            dictionary_substitutions_file="",
+            dictionary_substitutions_failure_mode="fail_closed",
+            dictionary_substitutions_json=_dictionary_substitutions(
+                {
+                    "id": "tbank_to_zetta",
+                    "source": "Т-Банк",
+                    "replacement": "Зетта Групп",
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock()) as analyze:
+            with pytest.raises(
+                RuntimeError,
+                match="Dictionary substitution ambiguous request failed",
+            ):
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data={
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": "Сравни Т-Банк и Зетта Групп",
+                            }
+                        ]
+                    },
+                )
+
+        analyze.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_synthetic_allowlist_keeps_exact_value_and_masks_other_pii(self):
@@ -4091,6 +4236,33 @@ class TestPostCallHook:
         assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
 
     @pytest.mark.asyncio
+    async def test_restores_dictionary_substitution_response(self, guardrail):
+        import litellm
+
+        guardrail._redis.get.return_value = json.dumps({"Зетта Групп": "Т-Банк"})
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(
+                        role="assistant",
+                        content="Договор с Зетта Групп проверен",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.choices[0].message.content == "Договор с Т-Банк проверен"
+
+    @pytest.mark.asyncio
     async def test_unmasks_tool_and_function_arguments(self, guardrail):
         import litellm
 
@@ -4403,6 +4575,43 @@ class TestStreamingPostCallHook:
             for choice in chunk.choices
         ]
         assert all("<PHONE_NUMBER_1>" not in part for part in yielded_content_parts)
+        assert request_data["metadata"]["pii_streaming_restoration_done"] is True
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_restores_dictionary_replacement_split_across_chunks(self, guardrail):
+        guardrail._redis.get.return_value = json.dumps({"Зетта Групп": "Т-Банк"})
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "Договор с Зетта "},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "Групп проверен"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[litellm.StreamingChoices(index=0, finish_reason="stop")]
+            ),
+        ]
+
+        request_data = {"metadata": {"pii_request_id": "req-1"}}
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data=request_data,
+        )
+        _yielded, content, _reasoning = await _collect_stream_text(result_stream)
+
+        assert content == "Договор с Т-Банк проверен"
         assert request_data["metadata"]["pii_streaming_restoration_done"] is True
         guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 

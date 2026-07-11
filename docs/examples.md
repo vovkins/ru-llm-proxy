@@ -375,6 +375,51 @@ make restart
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
 
+## Dictionary substitutions
+
+Dictionary substitutions включены по умолчанию:
+
+```env
+DICTIONARY_SUBSTITUTIONS_ENABLED=true
+DICTIONARY_SUBSTITUTIONS_FILE=/app/litellm_guardrails/dictionary-substitutions.default.json
+DICTIONARY_SUBSTITUTIONS_JSON=
+DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed
+```
+
+Default file содержит seed из 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Это стартовая business dictionary policy; в production замените или дополните файл под свои термины.
+
+Пример:
+
+```text
+Client request:   Проверь договор с Т-Банк.
+Provider request: Проверь договор с Зетта Групп.
+Client response:  Договор с Т-Банк проверен.
+```
+
+Правило в JSON:
+
+```json
+{
+  "substitutions": [
+    {
+      "id": "tbank_to_zetta",
+      "enabled": true,
+      "source": "Т-Банк",
+      "replacement": "Зетта Групп",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": true
+      },
+      "restore": true
+    }
+  ]
+}
+```
+
+Dictionary policy запускается до Analyzer и не зависит от DeepPavlov NER. Replacement spans исключаются из PII mask/block, поэтому `Зетта Групп` не будет заменён на `<ORGANIZATION_1>`. Если request уже содержит replacement text вместе с source, например `Сравни Т-Банк и Зетта Групп`, proxy считает restore ambiguous и при default `fail_closed` останавливает запрос.
+
+Ограничение: restore exact-match only. Если модель вернула `Зетте Групп`, `Zetta Group` или любое перефразирование вместо точного `Зетта Групп`, proxy не сможет восстановить `Т-Банк`.
+
 ## Synthetic/test PII allowlist
 
 По умолчанию allowlist выключен:
@@ -439,7 +484,7 @@ docker compose up -d --force-recreate --no-deps litellm
 REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=[{"category":"internal_watchlist","rule_id":"custom_watchlist_codename","action":"block","pattern":"PROJECT_MARS_WATCHLIST","flags":"i"}]
 ```
 
-Mask и dictionary-substitute actions в первой версии не включены; они должны добавляться отдельно вместе с reversible dictionary substitution из #25.
+Regulated-topic policy остаётся block-only. Reversible dictionary substitution работает отдельным exact-match слоем через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используется для broad semantic topic blocking.
 
 ## Pre-egress config/log policy
 
