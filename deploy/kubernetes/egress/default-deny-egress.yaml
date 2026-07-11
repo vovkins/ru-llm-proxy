@@ -1,0 +1,10 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ru-llm-proxy-default-deny-egress
+  namespace: ru-llm-proxy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress: []

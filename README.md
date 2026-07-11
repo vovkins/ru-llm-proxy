@@ -18,6 +18,7 @@ LLM-прокси для командной работы с внешними LLM 
 - Calibrated Russian recognizer thresholds: checksum validation for `RU_INN` and a tighter baseline `RU_ADDRESS` corpus.
 - Counterparty and bank-requisite recognizers: `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`.
 - Infrastructure/secret recognizers: `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD`.
+- Production egress-control guidance and Kubernetes/Cilium templates for deny-by-default runtime networking: [docs/egress-controls.md](docs/egress-controls.md), [deploy/kubernetes/egress](deploy/kubernetes/egress).
 - Sticky routing diagnostics, baseline CI, local guardrails smoke canary и FastAPI lifespan startup.
 
 ⚠️ **Текущие ограничения** — восстановление возможно только для плейсхолдеров, которые провайдер вернул в ответе. Streaming restoration поддерживает текстовые deltas (`content`, `reasoning_content`); streaming tool/function-call argument deltas пока не переписываются.
@@ -606,6 +607,12 @@ Live smoke (`make guardrails-smoke`, `make test-e2e`, `make routing-smoke`) пр
 потому что фактический provider-bound payload внешнего провайдера проект не
 захватывает. Подробная карта evidence gates: [docs/compliance.md](docs/compliance.md).
 
+Production network egress controls вынесены в отдельный слой: deny-by-default
+egress, allowlist provider FQDNs и запрет internet egress для Analyzer/Redis/PostgreSQL
+описаны в [docs/egress-controls.md](docs/egress-controls.md). Стартовые Kubernetes/Cilium
+шаблоны лежат в [deploy/kubernetes/egress](deploy/kubernetes/egress). Local Docker
+Compose не считается production egress enforcement.
+
 ## Monitoring
 
 Prometheus включён через `litellm_settings.callbacks: ["prometheus"]`. Метрики доступны на:
@@ -702,6 +709,9 @@ RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL
 
 `make test-flow` проверяет, что PII маскируется до simulated model call и восстанавливается после него. `make test-routing-diagnostics` статически проверяет `routing-smoke` и `guardrails-smoke`: HTTP/network failures, `/v1/chat/completions`, streaming canary wiring, Redis cleanup checks и отсутствие печати proxy token. `make test-egress-security` использует mock provider capture и доказывает, что raw test values не попадают в provider-bound payload. `make test-observability-gates` проверяет lightweight audit/observability wiring и safe-log assertions. `make test-e2e` остаётся live smoke test: реальный провайдер может опустить или переформулировать плейсхолдеры, а сам live smoke не является leakage proof.
 
+`make test-static` также проверяет, что production egress-control guide и
+`deploy/kubernetes/egress` templates остаются связаны с основной документацией.
+
 ## Troubleshooting
 
 **LiteLLM container unhealthy:**
@@ -748,6 +758,9 @@ ru-llm-proxy/
 ├── Makefile
 ├── scripts/
 │   └── setup_env.sh
+├── deploy/
+│   └── kubernetes/
+│       └── egress/
 ├── presidio/
 │   ├── Dockerfile
 │   ├── analyzer_server.py
@@ -764,6 +777,8 @@ ru-llm-proxy/
 │   └── e2e/
 └── docs/
     ├── architecture.md
+    ├── compliance.md
+    ├── egress-controls.md
     ├── examples.md
     ├── monitoring.md
     ├── routing.md

@@ -208,6 +208,18 @@ TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECOND
 
 #28 Secondary DLP scan остаётся отдельным слоем: он должен проверять уже provider-bound payload после возможных мутаций. Pre-egress policy из этого раздела проверяет исходный operational artifact до Analyzer.
 
+## Production egress controls
+
+Application-level guardrails не заменяют сетевой deny-by-default слой. В production
+`litellm` должен иметь egress только к внутренним зависимостям (`presidio-analyzer`,
+Redis, PostgreSQL) и явно разрешенным provider FQDNs; `presidio-analyzer`, Redis и
+PostgreSQL не должны иметь internet egress в runtime.
+
+Local Docker Compose bridge network используется для разработки и smoke-тестов, но не
+считается production egress enforcement. Production guidance, runtime allowlist и
+стартовые Kubernetes/Cilium templates описаны в [docs/egress-controls.md](egress-controls.md)
+и [deploy/kubernetes/egress](../deploy/kubernetes/egress).
+
 ## Analyzer
 
 Analyzer service — FastAPI приложение в `presidio/analyzer_server.py`.

@@ -86,6 +86,7 @@ test-static: test-routing-diagnostics
 		tests/test_pre_egress_policy_config.py \
 		tests/test_final_payload_leak_check_config.py \
 		tests/test_compliance_gate_config.py \
+		tests/test_production_egress_controls_docs.py \
 		presidio/tests/test_capacity.py
 
 test-recognizers:
