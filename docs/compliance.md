@@ -10,7 +10,7 @@
 | Gate | Команда | Что доказывает | Что не доказывает |
 | --- | --- | --- | --- |
 | Egress-security gate | `make test-egress-security` | Mock provider capture показывает, что raw PII, секреты, config/log payloads и final leak canaries не доходят до provider-bound request; blocked-запросы дают zero provider capture. | Полноту audit schema и production log shipping. |
-| Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema описана, а документация не смешивает live smoke с leakage proof. | Per-request telemetry Presidio Analyzer из #31. |
+| Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema и Analyzer telemetry описаны, а документация не смешивает live smoke с leakage proof. | Production log shipping и vendor-specific dashboards. |
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный LiteLLM image, guardrail hooks, provider protocol и sticky routing работают в live окружении. | Live-provider smoke не доказывает отсутствие утечки, потому что проект не видит фактический provider-bound payload у внешнего провайдера. |
 
 ## Egress-security Fixtures
@@ -54,9 +54,15 @@ Gateway audit logging из #29 пишет `gateway_guardrail_audit` один р�
 `error_code`, bounded `categories`/`rules` и counts. Он не содержит raw prompt
 text, raw PII, snippets, offsets, provider keys или Redis mapping contents.
 
-Per-request telemetry Presidio Analyzer будет реализована в #31. Она должна
-добавить safe outcome/latency/entity-count/failure telemetry без raw input text,
-raw entity values и reconstructable offsets.
+Per-request telemetry Presidio Analyzer из #31 пишет `presidio_analyzer_request`
+на каждый `/api/v1/analyze` request и exposes metrics
+`ru_presidio_analyzer_requests_total`,
+`ru_presidio_analyzer_latency_seconds_*`,
+`ru_presidio_analyzer_entities_detected_total`,
+`ru_presidio_analyzer_capacity_rejections_total` и
+`ru_presidio_analyzer_failures_total`. Telemetry содержит safe outcome, latency,
+entity type counts, capacity snapshot, NER state и bounded failure reason без raw
+input text, raw entity values, reconstructable offsets, API keys или proxy tokens.
 
 ## Evidence For Manual Review
 
