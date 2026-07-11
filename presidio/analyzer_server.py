@@ -1,11 +1,14 @@
 """Presidio Analyzer REST server for ru-llm-proxy."""
 
 import asyncio
+import json
 import logging
 import os
+import time
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -16,6 +19,79 @@ from ner import DeepPavlovRecognizer, should_run_ner
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+try:
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Histogram,
+        generate_latest,
+    )
+except Exception:  # pragma: no cover - dependency is present in the Docker image.
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
+    Counter = None
+    Histogram = None
+    generate_latest = None
+
+
+class _NoopMetric:
+    """Fallback metric used when prometheus_client is unavailable."""
+
+    def labels(self, *args, **kwargs):
+        return self
+
+    def inc(self, amount: float = 1):
+        return None
+
+    def observe(self, amount: float):
+        return None
+
+
+def _build_metric(factory, *args, **kwargs):
+    """Create a Prometheus metric or a no-op replacement."""
+    if factory is None:
+        return _NoopMetric()
+    try:
+        return factory(*args, **kwargs)
+    except ValueError:
+        logger.warning(
+            "Prometheus metric already registered, using no-op for %s",
+            args[0],
+        )
+        return _NoopMetric()
+
+
+ANALYZER_REQUESTS = _build_metric(
+    Counter,
+    "ru_presidio_analyzer_requests",
+    "Presidio Analyzer requests by safe outcome.",
+    ["outcome"],
+)
+ANALYZER_LATENCY = _build_metric(
+    Histogram,
+    "ru_presidio_analyzer_latency_seconds",
+    "Presidio Analyzer request latency by safe outcome.",
+    ["outcome"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+)
+ANALYZER_ENTITIES_DETECTED = _build_metric(
+    Counter,
+    "ru_presidio_analyzer_entities_detected",
+    "Presidio Analyzer detected entities by entity type.",
+    ["entity_type"],
+)
+ANALYZER_CAPACITY_REJECTIONS = _build_metric(
+    Counter,
+    "ru_presidio_analyzer_capacity_rejections",
+    "Presidio Analyzer capacity rejections by bounded reason.",
+    ["reason"],
+)
+ANALYZER_FAILURES = _build_metric(
+    Counter,
+    "ru_presidio_analyzer_failures",
+    "Presidio Analyzer failures by bounded reason.",
+    ["reason"],
+)
 
 
 @asynccontextmanager
@@ -75,12 +151,25 @@ async def health():
     }
 
 
+@app.get("/metrics")
+async def metrics():
+    if generate_latest is None:
+        return Response(status_code=503, content="prometheus_client unavailable\n")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
+    started_at = time.perf_counter()
     try:
-        async with await capacity_limiter.acquire():
-            return await _run_blocking_analyze(request)
+        slot = await capacity_limiter.acquire()
     except CapacityRejected as e:
+        _emit_analyzer_telemetry(
+            request=request,
+            started_at=started_at,
+            outcome="overload",
+            failure_reason=e.reason,
+        )
         raise HTTPException(
             status_code=e.status_code,
             detail={
@@ -89,6 +178,35 @@ async def analyze(request: AnalyzeRequest):
                 "message": str(e),
             },
         ) from e
+
+    try:
+        async with slot:
+            response = await _run_blocking_analyze(request)
+    except asyncio.CancelledError:
+        _emit_analyzer_telemetry(
+            request=request,
+            started_at=started_at,
+            outcome="timeout_or_cancelled",
+            failure_reason="cancelled",
+        )
+        raise
+    except Exception as e:
+        _emit_analyzer_telemetry(
+            request=request,
+            started_at=started_at,
+            outcome="analyzer_error",
+            failure_reason=type(e).__name__,
+        )
+        raise
+
+    entity_counts = _entity_counts_from_response(response)
+    _emit_analyzer_telemetry(
+        request=request,
+        started_at=started_at,
+        outcome="success" if entity_counts else "no_entities",
+        entity_counts=entity_counts,
+    )
+    return response
 
 
 async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
@@ -106,7 +224,10 @@ async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             continue
         except Exception as e:
             if cancelled:
-                logger.error("Analyzer work failed after request cancellation: %s", e)
+                logger.error(
+                    "Analyzer work failed after request cancellation: error_type=%s",
+                    type(e).__name__,
+                )
                 raise asyncio.CancelledError from None
             raise
 
@@ -118,7 +239,10 @@ async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         try:
             task.result()
         except Exception as e:
-            logger.error("Analyzer work failed after request cancellation: %s", e)
+            logger.error(
+                "Analyzer work failed after request cancellation: error_type=%s",
+                type(e).__name__,
+            )
     raise asyncio.CancelledError
 
 
@@ -144,7 +268,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             )
             results.extend(ner_results)
         except Exception as e:
-            logger.error(f"NER analysis error: {e}")
+            logger.error("NER analysis error: error_type=%s", type(e).__name__)
 
     # 3. Deduplicate overlapping entities (keep higher score)
     results = _deduplicate(results)
@@ -183,6 +307,81 @@ def _deduplicate(results):
             kept.append(result)
 
     return sorted(kept, key=lambda r: r.start)
+
+
+def _safe_log(level: int, event: str, **fields) -> None:
+    """Write structured Analyzer logs without request text or raw entity values."""
+    logger.log(
+        level,
+        json.dumps(
+            {"event": event, **fields},
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+    )
+
+
+def _entity_counts_from_response(response: AnalyzeResponse) -> dict[str, int]:
+    """Return safe entity type counts without values or offsets."""
+    counts: dict[str, int] = {}
+    for entity in response.entities:
+        entity_type = str(entity.get("entity_type") or "UNKNOWN")
+        counts[entity_type] = counts.get(entity_type, 0) + 1
+    return counts
+
+
+def _record_analyzer_metrics(
+    *,
+    outcome: str,
+    latency_seconds: float,
+    entity_counts: dict[str, int],
+    failure_reason: str | None = None,
+) -> None:
+    """Update low-cardinality Analyzer metrics."""
+    ANALYZER_REQUESTS.labels(outcome=outcome).inc()
+    ANALYZER_LATENCY.labels(outcome=outcome).observe(latency_seconds)
+    for entity_type, count in entity_counts.items():
+        ANALYZER_ENTITIES_DETECTED.labels(entity_type=entity_type).inc(count)
+    if outcome == "overload":
+        ANALYZER_CAPACITY_REJECTIONS.labels(
+            reason=failure_reason or "unknown",
+        ).inc()
+    if outcome in {"timeout_or_cancelled", "analyzer_error"}:
+        ANALYZER_FAILURES.labels(reason=failure_reason or "unknown").inc()
+
+
+def _emit_analyzer_telemetry(
+    *,
+    request: AnalyzeRequest,
+    started_at: float,
+    outcome: str,
+    entity_counts: dict[str, int] | None = None,
+    failure_reason: str | None = None,
+) -> None:
+    """Emit one safe telemetry event for an Analyzer request."""
+    entity_counts = entity_counts or {}
+    latency_seconds = time.perf_counter() - started_at
+    _record_analyzer_metrics(
+        outcome=outcome,
+        latency_seconds=latency_seconds,
+        entity_counts=entity_counts,
+        failure_reason=failure_reason,
+    )
+
+    fields = {
+        "event_id": str(uuid.uuid4()),
+        "outcome": outcome,
+        "latency_ms": round(latency_seconds * 1000, 3),
+        "entity_count": sum(entity_counts.values()),
+        "entity_counts": entity_counts,
+        "language": request.language,
+        "score_threshold": request.score_threshold,
+        "ner": "loaded" if dp_recognizer.is_loaded() else "not_loaded",
+        "capacity": capacity_limiter.snapshot(),
+    }
+    if failure_reason is not None:
+        fields["failure_reason"] = failure_reason
+    _safe_log(logging.INFO, "presidio_analyzer_request", **fields)
 
 
 if __name__ == "__main__":

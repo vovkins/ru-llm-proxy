@@ -606,6 +606,11 @@ make monitor-smoke
 - `ru_pii_guardrail_mapping_size_*`
 - `ru_pre_egress_policy_blocked_total`
 - `ru_final_payload_leak_check_blocked_total`
+- `ru_presidio_analyzer_requests_total`
+- `ru_presidio_analyzer_latency_seconds_*`
+- `ru_presidio_analyzer_entities_detected_total`
+- `ru_presidio_analyzer_capacity_rejections_total`
+- `ru_presidio_analyzer_failures_total`
 
 Guardrail также пишет structured JSON logs без prompt text и без raw PII. Для
 gateway-level мониторинга используйте `gateway_guardrail_audit`: один safe event
@@ -613,6 +618,11 @@ gateway-level мониторинга используйте `gateway_guardrail_a
 `policy_result`, `redaction_count`, `entity_counts`, а для блокировок/ошибок —
 `block_reason` и `error_code`. Подробный DevOps guide:
 [docs/monitoring.md](docs/monitoring.md).
+
+Presidio Analyzer отдельно пишет `presidio_analyzer_request` и отдает metrics на
+`http://localhost:5001/metrics`; эти события и метрики содержат только safe
+outcome, latency, capacity snapshot и entity type counts без raw input text,
+entity values или offsets.
 
 Для routing диагностики используйте `make routing-smoke`, response header `x-litellm-model-id` и LiteLLM deployment metrics (`litellm_deployment_*`). Подробности: [docs/routing.md](docs/routing.md).
 

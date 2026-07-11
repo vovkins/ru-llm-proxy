@@ -63,6 +63,12 @@ litellm_settings:
 http://localhost:4000/metrics
 ```
 
+Presidio Analyzer отдает собственные low-cardinality metrics отдельно:
+
+```text
+http://localhost:5001/metrics
+```
+
 Локальная проверка:
 
 ```bash
@@ -79,6 +85,11 @@ scrape_configs:
     static_configs:
       - targets:
           - ru-llm-proxy:4000
+  - job_name: presidio-analyzer
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - presidio-analyzer:5001
 ```
 
 Если Prometheus работает снаружи Docker Compose host, используйте опубликованный адрес proxy, например `host.example.com:4000`.
@@ -144,6 +155,25 @@ make routing-smoke
 
 PII guardrail метрики появятся в `/metrics` после первого запроса, который прошёл через guardrail.
 
+## Presidio Analyzer Metrics
+
+Analyzer metrics появляются на `http://localhost:5001/metrics` после первых
+`POST /api/v1/analyze` запросов. Они не содержат raw input text, raw entity
+values, offsets, API keys или proxy tokens.
+
+| Metric | Type | Labels | Назначение |
+| --- | --- | --- | --- |
+| `ru_presidio_analyzer_requests_total` | Counter | `outcome` | Итог analyzer request: `success`, `no_entities`, `overload`, `timeout_or_cancelled`, `analyzer_error` |
+| `ru_presidio_analyzer_latency_seconds_*` | Histogram | `outcome` | Latency analyzer request по safe outcome |
+| `ru_presidio_analyzer_entities_detected_total` | Counter | `entity_type` | Количество найденных сущностей по типам без raw values |
+| `ru_presidio_analyzer_capacity_rejections_total` | Counter | `reason` | Capacity rejects: `queue_full`, `queue_timeout` |
+| `ru_presidio_analyzer_failures_total` | Counter | `reason` | Cancel/error outcomes по bounded reason, например `cancelled` или exception class |
+
+Эти метрики дополняют guardrail-side
+`ru_pii_guardrail_analyzer_latency_seconds_*`: guardrail metric измеряет HTTP-вызов
+из LiteLLM к Analyzer, а `ru_presidio_analyzer_latency_seconds_*` измеряет
+обработку внутри Analyzer service вместе с ожиданием capacity slot.
+
 ## Guardrail Dependency Client Limits
 
 LiteLLM guardrail переиспользует Redis и Analyzer HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop. Для мониторинга это означает, что рост latency в `ru_pii_guardrail_analyzer_latency_seconds_*` или `ru_pii_guardrail_redis_latency_seconds_*` может быть связан не только с самим Analyzer/Redis, но и с ожиданием свободного connection в shared client pool.
@@ -205,6 +235,18 @@ histogram_quantile(0.95, sum(rate(ru_pii_guardrail_analyzer_latency_seconds_buck
 Presidio Analyzer p95 latency выше 2 секунд.
 
 ```promql
+sum(rate(ru_presidio_analyzer_requests_total{outcome=~"overload|timeout_or_cancelled|analyzer_error"}[5m])) > 0
+```
+
+Analyzer фиксирует overload, cancellation или internal error на стороне service.
+
+```promql
+histogram_quantile(0.95, sum(rate(ru_presidio_analyzer_latency_seconds_bucket[5m])) by (le)) > 2
+```
+
+Analyzer service p95 latency выше 2 секунд.
+
+```promql
 sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 ```
 
@@ -227,10 +269,17 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
 При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked` фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side mutation и до provider call. В логах остаются только bounded rule ids и counts; raw matched values, prompt snippets, offsets, provider keys и mapping contents не пишутся.
 
+Presidio Analyzer пишет отдельный structured JSON event
+`presidio_analyzer_request` на каждый `/api/v1/analyze` request. Event содержит
+`event_id`, `outcome`, `latency_ms`, `entity_count`, `entity_counts`, `language`,
+`score_threshold`, `ner`, `capacity` и optional `failure_reason`. Он не содержит
+raw input text, raw entity values, offsets, API keys или proxy tokens.
+
 Основные события:
 
 | Event | Уровень | Поля |
 | --- | --- | --- |
+| `presidio_analyzer_request` | `INFO` | `event_id`, `outcome`, `latency_ms`, `entity_count`, `entity_counts`, `language`, `score_threshold`, `ner`, `capacity`, optional `failure_reason` |
 | `gateway_guardrail_audit` | `INFO` | `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`, optional `block_reason`, `error_code`, `categories`, `rules`, `category_counts`, `rule_counts`, `failure_operation`, `error_type` |
 | `pii_guardrail_masked` | `INFO` | `request_id`, `masked_count`, `entity_counts`, `mapping_ttl_seconds` |
 | `pii_guardrail_blocked` | `INFO` | `request_id`, `entity_types`, `entity_counts` |
