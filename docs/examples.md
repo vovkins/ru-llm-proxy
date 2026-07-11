@@ -374,6 +374,33 @@ make restart
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
 
+## Synthetic/test PII allowlist
+
+По умолчанию allowlist выключен:
+
+```env
+SYNTHETIC_PII_ALLOWLIST_MODE=off
+SYNTHETIC_PII_ALLOWLIST_JSON=[]
+```
+
+Включайте его только для controlled fixtures, которые нужны в smoke-тестах, демо или проверочных документах. Пример ниже разрешает один synthetic phone exact value и synthetic email namespace `example.test`:
+
+```env
+SYNTHETIC_PII_ALLOWLIST_MODE=allow
+SYNTHETIC_PII_ALLOWLIST_JSON=[{"rule_id":"docs_synthetic_contacts","entity_types":["PHONE_NUMBER","EMAIL_ADDRESS"],"values":["+79031234567"],"patterns":["^[A-Za-z0-9._%+-]+@example\\.test$"]}]
+```
+
+В `mask` mode allowlisted spans остаются как есть, а остальные PII в том же запросе маскируются:
+
+```text
+Input:  Тестовый телефон +79031234567, реальный +79035551234
+Output: Тестовый телефон +79031234567, реальный <PHONE_NUMBER_1>
+```
+
+В `block` mode allowlisted-only запрос проходит дальше, но mixed request с allowlisted и real PII всё равно блокируется из-за оставшихся real spans. Allowlist hits видны в `synthetic_pii_allowlist_applied`, `gateway_guardrail_audit` и `ru_synthetic_pii_allowlist_hits_total`; raw allowlisted values в logs/metrics не пишутся.
+
+Broad regex patterns вроде `^.*$` игнорируются. Regex должен быть anchored и ссылаться на controlled synthetic namespace (`example.test`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Allowlist не применяется к pre-egress, regulated-topic и final leak-check policies.
+
 ## Regulated-topic policy
 
 `REGULATED_TOPIC_POLICY_MODE=off` по умолчанию. Это отдельный policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем; он не является PII recognizer, не маскирует entity spans и не создаёт Redis mapping.
