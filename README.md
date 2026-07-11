@@ -79,14 +79,15 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 5. Если pre-egress policy не сработала, guardrail отправляет строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
 6. Analyzer возвращает entity spans, entity types и scores.
 7. В `PII_GUARDRAIL_MODE=block` при найденной PII поток останавливается безопасной `422` ошибкой: provider не вызывается, request payload не меняется, Redis mapping не создаётся.
-8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>`.
-9. Guardrail генерирует server-side `pii_request_id` и сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`.
-10. Только после успешного Redis save исходные строковые поля заменяются на masked text.
-11. LiteLLM отправляет masked request LLM-провайдеру.
-12. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
-13. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-14. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
-15. Redis mapping удаляется после post-call или streaming-iterator обработки.
+8. В `PII_GUARDRAIL_MODE=mask` guardrail строит уникальные плейсхолдеры: `<PHONE_NUMBER_1>`, `<PHONE_NUMBER_2>`, `<RU_INN_1>` и применяет masked text к provider-bound request fields.
+9. Final payload leak check сканирует уже provider-bound payload после masking и до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
+10. При final-check блокировке guardrail откатывает masked text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
+11. Если финальная проверка чистая, guardrail сохраняет маппинг в Redis с TTL `PII_MAPPING_TTL_SECONDS`; при fail-open Redis save failure guardrail откатывает masked text обратно к исходному request, чтобы не отправлять необратимые placeholders без mapping.
+12. Guardrail записывает server-side `pii_request_id` в internal metadata и LiteLLM отправляет masked request LLM-провайдеру.
+13. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+14. Guardrail восстанавливает плейсхолдеры в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
+15. Для streaming responses `async_post_call_streaming_iterator_hook` восстанавливает placeholders в `delta.content` и `delta.reasoning_content`, включая placeholders, разорванные между чанками.
+16. Redis mapping удаляется после post-call или streaming-iterator обработки.
 
 Маскирование и восстановление выполняются внутри LiteLLM guardrail. Отдельный сервис анонимизации не используется в текущем request path и удалён из runtime-состава проекта.
 
@@ -167,6 +168,8 @@ PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
 PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
 PII_GUARDRAIL_MODE=mask
 PRE_EGRESS_POLICY_MODE=block
+FINAL_PAYLOAD_LEAK_CHECK_MODE=block
+FINAL_PAYLOAD_LEAK_CHECK_CANARIES=
 PII_GUARDRAIL_FAILURE_MODE=fail_open
 PII_MAPPING_TTL_SECONDS=3600
 PII_GUARDRAIL_REDIS_MAX_CONNECTIONS=20
@@ -178,7 +181,7 @@ PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
 PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE` и заменит только placeholder-значения.
+`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
 
 Build-time переменные для DeepPavlov:
 
@@ -258,6 +261,21 @@ Runtime dependency clients guardrail:
 docker compose up -d --force-recreate --no-deps litellm
 ```
 
+### Final payload leak check
+
+`FINAL_PAYLOAD_LEAK_CHECK_MODE` управляет финальной синхронной проверкой provider-bound текста после proxy-side request mutation: PII masking уже применён к mutable request text fields, а request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata` дополнительно сканируются без мутации. Вызова внешнего LLM provider на этом этапе ещё не было.
+
+| Значение | Поведение |
+| --- | --- |
+| `block` | Значение по умолчанию. Guardrail отклоняет configured canaries и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments перед provider egress. |
+| `off` | Отключает финальную проверку. PII mask/block и `PRE_EGRESS_POLICY_MODE` продолжают работать отдельно. |
+
+`FINAL_PAYLOAD_LEAK_CHECK_CANARIES` задаёт deterministic canary tokens через запятую или newline. Это regression/smoke механизм для доказательства, что sanitizer miss не доходит до provider. Не используйте реальные секреты как canaries.
+
+При блокировке клиент получает безопасную `422` ошибку; guardrail body использует `code=final_payload_leak_check_blocked`, но LiteLLM proxy может завернуть её как `code=422`. Error body и structured logs не содержат raw matched values, snippets, offsets, prompt text, provider keys или Redis mapping contents. Подтверждённые final-check hits не fail-open’ятся: `PII_GUARDRAIL_FAILURE_MODE` применяется к инфраструктурным сбоям, а не к найденной утечке.
+
+Этот слой не является enterprise DLP и не заменяет downstream DLP/SIEM. Его задача уже внутри proxy остановить deterministic canaries и высокосигнальные raw secret markers перед внешним provider call.
+
 ### litellm-config.yaml — настройки LiteLLM
 
 Монтируется через volume — можно менять без пересборки.
@@ -324,9 +342,12 @@ guardrails:
         - name: "pre_egress_policy_mode"
           type: "string"
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
+        - name: "final_payload_leak_check_mode"
+          type: "string"
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user, and provider metadata; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Anthropic top-level system string/text blocks, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
@@ -402,6 +423,7 @@ make routing-smoke
 | `make test-flow` | Deterministic проверка mask/unmask без внешнего LLM |
 | `make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets |
 | `make test-pre-egress-proxy` | Docker smoke с mock provider: pre-egress block не доходит до Analyzer/provider |
+| `make test-final-leak-proxy` | Docker smoke с mock provider: final leak-check не доходит до provider после Analyzer miss |
 | `make test-e2e` | Live smoke test против поднятых сервисов и реального LLM |
 | `make virtual-key-create` | DevOps/CI helper: создать LiteLLM virtual key через admin API |
 | `make client-auth-smoke` | Проверить client auth и базовые `/v1` protocol smokes |
@@ -558,6 +580,7 @@ make monitor-smoke
 - `ru_pii_guardrail_redis_latency_seconds_*`
 - `ru_pii_guardrail_mapping_size_*`
 - `ru_pre_egress_policy_blocked_total`
+- `ru_final_payload_leak_check_blocked_total`
 
 Guardrail также пишет structured JSON logs без prompt text и без raw PII. Подробный DevOps guide: [docs/monitoring.md](docs/monitoring.md).
 

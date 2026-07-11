@@ -180,6 +180,12 @@ PRE_EGRESS_POLICY_BLOCKED = _build_metric(
     "Pre-egress policy blocks by category.",
     ["category"],
 )
+FINAL_PAYLOAD_LEAK_CHECK_BLOCKED = _build_metric(
+    Counter,
+    "ru_final_payload_leak_check_blocked",
+    "Final provider-bound payload leak-check blocks by rule id.",
+    ["rule_id"],
+)
 
 # Presidio Analyzer service URL from environment
 PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-analyzer:5001")
@@ -187,10 +193,37 @@ PRESIDIO_ANALYZER_URL = os.getenv("PRESIDIO_ANALYZER_URL", "http://presidio-anal
 FAILURE_MODES = {"fail_open", "fail_closed"}
 POLICY_MODES = {"mask", "block"}
 PRE_EGRESS_POLICY_MODES = {"block", "off"}
+FINAL_PAYLOAD_LEAK_CHECK_MODES = {"block", "off"}
+FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
+    "tools",
+    "tool_choice",
+    "functions",
+    "function_call",
+    "prediction",
+    "response_format",
+    "text",
+    "extra_body",
+    "stop",
+    "stop_sequences",
+    "prompt_cache_key",
+    "safety_identifier",
+    "web_search_options",
+    "user",
+    "metadata",
+)
+FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
+    "messages",
+    "input",
+    "instructions",
+    "system",
+)
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
 PRE_EGRESS_POLICY_BLOCKED_MESSAGE = (
     "Request contains configuration or log data and was blocked by pre-egress policy."
+)
+FINAL_PAYLOAD_LEAK_CHECK_BLOCKED_MESSAGE = (
+    "Request contains a confirmed raw leak marker and was blocked before provider egress."
 )
 PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
@@ -213,6 +246,7 @@ _ENV_SECRET_YAML_MAPPING_RE = re.compile(
     rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
     rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
 )
+_ENV_SECRET_KEY_RE = re.compile(rf"^(?:{_ENV_SECRET_KEY_PATTERN})$")
 _ENV_CREDENTIAL_URL_RE = re.compile(
     r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
     r"[A-Z][A-Z0-9_]*"
@@ -224,6 +258,9 @@ _ENV_CREDENTIAL_URL_YAML_MAPPING_RE = re.compile(
     r"[A-Z][A-Z0-9_]*"
     r"(?:_URL|_URI|_DSN|_CONNECTION_STRING)?[ \t]*:[ \t]*"
     r"[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
+)
+_RAW_CREDENTIAL_URL_RE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9+.-]*://[^:\s/@]+:[^@\s]+@\S+"
 )
 _ACCESS_LOG_RE = re.compile(
     r'(?m)^\S+\s+\S+\s+\S+\s+\[[^\]\n]+\]\s+"'
@@ -258,6 +295,19 @@ _AUTH_LOG_RE = re.compile(
 )
 _JSON_STACKTRACE_FIELD_RE = re.compile(
     r"(?i)\b(?:stack|stacktrace|traceback|exception|error)\b"
+)
+_PRIVATE_KEY_MARKER_RE = re.compile(
+    r"(?i)-----BEGIN (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY(?:[ \t]+BLOCK)?-----"
+)
+_BEARER_TOKEN_RE = re.compile(
+    r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/=-]{20,}\b|"
+    r"\bBearer\s+[A-Za-z0-9._~+/=-]{20,}\b"
+)
+_JWT_TOKEN_RE = re.compile(
+    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+)
+_PROVIDER_KEY_RE = re.compile(
+    r"\b(?:sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,})\b"
 )
 
 
@@ -348,6 +398,12 @@ PII_MAPPING_TTL_SECONDS = _get_int_env(
 PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
 PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
 PRE_EGRESS_POLICY_MODE = os.getenv("PRE_EGRESS_POLICY_MODE", "block")
+FINAL_PAYLOAD_LEAK_CHECK_MODE = os.getenv("FINAL_PAYLOAD_LEAK_CHECK_MODE", "block")
+FINAL_PAYLOAD_LEAK_CHECK_CANARIES = tuple(
+    token.strip()
+    for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
+    if token.strip()
+)
 _REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
 
@@ -492,7 +548,8 @@ class RuPIIGuardrail(CustomGuardrail):
     """LiteLLM custom guardrail that masks or blocks Russian PII using Presidio.
 
     Flow:
-    1. async_pre_call_hook: mask PII and save mapping, or block PII requests
+    1. async_pre_call_hook: block operational payloads, mask/block PII, then
+       run final provider-bound leak checks before saving mappings
     2. async_post_call_success_hook: unmask PII in responses when mapping exists
     """
 
@@ -501,6 +558,8 @@ class RuPIIGuardrail(CustomGuardrail):
         failure_mode: Optional[str] = None,
         pii_mode: Optional[str] = None,
         pre_egress_policy_mode: Optional[str] = None,
+        final_payload_leak_check_mode: Optional[str] = None,
+        final_payload_leak_check_canaries: Optional[tuple[str, ...]] = None,
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -511,6 +570,20 @@ class RuPIIGuardrail(CustomGuardrail):
         self.pii_mode = self._normalize_policy_mode(pii_mode or PII_GUARDRAIL_MODE)
         self.pre_egress_policy_mode = self._normalize_pre_egress_policy_mode(
             pre_egress_policy_mode or PRE_EGRESS_POLICY_MODE
+        )
+        self.final_payload_leak_check_mode = (
+            self._normalize_final_payload_leak_check_mode(
+                final_payload_leak_check_mode or FINAL_PAYLOAD_LEAK_CHECK_MODE
+            )
+        )
+        self.final_payload_leak_check_canaries = tuple(
+            token
+            for token in (
+                final_payload_leak_check_canaries
+                if final_payload_leak_check_canaries is not None
+                else FINAL_PAYLOAD_LEAK_CHECK_CANARIES
+            )
+            if token
         )
         self.mapping_ttl_seconds = _normalize_positive_int(
             "PII_MAPPING_TTL_SECONDS",
@@ -561,6 +634,22 @@ class RuPIIGuardrail(CustomGuardrail):
             return "block"
         return mode
 
+    @staticmethod
+    def _normalize_final_payload_leak_check_mode(value: str) -> str:
+        """Normalize and validate final provider-bound leak-check behavior."""
+        mode = value.strip().lower().replace("-", "_")
+        if mode in {"disabled", "disable", "false", "0"}:
+            mode = "off"
+        if mode in {"enabled", "enable", "true", "1"}:
+            mode = "block"
+        if mode not in FINAL_PAYLOAD_LEAK_CHECK_MODES:
+            logger.warning(
+                "Unknown FINAL_PAYLOAD_LEAK_CHECK_MODE=%r, falling back to block",
+                value,
+            )
+            return "block"
+        return mode
+
     def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
         """Apply configured fail-open/fail-closed behavior."""
         operation_label = operation.replace(" ", "_")
@@ -600,7 +689,7 @@ class RuPIIGuardrail(CustomGuardrail):
 
     @classmethod
     def _iter_text_content_block_targets(cls, blocks: list) -> list[tuple[dict, str]]:
-        """Return mutable text fields from OpenAI-style content block lists."""
+        """Return mutable text fields from provider content block lists."""
         targets: list[tuple[dict, str]] = []
         for block in blocks:
             if not isinstance(block, dict):
@@ -616,8 +705,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 str,
             ):
                 targets.append((block, "text"))
-
-            if block_type == "tool_result":
+            elif block_type == "tool_result":
                 content = block.get("content")
                 if isinstance(content, str):
                     targets.append((block, "content"))
@@ -933,6 +1021,171 @@ class RuPIIGuardrail(CustomGuardrail):
         return findings
 
     @staticmethod
+    def _add_final_leak_finding(
+        findings: list[dict[str, str]],
+        seen_rules: set[str],
+        rule_id: str,
+    ) -> None:
+        """Add one bounded final leak-check finding without raw values."""
+        if rule_id in seen_rules:
+            return
+        seen_rules.add(rule_id)
+        findings.append({"rule_id": rule_id})
+
+    def _classify_final_payload_leak_check_text(
+        self,
+        text: str,
+    ) -> list[dict[str, str]]:
+        """Classify deterministic raw leak markers in provider-bound text."""
+        if not text.strip():
+            return []
+
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+
+        for canary in self.final_payload_leak_check_canaries:
+            if canary and canary in text:
+                self._add_final_leak_finding(
+                    findings,
+                    seen_rules,
+                    "configured_canary",
+                )
+                break
+
+        if _PRIVATE_KEY_MARKER_RE.search(text):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "private_key_marker",
+            )
+
+        if _BEARER_TOKEN_RE.search(text):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "bearer_token",
+            )
+
+        if _JWT_TOKEN_RE.search(text):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "jwt_token",
+            )
+
+        if _PROVIDER_KEY_RE.search(text):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "provider_key",
+            )
+
+        if (
+            _ENV_SECRET_ASSIGNMENT_RE.search(text)
+            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            or _ENV_CREDENTIAL_URL_RE.search(text)
+            or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
+            or _RAW_CREDENTIAL_URL_RE.search(text)
+        ):
+            self._add_final_leak_finding(
+                findings,
+                seen_rules,
+                "env_secret_assignment",
+            )
+
+        return findings
+
+    def _classify_final_payload_leak_check_texts(
+        self,
+        texts: list[str],
+    ) -> list[dict[str, str]]:
+        """Classify final provider-bound texts and return bounded findings."""
+        findings: list[dict[str, str]] = []
+        seen_rules: set[str] = set()
+        for text in texts:
+            for finding in self._classify_final_payload_leak_check_text(text):
+                self._add_final_leak_finding(
+                    findings,
+                    seen_rules,
+                    finding["rule_id"],
+                )
+        return findings
+
+    @classmethod
+    def _iter_nested_string_values(cls, value: Any) -> list[str]:
+        """Return string keys/values from provider-bound structured request fields."""
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            texts: list[str] = []
+            for item in value:
+                texts.extend(cls._iter_nested_string_values(item))
+            return texts
+        if isinstance(value, dict):
+            texts = []
+            for key, item in value.items():
+                if isinstance(key, str):
+                    if key in {
+                        PII_REQUEST_ID_METADATA_KEY,
+                        PII_STREAMING_RESTORATION_DONE_METADATA_KEY,
+                    }:
+                        continue
+                    texts.append(key)
+                    if _ENV_SECRET_KEY_RE.fullmatch(key) and cls._has_value(item):
+                        if isinstance(item, str):
+                            texts.append(f"{key}={item}")
+                            texts.append(f"{key}: {item}")
+                        else:
+                            texts.append(f"{key}=structured")
+                texts.extend(cls._iter_nested_string_values(item))
+            return texts
+        return []
+
+    @staticmethod
+    def _has_value(value: Any) -> bool:
+        """Return whether a structured provider value is meaningfully non-empty."""
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set, dict)):
+            return bool(value)
+        return True
+
+    @classmethod
+    def _iter_provider_bound_final_payload_texts(cls, data: dict) -> list[str]:
+        """Return strings from provider-bound payload fields for scan-only checks."""
+        texts: list[str] = []
+        for field in (
+            *FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS,
+            *FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS,
+        ):
+            if field in data:
+                texts.extend(cls._iter_nested_string_values(data[field]))
+        return texts
+
+    def _run_final_payload_leak_check(
+        self,
+        data: dict,
+        request_targets: list[tuple[dict, str]],
+        request_id: str,
+    ) -> None:
+        """Block confirmed leaks in actual provider-bound request text."""
+        if self.final_payload_leak_check_mode != "block":
+            return
+
+        final_texts = self._iter_provider_bound_final_payload_texts(data)
+        final_leak_findings = self._classify_final_payload_leak_check_texts(
+            final_texts
+        )
+        if final_leak_findings:
+            self._raise_final_payload_leak_check_blocked(
+                data,
+                request_id,
+                final_leak_findings,
+            )
+
+    @staticmethod
     def _get_container_field(container: Any, field: str) -> Any:
         """Read a field from dict-like or object-like LiteLLM containers."""
         if isinstance(container, dict):
@@ -1218,6 +1471,23 @@ class RuPIIGuardrail(CustomGuardrail):
         for category in category_counts:
             PRE_EGRESS_POLICY_BLOCKED.labels(category=category).inc()
 
+    @staticmethod
+    def _rule_counts_from_final_leak_findings(
+        findings: list[dict[str, str]],
+    ) -> dict[str, int]:
+        """Return final leak-check rule counts without exposing matched text."""
+        counts: dict[str, int] = {}
+        for finding in findings:
+            rule_id = finding["rule_id"]
+            counts[rule_id] = counts.get(rule_id, 0) + 1
+        return counts
+
+    @staticmethod
+    def _record_final_payload_leak_check_blocks(rule_counts: dict[str, int]) -> None:
+        """Increment final leak-check metrics with bounded rule labels."""
+        for rule_id, count in rule_counts.items():
+            FINAL_PAYLOAD_LEAK_CHECK_BLOCKED.labels(rule_id=rule_id).inc(count)
+
     def _raise_pre_egress_policy_blocked(
         self,
         data: dict,
@@ -1270,6 +1540,51 @@ class RuPIIGuardrail(CustomGuardrail):
         exc.status_code = 422
         raise exc
 
+    def _raise_final_payload_leak_check_blocked(
+        self,
+        data: dict,
+        request_id: str,
+        findings: list[dict[str, str]],
+    ) -> None:
+        """Raise a safe client error for confirmed final payload leaks."""
+        rules = sorted({finding["rule_id"] for finding in findings})
+        rule_counts = self._rule_counts_from_final_leak_findings(findings)
+        self._record_final_payload_leak_check_blocks(rule_counts)
+        PII_PRE_CALLS.labels(result="final_payload_leak_check_blocked").inc()
+        _safe_log(
+            logging.INFO,
+            "final_payload_leak_check_blocked",
+            request_id=request_id,
+            rules=rules,
+            rule_counts=rule_counts,
+            finding_count=len(findings),
+        )
+
+        body = {
+            "error": {
+                "message": FINAL_PAYLOAD_LEAK_CHECK_BLOCKED_MESSAGE,
+                "type": "final_payload_leak_check_violation",
+                "code": "final_payload_leak_check_blocked",
+                "details": {
+                    "rules": rules,
+                },
+            }
+        }
+        response = httpx.Response(
+            status_code=422,
+            json=body,
+            request=httpx.Request(
+                "POST",
+                "http://ru-llm-proxy.local/final-payload-leak-check",
+            ),
+        )
+        raise litellm.UnprocessableEntityError(
+            message=FINAL_PAYLOAD_LEAK_CHECK_BLOCKED_MESSAGE,
+            model=str(data.get("model") or "unknown"),
+            llm_provider="ru-llm-proxy",
+            response=response,
+        )
+
     def _raise_blocked_request(
         self,
         data: dict,
@@ -1318,11 +1633,12 @@ class RuPIIGuardrail(CustomGuardrail):
         """Apply request-time PII policy before sending to LLM."""
         self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
+        request_id = self._get_request_id(data)
         if not request_targets:
+            self._run_final_payload_leak_check(data, request_targets, request_id)
             PII_PRE_CALLS.labels(result="skipped").inc()
             return data
 
-        request_id = self._get_request_id(data)
         if self.pre_egress_policy_mode == "block":
             policy_findings = self._classify_pre_egress_policy_targets(request_targets)
             if policy_findings:
@@ -1367,7 +1683,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 if mapping:
                     full_mapping.update(mapping)
-                    pending_updates.append((target, field, masked_text))
+                    pending_updates.append((target, field, content, masked_text))
 
             except AnalyzerOverloadedError as e:
                 PII_PRE_CALLS.labels(result="error").inc()
@@ -1379,22 +1695,33 @@ class RuPIIGuardrail(CustomGuardrail):
                         request_id,
                         blocked_entity_counts,
                     )
+                self._run_final_payload_leak_check(data, request_targets, request_id)
                 PII_PRE_CALLS.labels(result="error").inc()
                 return self._handle_failure("masking", e, data)
 
         if blocked_entity_counts:
             self._raise_blocked_request(data, request_id, blocked_entity_counts)
 
+        for target, field, _, masked_text in pending_updates:
+            target[field] = masked_text
+
+        try:
+            self._run_final_payload_leak_check(data, request_targets, request_id)
+        except litellm.UnprocessableEntityError:
+            for target, field, original_text, _ in pending_updates:
+                target[field] = original_text
+            raise
+
         # Save mapping for post-call unmasking
         if full_mapping:
             try:
                 await self._save_mapping(request_id, full_mapping)
             except Exception as e:
+                for target, field, original_text, _ in pending_updates:
+                    target[field] = original_text
+                self._run_final_payload_leak_check(data, request_targets, request_id)
                 PII_PRE_CALLS.labels(result="error").inc()
                 return self._handle_failure("mapping save", e, data)
-
-            for target, field, masked_text in pending_updates:
-                target[field] = masked_text
 
             # Store internal mapping ID in data for post-call hooks.
             if not isinstance(data.get("metadata"), dict):

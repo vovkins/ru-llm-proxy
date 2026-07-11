@@ -99,9 +99,12 @@ guardrails:
         - name: "pre_egress_policy_mode"
           type: "string"
           description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
+        - name: "final_payload_leak_check_mode"
+          type: "string"
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user, and provider metadata; off disables this final check."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Anthropic top-level system string/text blocks, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail

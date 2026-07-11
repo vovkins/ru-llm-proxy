@@ -353,6 +353,33 @@ Black-box smoke с test-only LiteLLM proxy и mock upstream проверяет `
 make test-pre-egress-proxy
 ```
 
+## Final payload leak check
+
+`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а provider-bound request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments.
+
+При срабатывании запрос не отправляется провайдеру. Canonical guardrail body:
+
+```json
+{
+  "error": {
+    "message": "Request contains a confirmed raw leak marker and was blocked before provider egress.",
+    "type": "final_payload_leak_check_violation",
+    "code": "final_payload_leak_check_blocked",
+    "details": {
+      "rules": ["configured_canary"]
+    }
+  }
+}
+```
+
+LiteLLM proxy может завернуть этот body и вернуть `error.code="422"`, сохранив безопасное сообщение. Ответ, structured logs и метрика `ru_final_payload_leak_check_blocked_total` содержат только bounded rule ids/counts, без raw matched values, prompt snippets, offsets, provider keys или mapping contents. Если нужно временно отключить слой в dev-среде, задайте `FINAL_PAYLOAD_LEAK_CHECK_MODE=off`; PII mask/block и `PRE_EGRESS_POLICY_MODE` продолжат работать отдельно.
+
+Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream проверяет, что Analyzer видит configured canary/private-key marker, tool schema canary блокируется без provider egress, а sanitized PII prompt доходит до provider только с placeholder:
+
+```bash
+make test-final-leak-proxy
+```
+
 ## Sticky routing
 
 Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:
@@ -376,7 +403,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
 
 ```bash
-curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_pii_guardrail_)' | head
+curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 ```
 
 То же самое через Makefile:
