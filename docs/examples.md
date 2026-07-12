@@ -24,7 +24,8 @@ make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai DURATION=30
 ```
 
 `LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
-Production Admin UI/API boundary, operator roles and credential rotation are covered in [admin-access.md](admin-access.md).
+Production boundary для Admin UI/API, операторские роли и ротация учётных данных
+описаны в [admin-access.md](admin-access.md).
 
 ## Режимы авторизации
 
@@ -121,7 +122,7 @@ curl -s "$API_URL/v1/chat/completions" \
 Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
 ```
 
-## Optional OpenAI Responses API
+## Опциональный OpenAI Responses API
 
 Codex CLI/App local tasks используют Responses API. Этот пример требует, чтобы администратор добавил OpenAI-compatible alias в `litellm-config.yaml`, например на основе `examples/litellm-config.optional-providers.yaml`:
 
@@ -136,7 +137,11 @@ curl -s "$API_URL/v1/responses" \
   }' | jq
 ```
 
-PII guardrail applies to Anthropic top-level `system` string/text blocks, Responses API top-level `instructions` / `input` strings, message-like `input[]` items with string `content`, tool-call `arguments`, tool-output items with string/list `output`, and text blocks with `text`, `input_text`, or `output_text` types. Non-text inputs such as images/files are passed through unchanged.
+PII guardrail обрабатывает Anthropic top-level `system` string/text blocks,
+Responses API top-level `instructions` / `input` strings, message-like
+`input[]` items со string `content`, tool-call `arguments`, tool-output items со
+string/list `output` и text blocks с `text`, `input_text` или `output_text`.
+Non-text inputs, например images/files, проходят без изменений.
 
 Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
 
@@ -144,7 +149,7 @@ PII guardrail applies to Anthropic top-level `system` string/text blocks, Respon
 RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
 ```
 
-## Optional Basic Anthropic Messages API
+## Опциональный базовый Anthropic Messages API
 
 Это базовый non-streaming пример Anthropic Messages API через proxy. Он требует, чтобы администратор добавил Anthropic-compatible alias в `litellm-config.yaml`:
 
@@ -281,7 +286,7 @@ curl -s http://localhost:5001/api/v1/analyze \
 
 NER-результаты имеют фиксированный score `0.7`; при `score_threshold` выше `0.7` DeepPavlov NER не запускается.
 
-## Health Checks
+## Проверки здоровья LiteLLM
 
 LiteLLM liveness endpoint не требует `LITELLM_MASTER_KEY` и используется для Docker healthcheck контейнера `ru-llm-proxy`:
 
@@ -291,7 +296,7 @@ curl -s http://localhost:4000/health/liveliness
 
 `/health` у LiteLLM предназначен для проверки моделей и может делать реальные LLM API calls, поэтому для liveness/readiness лучше использовать специализированные endpoints.
 
-## Health Analyzer
+## Проверка здоровья Analyzer
 
 ```bash
 curl -s http://localhost:5001/api/v1/health | jq
@@ -344,7 +349,7 @@ grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
 make guardrails-smoke
 ```
 
-## PII block mode
+## Режим блокировки PII
 
 По умолчанию guardrail работает в reversible masking mode:
 
@@ -379,7 +384,7 @@ make restart
 
 Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
 
-## Dictionary substitutions
+## Словарные подстановки
 
 Dictionary substitutions включены по умолчанию:
 
@@ -424,7 +429,7 @@ Dictionary policy запускается до Analyzer и не зависит о
 
 Ограничение: restore exact-match only. Если модель вернула `Зетте Групп`, `Zetta Group` или любое перефразирование вместо точного `Зетта Групп`, proxy не сможет восстановить `Т-Банк`.
 
-## Synthetic/test PII allowlist
+## Allowlist синтетических PII
 
 По умолчанию allowlist выключен:
 
@@ -451,7 +456,7 @@ Output: Тестовый телефон +79031234567, реальный <PHONE_NU
 
 Broad regex patterns вроде `^.*$` игнорируются. Regex должен быть anchored и ссылаться на controlled synthetic namespace (`example.test`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Allowlist не применяется к pre-egress, regulated-topic и final leak-check policies.
 
-## Regulated-topic policy
+## Политика regulated topics
 
 `REGULATED_TOPIC_POLICY_MODE=off` по умолчанию. Это отдельный policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем; он не является PII recognizer, не маскирует entity spans и не создаёт Redis mapping.
 
@@ -490,9 +495,12 @@ REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=[{"category":"internal_watchlist","rule_
 
 Regulated-topic policy остаётся block-only. Reversible dictionary substitution работает отдельным exact-match слоем через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используется для broad semantic topic blocking.
 
-## Pre-egress config/log policy
+## Pre-egress policy для конфигов и логов
 
-`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio Analyzer. Он останавливает целые operational payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces.
+`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio
+Analyzer, то есть до `POST /api/v1/analyze`. Он останавливает целые operational
+payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx
+configs, access/auth logs и stack traces.
 
 При срабатывании запрос не отправляется в Analyzer и провайдеру, а Redis mapping `pii_mapping:*` не создаётся:
 
@@ -520,7 +528,7 @@ Black-box smoke с test-only LiteLLM proxy и mock upstream проверяет `
 make test-pre-egress-proxy
 ```
 
-## Final payload leak check
+## Финальная проверка provider-bound payload
 
 `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а provider-bound request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments.
 

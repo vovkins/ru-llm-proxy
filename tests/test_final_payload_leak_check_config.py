@@ -89,13 +89,19 @@ def test_docs_document_final_payload_leak_check():
     monitoring = (ROOT / "docs" / "monitoring.md").read_text()
     litellm_config = (ROOT / "litellm-config.yaml").read_text()
 
-    for text in (readme, examples):
+    assert "FINAL_PAYLOAD_LEAK_CHECK_MODE" in readme
+    assert "docs/examples.md" in readme
+
+    for text in (examples, monitoring):
         assert "FINAL_PAYLOAD_LEAK_CHECK_MODE" in text
         assert "FINAL_PAYLOAD_LEAK_CHECK_CANARIES" in text
         assert "final_payload_leak_check_blocked" in text
         assert "ru_final_payload_leak_check_blocked_total" in text
 
-    documented_surfaces = (readme, examples, architecture, litellm_config)
+    assert "FINAL_PAYLOAD_LEAK_CHECK_MODE" in architecture
+    assert "final_payload_leak_check_blocked" in architecture
+
+    documented_surfaces = (examples, architecture, litellm_config)
     for field in _runtime_provider_bound_fields():
         for text in documented_surfaces:
             assert field in text, field
@@ -104,7 +110,7 @@ def test_docs_document_final_payload_leak_check():
     assert "legacy `functions`" in architecture
     assert "extra_body" in architecture
     assert "stop_sequences" in architecture
-    assert "env-secret-like" in readme
+    assert "env-secret-like" in examples
     assert "откатывает masked text" in architecture
     assert "ключевые вопросы" in monitoring
     assert "10. Если есть regression" in monitoring

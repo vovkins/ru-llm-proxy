@@ -1,10 +1,10 @@
 # Конфигурация
 
-Этот документ является единым справочником по переменным окружения проекта. `.env.example` намеренно содержит только минимальные quick-start значения; остальные настройки задаются через `docker-compose.yml`, `litellm-config.yaml`, LiteLLM Admin UI, параметры Makefile или переменные окружения конкретных smoke-тестов.
+Этот документ является единым справочником по переменным окружения проекта. `.env.example` намеренно содержит только минимальные значения для быстрого запуска; остальные настройки задаются через `docker-compose.yml`, `litellm-config.yaml`, LiteLLM Admin UI, параметры Makefile или переменные окружения конкретных smoke-проверок.
 
 Правило эксплуатации: секреты и локальные bootstrap-значения лежат в `.env`, модельные алиасы, виртуальные ключи, бюджеты и доступы пользователей администрируются через LiteLLM Admin UI, а продвинутые runtime-политики меняются только осознанно и документируются в change ticket.
 
-## Default GLM Provider Pool
+## Дефолтный пул GLM-провайдеров
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -13,7 +13,7 @@
 
 Оба ключа считаются обязательными даже для quick start: текущий дефолтный `litellm-config.yaml` агрегирует две подписки в один публичный алиас `glm-5.2`, а `glm-5.1` оставляет как дополнительный алиас для установок, которым нужна предыдущая модель.
 
-## Optional Provider Examples
+## Примеры дополнительных провайдеров
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -21,9 +21,9 @@
 | `ANTHROPIC_API_KEY` | Пусто | Anthropic Console API key | Используется только если администратор добавил Anthropic-compatible aliases из optional provider example. В активном дефолтном конфиге не используется. |
 | `ANTHROPIC_BYOK_API_KEY` | Пусто | Anthropic API key пользователя | Только для документационных BYOK passthrough примеров. Не хранится на proxy в server-funded режиме. |
 
-OpenAI/Anthropic model IDs в optional example являются placeholders. Перед production-включением их нужно live-validate на текущем LiteLLM image и конкретной подписке.
+OpenAI/Anthropic model IDs в optional example являются placeholders. Перед production-включением их нужно проверить на текущем LiteLLM image и конкретной подписке.
 
-## LiteLLM Admin And Secrets
+## LiteLLM Admin UI и секреты
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `JWT_PUBLIC_KEY_URL` | Пусто | URL JWKS/OIDC public keys | Опциональная JWT/OIDC proxy auth настройка LiteLLM Enterprise. |
 | `JWT_AUDIENCE` | Пусто | Audience string | Ожидаемая audience для JWT/OIDC auth. |
 
-## LiteLLM Runtime And Storage
+## Runtime и хранилища LiteLLM
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -50,7 +50,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `REDIS_URL` | `redis://redis:6379` | Redis URL | Используется LiteLLM Router для deployment affinity и guardrail для временных PII mappings. |
 | `PROMETHEUS_MULTIPROC_DIR` | Не задано | Путь к writable directory | Нужен только если production-запуск LiteLLM использует несколько worker-процессов и Prometheus client multiprocess mode. |
 
-## Presidio Analyzer Service
+## Сервис Presidio Analyzer
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -63,7 +63,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 
 Эффективная параллельность Analyzer: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Перегрузка Analyzer всегда трактуется guardrail как fail-closed override.
 
-## Recognizer Calibration
+## Калибровка recognizers
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Comma/space-separated suffix list | Какие доменные suffixes recognizer `INTERNAL_DOMAIN` считает внутренними. |
 | `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | `true`, `false` | При `true` `INTERNAL_IP` детектирует global public IP наряду с private/internal ranges. |
 
-## Guardrail Policy
+## Политики guardrail
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -82,7 +82,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `FINAL_PAYLOAD_LEAK_CHECK_MODE` | `block` | `block`, `off` | Финальная scan-only проверка provider-bound payload после mutation и до provider call. |
 | `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` | Пусто | Tokens через запятую или newline | Deterministic canaries для smoke/regression проверки, что raw marker не доходит до provider. Не используйте реальные секреты как canaries. |
 
-## Dictionary Substitutions
+## Dictionary substitutions
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -91,21 +91,21 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `DICTIONARY_SUBSTITUTIONS_JSON` | Пусто | JSON object | Inline override правил; если задан, используется вместо файла. |
 | `DICTIONARY_SUBSTITUTIONS_FAILURE_MODE` | `fail_closed` | `fail_closed`, `fail_open` | Поведение при invalid config, ambiguous request или Redis mapping failure для dictionary layer. |
 
-## Synthetic/Test PII Allowlist
+## Allowlist синтетических PII
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
 | `SYNTHETIC_PII_ALLOWLIST_MODE` | `off` | `off`, `allow` | При `allow` guardrail вычитает явно разрешенные synthetic/test spans из результатов Analyzer перед `PII_GUARDRAIL_MODE`. Не предназначено для real production PII. |
 | `SYNTHETIC_PII_ALLOWLIST_JSON` | `[]` | JSON array | Правила с `rule_id`, `entity_types`, exact `values` и anchored safe regex `patterns`. Raw allowed values не пишутся в logs/metrics. |
 
-## Regulated-Topic Policy
+## Regulated-topic policy
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
 | `REGULATED_TOPIC_POLICY_MODE` | `off` | `off`, `block` | Block-only policy pack для high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем. |
 | `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON` | Пусто | JSON array | Operator-defined block-only regex rules с bounded `category`, `rule_id`, `action`, `pattern`, `flags`. |
 
-## Guardrail Dependency Clients
+## Клиенты зависимостей guardrail
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -117,7 +117,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Положительное целое | Максимум HTTP connections к Analyzer на один process/event loop. |
 | `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Положительное целое | Максимум keep-alive HTTP connections к Analyzer. |
 
-## DeepPavlov Model And Runtime
+## Модель и runtime DeepPavlov
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `DEEPPAVLOV_NER_MODEL_DIR` | Внутренний путь DeepPavlov cache | Путь в контейнере | Директория распаковки/проверки модели в `download_model.py`; обычно не меняется. |
 | `DEEPPAVLOV_NER_REQUIRED` | `true` | `true`, `false` | Если `true`, `presidio-analyzer` отказывается стартовать без DeepPavlov NER. Если явно задано `false`, сервис может стартовать в degraded regex-only режиме, а `/api/v1/health` возвращает `status=degraded`, `ner=not_loaded`. |
 
-## Client Tokens And Local Client Guides
+## Клиентские токены и локальные гайды
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -139,7 +139,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `ANTHROPIC_MODEL` | Нет | LiteLLM model alias | Модель, которую Claude Code должен вызывать через proxy, например `anthropic-example-standard`. |
 | `ANTHROPIC_CUSTOM_HEADERS` | Нет | Header string | Для Claude subscription passthrough может передавать `x-litellm-api-key: Bearer <proxy-token>`, пока Claude auth управляется клиентом. |
 
-## Live Smoke And Diagnostics
+## Live smoke-проверки и диагностика
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -163,7 +163,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `FINAL_LEAK_PROXY_PORT` | `14001` | TCP port | Host port test-only LiteLLM proxy для final leak-check smoke. |
 | `FINAL_LEAK_PROXY_PROJECT` | `ru-llm-proxy-final-leak-<pid>` | Docker Compose project name | Изоляция test-only compose project для final leak-check smoke. |
 
-## Virtual Key Helper
+## Helper для virtual keys
 
 Эти переменные читает `scripts/create_virtual_key.sh` и Makefile target `make virtual-key-create`. Для регулярного администрирования пользователей предпочтительнее LiteLLM Admin UI; helper нужен для CI/e2e/bootstrap/runbook.
 
@@ -180,7 +180,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `TEAM_ID` | Пусто | String | LiteLLM team id, к которому привязать key. |
 | `METADATA_JSON` | `{}` | JSON object | Metadata object для virtual key. Не кладите туда секреты или PII. |
 
-## Developer And Container Internals
+## Внутренние переменные разработки и контейнеров
 
 | Переменная | Значение по умолчанию | Допустимые значения | На что влияет |
 | --- | --- | --- | --- |
@@ -191,7 +191,7 @@ OpenAI/Anthropic model IDs в optional example являются placeholders. П
 | `PYTEST` | `python -m pytest -p no:cacheprovider -v` | Command fragment | Pytest command для Docker test targets. |
 | `PYTEST_DOCKER_FLAGS` | Compose run flags | Docker Compose run flags | Общие параметры запуска test containers. |
 
-## Where To Configure What
+## Где что настраивать
 
 | Что меняется | Где менять |
 | --- | --- |

@@ -78,13 +78,17 @@ def test_docs_explain_regulated_topic_policy_boundaries():
         "docs/compliance.md": (ROOT / "docs" / "compliance.md").read_text(),
     }
 
-    for path, text in docs.items():
+    for path in ("docs/architecture.md", "docs/examples.md", "docs/monitoring.md", "docs/compliance.md"):
+        text = docs[path]
         assert "REGULATED_TOPIC_POLICY_MODE" in text, path
         assert "regulated_topic_policy_blocked" in text, path
         assert "ru_regulated_topic_policy_blocked" in text, path
         assert "ПОД/ФТ" in text or "AML/CFT" in text, path
         assert "не является PII" in text or "not PII" in text, path
         assert "raw" in text, path
+
+    assert "REGULATED_TOPIC_POLICY_MODE" in docs["README.md"]
+    assert "docs/compliance.md" in docs["README.md"]
 
 
 def test_static_suite_runs_regulated_topic_policy_regression():

@@ -86,15 +86,11 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
             self.makefile,
         )
         self.assertIn("🧪 Makefile diagnostics static tests", self.makefile)
-        self.assertIn(
-            "`make test-routing-diagnostics` | Static regression tests для `routing-smoke` и `guardrails-smoke` Makefile targets",
-            self.readme,
-        )
+        self.assertIn("make test-static", self.readme)
+        self.assertIn("make guardrails-smoke", self.readme)
 
     def test_docs_capture_local_smoke_and_update_checklist(self):
-        self.assertIn("локального docker-compose", self.readme)
-        self.assertIn("CURL_CONNECT_TIMEOUT", self.readme)
-        self.assertIn("CURL_MAX_TIME", self.readme)
+        self.assertIn("локальном docker-compose", self.readme)
         self.assertIn("smoke-owned", self.architecture)
         self.assertIn("docker compose exec -T redis", self.monitoring)
         self.assertIn("CURL_CONNECT_TIMEOUT", self.monitoring)

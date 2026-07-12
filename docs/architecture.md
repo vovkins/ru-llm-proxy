@@ -100,6 +100,10 @@ guardrails:
           description: "Uses async_post_call_streaming_iterator_hook to restore placeholders across chunk boundaries and clean up Redis mapping."
 ```
 
+Если финальная проверка provider-bound payload срабатывает после proxy-side
+mutation, guardrail возвращает безопасную ошибку
+`final_payload_leak_check_blocked` до вызова внешнего провайдера.
+
 `async_pre_call_hook` сначала применяет reversible dictionary substitutions из `dictionary-substitutions.default.json` / `DICTIONARY_SUBSTITUTIONS_JSON`, затем в `mask` mode маскирует `message.content`, Anthropic Messages top-level `system` и `tool_result.content`, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Dictionary replacement spans исключаются из PII mask/block, чтобы synthetic replacement дошёл до провайдера как настроенное business value. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
 
 `async_post_call_streaming_iterator_hook` восстанавливает streaming `delta.content` и `delta.reasoning_content`, удерживая только возможный суффикс placeholder или dictionary replacement, чтобы не отдавать клиенту разорванное значение. Если LiteLLM получает `stream: true`, но возвращает обычный `ModelResponse`, восстановление выполняет `async_post_call_success_hook`.

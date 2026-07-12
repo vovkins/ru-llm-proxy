@@ -1,76 +1,77 @@
-# Admin Access and Operator RBAC
+# Административный доступ и роли операторов
 
-This document defines the production admin/operator access model for `ru-llm-proxy`.
-It is intentionally separate from client setup docs: client credentials, upstream
-provider credentials, and administrator credentials are different trust domains.
-Grouped environment variable descriptions live in [configuration.md](configuration.md).
+Документ описывает production-модель административного и операторского доступа
+для `ru-llm-proxy`. Он намеренно отделён от клиентских гайдов: клиентские
+токены, ключи upstream-провайдеров и административные учётные данные относятся
+к разным trust domains. Сгруппированный справочник переменных окружения:
+[configuration.md](configuration.md).
 
-## Credential Boundaries
+## Границы учётных данных
 
-| Credential | Holder | Purpose | Production rule |
+| Учётные данные | Владелец | Назначение | Правило для production |
 | --- | --- | --- | --- |
-| LiteLLM virtual key / `RU_LLM_PROXY_TOKEN` | End users, apps, CI jobs | Calls `/v1/*` proxy APIs as a client | Issue per user/team/app with model and budget limits. Never use `LITELLM_MASTER_KEY` as a client token. |
-| Upstream provider keys | Proxy runtime only | Calls Z.AI/OpenAI/Anthropic from the server-funded proxy | Store in secret manager or protected `.env`; do not place in client configs. |
-| `LITELLM_MASTER_KEY` | Break-glass/admin automation only | Privileged LiteLLM admin API key | Treat as root-equivalent. Store in a secret manager, restrict CI access, rotate on operator departure or suspected exposure. |
-| `UI_USERNAME` / `UI_PASSWORD` | Local/dev admin or protected operator boundary | LiteLLM Admin UI login in default OSS profile | Do not expose directly to the internet. Put `/ui` behind SSO/VPN/IP allowlist/mTLS or disable it. |
-| OIDC/JWT | IdP-issued operator/client identity | SSO-backed proxy access where supported | Requires IdP/JWKS and deployment-specific LiteLLM support. It does not replace provider keys. |
+| LiteLLM virtual key / `RU_LLM_PROXY_TOKEN` | Пользователи, приложения, CI jobs | Клиентские вызовы `/v1/*` proxy API | Выдавайте отдельно на пользователя, команду или приложение с лимитами моделей и бюджета. Никогда не используйте `LITELLM_MASTER_KEY` как клиентский токен. |
+| Upstream provider keys | Только runtime прокси | Вызовы Z.AI/OpenAI/Anthropic из server-funded proxy | Храните в secret manager или защищённом `.env`; не кладите в клиентские конфиги. |
+| `LITELLM_MASTER_KEY` | Только break-glass/admin automation | Привилегированный LiteLLM admin API key | Считайте root-equivalent секретом. Храните в secret manager, ограничивайте доступ CI, ротируйте при уходе оператора или подозрении на утечку. |
+| `UI_USERNAME` / `UI_PASSWORD` | Local/dev admin или защищённая operator boundary | Вход в LiteLLM Admin UI в дефолтном OSS-профиле | Не публикуйте напрямую в интернет. Закрывайте `/ui` через SSO/VPN/IP allowlist/mTLS или отключайте UI. |
+| OIDC/JWT | Идентичность оператора или клиента из IdP | SSO-backed доступ к proxy, где это поддержано | Требует IdP/JWKS и deployment-specific поддержки LiteLLM. Не заменяет provider keys. |
 
-## Production Exposure Rules
+## Правила публикации в production
 
-The default Docker Compose profile is convenient for local operations. It is not a
-complete production admin boundary by itself.
+Дефолтный Docker Compose profile удобен для локальной эксплуатации. Сам по себе
+он не является полноценной production admin boundary.
 
-In production, expose client traffic and admin traffic differently:
+В production разделяйте публикацию клиентского и административного трафика:
 
-- `/v1/*` may be exposed to approved clients only when protected by LiteLLM
-  virtual keys or a validated JWT/OIDC deployment.
+- `/v1/*` можно открывать одобренным клиентам только при защите через LiteLLM
+  virtual keys или валидированный JWT/OIDC deployment.
 - `/ui`, `/key/*`, `/user/*`, `/team/*`, `/model/*`, `/spend/*`, and other admin
-  routes must not be exposed as plain public routes protected only by the shared
+  routes нельзя публиковать как обычные public routes, защищённые только общими
   `UI_USERNAME` / `UI_PASSWORD` or `LITELLM_MASTER_KEY`.
-- Place Admin UI and admin API routes behind at least one operator boundary:
-  corporate SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy, or an
-  equivalent private network control.
-- Prefer `DISABLE_ADMIN_UI=True` for API-only production deployments where the
-  Admin UI is not required.
-- Keep `LITELLM_MASTER_KEY` out of laptops, client config, screenshots, tickets,
-  and normal smoke-test output.
+- Размещайте Admin UI и admin API routes как минимум за одной operator boundary:
+  corporate SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy или
+  эквивалентный private network control.
+- Для API-only production deployments, где Admin UI не нужен, предпочитайте
+  `DISABLE_ADMIN_UI=True`.
+- Не допускайте попадания `LITELLM_MASTER_KEY` на рабочие станции, в клиентские
+  конфиги, скриншоты, тикеты и обычный вывод smoke-тестов.
 
-Example API-only hardening:
+Пример API-only hardening:
 
 ```env
 DISABLE_ADMIN_UI=True
 ```
 
-After changing this value, recreate the LiteLLM container so the environment is
-reloaded:
+После изменения значения пересоздайте контейнер LiteLLM, чтобы окружение
+перечиталось:
 
 ```bash
 docker compose up -d --force-recreate --no-deps litellm
 ```
 
-## OSS Baseline vs Enterprise RBAC
+## OSS-база и Enterprise RBAC
 
-The repository's default runnable profile uses LiteLLM OSS-style primitives:
+Дефолтный runnable profile репозитория использует LiteLLM OSS-style primitives:
 
-- `LITELLM_MASTER_KEY` for privileged admin API automation;
-- `UI_USERNAME` / `UI_PASSWORD` for Admin UI login;
-- LiteLLM virtual keys for users, teams, apps, and CI jobs;
-- PostgreSQL persistence for LiteLLM users, keys, budgets, and spend.
+- `LITELLM_MASTER_KEY` для привилегированной admin API automation;
+- `UI_USERNAME` / `UI_PASSWORD` для входа в Admin UI;
+- LiteLLM virtual keys для пользователей, команд, приложений и CI jobs;
+- PostgreSQL persistence для LiteLLM users, keys, budgets и spend.
 
-This baseline is acceptable for local development and controlled internal
-environments only when the surrounding network/SSO boundary restricts operator
+Такой baseline приемлем для локальной разработки и контролируемых внутренних
+сред только тогда, когда внешняя network/SSO boundary ограничивает operator
 access.
 
 LiteLLM documents internal user roles such as `proxy_admin`,
 `proxy_admin_viewer`, and `internal_user`, and org/team-scoped roles such as
-`org_admin` and `team_admin`. LiteLLM also documents org/team-specific roles and
-some team member permissions as premium/enterprise features. If those features
-are available in the target deployment, use them to enforce least privilege
-inside LiteLLM. If they are not available, enforce least privilege outside
-LiteLLM with SSO groups, reverse-proxy routing rules, private admin networks,
-separate break-glass secret access, and audited runbooks.
+`org_admin` and `team_admin`. LiteLLM также описывает org/team-specific roles и
+часть team member permissions как premium/enterprise features. Если эти функции
+доступны в целевом deployment, используйте их для least privilege внутри
+LiteLLM. Если они недоступны, обеспечивайте least privilege вне LiteLLM через
+SSO groups, reverse-proxy routing rules, private admin networks, отдельный
+break-glass secret access и аудируемые runbooks.
 
-References:
+Ссылки:
 
 - LiteLLM virtual keys: https://docs.litellm.ai/docs/proxy/virtual_keys
 - LiteLLM Admin UI: https://docs.litellm.ai/docs/proxy/ui
@@ -78,116 +79,116 @@ References:
 - LiteLLM audit logs: https://docs.litellm.ai/docs/proxy/multiple_admins
 - LiteLLM public/private routes: https://docs.litellm.ai/docs/proxy/public_routes
 
-## Operator Role Model
+## Модель операторских ролей
 
-Use the following production role model even when LiteLLM itself cannot enforce
-every split in the default OSS profile.
+Используйте следующую production role model даже там, где сам LiteLLM не может
+обеспечить каждое разделение в дефолтном OSS-профиле.
 
-| Role | Typical access | Allowed operations | Notes |
+| Роль | Типичный доступ | Разрешённые операции | Примечания |
 | --- | --- | --- | --- |
-| Platform admin | SSO admin group, break-glass `LITELLM_MASTER_KEY` access | Configure proxy, rotate secrets, manage models, manage all users/teams/keys | Keep the group small. Human use of the master key should be exceptional. |
-| Key operator | Admin UI or controlled admin API workflow | Create, revoke, block, unblock, and regenerate virtual keys | Should not own upstream provider keys. |
-| Budget/model-access operator | Admin UI or controlled admin API workflow | Change budgets, rate limits, allowed models, team access | Changes must be auditable and tied to a ticket/change request. |
-| Auditor/read-only | Read-only Admin UI role where available, dashboards/logs otherwise | View usage, spend, key inventory, admin actions | In OSS-only deployments, provide read-only evidence through dashboards/log exports instead of shared admin credentials. |
-| Break-glass admin | Sealed secret or privileged secret-manager role | Emergency disablement, master-key rotation, admin lockout recovery | Requires incident ticket, two-person approval where possible, and post-incident rotation. |
-| CI/service account | Protected CI secret scoped to deployment repo | Bootstrap short-lived smoke/test keys, run deployment checks | Never print `LITELLM_MASTER_KEY`; prefer short-lived generated virtual keys for test calls. |
+| Platform admin | SSO admin group, break-glass доступ к `LITELLM_MASTER_KEY` | Настраивать proxy, ротировать secrets, управлять models и всеми users/teams/keys | Держите группу небольшой. Ручное использование master key должно быть исключением. |
+| Key operator | Admin UI или controlled admin API workflow | Создавать, отзывать, блокировать, разблокировать и перевыпускать virtual keys | Не должен владеть upstream provider keys. |
+| Budget/model-access operator | Admin UI или controlled admin API workflow | Менять budgets, rate limits, allowed models и team access | Изменения должны быть аудируемыми и привязанными к ticket/change request. |
+| Auditor/read-only | Read-only Admin UI role, где доступно; иначе dashboards/logs | Смотреть usage, spend, key inventory и admin actions | В OSS-only deployments давайте read-only evidence через dashboards/log exports, а не через общие admin credentials. |
+| Break-glass admin | Sealed secret или privileged secret-manager role | Emergency disablement, master-key rotation, admin lockout recovery | Требует incident ticket, по возможности two-person approval и post-incident rotation. |
+| CI/service account | Protected CI secret, ограниченный deployment repo | Bootstrap short-lived smoke/test keys и deployment checks | Никогда не печатайте `LITELLM_MASTER_KEY`; для test calls предпочитайте short-lived generated virtual keys. |
 
-## Admin Operations
+## Административные операции
 
-Treat these as privileged operations:
+Считайте привилегированными такие операции:
 
-- create, update, regenerate, block, unblock, or delete virtual keys;
-- create/update/delete LiteLLM users, teams, service accounts, or internal users;
-- change budgets, rate limits, allowed models, aliases, or routing behavior;
-- add/remove upstream models or provider credentials;
-- rotate `LITELLM_MASTER_KEY`, `UI_PASSWORD`, provider keys, or database secrets;
-- enable/disable Admin UI or change SSO/reverse-proxy policy;
-- execute break-glass access or emergency disablement.
+- создание, изменение, перевыпуск, блокировка, разблокировка или удаление virtual keys;
+- создание, изменение или удаление LiteLLM users, teams, service accounts или internal users;
+- изменение budgets, rate limits, allowed models, aliases или routing behavior;
+- добавление и удаление upstream models или provider credentials;
+- ротация `LITELLM_MASTER_KEY`, `UI_PASSWORD`, provider keys или database secrets;
+- включение/отключение Admin UI или изменение SSO/reverse-proxy policy;
+- break-glass access или emergency disablement.
 
-Client request audit and admin action audit are different things. Guardrail logs
-such as `gateway_guardrail_audit` prove request-time security decisions; they do
-not prove who changed a user's budget or created an admin key.
+Client request audit и admin action audit — разные вещи. Guardrail logs вроде
+`gateway_guardrail_audit` доказывают request-time security decisions, но не
+показывают, кто изменил budget пользователя или создал admin key.
 
-## Rotation and Emergency Revocation
+## Ротация и экстренный отзыв
 
 ### `LITELLM_MASTER_KEY`
 
-Use a new high-entropy `sk-ru-...` value generated by `make setup` or a secret
-manager. Store it in the production secret store, update the runtime secret, and
-recreate the LiteLLM container. Verify:
+Используйте новое high-entropy значение `sk-ru-...`, сгенерированное через
+`make setup` или secret manager. Сохраните его в production secret store,
+обновите runtime secret и пересоздайте контейнер LiteLLM. Проверьте:
 
-- `make health` passes;
-- Admin UI/API access works from the operator network only;
-- normal client calls with virtual keys still work;
-- old master key is no longer accepted.
+- `make health` проходит;
+- Admin UI/API доступен только из operator network;
+- обычные client calls с virtual keys продолжают работать;
+- старый master key больше не принимается.
 
-Rotating the master key is not the same as revoking user virtual keys stored in
-PostgreSQL. If a user/app token is compromised, block/delete that virtual key
-through Admin UI or admin API.
+Ротация master key не равна отзыву user virtual keys, которые хранятся в
+PostgreSQL. Если скомпрометирован токен пользователя или приложения,
+заблокируйте или удалите соответствующий virtual key через Admin UI или admin API.
 
 ### `UI_PASSWORD`
 
-Update `UI_PASSWORD` in the secret store or `.env`, recreate the LiteLLM
-container, verify login, and record the change. Rotate after operator departure,
-suspected exposure, or shared-password use in non-production.
+Обновите `UI_PASSWORD` в secret store или `.env`, пересоздайте контейнер LiteLLM,
+проверьте вход и зафиксируйте изменение. Ротируйте пароль после ухода оператора,
+подозрения на утечку или использования общего пароля в non-production.
 
-### Virtual Keys
+### Virtual keys
 
-For ordinary user/app compromise:
+При обычной компрометации пользователя или приложения:
 
-1. Block or delete the affected virtual key.
-2. Issue a replacement key with the minimum required models, budget, and TTL.
-3. Check usage/spend around the compromise window.
-4. Record the incident or support ticket id.
+1. Заблокируйте или удалите затронутый virtual key.
+2. Выпустите replacement key с минимально нужными models, budget и TTL.
+3. Проверьте usage/spend вокруг окна компрометации.
+4. Зафиксируйте incident или support ticket id.
 
-### Break-glass
+### Break-glass доступ
 
-Break-glass access should be rare and auditable:
+Break-glass доступ должен быть редким и проверяемым:
 
-- require an incident/change record before access when possible;
-- limit access to a small operator group;
-- record the exact action taken;
-- rotate any secret exposed during the event;
-- close with a post-incident review.
+- по возможности требуйте incident/change record до доступа;
+- ограничивайте доступ небольшой operator group;
+- фиксируйте точное выполненное действие;
+- ротируйте любой secret, раскрытый во время события;
+- закрывайте событие post-incident review.
 
-## Admin Audit Requirements
+## Требования к аудиту администрирования
 
-Production deployments should capture admin activity from the strongest available
-source:
+Production deployments должны фиксировать admin activity из самого сильного
+доступного источника:
 
-- LiteLLM audit logs where available;
-- reverse proxy / SSO access logs for `/ui` and admin API routes;
-- CI job logs for bootstrap automation, with secrets redacted;
-- GitOps or ticket records for config/model/provider changes;
-- database backup/change records for LiteLLM key/user state.
+- LiteLLM audit logs, где они доступны;
+- reverse proxy / SSO access logs для `/ui` и admin API routes;
+- CI job logs для bootstrap automation, с редактированием секретов;
+- GitOps или ticket records для изменений config/model/provider;
+- database backup/change records для LiteLLM key/user state.
 
-Minimum fields for admin audit evidence:
+Минимальные поля admin audit evidence:
 
-- actor identity or service account;
-- source boundary, such as SSO group, CI job, VPN, or break-glass role;
-- action type and target, for example `key.block`, `budget.update`, `model.add`;
+- actor identity или service account;
+- source boundary, например SSO group, CI job, VPN или break-glass role;
+- action type и target, например `key.block`, `budget.update`, `model.add`;
 - timestamp;
-- ticket/change/incident id when available;
+- ticket/change/incident id, если он есть;
 - result: success, failure, rollback.
 
-Do not log raw provider keys, raw virtual keys, `LITELLM_MASTER_KEY`,
-`UI_PASSWORD`, or complete Authorization headers.
+Не логируйте raw provider keys, raw virtual keys, `LITELLM_MASTER_KEY`,
+`UI_PASSWORD` или полные Authorization headers.
 
-## Production Checklist
+## Production checklist
 
-Before exposing a production instance:
+Перед публикацией production instance:
 
 - `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, provider keys, `UI_PASSWORD`, and
-  PostgreSQL password are generated secrets, not placeholders.
-- Users and client tools receive virtual keys or validated JWT/OIDC tokens, not
-  the master key.
-- Admin UI is either disabled with `DISABLE_ADMIN_UI=True` or protected by an
+  PostgreSQL password являются сгенерированными секретами, а не placeholders.
+- Пользователи и клиентские инструменты получают virtual keys или validated
+  JWT/OIDC tokens, а не master key.
+- Admin UI либо отключён через `DISABLE_ADMIN_UI=True`, либо защищён
   operator-only SSO/VPN/IP allowlist/mTLS boundary.
-- Admin API routes are not publicly reachable without the same operator boundary.
-- Operator roles and break-glass ownership are documented for the deployment.
-- Key/budget/model/admin changes have an audit source.
-- Master key and UI credential rotation are tested in staging.
-- CI/service accounts can create only short-lived test keys and cannot print
-  admin secrets.
-- Backups cover PostgreSQL because LiteLLM users, virtual keys, budgets, and
-  spend live there.
+- Admin API routes не доступны публично без той же operator boundary.
+- Operator roles и break-glass ownership задокументированы для deployment.
+- Изменения key/budget/model/admin имеют audit source.
+- Ротация master key и UI credentials проверена в staging.
+- CI/service accounts могут создавать только short-lived test keys и не могут
+  печатать admin secrets.
+- Backups покрывают PostgreSQL, потому что LiteLLM users, virtual keys, budgets
+  и spend хранятся там.

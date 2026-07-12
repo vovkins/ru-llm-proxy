@@ -12,9 +12,11 @@ def read_repo_file(path: str) -> str:
 
 def test_zcode_client_doc_is_linked_from_top_level_docs():
     readme = read_repo_file("README.md")
+    docs_index = read_repo_file("docs/README.md")
     examples = read_repo_file("docs/examples.md")
 
     assert "docs/clients/zcode.md" in readme
+    assert "clients/zcode.md" in docs_index
     assert "clients/zcode.md" in examples
     assert "ZCode" in readme
     assert "ZCode" in examples
@@ -43,9 +45,9 @@ def test_zcode_doc_separates_client_and_upstream_credentials():
     doc = read_repo_file("docs/clients/zcode.md")
 
     assert "ZAI_API_KEY" in doc
-    assert "Do not put `ZAI_API_KEY` or `LITELLM_MASTER_KEY` into ZCode" in doc
-    assert "ZCode receives only the proxy token" in doc
-    assert "ZCode should call the proxy `/v1` endpoint" in doc
+    assert "Не кладите `ZAI_API_KEY` или `LITELLM_MASTER_KEY` в настройки ZCode" in doc
+    assert "ZCode получает только proxy token" in doc
+    assert "ZCode вызывает proxy endpoint `/v1`" in doc
 
     forbidden_client_credentials = (
         "API Key: $ZAI_API_KEY",
@@ -65,7 +67,7 @@ def test_zcode_doc_documents_account_login_boundary_and_glm_52_support():
     doc = read_repo_file("docs/clients/zcode.md")
 
     assert "Continue with Z.ai" in doc
-    assert "not covered" in doc.lower()
+    assert "не входит" in doc.lower()
     assert "glm-5.2" in doc
     assert "ZAI_API_KEY_2" in doc
     assert "litellm-config.yaml" in doc

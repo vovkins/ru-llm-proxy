@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_readme_status_does_not_list_merged_work_as_pending():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status_section = readme.split("## Статус проекта", 1)[1].split(
-        "## Что маскируется",
+        "## Что защищает прокси",
         1,
     )[0]
 
@@ -38,7 +38,7 @@ def test_readme_describes_current_inn_policy():
 def test_readme_status_does_not_overstate_anthropic_messages_coverage():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status_section = readme.split("## Статус проекта", 1)[1].split(
-        "## Что маскируется",
+        "## Что защищает прокси",
         1,
     )[0]
 
@@ -51,15 +51,17 @@ def test_claude_code_docs_do_not_overstate_basic_auth_smoke():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     examples = (ROOT / "docs" / "examples.md").read_text(encoding="utf-8")
 
-    assert "not a fully validated Claude Code gateway yet" in docs
-    assert "Validation scope today" in docs
+    assert "полноценный Claude Code gateway пока не считается полностью валидированным" in docs
+    assert "Что сейчас валидируется" in docs
     assert "POST /v1/messages?beta=true" in docs
-    assert "streaming SSE responses" in docs
+    assert "streaming" in docs
+    assert "SSE responses" in docs
     assert "anthropic-version" in docs
     assert "anthropic-beta" in docs
     assert "basic Anthropic Messages auth smoke" in docs
-    assert "does not validate Claude Code's `?beta=true` query" in docs
-    assert "Add a separate Claude Code gateway smoke" in docs
+    assert "не проверяет Claude Code `?beta=true` query" in docs
+    assert "Добавьте отдельный Claude Code" in docs
+    assert "gateway smoke" in docs
     assert "базовые `/v1` protocol smokes" in readme
-    assert "Basic Anthropic Messages API" in examples
+    assert "Опциональный базовый Anthropic Messages API" in examples
     assert "Полный Claude Code gateway contract строже этого примера" in examples

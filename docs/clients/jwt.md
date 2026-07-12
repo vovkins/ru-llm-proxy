@@ -1,35 +1,35 @@
 # JWT / OIDC Proxy Auth
 
-This project uses LiteLLM virtual keys as the default client credential. JWT/OIDC is the enterprise SSO path for the same proxy ingress boundary.
+По умолчанию проект использует LiteLLM virtual keys как клиентские учетные данные. JWT/OIDC — это enterprise SSO путь для той же границы входа в прокси.
 
-JWT/OIDC answers the same question as virtual keys: "Who may use this proxy?" It does not replace upstream provider credentials. The proxy still uses server-side `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` to call providers.
+JWT/OIDC отвечает на тот же вопрос, что и virtual keys: “кто может пользоваться этим прокси?” Он не заменяет upstream provider credentials. Прокси по-прежнему использует server-side `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` и `ZAI_API_KEY` для вызова провайдеров.
 
-All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-## Status
+## Статус
 
-JWT/OIDC auth is not enabled in the default `litellm-config.yaml` because it requires:
+JWT/OIDC auth не включен в дефолтном `litellm-config.yaml`, потому что требует:
 
-- an identity provider and JWKS URL;
-- a concrete audience/issuer policy;
-- LiteLLM Enterprise for JWT auth and JWT to virtual key mapping.
+- identity provider и JWKS URL;
+- конкретную audience/issuer policy;
+- LiteLLM Enterprise для JWT auth и JWT to virtual key mapping.
 
-The default runnable setup stays on LiteLLM virtual keys. Use JWT/OIDC when the deployment needs SSO-backed access instead of distributing proxy keys to developers.
+Дефолтный runnable setup остается на LiteLLM virtual keys. Используйте JWT/OIDC, когда развертыванию нужен SSO-backed доступ вместо раздачи proxy keys разработчикам.
 
-Admin/operator access to `/ui` and admin API routes is a separate boundary from
-client JWT/OIDC auth. Protect it with the controls described in
-[../admin-access.md](../admin-access.md).
+Admin/operator access к `/ui` и admin API routes — отдельная граница от client JWT/OIDC auth. Защищайте ее средствами из [../admin-access.md](../admin-access.md).
 
-## Base OIDC Auth
+## Базовая OIDC-аутентификация
 
-Set IdP discovery values on the proxy host:
+Задайте IdP discovery values на proxy host:
 
 ```env
 JWT_PUBLIC_KEY_URL=https://idp.example.com/.well-known/jwks.json
 JWT_AUDIENCE=ru-llm-proxy
 ```
 
-Then enable JWT auth in `litellm-config.yaml` for that deployment. Base JWT auth maps claims to LiteLLM users and teams; create LiteLLM teams whose `team_id` values match the IdP claim values you choose.
+Затем включите JWT auth в `litellm-config.yaml` для конкретного deployment.
+Базовый JWT auth маппит claims на LiteLLM users и teams; создайте LiteLLM teams,
+у которых `team_id` совпадает с выбранными IdP claim values.
 
 ```yaml
 general_settings:
@@ -43,7 +43,7 @@ general_settings:
     enforce_team_based_model_access: true
 ```
 
-Clients then send the JWT as the bearer token:
+Клиенты отправляют JWT как bearer token:
 
 ```bash
 curl "$RU_LLM_PROXY_URL/v1/chat/completions" \
@@ -55,11 +55,11 @@ curl "$RU_LLM_PROXY_URL/v1/chat/completions" \
   }'
 ```
 
-## JWT To Virtual Key Mapping
+## JWT to virtual key mapping
 
-For per-user budgets, rate limits, and model restrictions, use LiteLLM JWT to virtual key mapping. The deployment still creates or maps virtual keys, but users authenticate with their OIDC JWT.
+Для per-user budgets, rate limits и model restrictions используйте LiteLLM JWT to virtual key mapping. Развертывание по-прежнему создает или маппит virtual keys, но пользователи аутентифицируются через свой OIDC JWT.
 
-Add a client mapping claim to the JWT config:
+Добавьте client mapping claim в JWT config:
 
 ```yaml
 general_settings:
@@ -71,7 +71,7 @@ general_settings:
     unregistered_jwt_client_behavior: "reject"
 ```
 
-Example admin flow:
+Пример admin flow:
 
 ```bash
 curl -X POST "$RU_LLM_PROXY_URL/jwt_client/new" \
@@ -89,15 +89,15 @@ curl -X POST "$RU_LLM_PROXY_URL/jwt_client/new" \
   }'
 ```
 
-The generated virtual key remains server-managed. Developers use their JWT from the IdP.
+Сгенерированный virtual key остается server-managed. Разработчики используют JWT от IdP.
 
-## Client Notes
+## Заметки для клиентов
 
-- Codex custom providers can use a command-backed bearer token where available; that command should print the OIDC JWT.
-- Claude Code can use `apiKeyHelper` for CLI workflows; the helper should print the OIDC JWT or mapped proxy token, not an upstream Anthropic key.
-- OpenCode and Kilo Code public config paths are simpler with static virtual keys. Use JWT only when your deployment has a supported token helper or managed config.
+- Codex custom providers могут использовать command-backed bearer token, где это доступно; команда должна печатать OIDC JWT.
+- Claude Code может использовать `apiKeyHelper` для CLI workflows; helper должен печатать OIDC JWT или mapped proxy token, а не upstream Anthropic key.
+- OpenCode и Kilo Code проще настраивать через static virtual keys. Используйте JWT только там, где deployment поддерживает token helper или managed config.
 
-## References
+## Ссылки
 
 - LiteLLM OIDC JWT auth: https://docs.litellm.ai/docs/proxy/token_auth
 - LiteLLM JWT to virtual key mapping: https://docs.litellm.ai/docs/proxy/jwt_key_mapping

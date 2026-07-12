@@ -142,24 +142,48 @@ def test_configuration_reference_documents_expected_env_vars():
         assert f"`{name}`" in configuration, name
 
     for heading in (
-        "## Default GLM Provider Pool",
-        "## Optional Provider Examples",
-        "## LiteLLM Admin And Secrets",
-        "## LiteLLM Runtime And Storage",
-        "## Presidio Analyzer Service",
-        "## Recognizer Calibration",
-        "## Guardrail Policy",
-        "## Dictionary Substitutions",
-        "## Synthetic/Test PII Allowlist",
-        "## Regulated-Topic Policy",
-        "## Guardrail Dependency Clients",
-        "## DeepPavlov Model And Runtime",
-        "## Client Tokens And Local Client Guides",
-        "## Live Smoke And Diagnostics",
-        "## Virtual Key Helper",
-        "## Developer And Container Internals",
+        "## Дефолтный пул GLM-провайдеров",
+        "## Примеры дополнительных провайдеров",
+        "## LiteLLM Admin UI и секреты",
+        "## Runtime и хранилища LiteLLM",
+        "## Сервис Presidio Analyzer",
+        "## Калибровка recognizers",
+        "## Политики guardrail",
+        "## Dictionary substitutions",
+        "## Allowlist синтетических PII",
+        "## Regulated-topic policy",
+        "## Клиенты зависимостей guardrail",
+        "## Модель и runtime DeepPavlov",
+        "## Клиентские токены и локальные гайды",
+        "## Live smoke-проверки и диагностика",
+        "## Helper для virtual keys",
+        "## Внутренние переменные разработки и контейнеров",
     ):
         assert heading in configuration
+
+
+def test_docs_index_maps_reader_tasks_to_canonical_docs():
+    docs_index = _read("docs/README.md")
+
+    for required in (
+        "## Как читать",
+        "## Учебный путь",
+        "## Концепции",
+        "## Практические инструкции",
+        "## Справочники",
+        "## Клиенты",
+        "## Правила поддержки документации",
+        "[configuration.md](configuration.md)",
+        "[architecture.md](architecture.md)",
+        "[examples.md](examples.md)",
+        "[monitoring.md](monitoring.md)",
+        "[compliance.md](compliance.md)",
+    ):
+        assert required in docs_index
+
+    readme = _read("README.md")
+    assert "docs/README.md" in readme
+    assert len(readme.splitlines()) < 230
 
 
 def test_quick_start_env_example_stays_minimal_and_grouped():

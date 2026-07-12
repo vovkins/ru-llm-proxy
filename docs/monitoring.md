@@ -1,4 +1,4 @@
-# Monitoring and Operations
+# Мониторинг и эксплуатация
 
 Документ описывает, как мониторить `ru-llm-proxy` в production-like окружении и как обновлять LiteLLM без полной пересборки проекта.
 
@@ -18,12 +18,12 @@
 
 LiteLLM Admin UI полезен для операционных действий, ключей, usage/spend и просмотра логов. Он не должен быть единственным источником observability для guardrails.
 
-Admin/operator access model, SSO/reverse-proxy boundary, rotation and break-glass
-requirements are documented separately: [admin-access.md](admin-access.md).
-Grouped environment variable reference and production defaults are documented in
+Модель административного доступа, SSO/reverse-proxy boundary, ротация и
+break-glass процедуры описаны отдельно: [admin-access.md](admin-access.md).
+Сгруппированный справочник переменных окружения и production defaults:
 [configuration.md](configuration.md).
 
-## Evidence Gates
+## Контуры доказательной проверки
 
 Security evidence и observability evidence проверяются разными контурами:
 
@@ -38,7 +38,7 @@ Production deny-by-default egress controls и Kubernetes/Cilium templates опи
 отдельно: [docs/egress-controls.md](egress-controls.md) и
 [deploy/kubernetes/egress](../deploy/kubernetes/egress).
 
-## Health Checks
+## Проверки здоровья
 
 Host-side проверка:
 
@@ -117,7 +117,7 @@ scrape_configs:
 
 Текущий compose запускает один LiteLLM process. Если в production вы включите несколько workers, настройте `PROMETHEUS_MULTIPROC_DIR` для корректной агрегации Prometheus client метрик между worker-процессами.
 
-## LiteLLM Metrics
+## Метрики LiteLLM
 
 LiteLLM отдаёт стандартные метрики proxy, provider calls, latency, token usage, spend, virtual keys и callback failures. Основные семейства метрик для dashboard:
 
@@ -135,7 +135,7 @@ LiteLLM отдаёт стандартные метрики proxy, provider calls
 
 Точный набор labels зависит от версии LiteLLM и настроек virtual keys / teams.
 
-## Routing Observability
+## Наблюдаемость маршрутизации
 
 Sticky routing включён через LiteLLM Router `deployment_affinity`. Он сохраняет в Redis mapping между хэшем клиентского LiteLLM key и `model_info.id` provider deployment.
 
@@ -156,7 +156,7 @@ make routing-smoke
 
 Если в одной model group несколько deployments, synthetic check может запускаться с отдельным virtual key и проверять, что два последовательных запроса получают один и тот же `x-litellm-model-id`. При падении pinned deployment LiteLLM имеет право выбрать другой healthy deployment, поэтому alert должен учитывать состояние provider deployments.
 
-## PII Guardrail Metrics
+## Метрики PII guardrail
 
 Проект добавляет собственные низкокардинальные метрики. Они не содержат пользовательский текст, request id, PII, raw matched text или raw placeholders.
 
@@ -182,7 +182,7 @@ Dictionary substitutions включены по умолчанию через `DI
 
 PII guardrail и dictionary substitution метрики появятся в `/metrics` после первого запроса, который прошёл через guardrail.
 
-## Presidio Analyzer Metrics
+## Метрики Presidio Analyzer
 
 Analyzer metrics появляются на `http://localhost:5001/metrics` после первых
 `POST /api/v1/analyze` запросов. Они не содержат raw input text, raw entity
@@ -201,7 +201,7 @@ values, offsets, API keys или proxy tokens.
 из LiteLLM к Analyzer, а `ru_presidio_analyzer_latency_seconds_*` измеряет
 обработку внутри Analyzer service вместе с ожиданием capacity slot.
 
-## Guardrail Dependency Client Limits
+## Лимиты клиентов зависимостей guardrail
 
 LiteLLM guardrail переиспользует Redis и Analyzer HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop. Для мониторинга это означает, что рост latency в `ru_pii_guardrail_analyzer_latency_seconds_*` или `ru_pii_guardrail_redis_latency_seconds_*` может быть связан не только с самим Analyzer/Redis, но и с ожиданием свободного connection в shared client pool.
 
@@ -307,7 +307,12 @@ Guardrail пишет structured JSON logs без prompt text и без raw PII.
 `block_reason`, `error_code`, bounded `categories`/`rules`/`actions` и counts.
 При `REGULATED_TOPIC_POLICY_MODE=block` событие `regulated_topic_policy_blocked` фиксирует блокировку high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity или compliance-bypass topic до Analyzer/provider egress. Этот слой не является PII recognizer и не создаёт Redis mapping. В логах остаются только bounded categories, rule ids, action `block` и counts; raw prompt, raw matched text, snippets и offsets не пишутся.
 При `PRE_EGRESS_POLICY_MODE=block` событие `pre_egress_policy_blocked` фиксирует блокировку config/log payload до Analyzer/provider egress. Для этого события Redis mapping и `metadata.pii_request_id` не создаются, поэтому `request_id` является только server-generated correlation id. В логах остаются только bounded categories, rule ids и counts; raw payload, snippets, offsets и secret values не пишутся.
-При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked` фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side mutation и до provider call. В логах остаются только bounded rule ids и counts; raw matched values, prompt snippets, offsets, provider keys и mapping contents не пишутся.
+При `FINAL_PAYLOAD_LEAK_CHECK_MODE=block` событие `final_payload_leak_check_blocked`
+фиксирует deterministic leak marker в уже provider-bound тексте после proxy-side
+mutation и до provider call. Deployment-specific deterministic canaries задаются
+через `FINAL_PAYLOAD_LEAK_CHECK_CANARIES`; в логах остаются только bounded rule ids
+и counts. Raw matched values, prompt snippets, offsets, provider keys и mapping
+contents не пишутся.
 При `SYNTHETIC_PII_ALLOWLIST_MODE=allow` правила из `SYNTHETIC_PII_ALLOWLIST_JSON` могут вычитать только явно заданные synthetic/test PII spans из результатов Analyzer. Событие `synthetic_pii_allowlist_applied` фиксирует только bounded `rule_id`, entity type и counts. `gateway_guardrail_audit` дополнительно получает optional поля `synthetic_allowlist_rules`, `synthetic_allowlist_entity_counts`, `synthetic_allowlist_rule_counts` и `synthetic_allowlist_hit_count`. Raw allowlisted values, prompt snippets и offsets не пишутся.
 
 Presidio Analyzer пишет отдельный structured JSON event
@@ -354,10 +359,10 @@ DevOps-рекомендации:
 
 `guardrail_info` в LiteLLM config возвращается через `GET /guardrails/list`. Текущий LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
 
-Do not expose the full Admin UI just to monitor guardrails. For production,
-protect `/ui` and admin API routes with the operator boundary described in
-[admin-access.md](admin-access.md), or set `DISABLE_ADMIN_UI=True` for API-only
-deployments.
+Не открывайте полный Admin UI только ради мониторинга guardrails. В production
+защищайте `/ui` и admin API routes через operator boundary из
+[admin-access.md](admin-access.md) или задайте `DISABLE_ADMIN_UI=True` для
+API-only deployments.
 
 Для проверки registration metadata используйте:
 

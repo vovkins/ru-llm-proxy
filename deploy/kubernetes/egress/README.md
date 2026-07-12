@@ -1,24 +1,24 @@
-# Production Egress Templates
+# Шаблоны production egress
 
-These manifests are starting templates for production deployments of `ru-llm-proxy`.
-They are not applied by local Docker Compose.
+Эти манифесты — стартовые шаблоны сетевых ограничений для production-развертывания `ru-llm-proxy`. Они не применяются локальным Docker Compose и не являются полноценным Kubernetes deployment проекта.
 
-Read the full guide first: `docs/egress-controls.md`.
+Перед применением прочитайте основной гайд: [docs/egress-controls.md](../../../docs/egress-controls.md).
 
-## Files
+## Файлы
 
-| File | Purpose |
+| Файл | Назначение |
 | --- | --- |
-| `default-deny-egress.yaml` | Namespace-level default deny egress for all pods. |
-| `internal-dependencies.networkpolicy.yaml` | Allows `litellm` to reach Analyzer, Redis and PostgreSQL only. |
-| `analyzer-no-internet-egress.networkpolicy.yaml` | Documents and enforces no runtime internet egress for Analyzer. |
-| `litellm-provider-egress.cilium.yaml` | Cilium FQDN allowlist for current external providers. |
+| `default-deny-egress.yaml` | Namespace-level default deny egress для всех pod. |
+| `internal-dependencies.networkpolicy.yaml` | Разрешает `litellm` доступ только к Analyzer, Redis и PostgreSQL. |
+| `analyzer-no-internet-egress.networkpolicy.yaml` | Фиксирует и enforcing runtime-запрет интернет-доступа для Analyzer. |
+| `litellm-provider-egress.cilium.yaml` | Cilium FQDN allowlist для текущих внешних провайдеров. |
 
-## Before Applying
+## Перед применением
 
-- Replace namespace `ru-llm-proxy` if your deployment uses another namespace.
-- Align `app.kubernetes.io/name` labels with your Helm chart or manifests.
-- Align CoreDNS/kube-dns labels in the Cilium policy with your cluster.
-- Add or remove provider FQDNs to match `litellm-config.yaml`.
-- Validate in staging with positive provider calls and negative non-allowlisted egress
-  checks.
+- Замените namespace `ru-llm-proxy`, если в вашем кластере используется другой namespace.
+- Согласуйте labels `app.kubernetes.io/name` с Helm chart или манифестами вашей установки.
+- Проверьте labels CoreDNS/kube-dns в Cilium policy.
+- Добавьте или удалите provider FQDNs в соответствии с `litellm-config.yaml`.
+- Проверьте изменения в staging: положительные provider calls должны проходить, отрицательные non-allowlisted egress checks должны блокироваться.
+
+Полный production-дизайн Kubernetes отслеживается отдельно в issue #59.

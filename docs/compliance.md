@@ -1,13 +1,13 @@
-# Compliance Evidence Gates
+# Контуры доказательной проверки compliance-требований
 
 Этот документ описывает, какими проверками проект доказывает ключевые свойства
-маскирующего proxy. Он дополняет README и monitoring guide: README отвечает за
-быстрый старт, `docs/monitoring.md` — за production observability, а этот документ
+маскирующего proxy. Он дополняет README и гайд по мониторингу: README отвечает за
+быстрый старт, `docs/monitoring.md` — за production-наблюдаемость, а этот документ
 разделяет security evidence, observability evidence и live compatibility smoke.
 Переменные окружения, которые управляют этими gates и политиками, описаны в
 [configuration.md](configuration.md).
 
-## Gate Boundaries
+## Границы проверочных контуров
 
 | Gate | Команда | Что доказывает | Что не доказывает |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@
 | Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema и Analyzer telemetry описаны, а документация не смешивает live smoke с leakage proof. | Production log shipping и vendor-specific dashboards. |
 | Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный LiteLLM image, guardrail hooks, provider protocol и sticky routing работают в live окружении. | Live-provider smoke не доказывает отсутствие утечки, потому что проект не видит фактический provider-bound payload у внешнего провайдера. |
 
-## Egress-security Fixtures
+## Egress-security fixtures
 
 `make test-egress-security` агрегирует Docker smoke с локальным mock upstream:
 
@@ -100,7 +100,7 @@ operator-only boundary (SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy
 private network) или UI должен быть отключён через `DISABLE_ADMIN_UI=True`.
 Подробный runbook: [docs/admin-access.md](admin-access.md).
 
-## Production Network Egress Evidence
+## Production evidence по сетевому egress
 
 Production egress controls покрываются отдельным инфраструктурным слоем, а не только
 application smoke-тестами. Требуемое целевое состояние и стартовые manifests описаны в
@@ -119,7 +119,7 @@ application smoke-тестами. Требуемое целевое состоя
 provider-bound payload очищается или блокируется до внешнего вызова. Local Docker
 Compose bridge network не считается evidence для production deny-all outbound egress.
 
-## Observability Evidence
+## Observability evidence
 
 В рамках #30 observability gate остается lightweight:
 
@@ -148,7 +148,7 @@ Per-request telemetry Presidio Analyzer из #31 пишет `presidio_analyzer_r
 entity type counts, capacity snapshot, NER state и bounded failure reason без raw
 input text, raw entity values, reconstructable offsets, API keys или proxy tokens.
 
-## Evidence For Manual Review
+## Evidence для ручного ревью
 
 Для ручной проверки требований удобно прикладывать:
 

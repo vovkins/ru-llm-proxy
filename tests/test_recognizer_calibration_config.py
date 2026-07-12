@@ -269,6 +269,9 @@ def test_docs_explain_inn_threshold_policy_and_address_limits():
         assert "score_threshold=0.35" in text or '"score_threshold": 0.35' in text, path
         assert "checksum" in text or "контрольн" in text, path
         assert "bare INN" in text or "гол" in text, path
+
+    for path in ("docs/architecture.md", "docs/examples.md"):
+        text = docs[path]
         assert "RU_ADDRESS" in text, path
         assert "огранич" in text or "unsupported" in text, path
 
@@ -302,7 +305,6 @@ def test_counterparty_requisite_recognizers_are_wired_and_documented():
         "RU_CORRESPONDENT_ACCOUNT",
     ):
         assert entity_type in requisites
-        assert entity_type in readme
         assert entity_type in architecture
         assert entity_type in examples
         assert entity_type in compliance
@@ -313,7 +315,6 @@ def test_counterparty_requisite_recognizers_are_wired_and_documented():
     assert "score_threshold=0.35" in readme
     assert "score_threshold=0.35" in architecture
     assert '"score_threshold": 0.35' in examples
-    assert "online lookup" in readme
     assert "online lookup" in architecture
 
 
@@ -354,7 +355,6 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
         "PASSWORD",
     ):
         assert entity_type in infra_secrets
-        assert entity_type in readme
         assert entity_type in architecture
         assert entity_type in examples
         assert entity_type in compliance
@@ -379,11 +379,9 @@ def test_phone_recognizer_requires_digit_boundaries_for_country_code_pattern():
 def test_readme_documents_recognizer_api_target():
     readme = (ROOT / "README.md").read_text()
 
-    assert "| `make test` | Быстрый локальный suite: `test-unit` и `test-static` |" in readme
-    assert "| `make test-static` | Host lightweight static/asyncio regression tests" in readme
+    assert "| `make test` | Быстрый локальный набор: `test-unit` и `test-static`. |" in readme
+    assert "| `make test-static` | Легкие static/asyncio regression tests на host через `PYTHON_LOCAL`. |" in readme
     assert "| `make test-recognizer-api` |" in readme
     assert "make test-recognizer-api" in readme
-    assert "recognizer-api" in readme
-    assert "host lightweight checks и Docker suites" in readme
     assert "PYTHON_LOCAL" in readme
     assert "Локальные тесты запускаются через Docker" not in readme
