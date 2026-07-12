@@ -41,7 +41,7 @@ scripts/create_virtual_key.sh --alias zcode-local --models standard,zai --durati
 
 Используйте такие значения:
 
-| Поле ZCode | Локальное значение | Значение в развёрнутом окружении |
+| Поле ZCode | Локальное значение | Значение в целевом окружении |
 | --- | --- | --- |
 | OpenAI Base URL | `http://localhost:4000/v1` | `https://<proxy-host>/v1` |
 | API Key | `$RU_LLM_PROXY_TOKEN` | Пользовательский ключ LiteLLM, выданный прокси |
