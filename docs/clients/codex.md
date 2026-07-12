@@ -22,6 +22,8 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 
 The real `OPENAI_API_KEY` stays only on the proxy host in server-funded mode. Do not put `OPENAI_API_KEY` or `LITELLM_MASTER_KEY` into local Codex client config.
 
+All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+
 Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash

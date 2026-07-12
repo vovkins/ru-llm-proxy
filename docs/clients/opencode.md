@@ -17,6 +17,8 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 
 The real `ZAI_API_KEY`, `ZAI_API_KEY_2`, optional provider keys, and `LITELLM_MASTER_KEY` stay only on the proxy host. OpenCode receives only the proxy token.
 
+All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+
 Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash

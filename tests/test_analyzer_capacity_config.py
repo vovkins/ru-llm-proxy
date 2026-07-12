@@ -26,25 +26,23 @@ def test_compose_exposes_analyzer_capacity_env():
     assert "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS" in compose
 
 
-def test_env_example_documents_analyzer_capacity_env():
-    env_example = (ROOT / ".env.example").read_text()
+def test_configuration_docs_document_analyzer_capacity_env():
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
 
-    assert "PRESIDIO_ANALYZER_WORKERS=1" in env_example
-    assert "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=1" in env_example
-    assert "PRESIDIO_ANALYZER_QUEUE_LIMIT=8" in env_example
-    assert "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25" in env_example
+    assert "`PRESIDIO_ANALYZER_WORKERS` | `1`" in configuration
+    assert "`PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1`" in configuration
+    assert "`PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8`" in configuration
+    assert "`PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25`" in configuration
 
 
-def test_setup_env_backfills_analyzer_capacity_env():
+def test_setup_env_does_not_backfill_analyzer_capacity_env():
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
-    assert 'ensure_key_exists "PRESIDIO_ANALYZER_WORKERS" "1"' in setup_script
-    assert 'ensure_key_exists "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT" "1"' in setup_script
-    assert 'ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_LIMIT" "8"' in setup_script
-    assert (
-        'ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS" "0.25"'
-        in setup_script
-    )
+    assert 'ensure_key_exists "PRESIDIO_ANALYZER_WORKERS"' not in setup_script
+    assert 'ensure_key_exists "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT"' not in setup_script
+    assert 'ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_LIMIT"' not in setup_script
+    assert 'ensure_key_exists "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS"' not in setup_script
+    assert "docs/configuration.md" in setup_script
 
 
 def test_static_tests_are_wired_into_makefile_and_baseline_ci():

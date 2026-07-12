@@ -7,23 +7,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_env_compose_setup_and_litellm_config_wire_regulated_topic_policy():
-    env_example = (ROOT / ".env.example").read_text()
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
     config = (ROOT / "litellm-config.yaml").read_text()
 
-    assert "REGULATED_TOPIC_POLICY_MODE=off" in env_example
-    assert "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=" in env_example
+    assert "`REGULATED_TOPIC_POLICY_MODE` | `off`" in configuration
+    assert "`REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON` | Пусто" in configuration
     assert "REGULATED_TOPIC_POLICY_MODE=${REGULATED_TOPIC_POLICY_MODE:-off}" in compose
     assert (
         "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=${REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON:-}"
         in compose
     )
-    assert 'ensure_key_exists "REGULATED_TOPIC_POLICY_MODE" "off"' in setup_script
-    assert (
-        'ensure_key_exists "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON" ""'
-        in setup_script
-    )
+    assert 'ensure_key_exists "REGULATED_TOPIC_POLICY_MODE"' not in setup_script
+    assert 'ensure_key_exists "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON"' not in setup_script
+    assert "docs/configuration.md" in setup_script
     assert "regulated_topic_policy_mode" in config
     assert "REGULATED_TOPIC_POLICY_MODE" in config
     assert "regulated_topic_policy_extra_rules" in config

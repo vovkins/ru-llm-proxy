@@ -7,13 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_env_compose_and_setup_wire_pre_egress_policy_mode():
-    env_example = (ROOT / ".env.example").read_text()
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
-    assert "PRE_EGRESS_POLICY_MODE=block" in env_example
+    assert "`PRE_EGRESS_POLICY_MODE` | `block`" in configuration
     assert "PRE_EGRESS_POLICY_MODE=${PRE_EGRESS_POLICY_MODE:-block}" in compose
-    assert 'ensure_key_exists "PRE_EGRESS_POLICY_MODE" "block"' in setup_script
+    assert 'ensure_key_exists "PRE_EGRESS_POLICY_MODE"' not in setup_script
+    assert "docs/configuration.md" in setup_script
 
 
 def test_litellm_guardrail_info_documents_pre_egress_policy_mode():

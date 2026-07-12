@@ -134,9 +134,9 @@ class TestGetRequestId:
 
 
 class TestFailureMode:
-    def test_defaults_to_fail_open_for_unknown_value(self):
+    def test_defaults_to_fail_closed_for_unknown_value(self):
         guardrail = RuPIIGuardrail(failure_mode="bad-value")
-        assert guardrail.failure_mode == "fail_open"
+        assert guardrail.failure_mode == "fail_closed"
 
     def test_accepts_fail_closed_alias(self):
         guardrail = RuPIIGuardrail(failure_mode="fail-closed")
@@ -1623,7 +1623,7 @@ class TestPreCallHook:
         assert event["policy_mode"] == "mask"
         assert event["pre_egress_policy_mode"] == "block"
         assert event["final_payload_leak_check_mode"] == "block"
-        assert event["failure_mode"] == "fail_open"
+        assert event["failure_mode"] == "fail_closed"
         assert event["redaction_count"] == 1
         assert event["entity_counts"] == {"PHONE_NUMBER": 1}
         assert event["latency_ms"] >= 0
@@ -4030,6 +4030,7 @@ class TestPreCallHook:
 
     @pytest.mark.asyncio
     async def test_analyze_error_fails_open(self, guardrail):
+        guardrail.failure_mode = "fail_open"
         text = "Мой телефон +79031234567"
         with patch.object(guardrail, "_analyze_text", side_effect=Exception("connection error")):
             data = {
@@ -4156,6 +4157,7 @@ class TestPreCallHook:
         guardrail,
         payload_factory,
     ):
+        guardrail.failure_mode = "fail_open"
         text = "Мой телефон +79031234567"
         guardrail._redis.setex.side_effect = RuntimeError("redis down")
         data = payload_factory(text)
@@ -4450,6 +4452,7 @@ class TestPostCallHook:
     async def test_redis_load_error_fails_open(self, guardrail):
         import litellm
 
+        guardrail.failure_mode = "fail_open"
         guardrail._redis.get.side_effect = RuntimeError("redis down")
         response = litellm.ModelResponse(
             id="test",
@@ -4687,6 +4690,7 @@ class TestStreamingPostCallHook:
 
     @pytest.mark.asyncio
     async def test_streaming_mapping_load_error_fails_open(self, guardrail):
+        guardrail.failure_mode = "fail_open"
         guardrail._redis.get.side_effect = RuntimeError("redis down")
         chunks = [
             litellm.ModelResponseStream(

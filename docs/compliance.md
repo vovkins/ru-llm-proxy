@@ -4,6 +4,8 @@
 маскирующего proxy. Он дополняет README и monitoring guide: README отвечает за
 быстрый старт, `docs/monitoring.md` — за production observability, а этот документ
 разделяет security evidence, observability evidence и live compatibility smoke.
+Переменные окружения, которые управляют этими gates и политиками, описаны в
+[configuration.md](configuration.md).
 
 ## Gate Boundaries
 

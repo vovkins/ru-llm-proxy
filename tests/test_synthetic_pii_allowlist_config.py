@@ -7,13 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_env_compose_setup_and_litellm_config_wire_synthetic_pii_allowlist():
-    env_example = (ROOT / ".env.example").read_text()
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
     config = (ROOT / "litellm-config.yaml").read_text()
 
-    assert "SYNTHETIC_PII_ALLOWLIST_MODE=off" in env_example
-    assert "SYNTHETIC_PII_ALLOWLIST_JSON=[]" in env_example
+    assert "`SYNTHETIC_PII_ALLOWLIST_MODE` | `off`" in configuration
+    assert "`SYNTHETIC_PII_ALLOWLIST_JSON` | `[]`" in configuration
     assert (
         "SYNTHETIC_PII_ALLOWLIST_MODE=${SYNTHETIC_PII_ALLOWLIST_MODE:-off}"
         in compose
@@ -22,8 +22,9 @@ def test_env_compose_setup_and_litellm_config_wire_synthetic_pii_allowlist():
         "SYNTHETIC_PII_ALLOWLIST_JSON=${SYNTHETIC_PII_ALLOWLIST_JSON:-[]}"
         in compose
     )
-    assert 'ensure_key_exists "SYNTHETIC_PII_ALLOWLIST_MODE" "off"' in setup_script
-    assert 'ensure_key_exists "SYNTHETIC_PII_ALLOWLIST_JSON" "[]"' in setup_script
+    assert 'ensure_key_exists "SYNTHETIC_PII_ALLOWLIST_MODE"' not in setup_script
+    assert 'ensure_key_exists "SYNTHETIC_PII_ALLOWLIST_JSON"' not in setup_script
+    assert "docs/configuration.md" in setup_script
     assert "synthetic_pii_allowlist_mode" in config
     assert "synthetic_pii_allowlist_rules" in config
     assert "SYNTHETIC_PII_ALLOWLIST_MODE" in config

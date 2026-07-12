@@ -197,12 +197,12 @@ model_list:
 | `mask` | По умолчанию. Маскирует PII, сохраняет Redis mapping, вызывает провайдера и восстанавливает placeholders в ответе. |
 | `block` | Если PII найдена, возвращает клиентскую `422` ошибку до вызова провайдера. Ответ содержит только entity types и не содержит raw PII, offsets или исходный текст. |
 
-Guardrail поддерживает два режима через `PII_GUARDRAIL_FAILURE_MODE`.
+Guardrail поддерживает два режима через `PII_GUARDRAIL_FAILURE_MODE`. Полный справочник по runtime-переменным и допустимым значениям: [configuration.md](configuration.md).
 
 | Mode | Поведение |
 | --- | --- |
-| `fail_open` | По умолчанию. При сбоях Presidio/Redis запрос остаётся неизменённым. Если Redis save не удался, guardrail не применяет частичную маскировку. |
-| `fail_closed` | При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
+| `fail_closed` | Значение по умолчанию. При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
+| `fail_open` | При сбоях Presidio/Redis запрос остаётся неизменённым. Если Redis save не удался, guardrail не применяет частичную маскировку. Используйте только как осознанное dev/test исключение. |
 
 TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
 
@@ -331,7 +331,7 @@ Analyzer использует две разные NLP-составляющие:
 
 `ru_core_news_sm` не является обёрткой над `ner_rus_bert`, и `ner_rus_bert` не заменяет spaCy backend. Regex recognizers работают через Presidio Analyzer, а DeepPavlov NER запускается дополнительно и затем объединяется с результатами analyzer.
 
-DeepPavlov загружается на startup. Если модель не загрузилась, analyzer остаётся доступен, regex recognizers продолжают работать, а `/api/v1/health` возвращает `ner: "not_loaded"`.
+DeepPavlov загружается на startup. По умолчанию `DEEPPAVLOV_NER_REQUIRED=true`, поэтому analyzer отказывается стартовать без NER: это fail-fast защита от незаметной деградации `PERSON`, `LOCATION` и `ORGANIZATION`. Если оператор явно задаёт `DEEPPAVLOV_NER_REQUIRED=false`, analyzer может стартовать в degraded regex-only режиме, а `/api/v1/health` возвращает `status: "degraded"`, `ner: "not_loaded"` и `ner_required: false`.
 
 NER запускается только когда он может повлиять на ответ Analyzer:
 

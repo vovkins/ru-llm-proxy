@@ -3,6 +3,7 @@
 This document defines the production admin/operator access model for `ru-llm-proxy`.
 It is intentionally separate from client setup docs: client credentials, upstream
 provider credentials, and administrator credentials are different trust domains.
+Grouped environment variable descriptions live in [configuration.md](configuration.md).
 
 ## Credential Boundaries
 

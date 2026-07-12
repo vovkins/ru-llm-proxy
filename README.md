@@ -60,7 +60,7 @@ LLM-прокси для командной работы с внешними LLM 
 
 Текущий `main` использует `score_threshold=0.35`. `RU_INN` всегда проходит checksum validation; по умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare ИНН без контекстного слова проходит дефолтный порог. Если включить strict mode (`false`), голый ИНН требует контекст вроде `ИНН` или `налоговый`. `RU_ADDRESS` остаётся ограниченным regex-based покрытием базовых российских адресных форматов.
 
-Реквизиты контрагентов детектируются консервативно. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный контекст вроде `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` или `к/с`, поэтому случайные 9- и 20-значные числа не проходят дефолтный порог. Для счетов при наличии контекстного БИК рядом проверяется российский контрольный ключ; справочник банков/актуальность БИК по ЦБ не запрашивается.
+Реквизиты контрагентов детектируются консервативно. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный контекст вроде `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` или `к/с`, поэтому случайные 9- и 20-значные числа не проходят дефолтный порог. Для счетов при наличии контекстного БИК рядом проверяется российский контрольный ключ; online lookup по справочнику банков/актуальности БИК ЦБ не выполняется.
 
 Infrastructure/secret recognizers работают на entity-level внутри обычного `PII_GUARDRAIL_MODE=mask|block`: одиночный private IP, internal domain, JWT или bearer token может быть замаскирован или заблокирован без классификации всего prompt как `.env`/log/config artifact. Доменные suffixes задаются через `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`; публичные IP по умолчанию не считаются `INTERNAL_IP`, но могут быть включены через `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true`.
 
@@ -175,109 +175,37 @@ make health
 
 ## Конфигурация
 
-### .env — секреты и runtime-настройки
+### .env — секреты и quick start
 
-Все секреты хранятся в `.env`, который создаётся из [.env.example](.env.example).
+`.env` создаётся из [.env.example](.env.example) командой `make setup`. Файл намеренно короткий: в него попадают только секреты и значения, без которых локальный запуск не поднимется.
 
 ```env
 ZAI_API_KEY=your-zai-key
 ZAI_API_KEY_2=your-second-zai-key
-# Optional provider examples only; not used by the default litellm-config.yaml:
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-LITELLM_MASTER_KEY=sk-ru-...    # автогенерируется через make setup
-LITELLM_SALT_KEY=...            # автогенерируется через make setup
-LITELLM_ROUTING_TEST_KEY=...     # опциональный virtual key для make routing-smoke
-RESPONSES_MODEL=...             # опциональный live-validated alias для strict /v1/responses smoke
-MESSAGES_MODEL=...              # опциональный live-validated alias для strict /v1/messages smoke
-UI_USERNAME=admin               # автогенерируется через make setup
-UI_PASSWORD=...                 # автогенерируется через make setup
-DISABLE_ADMIN_UI=False          # set True for API-only production deployments
-POSTGRES_PASSWORD=...           # автогенерируется через make setup
+LITELLM_MASTER_KEY=sk-ru-...
+LITELLM_SALT_KEY=...
+UI_USERNAME=admin
+UI_PASSWORD=...
+DISABLE_ADMIN_UI=False
+POSTGRES_PASSWORD=...
 LITELLM_DB_URL=postgresql://litellm:...@db:5432/litellm
-REDIS_URL=redis://redis:6379
-PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
-PRESIDIO_ANALYZER_WORKERS=1
-PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=1
-PRESIDIO_ANALYZER_QUEUE_LIMIT=8
-PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=0.25
-PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true
-PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local
-PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=false
-PII_GUARDRAIL_MODE=mask
-DICTIONARY_SUBSTITUTIONS_ENABLED=true
-DICTIONARY_SUBSTITUTIONS_FILE=/app/litellm_guardrails/dictionary-substitutions.default.json
-DICTIONARY_SUBSTITUTIONS_JSON=
-DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed
-SYNTHETIC_PII_ALLOWLIST_MODE=off
-SYNTHETIC_PII_ALLOWLIST_JSON=[]
-REGULATED_TOPIC_POLICY_MODE=off
-REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=
-PRE_EGRESS_POLICY_MODE=block
-FINAL_PAYLOAD_LEAK_CHECK_MODE=block
-FINAL_PAYLOAD_LEAK_CHECK_CANARIES=
-PII_GUARDRAIL_FAILURE_MODE=fail_open
-PII_MAPPING_TTL_SECONDS=3600
-PII_GUARDRAIL_REDIS_MAX_CONNECTIONS=20
-PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS=1.0
-PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS=2.0
-PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS=30.0
-PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS=5.0
-PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=20
-PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=10
 ```
 
-`make setup` не перезаписывает уже заданные реальные секреты. Если `.env` уже существует, команда добавит отсутствующие `UI_USERNAME` / `UI_PASSWORD`, `DISABLE_ADMIN_UI`, опциональные routing/client-smoke переменные, Analyzer capacity defaults, dictionary substitution env vars, `SYNTHETIC_PII_ALLOWLIST_MODE`, `SYNTHETIC_PII_ALLOWLIST_JSON`, `REGULATED_TOPIC_POLICY_MODE`, `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`, `PRE_EGRESS_POLICY_MODE`, final leak-check env vars и заменит только placeholder-значения.
+`make setup` не перезаписывает реальные секреты: он заменяет только placeholder-значения, генерирует `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `UI_PASSWORD`, `POSTGRES_PASSWORD` и синхронизирует `LITELLM_DB_URL` с локальным PostgreSQL.
 
-Build-time переменные для DeepPavlov:
+Полный сгруппированный справочник по переменным окружения, допустимым значениям и влиянию на runtime: [docs/configuration.md](docs/configuration.md).
 
-```env
-DEEPPAVLOV_NER_MODEL_URL=http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz
-DEEPPAVLOV_NER_MODEL_SHA256=
-DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
-```
+Практическое разделение настроек:
 
-`DEEPPAVLOV_NER_MODEL_SHA256` опционален, но для воспроизводимой и более строгой сборки его стоит заполнить после доверенной загрузки архива.
+| Что меняется | Где менять |
+| --- | --- |
+| Локальные секреты и обязательные GLM keys | `.env` |
+| Пользовательские virtual keys, бюджеты и доступы | LiteLLM Admin UI |
+| Модельные алиасы, deployments и optional providers | `litellm-config.yaml` или GitOps-managed config |
+| Runtime policy defaults контейнера | `docker-compose.yml` или production orchestrator manifest |
+| Разовые smoke/test параметры | Переменные окружения конкретной команды |
 
-Runtime capacity Analyzer:
-
-| Переменная | По умолчанию | Назначение |
-| --- | --- | --- |
-| `PRESIDIO_ANALYZER_WORKERS` | `1` | Количество uvicorn worker processes. Каждый worker загружает отдельную копию spaCy/DeepPavlov model, поэтому память растёт примерно линейно. |
-| `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Максимум активных Analyzer requests внутри одного worker. Значение `1` безопаснее для DeepPavlov/PyTorch inference. |
-| `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Сколько запросов может ждать свободный Analyzer slot внутри worker. |
-| `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Сколько ждать slot перед безопасной `503 analyzer_overloaded` ошибкой. |
-| `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | Детектировать checksum-valid bare 12-digit INN без контекстного слова при API `score_threshold=0.35`. 10-digit INN требует контекст вроде `ИНН` или `налогоплательщик` даже в default mode. Если `false`, любой голый ИНН требует контекст. |
-| `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Comma/space-separated suffixes, которые `INTERNAL_DOMAIN` считает внутренними. |
-| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | Если `true`, `INTERNAL_IP` также детектирует global public IP; по умолчанию ловятся только private/internal ranges. |
-
-Эффективный лимит активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память оценивайте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`.
-
-При перегрузке Analyzer возвращает `503` с reason `queue_full` или `queue_timeout`. LiteLLM guardrail трактует `analyzer_overloaded` как fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы не отправить raw PII провайдеру. Для PII-sensitive окружений дополнительно используйте `fail_closed` для остальных инфраструктурных сбоев и масштабируйте Analyzer workers/replicas под доступную память.
-
-Recognizer calibration:
-
-- `RU_INN` всегда проходит checksum validation. По умолчанию `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true`, поэтому checksum-valid bare 12-digit INN проходит дефолтный Analyzer API `score_threshold=0.35`; 10-digit INN без контекста остаётся ниже threshold, потому что около 10% случайных 10-значных чисел проходят checksum. Для 10-digit detection нужен контекст вроде `ИНН`, `налогоплательщик`, `налоговый`.
-- В strict mode (`PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`) любой голый ИНН без контекста не проходит `score_threshold=0.35`; для детекции нужен контекст.
-- `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют сильный контекст и не детектируют голые digit runs при `score_threshold=0.35`. `RU_OGRN` и `RU_OGRNIP` проходят checksum validation; невалидный контрольный разряд отбрасывается. Для расчётных и корреспондентских счетов при наличии БИК рядом выполняется cross-field проверка контрольного ключа; без БИК используется только сильный контекст и структурные ограничения. Проект не делает online lookup по справочнику БИК ЦБ.
-- Infrastructure/secret recognizers используют high-confidence правила. `INTERNAL_IP` по умолчанию покрывает private/loopback/link-local/CGNAT/ULA ranges, `INTERNAL_DOMAIN` ограничен `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`, `HOSTNAME`, `LOGIN` и `PASSWORD` требуют key-value context, `JWT` проверяет decodable JSON header/payload, а generic API token assignments отбрасывают obvious placeholder values.
-- `RU_ADDRESS` остаётся ограниченным regex recognizer. Поддерживаются базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, но полноценный разбор индексов, регионов, владений и всех свободных российских адресов вне текущего scope. Сокращения street type требуют границу слева, а форма `Тверская улица, дом 7` требует явное `дом`/`д.`, чтобы не маскировать фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`.
-
-Runtime dependency clients guardrail:
-
-| Переменная | По умолчанию | Назначение |
-| --- | --- | --- |
-| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop LiteLLM. |
-| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection для PII mapping store. |
-| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций `setex`, `get`, `delete`. |
-| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий read/write/pool timeout HTTP-вызова Presidio Analyzer из guardrail. |
-| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
-| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop LiteLLM. |
-| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer в shared client. |
-
-Эти настройки ограничивают dependency clients внутри LiteLLM guardrail. Они не заменяют `PRESIDIO_ANALYZER_*` capacity limiter: Analyzer всё равно отдельно контролирует, сколько inference jobs одновременно выполняется внутри каждого worker.
-
-При graceful shutdown или тестовом reset shared clients нужно закрывать через `close_guardrail_dependency_clients()`: helper очищает process-local caches и вызывает закрытие HTTPX/Redis pools. В штатном Docker Compose stop процесс завершается целиком, но для embedded/custom hosting или test harness этот helper должен быть частью teardown.
+Production default для инфраструктурных сбоев guardrail — `PII_GUARDRAIL_FAILURE_MODE=fail_closed`: если Analyzer или Redis недоступны, запрос останавливается, а не уходит провайдеру без проверки. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed override независимо от этой настройки.
 
 ### PII policy mode
 
@@ -290,7 +218,7 @@ Runtime dependency clients guardrail:
 
 В block mode клиент получает безопасную `422` ошибку с entity types, но без raw PII, offsets или текста запроса.
 
-`PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis: `fail_open` пропускает запрос дальше, `fail_closed` останавливает его. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
+`PII_GUARDRAIL_FAILURE_MODE` остаётся отдельной настройкой для инфраструктурных сбоев Presidio/Redis. По умолчанию используется `fail_closed`: запрос останавливается, если guardrail не может проверить или сохранить безопасное восстановление. `fail_open` оставлен только как осознанное dev/test исключение. Перегрузка Analyzer (`analyzer_overloaded`) всегда обрабатывается как fail-closed.
 
 ### Dictionary substitutions
 
@@ -863,9 +791,10 @@ curl http://localhost:5001/api/v1/analyze \
 
 ```bash
 curl http://localhost:5001/api/v1/health | jq
-# {"status": "ok", "ner": "loaded"}      — NER доступен
-# {"status": "ok", "ner": "not_loaded"}  — regex recognizers продолжают работать
+# {"status": "ok", "ner": "loaded", "ner_required": true} — NER доступен
 ```
+
+По умолчанию `presidio-analyzer` отказывается стартовать без DeepPavlov NER. Если оператор явно задал `DEEPPAVLOV_NER_REQUIRED=false`, health может вернуть `status: "degraded"`, `ner: "not_loaded"`; это означает regex-only режим без DeepPavlov-детекции `PERSON`, `LOCATION` и `ORGANIZATION`.
 
 **GLM-5.1 возвращает пустой `content`:**
 
@@ -906,8 +835,11 @@ ru-llm-proxy/
 │   ├── requirements-guardrails.txt
 │   └── e2e/
 └── docs/
+    ├── admin-access.md
     ├── architecture.md
     ├── compliance.md
+    ├── configuration.md
+    ├── clients/
     ├── egress-controls.md
     ├── examples.md
     ├── monitoring.md

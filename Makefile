@@ -86,6 +86,7 @@ test-static: test-routing-diagnostics
 		tests/test_guardrail_dependency_config.py \
 		tests/test_pre_egress_policy_config.py \
 		tests/test_final_payload_leak_check_config.py \
+		tests/test_configuration_docs.py \
 		tests/test_compliance_gate_config.py \
 		tests/test_production_egress_controls_docs.py \
 		tests/test_admin_auth_rbac_docs.py \
@@ -260,6 +261,8 @@ monitor-smoke:
 	@echo "📈 Monitoring smoke check"
 	@$(MAKE) health
 	@$(MAKE) guardrails-list
+	@analyzer_health=$$(curl -sf http://localhost:5001/api/v1/health); \
+		if printf "%s" "$$analyzer_health" | grep -q '"ner":"loaded"'; then echo "✅ DeepPavlov NER loaded"; else echo "❌ DeepPavlov NER is not loaded"; printf "%s\n" "$$analyzer_health"; exit 1; fi
 	@tmp=$$(mktemp) && \
 		if ! curl -L -sf http://localhost:4000/metrics > "$$tmp"; then echo "❌ LiteLLM metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
 		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \

@@ -4,6 +4,8 @@
 egress, allowlist LLM providers и внутренние зависимости. Это defense-in-depth слой,
 который дополняет, но не заменяет `PRE_EGRESS_POLICY_MODE`,
 `FINAL_PAYLOAD_LEAK_CHECK_MODE`, PII mask/block и `make test-egress-security`.
+Переменные окружения для этих policy layers и build-time загрузок описаны в
+[configuration.md](configuration.md).
 
 ## Security Goal
 

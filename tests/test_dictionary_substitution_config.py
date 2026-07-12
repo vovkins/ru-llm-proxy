@@ -12,16 +12,16 @@ def _read(path: str) -> str:
 
 
 def test_dictionary_substitution_env_and_compose_defaults_are_enabled():
-    env_example = _read(".env.example")
+    configuration = _read("docs/configuration.md")
     compose = _read("docker-compose.yml")
     setup_script = _read("scripts/setup_env.sh")
 
-    assert "DICTIONARY_SUBSTITUTIONS_ENABLED=true" in env_example
+    assert "`DICTIONARY_SUBSTITUTIONS_ENABLED` | `true`" in configuration
     assert (
-        "DICTIONARY_SUBSTITUTIONS_FILE=/app/litellm_guardrails/"
-        "dictionary-substitutions.default.json"
-    ) in env_example
-    assert "DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed" in env_example
+        "`DICTIONARY_SUBSTITUTIONS_FILE` | `/app/litellm_guardrails/"
+        "dictionary-substitutions.default.json`"
+    ) in configuration
+    assert "`DICTIONARY_SUBSTITUTIONS_FAILURE_MODE` | `fail_closed`" in configuration
 
     assert (
         "DICTIONARY_SUBSTITUTIONS_ENABLED=${DICTIONARY_SUBSTITUTIONS_ENABLED:-true}"
@@ -35,15 +35,10 @@ def test_dictionary_substitution_env_and_compose_defaults_are_enabled():
         "${DICTIONARY_SUBSTITUTIONS_FAILURE_MODE:-fail_closed}"
     ) in compose
 
-    assert 'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_ENABLED" "true"' in setup_script
-    assert (
-        'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_FILE" '
-        '"/app/litellm_guardrails/dictionary-substitutions.default.json"'
-    ) in setup_script
-    assert (
-        'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_FAILURE_MODE" "fail_closed"'
-        in setup_script
-    )
+    assert 'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_ENABLED"' not in setup_script
+    assert 'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_FILE"' not in setup_script
+    assert 'ensure_key_exists "DICTIONARY_SUBSTITUTIONS_FAILURE_MODE"' not in setup_script
+    assert "docs/configuration.md" in setup_script
 
 
 def test_default_dictionary_seed_contains_top_ten_bank_rules():

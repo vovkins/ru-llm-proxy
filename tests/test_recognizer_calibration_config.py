@@ -12,36 +12,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_bare_inn_checksum_setting_is_exposed_to_analyzer_runtime():
     env_name = "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM"
-    env_example = (ROOT / ".env.example").read_text()
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
-    assert f"{env_name}=true" in env_example
+    assert f"`{env_name}` | `true`" in configuration
     assert f"{env_name}=${{{env_name}:-true}}" in compose
-    assert f'ensure_key_exists "{env_name}" "true"' in setup_script
+    assert f'ensure_key_exists "{env_name}"' not in setup_script
+    assert "docs/configuration.md" in setup_script
 
 
 def test_infrastructure_secret_settings_are_exposed_to_analyzer_runtime():
     domain_env = "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES"
     public_ip_env = "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS"
-    env_example = (ROOT / ".env.example").read_text()
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
     compose = (ROOT / "docker-compose.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
     domain_default_prefix = "internal,local,lan,corp,corp.local"
-    assert f"{domain_env}={domain_default_prefix}" in env_example
+    assert f"`{domain_env}` | `{domain_default_prefix}" in configuration
     assert (
         f"{domain_env}=${{" + domain_env + f":-{domain_default_prefix}"
         in compose
     )
-    assert (
-        f'ensure_key_exists "{domain_env}" "{domain_default_prefix}'
-        in setup_script
-    )
+    assert f'ensure_key_exists "{domain_env}"' not in setup_script
 
-    assert f"{public_ip_env}=false" in env_example
+    assert f"`{public_ip_env}` | `false`" in configuration
     assert f"{public_ip_env}=${{{public_ip_env}:-false}}" in compose
-    assert f'ensure_key_exists "{public_ip_env}" "false"' in setup_script
+    assert f'ensure_key_exists "{public_ip_env}"' not in setup_script
 
 
 def test_static_suite_runs_recognizer_calibration_regression():

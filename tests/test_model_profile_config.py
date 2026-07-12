@@ -43,11 +43,14 @@ def test_optional_provider_examples_are_separate_from_default_config():
     ).read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     examples = (ROOT / "docs" / "examples.md").read_text(encoding="utf-8")
+    configuration = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
 
     assert "openai/<validated-openai-model-id>" in optional
     assert "anthropic/<validated-anthropic-model-id>" in optional
     assert "examples/litellm-config.optional-providers.yaml" in readme
     assert "examples/litellm-config.optional-providers.yaml" in examples
+    assert "`OPENAI_API_KEY` | Пусто" in configuration
+    assert "`ANTHROPIC_API_KEY` | Пусто" in configuration
 
 
 def test_smoke_defaults_use_glm_52():
@@ -74,7 +77,8 @@ def test_env_and_setup_treat_second_zai_key_as_required_default():
 
     assert "ZAI_API_KEY=***" in env_example
     assert "ZAI_API_KEY_2=***" in env_example
-    assert "not used by the default litellm-config.yaml" in env_example
+    assert "OPENAI_API_KEY" not in env_example
+    assert "ANTHROPIC_API_KEY" not in env_example
     assert 'ensure_secret "ZAI_API_KEY_2" "***" "" || true' in setup
     assert "Z.AI Coding Plan ключи" in setup
 
