@@ -6,12 +6,16 @@ OpenAI/Anthropic aliases больше не включены в активный 
 
 ## Окружение
 
+Основные переменные для примеров ниже:
+
 ```bash
 export API_URL="http://localhost:4000"
 export RU_LLM_PROXY_TOKEN="sk-..."
 # Optional only for BYOK passthrough examples:
 export ANTHROPIC_BYOK_API_KEY="sk-ant-..."
 ```
+
+Полный сгруппированный справочник по переменным окружения, допустимым значениям и влиянию на runtime: [configuration.md](configuration.md).
 
 Создавайте обычные пользовательские `RU_LLM_PROXY_TOKEN` через LiteLLM Admin UI. CLI helper нужен для DevOps/CI/bootstrap/runbook-сценариев:
 
@@ -296,13 +300,13 @@ curl -s http://localhost:5001/api/v1/health | jq
 NER status возвращается отдельно:
 
 ```json
-{"status":"ok","ner":"loaded"}
+{"status":"ok","ner":"loaded","ner_required":true}
 ```
 
-Если модель не загрузилась, сервис продолжит работать для regex recognizers:
+По умолчанию `presidio-analyzer` не должен стартовать без DeepPavlov NER. Если оператор явно разрешил fallback через `DEEPPAVLOV_NER_REQUIRED=false`, health показывает degraded state:
 
 ```json
-{"status":"ok","ner":"not_loaded"}
+{"status":"degraded","ner":"not_loaded","ner_required":false}
 ```
 
 ## Guardrails

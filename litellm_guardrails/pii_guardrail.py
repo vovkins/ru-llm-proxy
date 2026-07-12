@@ -564,7 +564,7 @@ PII_MAPPING_TTL_SECONDS = _get_int_env(
     "PII_MAPPING_TTL_SECONDS",
     DEFAULT_PII_MAPPING_TTL_SECONDS,
 )
-PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_open")
+PII_GUARDRAIL_FAILURE_MODE = os.getenv("PII_GUARDRAIL_FAILURE_MODE", "fail_closed")
 PII_GUARDRAIL_MODE = os.getenv("PII_GUARDRAIL_MODE", "mask")
 PRE_EGRESS_POLICY_MODE = os.getenv("PRE_EGRESS_POLICY_MODE", "block")
 FINAL_PAYLOAD_LEAK_CHECK_MODE = os.getenv("FINAL_PAYLOAD_LEAK_CHECK_MODE", "block")
@@ -835,10 +835,10 @@ class RuPIIGuardrail(CustomGuardrail):
         mode = value.strip().lower().replace("-", "_")
         if mode not in FAILURE_MODES:
             logger.warning(
-                "Unknown PII_GUARDRAIL_FAILURE_MODE=%r, falling back to fail_open",
+                "Unknown PII_GUARDRAIL_FAILURE_MODE=%r, falling back to fail_closed",
                 value,
             )
-            return "fail_open"
+            return "fail_closed"
         return mode
 
     @staticmethod

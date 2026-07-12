@@ -1,6 +1,7 @@
 # Optional provider examples for installations that add non-GLM upstreams.
 # Copy the relevant entries into litellm-config.yaml only after validating
 # model identifiers against your LiteLLM image and provider subscription.
+# Environment variables used here are documented in docs/configuration.md.
 
 model_list:
   - model_name: openai-example-premium

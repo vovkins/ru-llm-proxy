@@ -9,6 +9,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -94,16 +95,42 @@ ANALYZER_FAILURES = _build_metric(
 )
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEEPPAVLOV_NER_REQUIRED = _env_bool("DEEPPAVLOV_NER_REQUIRED", True)
+ner_startup_error: str | None = None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Load NER model on startup."""
+    global ner_startup_error
     logger.info("Loading DeepPavlov NER model...")
     try:
         dp_recognizer.load_model()
+        ner_startup_error = None
         logger.info("DeepPavlov NER model loaded")
     except Exception as e:
-        logger.error(f"Failed to load DeepPavlov model: {e}")
-        logger.info("Server will start without NER. Regex recognizers still available.")
+        ner_startup_error = type(e).__name__
+        ANALYZER_FAILURES.labels(reason="ner_startup_failed").inc()
+        logger.exception(
+            "CRITICAL: Failed to load required DeepPavlov NER model; "
+            "structured entities PERSON/LOCATION/ORGANIZATION would be degraded."
+        )
+        if DEEPPAVLOV_NER_REQUIRED:
+            raise RuntimeError(
+                "DeepPavlov NER is required but failed to load. "
+                "Refusing to start Presidio Analyzer in degraded mode."
+            ) from e
+        logger.error(
+            "DeepPavlov NER is not loaded; starting in explicit degraded mode "
+            "because DEEPPAVLOV_NER_REQUIRED=false. Regex recognizers remain available."
+        )
     yield
 
 
@@ -144,11 +171,19 @@ class AnalyzeResponse(BaseModel):
 @app.get("/api/v1/health")
 async def health():
     ner_status = "loaded" if dp_recognizer.is_loaded() else "not_loaded"
-    return {
-        "status": "ok",
+    status = "ok" if ner_status == "loaded" else "degraded"
+    payload = {
+        "status": status,
         "ner": ner_status,
+        "ner_required": DEEPPAVLOV_NER_REQUIRED,
         "capacity": capacity_limiter.snapshot(),
     }
+    if ner_startup_error:
+        payload["ner_error"] = ner_startup_error
+    if DEEPPAVLOV_NER_REQUIRED and ner_status != "loaded":
+        payload["status"] = "unhealthy"
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @app.get("/metrics")

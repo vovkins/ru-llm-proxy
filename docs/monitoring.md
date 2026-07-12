@@ -20,6 +20,8 @@ LiteLLM Admin UI полезен для операционных действий
 
 Admin/operator access model, SSO/reverse-proxy boundary, rotation and break-glass
 requirements are documented separately: [admin-access.md](admin-access.md).
+Grouped environment variable reference and production defaults are documented in
+[configuration.md](configuration.md).
 
 ## Evidence Gates
 
@@ -289,7 +291,7 @@ sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 
 Ошибки на уровне LiteLLM proxy.
 
-Для Analyzer health отдельно проверьте `GET /api/v1/health`. Поле `ner` показывает загрузку DeepPavlov: если оно равно `not_loaded`, regex recognizers продолжают работать, но `PERSON`, `LOCATION` и `ORGANIZATION` через DeepPavlov NER не детектируются. Поле `capacity` показывает process-local limiter: `active`, `waiting`, `concurrency_limit`, `queue_limit` и `queue_timeout_seconds`.
+Для Analyzer health отдельно проверьте `GET /api/v1/health`. В production default `DEEPPAVLOV_NER_REQUIRED=true`: если DeepPavlov не загрузился, analyzer не должен стартовать, а health не должен проходить. Поле `ner` должно быть `loaded`; `not_loaded` означает потерю DeepPavlov-детекции `PERSON`, `LOCATION` и `ORGANIZATION`. Только при явном `DEEPPAVLOV_NER_REQUIRED=false` сервис может ответить `status=degraded`, `ner=not_loaded`, `ner_required=false`. Поле `capacity` показывает process-local limiter: `active`, `waiting`, `concurrency_limit`, `queue_limit` и `queue_timeout_seconds`.
 
 Analyzer overload возвращает `503` с `detail.code=analyzer_overloaded` и reason `queue_full` или `queue_timeout`. Для LiteLLM guardrail это fail-closed override независимо от `PII_GUARDRAIL_FAILURE_MODE`: запрос останавливается, чтобы перегрузка Analyzer не отправила raw PII провайдеру. Если `waiting` часто приближается к `queue_limit`, увеличивайте replicas/workers только с учётом памяти: каждый uvicorn worker загружает отдельную spaCy/DeepPavlov model instance.
 

@@ -322,6 +322,7 @@ async def _health_reports_capacity_without_entering_limiter(monkeypatch):
         queue_timeout_seconds=0.01,
     )
     monkeypatch.setattr(analyzer_server, "capacity_limiter", limiter)
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: True)
 
     slot = await limiter.acquire()
     try:
@@ -330,8 +331,93 @@ async def _health_reports_capacity_without_entering_limiter(monkeypatch):
         await slot.release()
 
     assert response["status"] == "ok"
+    assert response["ner"] == "loaded"
+    assert response["ner_required"] is True
     assert response["capacity"]["active"] == 1
     assert response["capacity"]["queue_limit"] == 0
+
+
+def test_health_is_unhealthy_when_required_ner_is_not_loaded(monkeypatch):
+    asyncio.run(_health_is_unhealthy_when_required_ner_is_not_loaded(monkeypatch))
+
+
+async def _health_is_unhealthy_when_required_ner_is_not_loaded(monkeypatch):
+    monkeypatch.setattr(analyzer_server, "DEEPPAVLOV_NER_REQUIRED", True)
+    monkeypatch.setattr(analyzer_server, "ner_startup_error", "RuntimeError")
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+
+    response = await analyzer_server.health()
+    body = json.loads(response.body.decode())
+
+    assert response.status_code == 503
+    assert body["status"] == "unhealthy"
+    assert body["ner"] == "not_loaded"
+    assert body["ner_required"] is True
+    assert body["ner_error"] == "RuntimeError"
+
+
+def test_health_reports_degraded_only_when_ner_is_explicitly_optional(monkeypatch):
+    asyncio.run(_health_reports_degraded_only_when_ner_is_explicitly_optional(monkeypatch))
+
+
+async def _health_reports_degraded_only_when_ner_is_explicitly_optional(monkeypatch):
+    monkeypatch.setattr(analyzer_server, "DEEPPAVLOV_NER_REQUIRED", False)
+    monkeypatch.setattr(analyzer_server, "ner_startup_error", "RuntimeError")
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+
+    response = await analyzer_server.health()
+
+    assert response["status"] == "degraded"
+    assert response["ner"] == "not_loaded"
+    assert response["ner_required"] is False
+    assert response["ner_error"] == "RuntimeError"
+
+
+def test_lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog):
+    asyncio.run(_lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog))
+
+
+async def _lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog):
+    monkeypatch.setattr(analyzer_server, "DEEPPAVLOV_NER_REQUIRED", True)
+    monkeypatch.setattr(analyzer_server, "ner_startup_error", None)
+
+    def fail_load():
+        raise RuntimeError("checkpoint mismatch")
+
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "load_model", fail_load)
+
+    with caplog.at_level(logging.ERROR, logger="presidio.analyzer_server"):
+        with pytest.raises(RuntimeError, match="DeepPavlov NER is required"):
+            async with analyzer_server.lifespan(None):
+                pass
+
+    assert analyzer_server.ner_startup_error == "RuntimeError"
+    assert "CRITICAL: Failed to load required DeepPavlov NER model" in "\n".join(
+        record.getMessage() for record in caplog.records
+    )
+
+
+def test_lifespan_allows_explicit_optional_degraded_ner(monkeypatch, caplog):
+    asyncio.run(_lifespan_allows_explicit_optional_degraded_ner(monkeypatch, caplog))
+
+
+async def _lifespan_allows_explicit_optional_degraded_ner(monkeypatch, caplog):
+    monkeypatch.setattr(analyzer_server, "DEEPPAVLOV_NER_REQUIRED", False)
+    monkeypatch.setattr(analyzer_server, "ner_startup_error", None)
+
+    def fail_load():
+        raise RuntimeError("checkpoint mismatch")
+
+    monkeypatch.setattr(analyzer_server.dp_recognizer, "load_model", fail_load)
+
+    with caplog.at_level(logging.ERROR, logger="presidio.analyzer_server"):
+        async with analyzer_server.lifespan(None):
+            pass
+
+    assert analyzer_server.ner_startup_error == "RuntimeError"
+    logs = "\n".join(record.getMessage() for record in caplog.records)
+    assert "CRITICAL: Failed to load required DeepPavlov NER model" in logs
+    assert "DEEPPAVLOV_NER_REQUIRED=false" in logs
 
 
 def test_blocking_analyze_keeps_task_alive_until_thread_finishes_after_double_cancel(

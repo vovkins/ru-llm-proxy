@@ -16,11 +16,11 @@ EXPECTED_ENV = {
 }
 
 
-def test_env_example_documents_guardrail_dependency_client_env():
-    env_example = (ROOT / ".env.example").read_text()
+def test_configuration_docs_document_guardrail_dependency_client_env():
+    configuration = (ROOT / "docs" / "configuration.md").read_text()
 
     for name, default in EXPECTED_ENV.items():
-        assert f"{name}={default}" in env_example
+        assert f"`{name}` | `{default}`" in configuration
 
 
 def test_compose_passes_guardrail_dependency_client_env_to_litellm():
@@ -30,11 +30,13 @@ def test_compose_passes_guardrail_dependency_client_env_to_litellm():
         assert f"{name}=${{{name}:-{default}}}" in compose
 
 
-def test_setup_env_backfills_guardrail_dependency_client_env():
+def test_setup_env_does_not_backfill_guardrail_dependency_client_env():
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
-    for name, default in EXPECTED_ENV.items():
-        assert f'ensure_key_exists "{name}" "{default}"' in setup_script
+    for name in EXPECTED_ENV:
+        assert f'ensure_key_exists "{name}"' not in setup_script
+
+    assert "docs/configuration.md" in setup_script
 
 
 def test_static_suite_runs_guardrail_dependency_config_regression():
@@ -71,8 +73,18 @@ def test_docs_explain_guardrail_dependency_client_limits():
     }
 
     for path, text in docs.items():
-        assert "PII_GUARDRAIL_REDIS_MAX_CONNECTIONS" in text, path
-        assert "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS" in text, path
-        assert "per process" in text or "процесс" in text, path
-        assert "event loop" in text or "event-loop" in text, path
-        assert "close_guardrail_dependency_clients" in text, path
+        assert "PII_GUARDRAIL_REDIS_MAX_CONNECTIONS" in text or (
+            "configuration.md" in text
+        ), path
+        assert "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS" in text or (
+            "configuration.md" in text
+        ), path
+        assert "per process" in text or "процесс" in text or (
+            "configuration.md" in text
+        ), path
+        assert "event loop" in text or "event-loop" in text or (
+            "configuration.md" in text
+        ), path
+        assert "close_guardrail_dependency_clients" in text or (
+            "configuration.md" in text
+        ), path

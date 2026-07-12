@@ -4,6 +4,8 @@ This project uses LiteLLM virtual keys as the default client credential. JWT/OID
 
 JWT/OIDC answers the same question as virtual keys: "Who may use this proxy?" It does not replace upstream provider credentials. The proxy still uses server-side `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` to call providers.
 
+All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+
 ## Status
 
 JWT/OIDC auth is not enabled in the default `litellm-config.yaml` because it requires:
