@@ -96,7 +96,7 @@ fi
 ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" || true
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true
 ensure_key_exists "DISABLE_ADMIN_UI" "False"
-ensure_key_exists "ZAI_API_KEY_2" ""
+ensure_secret "ZAI_API_KEY_2" "***" "" || true
 ensure_key_exists "LITELLM_ROUTING_TEST_KEY" ""
 ensure_key_exists "PRESIDIO_ANALYZER_WORKERS" "1"
 ensure_key_exists "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT" "1"
@@ -137,9 +137,9 @@ fi
 
 echo ""
 echo "✅ ${ENV_FILE} готов"
-echo "⚠️  Заполните API-ключ основного провайдера в ${ENV_FILE}:"
+echo "⚠️  Заполните Z.AI Coding Plan ключи для дефолтного пула glm-5.2 в ${ENV_FILE}:"
 echo "   ZAI_API_KEY=***"
-echo "   ZAI_API_KEY_2=...  # опционально, второй аккаунт/deployment для sticky routing"
+echo "   ZAI_API_KEY_2=***"
 echo ""
 echo "LiteLLM Admin UI будет доступен по адресу /ui."
 echo "Логин и пароль сохранены в ${ENV_FILE}: UI_USERNAME и UI_PASSWORD."

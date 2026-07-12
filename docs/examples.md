@@ -1,8 +1,8 @@
 # Примеры API
 
-Все примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, стабильная Z.AI модель `glm-5.1`, provider-prefixed alias `zai-glm-5.1`, OpenAI aliases `openai-gpt-5.4-mini` / `openai-gpt-5.5` и Anthropic aliases `claude-haiku-4.5` / `claude-sonnet-4.6` / `claude-opus-4.8`.
+Все базовые примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, дефолтная публичная модель `glm-5.2` и дополнительный алиас `glm-5.1`. Оба GLM-алиаса используют Z.AI Coding Plan endpoint через серверные ключи proxy.
 
-OpenAI/Anthropic aliases являются proxy-facing примерами. Перед production используйте только model IDs, проверенные live на текущем LiteLLM image и реальных provider keys.
+OpenAI/Anthropic aliases больше не включены в активный дефолтный `litellm-config.yaml`. Если нужны эти провайдеры, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, затем проверьте model IDs live на текущем LiteLLM image и реальных provider keys.
 
 ## Окружение
 
@@ -16,7 +16,7 @@ export ANTHROPIC_BYOK_API_KEY="sk-ant-..."
 Создавайте обычные пользовательские `RU_LLM_PROXY_TOKEN` через LiteLLM Admin UI. CLI helper нужен для DevOps/CI/bootstrap/runbook-сценариев:
 
 ```bash
-make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai,openai,anthropic DURATION=30d
+make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai DURATION=30d
 ```
 
 `LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
@@ -24,13 +24,13 @@ Production Admin UI/API boundary, operator roles and credential rotation are cov
 
 ## Режимы авторизации
 
-Server-funded режим использует proxy token как обычный bearer token. Proxy сам вызывает провайдера через серверные `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` или `ZAI_API_KEY`:
+Server-funded режим использует proxy token как обычный bearer token. В дефолтном профиле proxy сам вызывает GLM через серверные `ZAI_API_KEY` и `ZAI_API_KEY_2`:
 
 ```bash
 curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
-  -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Привет"}]}'
+  -d '{"model":"glm-5.2","messages":[{"role":"user","content":"Привет"}]}'
 ```
 
 BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а provider auth передаётся через поддерживаемый provider-specific header вроде `x-api-key`, `api-key` или `x-goog-api-key`. Этот режим не включён в default config; включайте его отдельным opt-in deployment после live validation на текущем LiteLLM image.
@@ -41,7 +41,7 @@ curl -s "$API_URL/v1/messages" \
   -H "x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "x-api-key: $ANTHROPIC_BYOK_API_KEY" \
   -d '{
-    "model": "claude-sonnet-4.6",
+    "model": "anthropic-example-standard",
     "max_tokens": 80,
     "messages": [{"role": "user", "content": "Привет"}]
   }'
@@ -56,7 +56,7 @@ curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "messages": [
       {
         "role": "user",
@@ -74,7 +74,7 @@ curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "messages": [
       {
         "role": "user",
@@ -100,7 +100,7 @@ curl -s "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "messages": [
       {
         "role": "user",
@@ -117,16 +117,16 @@ curl -s "$API_URL/v1/chat/completions" \
 Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
 ```
 
-## OpenAI Responses API
+## Optional OpenAI Responses API
 
-Codex CLI/App local tasks используют Responses API:
+Codex CLI/App local tasks используют Responses API. Этот пример требует, чтобы администратор добавил OpenAI-compatible alias в `litellm-config.yaml`, например на основе `examples/litellm-config.optional-providers.yaml`:
 
 ```bash
 curl -s "$API_URL/v1/responses" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "openai-gpt-5.4-mini",
+    "model": "openai-example-standard",
     "input": "Скажи короткое приветствие на русском",
     "max_output_tokens": 80
   }' | jq
@@ -137,19 +137,19 @@ PII guardrail applies to Anthropic top-level `system` string/text blocks, Respon
 Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
 
 ```bash
-RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
+RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
 ```
 
-## Basic Anthropic Messages API
+## Optional Basic Anthropic Messages API
 
-Это базовый non-streaming пример Anthropic Messages API через proxy:
+Это базовый non-streaming пример Anthropic Messages API через proxy. Он требует, чтобы администратор добавил Anthropic-compatible alias в `litellm-config.yaml`:
 
 ```bash
 curl -s "$API_URL/v1/messages" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "claude-sonnet-4.6",
+    "model": "anthropic-example-standard",
     "max_tokens": 80,
     "messages": [
       {
@@ -163,7 +163,7 @@ curl -s "$API_URL/v1/messages" \
 Для live smoke этого endpoint задайте `MESSAGES_MODEL` явно:
 
 ```bash
-MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
+MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
 ```
 
 Полный Claude Code gateway contract строже этого примера: `POST /v1/messages?beta=true`, streaming SSE responses, forwarding `anthropic-version` / `anthropic-beta`, optional token counting и model discovery. Его статус описан в [clients/claude-code.md](clients/claude-code.md).
@@ -320,7 +320,7 @@ curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
     "messages": [
       {
@@ -566,7 +566,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
 
 ```bash
-curl -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
+curl -L -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 ```
 
 То же самое через Makefile:
@@ -587,21 +587,21 @@ PII guardrail метрики `ru_pii_guardrail_*` появятся после п
 - Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
 - JWT/OIDC proxy auth: [clients/jwt.md](clients/jwt.md)
 
-Для ZCode используйте `Use API Key` / OpenAI-compatible provider settings: `OpenAI Base URL = http://localhost:4000/v1`, `API Key = $RU_LLM_PROXY_TOKEN`, model `zai-glm-5.1` или `glm-5.1`. `ZAI_API_KEY` остаётся только в окружении proxy.
+Для ZCode используйте `Use API Key` / OpenAI-compatible provider settings: `OpenAI Base URL = http://localhost:4000/v1`, `API Key = $RU_LLM_PROXY_TOKEN`, model `glm-5.2`. `ZAI_API_KEY` и `ZAI_API_KEY_2` остаются только в окружении proxy.
 
 ## Добавление моделей
 
-По умолчанию настроены provider-prefixed aliases для Z.AI, OpenAI и Anthropic. Чтобы добавить ещё один провайдер, добавьте модель в `litellm-config.yaml`, добавьте нужный API key в `.env` и перезапустите LiteLLM:
+По умолчанию настроен GLM-first профиль: `glm-5.2` как основной публичный алиас и `glm-5.1` как дополнительная модель. Чтобы добавить ещё один провайдер, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, добавьте нужный API key в окружение и перезапустите LiteLLM:
 
 ```yaml
 model_list:
-  - model_name: my-openai-model
+  - model_name: openai-example-standard
     litellm_params:
-      model: openai/gpt-5.4-mini
+      model: openai/<validated-openai-standard-model-id>
       api_key: os.environ/OPENAI_API_KEY
     model_info:
-      id: openai-gpt-5-4-mini-primary
-      base_model: gpt-5.4-mini
+      id: openai-example-standard-primary
+      base_model: <validated-openai-standard-model-id>
       access_groups: ["openai", "standard"]
 ```
 
@@ -620,7 +620,7 @@ curl -sS "$API_URL/v1/chat/completions" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "stream": true,
     "guardrails": ["ru-pii-mask-pre", "ru-pii-mask-post"],
     "messages": [

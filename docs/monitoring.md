@@ -63,6 +63,7 @@ make health
 litellm_settings:
   callbacks:
     - prometheus
+  require_auth_for_metrics_endpoint: false
   drop_params: true
 ```
 
@@ -71,6 +72,15 @@ litellm_settings:
 ```text
 http://localhost:4000/metrics
 ```
+
+В дефолтной конфигурации проекта endpoint LiteLLM `/metrics` открыт без
+прикладной авторизации, чтобы Prometheus мог собирать метрики без LiteLLM API
+key. В production доступ к нему нужно ограничивать сетевыми средствами:
+закрытым service network, ingress/network policy, firewall или отдельным
+scrape-путём только для Prometheus. Метрики не должны содержать исходные
+запросы или значения секретов, но могут включать служебные labels вроде имени
+модели, alias виртуального ключа и hashed key, поэтому endpoint не должен быть
+доступен из публичной сети.
 
 Presidio Analyzer отдает собственные low-cardinality metrics отдельно:
 

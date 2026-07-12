@@ -80,6 +80,7 @@ test-static: test-routing-diagnostics
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
 		tests/test_analyzer_capacity_config.py \
 		tests/test_analyzer_telemetry_config.py \
+		tests/test_model_profile_config.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
 		tests/test_guardrail_dependency_config.py \
@@ -237,8 +238,9 @@ routing-smoke:
 					;; \
 			esac; \
 		}; \
-		run_completion "first" "$$first_headers" "$$first_body" '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 1"}],"max_tokens":16}' && \
-		run_completion "second" "$$second_headers" "$$second_body" '{"model":"glm-5.1","messages":[{"role":"user","content":"Коротко ответь: routing smoke 2"}],"max_tokens":16}' && \
+		routing_model="$${ROUTING_SMOKE_MODEL:-glm-5.2}" && \
+		run_completion "first" "$$first_headers" "$$first_body" "{\"model\":\"$$routing_model\",\"messages\":[{\"role\":\"user\",\"content\":\"Коротко ответь: routing smoke 1\"}],\"max_tokens\":16}" && \
+		run_completion "second" "$$second_headers" "$$second_body" "{\"model\":\"$$routing_model\",\"messages\":[{\"role\":\"user\",\"content\":\"Коротко ответь: routing smoke 2\"}],\"max_tokens\":16}" && \
 		first_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$first_headers") && \
 		second_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$second_headers") && \
 		if [ -z "$$first_model" ] || [ -z "$$second_model" ]; then echo "❌ x-litellm-model-id header not found"; exit 1; fi && \
@@ -250,7 +252,7 @@ routing-smoke:
 metrics:
 	@echo "📈 LiteLLM /metrics"
 	@tmp=$$(mktemp) && \
-		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		curl -L -sf http://localhost:4000/metrics > "$$tmp" && \
 		sed -n '1,120p' "$$tmp"; \
 		status=$$?; rm -f "$$tmp"; exit $$status
 
@@ -259,9 +261,13 @@ monitor-smoke:
 	@$(MAKE) health
 	@$(MAKE) guardrails-list
 	@tmp=$$(mktemp) && \
-		curl -sf http://localhost:4000/metrics > "$$tmp" && \
+		if ! curl -L -sf http://localhost:4000/metrics > "$$tmp"; then echo "❌ LiteLLM metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
 		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \
 		if grep -q "ru_pii_guardrail_" "$$tmp"; then echo "✅ PII guardrail metrics exposed"; else echo "⚠️  PII guardrail metrics not emitted yet; run a PII request and retry"; fi; \
+		rm -f "$$tmp"
+	@tmp=$$(mktemp) && \
+		if ! curl -sf http://localhost:5001/metrics > "$$tmp"; then echo "❌ Presidio Analyzer metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
+		if grep -q "ru_presidio_analyzer_" "$$tmp"; then echo "✅ Presidio Analyzer metrics exposed"; else echo "❌ Presidio Analyzer metrics not found"; rm -f "$$tmp"; exit 1; fi; \
 		rm -f "$$tmp"
 
 # === LiteLLM update ===

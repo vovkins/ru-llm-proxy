@@ -12,7 +12,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
-CHAT_MODEL="${CHAT_MODEL:-glm-5.1}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-180}"
 SMOKE_RUN_ID="${SMOKE_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"

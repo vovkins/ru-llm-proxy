@@ -4,10 +4,10 @@ set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ENV_FILE="${ENV_FILE:-.env}"
-CHAT_MODEL="${CHAT_MODEL:-glm-5.1}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
 RESPONSES_MODEL="${RESPONSES_MODEL:-}"
 MESSAGES_MODEL="${MESSAGES_MODEL:-}"
-DENIED_MODEL="${DENIED_MODEL:-glm-5.1}"
+DENIED_MODEL="${DENIED_MODEL:-glm-5.2}"
 REQUIRE_ALL_PROTOCOLS="${REQUIRE_ALL_PROTOCOLS:-0}"
 
 if [ -f "$ENV_FILE" ]; then
@@ -227,13 +227,13 @@ denied_result=$(http_post "/v1/chat/completions" "$openai_key" '{"model":"'"$DEN
 denied_status=$(printf '%s\n' "$denied_result" | sed -n '1p')
 expect_rejected "restricted key on disallowed model" "$denied_status"
 
-if has_configured_secret ZAI_API_KEY; then
+if has_configured_secret ZAI_API_KEY && has_configured_secret ZAI_API_KEY_2; then
     chat_result=$(http_post "/v1/chat/completions" "$standard_key" "$chat_payload")
     chat_status=$(printf '%s\n' "$chat_result" | sed -n '1p')
     chat_body=$(printf '%s\n' "$chat_result" | sed '1d')
     expect_success "/v1/chat/completions with virtual key" "$chat_status" "$chat_body"
 else
-    missing_provider_key "/v1/chat/completions allowed-call" "ZAI_API_KEY"
+    missing_provider_key "/v1/chat/completions allowed-call" "ZAI_API_KEY and ZAI_API_KEY_2"
 fi
 
 if has_configured_secret OPENAI_API_KEY; then

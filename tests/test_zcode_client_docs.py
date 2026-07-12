@@ -31,10 +31,10 @@ def test_zcode_doc_documents_api_key_mode_contract():
         "https://<proxy-host>/v1",
         "RU_LLM_PROXY_TOKEN",
         "LiteLLM virtual key",
-        "zai-glm-5.1",
+        "glm-5.2",
         "glm-5.1",
-        "CHAT_MODEL=zai-glm-5.1 make client-auth-smoke",
-        "CHAT_MODEL=zai-glm-5.1 make guardrails-smoke",
+        "CHAT_MODEL=glm-5.2 make client-auth-smoke",
+        "CHAT_MODEL=glm-5.2 make guardrails-smoke",
     ):
         assert required in doc
 
@@ -61,11 +61,11 @@ def test_zcode_doc_separates_client_and_upstream_credentials():
         assert pattern not in doc
 
 
-def test_zcode_doc_does_not_claim_account_login_or_glm_52_support():
+def test_zcode_doc_documents_account_login_boundary_and_glm_52_support():
     doc = read_repo_file("docs/clients/zcode.md")
 
     assert "Continue with Z.ai" in doc
     assert "not covered" in doc.lower()
-    assert "Do not type `glm-5.2` into ZCode until the proxy exposes a matching alias" in doc
-    assert "live-validated" in doc
+    assert "glm-5.2" in doc
+    assert "ZAI_API_KEY_2" in doc
     assert "litellm-config.yaml" in doc

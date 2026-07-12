@@ -36,7 +36,7 @@ LiteLLM Proxy добавляет в request metadata хэш клиентског
 
 Поток выбора:
 
-1. Клиент вызывает публичную модель, например `glm-5.1`.
+1. Клиент вызывает публичную модель, например `glm-5.2`.
 2. LiteLLM получает список healthy deployments для этой model group.
 3. Pre-call check ищет в Redis deployment id, ранее связанный с `user_api_key_hash`.
 4. Если deployment найден и сейчас healthy, LiteLLM выбирает его.
@@ -48,54 +48,68 @@ LiteLLM Proxy добавляет в request metadata хэш клиентског
 
 Каждый deployment должен иметь стабильный `model_info.id`. Этот id попадает в affinity mapping, поэтому его нельзя менять без причины.
 
-Текущий основной deployment:
+Текущий дефолтный model group:
 
 ```yaml
 model_list:
-  - model_name: glm-5.1
+  - model_name: glm-5.2
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.2
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-primary
-      base_model: glm-5.1
+      id: glm-5-2-zai-coding-primary
+      base_model: glm-5.2
+
+  - model_name: glm-5.2
+    litellm_params:
+      model: openai/glm-5.2
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY_2
+    model_info:
+      id: glm-5-2-zai-coding-secondary
+      base_model: glm-5.2
 ```
 
 `model_name` — публичное имя, которое видит клиент. Несколько записей с одинаковым `model_name` образуют одну model group. `model_info.id` — внутренний стабильный deployment id.
 
-## Добавление второго аккаунта Z.AI
+`glm-5.1` остаётся дополнительным публичным алиасом для инсталляций, которым нужна предыдущая версия модели. Smoke-проверки и quick start по умолчанию используют `glm-5.2`.
 
-`ZAI_API_KEY_2` в `.env` сам по себе не меняет runtime routing. Это только место для секрета второго аккаунта. Чтобы второй аккаунт реально участвовал в routing, добавьте второй deployment в `litellm-config.yaml`.
+## Два аккаунта Z.AI
 
-1. Заполните `ZAI_API_KEY_2` в `.env`.
-2. Добавьте второй deployment в `litellm-config.yaml` с тем же `model_name`, но другим `model_info.id`.
-3. Перезапустите LiteLLM: `make restart`.
+Дефолтный runtime profile ожидает два Z.AI Coding Plan ключа:
+
+```env
+ZAI_API_KEY=...
+ZAI_API_KEY_2=...
+```
+
+Обе переменные участвуют в `glm-5.2` model group сразу после запуска. Если оператор меняет состав deployments, правило остаётся тем же: один публичный `model_name`, разные upstream credentials и разные стабильные `model_info.id`.
 
 Пример:
 
 ```yaml
 model_list:
-  - model_name: glm-5.1
+  - model_name: glm-5.2
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.2
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-primary
-      base_model: glm-5.1
+      id: glm-5-2-zai-coding-primary
+      base_model: glm-5.2
 
-  - model_name: glm-5.1
+  - model_name: glm-5.2
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.2
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: z-ai-glm-5-1-secondary
-      base_model: glm-5.1
+      id: glm-5-2-zai-coding-secondary
+      base_model: glm-5.2
 ```
 
-Для другого провайдера схема такая же: оставьте тот же `model_name`, задайте provider-specific `litellm_params` и уникальный стабильный `model_info.id`.
+Для другого провайдера или внутреннего deployment схема такая же: оставьте тот же публичный `model_name`, задайте provider-specific `litellm_params` и уникальный стабильный `model_info.id`.
 
 ## Проверка
 
@@ -117,7 +131,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 
 После этого `make routing-smoke` будет использовать virtual key вместо master key.
 
-Если настроен только один deployment, smoke-тест тоже должен проходить, но он доказывает только работоспособность routing path и наличие `x-litellm-model-id`. Распределение и закрепление между несколькими аккаунтами можно проверить только после добавления минимум двух deployments в одну model group.
+Если оператор временно оставил только один deployment, smoke-тест тоже должен проходить, но он доказывает только работоспособность routing path и наличие `x-litellm-model-id`. Дефолтная конфигурация проекта рассчитана на два deployments, чтобы sticky affinity можно было проверять на реальном multi-deployment model group.
 
 ## Наблюдаемость
 
