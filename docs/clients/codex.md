@@ -40,7 +40,7 @@ Use this mode when the proxy should pay with its server-side `OPENAI_API_KEY`. A
 
 ```toml
 model_provider = "ru_llm_proxy"
-model = "openai-gpt-5.4-mini"
+model = "openai-example-standard"
 
 [model_providers.ru_llm_proxy]
 name = "ru-llm-proxy"
@@ -52,10 +52,10 @@ wire_api = "responses"
 Use a higher-capability model when the issued key allows it:
 
 ```toml
-model = "openai-gpt-5.5"
+model = "openai-example-premium"
 ```
 
-The `openai-gpt-*` names here are proxy-facing aliases. Verify the raw OpenAI model ID behind each alias against the current LiteLLM image and your provider account before using it in production.
+OpenAI aliases are optional provider examples now. Add them from `examples/litellm-config.optional-providers.yaml` only after validating raw model IDs against the target LiteLLM image and provider subscription.
 
 ## ChatGPT Subscription Passthrough
 
@@ -73,7 +73,7 @@ Then configure a provider that uses OpenAI authentication and sends the LiteLLM 
 
 ```toml
 model_provider = "ru_llm_proxy_chatgpt"
-model = "openai-gpt-5.4-mini"
+model = "openai-example-standard"
 
 [model_providers.ru_llm_proxy_chatgpt]
 name = "ru-llm-proxy via ChatGPT auth"
@@ -112,7 +112,7 @@ make client-auth-smoke
 The Codex-specific part checks `POST /v1/responses` only when `OPENAI_API_KEY` is configured and `RESPONSES_MODEL` is set to a live-validated proxy alias:
 
 ```bash
-RESPONSES_MODEL=openai-gpt-5.4-mini make client-auth-smoke
+RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
 ```
 
 ## References

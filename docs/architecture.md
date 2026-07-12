@@ -161,14 +161,14 @@ LiteLLM использует `user_api_key_hash` из request metadata и сох
 
 ```yaml
 model_list:
-  - model_name: glm-5.1
+  - model_name: glm-5.2
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.2
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-primary
-      base_model: glm-5.1
+      id: glm-5-2-zai-coding-primary
+      base_model: glm-5.2
 ```
 
 Подробности, пример второго аккаунта и smoke-проверка описаны в [routing.md](routing.md).

@@ -8,7 +8,7 @@ LLM-прокси для командной работы с внешними LLM 
 
 ✅ **Готово в текущем `main`**:
 
-- LiteLLM gateway с server-funded upstream keys (`ZAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) и client access через LiteLLM virtual keys.
+- LiteLLM gateway с server-funded Z.AI Coding Plan upstream keys (`ZAI_API_KEY`, `ZAI_API_KEY_2`) и client access через LiteLLM virtual keys.
 - Русскоязычный PII guardrail: regex recognizers, DeepPavlov NER, reversible Redis mapping, coverage для Chat Completions, базовых Anthropic Messages `content` string/text blocks и Responses API text payloads (`instructions`, `input`, message-like items, tool-call arguments, tool-output text и text blocks).
 - `PII_GUARDRAIL_MODE=mask|block`: reversible masking по умолчанию или безопасный `422` до provider call.
 - `DICTIONARY_SUBSTITUTIONS_ENABLED=true`: обратимые business dictionary substitutions до Analyzer; default seed содержит 10 крупных российских банков в `litellm_guardrails/dictionary-substitutions.default.json`.
@@ -77,7 +77,7 @@ DeepPavlov NER соблюдает параметры Analyzer API: если в �
 ```text
 ┌──────────┐     ┌──────────────┐     ┌────────────────────┐     ┌──────────────┐
 │  Клиент  │────▶│ LiteLLM Proxy│────▶│  PII Guardrail     │────▶│ LLM Provider │
-│          │     │  порт 4000   │     │ pre-egress + PII   │     │   glm-5.1    │
+│          │     │  порт 4000   │     │ pre-egress + PII   │     │   glm-5.2    │
 │          │◀────│              │◀────│                    │◀────│              │
 └──────────┘     └──────┬───────┘     └─────────┬──────────┘     └──────────────┘
                         │                       │
@@ -148,7 +148,7 @@ Regex recognizers отвечают за структурированные ро�
 | Docker Compose | v2 | v2 |
 | RAM | 2 GB | 4 GB+ |
 | Диск | 10 GB | 20 GB+ |
-| Provider key | `ZAI_API_KEY` | `ZAI_API_KEY`; опционально `ZAI_API_KEY_2` как секрет для второго deployment, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
+| Provider key | `ZAI_API_KEY`, `ZAI_API_KEY_2` | Два Z.AI Coding Plan ключа для дефолтного пула `glm-5.2`; OpenAI/Anthropic добавляются отдельно как optional provider examples |
 
 Первая сборка может занять заметное время: Dockerfile скачивает spaCy model `ru_core_news_sm` и DeepPavlov archive `ner_rus_bert_torch_new.tar.gz`.
 
@@ -161,11 +161,9 @@ cd ru-llm-proxy
 
 # 2. Настроить
 make setup
-# Заполните нужные upstream API-ключи в .env:
+# Заполните upstream ключи для дефолтного пула glm-5.2 в .env:
 #   ZAI_API_KEY=your-zai-key
-#   ZAI_API_KEY_2=optional-second-zai-account  # сам по себе не включает второй deployment
-#   OPENAI_API_KEY=your-openai-key
-#   ANTHROPIC_API_KEY=your-anthropic-key
+#   ZAI_API_KEY_2=your-second-zai-key
 
 # 3. Собрать и запустить
 make build
@@ -183,9 +181,10 @@ make health
 
 ```env
 ZAI_API_KEY=your-zai-key
-ZAI_API_KEY_2=optional-second-zai-key  # только секрет; второй deployment добавляется в litellm-config.yaml
-OPENAI_API_KEY=your-openai-key
-ANTHROPIC_API_KEY=your-anthropic-key
+ZAI_API_KEY_2=your-second-zai-key
+# Optional provider examples only; not used by the default litellm-config.yaml:
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
 LITELLM_MASTER_KEY=sk-ru-...    # автогенерируется через make setup
 LITELLM_SALT_KEY=...            # автогенерируется через make setup
 LITELLM_ROUTING_TEST_KEY=...     # опциональный virtual key для make routing-smoke
@@ -423,40 +422,33 @@ docker compose up -d --force-recreate --no-deps litellm
 
 ```yaml
 model_list:
+  - model_name: glm-5.2
+    litellm_params:
+      model: openai/glm-5.2
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: glm-5-2-zai-coding-primary
+      base_model: glm-5.2
+      access_groups: ["zai", "standard"]
+  - model_name: glm-5.2
+    litellm_params:
+      model: openai/glm-5.2
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY_2
+    model_info:
+      id: glm-5-2-zai-coding-secondary
+      base_model: glm-5.2
+      access_groups: ["zai", "standard"]
   - model_name: glm-5.1
     litellm_params:
       model: openai/glm-5.1
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: z-ai-glm-5-1-primary
+      id: glm-5-1-zai-coding-primary
       base_model: glm-5.1
       access_groups: ["zai", "standard"]
-  - model_name: zai-glm-5.1
-    litellm_params:
-      model: openai/glm-5.1
-      api_base: https://api.z.ai/api/coding/paas/v4
-      api_key: os.environ/ZAI_API_KEY
-    model_info:
-      id: z-ai-glm-5-1-alias
-      base_model: glm-5.1
-      access_groups: ["zai", "standard"]
-  - model_name: openai-gpt-5.4-mini
-    litellm_params:
-      model: openai/gpt-5.4-mini
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      id: openai-gpt-5-4-mini-primary
-      base_model: gpt-5.4-mini
-      access_groups: ["openai", "standard"]
-  - model_name: claude-sonnet-4.6
-    litellm_params:
-      model: anthropic/claude-sonnet-4-6
-      api_key: os.environ/ANTHROPIC_API_KEY
-    model_info:
-      id: anthropic-claude-sonnet-4-6-primary
-      base_model: claude-sonnet-4-6
-      access_groups: ["anthropic", "standard"]
 
 router_settings:
   redis_url: os.environ/REDIS_URL
@@ -519,7 +511,7 @@ litellm_settings:
   drop_params: true
 ```
 
-OpenAI/Anthropic aliases in this repository are proxy-facing examples. Before production, verify the raw provider model IDs against the current LiteLLM image and your provider account, then update `litellm_params.model` if needed. Default smokes do not call those aliases until `RESPONSES_MODEL` / `MESSAGES_MODEL` are explicitly set.
+OpenAI/Anthropic aliases are no longer active in the default runtime config. Optional examples live in [examples/litellm-config.optional-providers.yaml](examples/litellm-config.optional-providers.yaml). Before production, verify raw provider model IDs against the current LiteLLM image and your provider subscription, then copy only the needed entries into `litellm-config.yaml`.
 
 ### Добавление другого провайдера
 
@@ -527,9 +519,9 @@ OpenAI/Anthropic aliases in this repository are proxy-facing examples. Before pr
 
 ```yaml
 model_list:
-  - model_name: my-openai-model
+  - model_name: openai-example-standard
     litellm_params:
-      model: openai/gpt-5.4-mini
+      model: openai/<validated-openai-standard-model-id>
       api_key: os.environ/OPENAI_API_KEY
 ```
 
@@ -543,9 +535,7 @@ make restart
 
 Включён LiteLLM `deployment_affinity`: запросы с одним и тем же клиентским LiteLLM key закрепляются за одним healthy deployment внутри model group. Это помогает использовать provider-side кэширование входных токенов, когда для одной модели настроено несколько аккаунтов или провайдеров.
 
-Для корректной работы у каждого deployment должен быть стабильный `model_info.id`. Если добавляете второй аккаунт Z.AI, используйте тот же `model_name: glm-5.1`, другой `api_key` и новый `model_info.id`.
-
-`ZAI_API_KEY_2` в `.env` только хранит секрет второго аккаунта. Пока в `litellm-config.yaml` нет второй записи `model_list` с `api_key: os.environ/ZAI_API_KEY_2`, default runtime остаётся single-deployment.
+Для корректной работы у каждого deployment должен быть стабильный `model_info.id`. Дефолтный `glm-5.2` уже настроен как две записи с одним `model_name`, но разными `api_key` (`ZAI_API_KEY`, `ZAI_API_KEY_2`) и разными `model_info.id`.
 
 Проверка:
 
@@ -660,7 +650,7 @@ curl http://localhost:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "messages": [{"role": "user", "content": "Привет!"}]
   }'
 ```
@@ -672,7 +662,7 @@ curl http://localhost:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -d '{
-    "model": "glm-5.1",
+    "model": "glm-5.2",
     "messages": [
       {
         "role": "user",
@@ -752,6 +742,11 @@ Prometheus включён через `litellm_settings.callbacks: ["prometheus"]
 ```text
 http://localhost:4000/metrics
 ```
+
+В дефолтной конфигурации `/metrics` открыт без LiteLLM API key. В production
+закрывайте доступ сетевыми правилами и отдавайте endpoint только Prometheus или
+другому доверенному сборщику метрик. Метрики могут содержать служебные labels
+вроде имени модели, alias виртуального ключа и hashed key.
 
 Быстрая проверка:
 
@@ -835,10 +830,10 @@ make test-flow        # deterministic проверка без внешнего L
 make test-routing-diagnostics
 make test-egress-security # Docker mock-provider egress-security gate
 make test-observability-gates # lightweight observability/audit gate checks
-make test-e2e         # live smoke test; нужны make up и ZAI_API_KEY
+make test-e2e         # live smoke test; нужны make up, ZAI_API_KEY и ZAI_API_KEY_2
 make routing-smoke    # live sticky routing smoke; нужны make up и provider key
 make client-auth-smoke # live проверка virtual keys и базовых /v1 protocol smokes
-RESPONSES_MODEL=openai-gpt-5.4-mini MESSAGES_MODEL=claude-sonnet-4.6 REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke
+RESPONSES_MODEL=<validated-responses-alias> MESSAGES_MODEL=<validated-messages-alias> REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke
 # fail, если нет provider key или live-validated model alias для любого /v1 протокола
 ```
 

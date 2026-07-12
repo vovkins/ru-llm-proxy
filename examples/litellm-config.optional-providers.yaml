@@ -1,0 +1,40 @@
+# Optional provider examples for installations that add non-GLM upstreams.
+# Copy the relevant entries into litellm-config.yaml only after validating
+# model identifiers against your LiteLLM image and provider subscription.
+
+model_list:
+  - model_name: openai-example-premium
+    litellm_params:
+      model: openai/<validated-openai-model-id>
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      id: openai-example-premium-primary
+      base_model: <validated-openai-model-id>
+      access_groups: ["openai", "premium"]
+
+  - model_name: openai-example-standard
+    litellm_params:
+      model: openai/<validated-openai-standard-model-id>
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      id: openai-example-standard-primary
+      base_model: <validated-openai-standard-model-id>
+      access_groups: ["openai", "standard"]
+
+  - model_name: anthropic-example-standard
+    litellm_params:
+      model: anthropic/<validated-anthropic-model-id>
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      id: anthropic-example-standard-primary
+      base_model: <validated-anthropic-model-id>
+      access_groups: ["anthropic", "standard"]
+
+  - model_name: anthropic-example-premium
+    litellm_params:
+      model: anthropic/<validated-anthropic-premium-model-id>
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      id: anthropic-example-premium-primary
+      base_model: <validated-anthropic-premium-model-id>
+      access_groups: ["anthropic", "premium"]

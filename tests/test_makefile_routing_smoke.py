@@ -24,6 +24,10 @@ class RoutingSmokeMakefileTest(unittest.TestCase):
         self.assertIn("http://localhost:4000/v1/chat/completions", self.recipe)
         self.assertNotIn("http://localhost:4000/chat/completions", self.recipe)
 
+    def test_default_routing_model_is_glm_52(self):
+        self.assertIn("ROUTING_SMOKE_MODEL:-glm-5.2", self.recipe)
+        self.assertIn('\\"model\\":\\"$$routing_model\\"', self.recipe)
+
     def test_failure_output_does_not_print_proxy_token(self):
         self.assertIn("Authorization: Bearer $$token", self.recipe)
         self.assertNotIn("echo \"$$token", self.recipe)

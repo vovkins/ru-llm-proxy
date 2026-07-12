@@ -15,12 +15,12 @@ Use a LiteLLM virtual key as the client token:
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-The real `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ZAI_API_KEY` stay only on the proxy host.
+The real `ZAI_API_KEY`, `ZAI_API_KEY_2`, optional provider keys, and `LITELLM_MASTER_KEY` stay only on the proxy host.
 
 Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
 
 ```bash
-scripts/create_virtual_key.sh --alias kilo-code-local --models standard,zai,openai --duration 30d
+scripts/create_virtual_key.sh --alias kilo-code-local --models standard,zai --duration 30d
 ```
 
 ## VS Code Extension
@@ -30,9 +30,9 @@ In Kilo Code settings:
 - API Provider: `OpenAI Compatible`
 - Base URL: `http://localhost:4000/v1`
 - API Key: the LiteLLM virtual key, or an env-backed secret if your setup supports it
-- Model: `zai-glm-5.1`, `openai-gpt-5.4-mini`, or another allowed proxy alias
+- Model: `glm-5.2`, `glm-5.1`, or another allowed proxy alias
 
-Verify or replace the raw OpenAI model IDs behind `openai-gpt-*` aliases before production use. They are proxy-facing examples until live-validated with your provider account and LiteLLM image.
+OpenAI/Anthropic aliases are optional provider examples now. Add them from `examples/litellm-config.optional-providers.yaml` only after validating model IDs against the target LiteLLM image and provider subscription.
 
 ## CLI / JSON Configuration
 
@@ -41,7 +41,7 @@ Example config:
 ```jsonc
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "model": "openai-compatible/zai-glm-5.1",
+  "model": "openai-compatible/glm-5.2",
   "provider": {
     "openai-compatible": {
       "options": {
@@ -50,20 +50,16 @@ Example config:
         "timeout": 300000
       },
       "models": {
-        "zai-glm-5.1": {
-          "name": "Z.AI GLM-5.1",
+        "glm-5.2": {
+          "name": "GLM-5.2",
           "tool_call": true,
           "limit": {
             "context": 128000,
             "output": 8192
           }
         },
-        "openai-gpt-5.4-mini": {
-          "name": "OpenAI GPT-5.4 mini",
-          "tool_call": true
-        },
-        "openai-gpt-5.5": {
-          "name": "OpenAI GPT-5.5",
+        "glm-5.1": {
+          "name": "GLM-5.1",
           "tool_call": true
         }
       }

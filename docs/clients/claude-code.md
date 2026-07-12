@@ -42,16 +42,16 @@ Use this mode when the proxy should pay with its server-side `ANTHROPIC_API_KEY`
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
 export ANTHROPIC_AUTH_TOKEN="$RU_LLM_PROXY_TOKEN"
-export ANTHROPIC_MODEL="claude-sonnet-4.6"
+export ANTHROPIC_MODEL="anthropic-example-standard"
 ```
 
 Use the premium model only when the key allows it:
 
 ```bash
-export ANTHROPIC_MODEL="claude-opus-4.8"
+export ANTHROPIC_MODEL="anthropic-example-premium"
 ```
 
-The `claude-*` names here are proxy-facing aliases. Verify the raw Anthropic model ID behind each alias against the current LiteLLM image and your provider account before using it in production.
+Anthropic aliases are optional provider examples now. Add them from `examples/litellm-config.optional-providers.yaml` only after validating raw model IDs against the target LiteLLM image and provider subscription.
 
 Claude Code sends the virtual key to the proxy. The proxy then uses its server-side `ANTHROPIC_API_KEY` to call Anthropic. Treat this as a setup target until the dedicated Claude Code gateway smoke covers `?beta=true`, SSE streaming, and `anthropic-*` header forwarding.
 
@@ -68,7 +68,7 @@ curl "$ANTHROPIC_BASE_URL/v1/messages" \
   -H "Content-Type: application/json" \
   -H "x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "x-api-key: $ANTHROPIC_BYOK_API_KEY" \
-  -d '{"model":"claude-sonnet-4.6","max_tokens":32,"messages":[{"role":"user","content":"Reply with ok."}]}'
+  -d '{"model":"anthropic-example-standard","max_tokens":32,"messages":[{"role":"user","content":"Reply with ok."}]}'
 ```
 
 ## Claude Subscription Passthrough
@@ -81,7 +81,7 @@ Do not set `ANTHROPIC_AUTH_TOKEN` to the proxy key in this mode. Instead, send t
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
-export ANTHROPIC_MODEL="claude-sonnet-4.6"
+export ANTHROPIC_MODEL="anthropic-example-standard"
 export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
 
 claude
@@ -125,7 +125,7 @@ GET /v1/models?limit=1000
 `make client-auth-smoke` is a basic Anthropic Messages auth smoke. It sends a non-streaming `POST /v1/messages` with a LiteLLM virtual key only when `ANTHROPIC_API_KEY` is configured and `MESSAGES_MODEL` is set to a live-validated proxy alias:
 
 ```bash
-MESSAGES_MODEL=claude-sonnet-4.6 make client-auth-smoke
+MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
 ```
 
 It does not validate Claude Code's `?beta=true` query, `anthropic-*` header forwarding, SSE streaming, token counting, or model discovery. Add a separate Claude Code gateway smoke before marking this surface fully validated.

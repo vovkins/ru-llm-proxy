@@ -8,6 +8,7 @@ set -euo pipefail
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ANALYZER_URL="${ANALYZER_URL:-http://localhost:5001}"
 API_KEY="${RU_LLM_PROXY_TOKEN:-}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
 
 if ! command -v jq &>/dev/null; then
     echo "❌ jq is required: apt install jq"
@@ -136,7 +137,7 @@ TOTAL=$((TOTAL + 1))
 basic_response=$(curl -sf "$BASE_URL/v1/chat/completions" \
     -H "Authorization: Bearer $API_KEY" \
     -H "Content-Type: application/json" \
-    -d '{"model":"glm-5.1","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
+    -d '{"model":"'"$CHAT_MODEL"'","messages":[{"role":"user","content":"Say hello in Russian, one sentence only"}],"max_tokens":30}' 2>/dev/null || echo "{}")
 
 basic_content=$(echo "$basic_response" | extract_message_text 2>/dev/null || true)
 if [ -n "$basic_content" ]; then
@@ -153,7 +154,7 @@ echo ""
 # --- 4. LiteLLM with PII (live smoke) ---
 echo "📋 4. LiteLLM with PII (live smoke)"
 
-pii_request='{"model":"glm-5.1","messages":[{"role":"user","content":"Перепиши: Клиент Иванов Иван, телефон +79031234567, ИНН 7707083893, проживает г. Москва, ул. Тверская, д. 1. Перепиши это как краткую справку."}],"max_tokens":100}'
+pii_request='{"model":"'"$CHAT_MODEL"'","messages":[{"role":"user","content":"Перепиши: Клиент Иванов Иван, телефон +79031234567, ИНН 7707083893, проживает г. Москва, ул. Тверская, д. 1. Перепиши это как краткую справку."}],"max_tokens":100}'
 
 TOTAL=$((TOTAL + 1))
 pii_response=$(curl -sf "$BASE_URL/v1/chat/completions" \
