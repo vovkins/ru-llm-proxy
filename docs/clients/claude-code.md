@@ -1,45 +1,45 @@
 # Claude Code
 
-Этот гайд описывает Claude Code как целевой gateway-клиент для ru-llm-proxy. Дефолтная конфигурация репозитория проверяет только basic Anthropic Messages auth path; полноценный Claude Code gateway пока не считается полностью валидированным.
+Этот гайд описывает Claude Code как целевой клиентский шлюз для ru-llm-proxy. Конфигурация репозитория по умолчанию проверяет только базовый путь авторизации Anthropic Messages; полноценный шлюз Claude Code пока не считается полностью проверенным.
 
 Что сейчас валидируется:
 
-- Basic Anthropic Messages clients, которые умеют задавать `ANTHROPIC_BASE_URL` и отправлять LiteLLM virtual key.
-- Claude Code CLI setup как целевой путь, для которого еще нужна отдельная gateway validation.
+- базовые клиенты Anthropic Messages, которые умеют задавать `ANTHROPIC_BASE_URL` и отправлять пользовательский ключ LiteLLM.
+- настройка Claude Code CLI как целевой путь, для которого еще нужна отдельная проверка шлюза.
 
 Пока не полностью проверено:
 
-- полный Claude Code gateway contract `POST /v1/messages?beta=true`;
-- streaming SSE behavior через proxy;
-- forwarding `anthropic-version` и `anthropic-beta` в дефолтном config;
-- optional token counting и model discovery endpoints.
+- полный контракт шлюза Claude Code `POST /v1/messages?beta=true`;
+- поведение потоковых SSE-ответов через прокси;
+- пересылка `anthropic-version` и `anthropic-beta` в конфигурации по умолчанию;
+- дополнительные маршруты подсчёта токенов и обнаружения моделей.
 
 Что не входит в этот гайд:
 
-- размещение общих Claude.ai или Claude Code login files на proxy как upstream credentials;
-- Claude Desktop или cloud features, которые не используют те же gateway settings.
+- размещение общих файлов входа Claude.ai или Claude Code на прокси как учётных данных внешнего провайдера;
+- Claude Desktop или облачные функции, которые не используют те же настройки шлюза.
 
 ## Ключи доступа
 
-Используйте LiteLLM virtual key как клиентский токен:
+Используйте пользовательский ключ LiteLLM как клиентский токен:
 
 ```bash
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-Настоящий `ANTHROPIC_API_KEY` в server-funded режиме остается только на proxy host. Не кладите `ANTHROPIC_API_KEY` или `LITELLM_MASTER_KEY` в локальную конфигурацию Claude Code.
+Настоящий `ANTHROPIC_API_KEY` в режиме, где провайдера оплачивает и вызывает прокси, остается только на хосте прокси. Не кладите `ANTHROPIC_API_KEY` или `LITELLM_MASTER_KEY` в локальную конфигурацию Claude Code.
 
 Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-Обычные пользовательские ключи создавайте в LiteLLM Admin UI. CLI helper нужен только как дополнительный DevOps/CI/bootstrap путь с proxy host:
+Обычные пользовательские ключи создавайте в административном интерфейсе LiteLLM. Вспомогательный скрипт командной строки нужен только как дополнительный путь для DevOps, CI и первичной настройки с хоста прокси:
 
 ```bash
 scripts/create_virtual_key.sh --alias claude-code-local --models anthropic,standard --duration 30d
 ```
 
-## Server-funded настройка токена
+## Настройка с оплатой провайдера на стороне прокси
 
-Используйте этот режим, когда прокси должен платить серверным `ANTHROPIC_API_KEY`. Направьте Claude Code на proxy для basic Anthropic Messages path:
+Используйте этот режим, когда прокси должен вызывать провайдера через серверный `ANTHROPIC_API_KEY`. Направьте Claude Code на прокси для базового пути Anthropic Messages:
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
@@ -47,27 +47,27 @@ export ANTHROPIC_AUTH_TOKEN="$RU_LLM_PROXY_TOKEN"
 export ANTHROPIC_MODEL="anthropic-example-standard"
 ```
 
-Premium-модель используйте только если выданный ключ разрешает такой alias:
+Модель более высокого класса используйте только если выданный ключ разрешает такое публичное имя:
 
 ```bash
 export ANTHROPIC_MODEL="anthropic-example-premium"
 ```
 
-Anthropic aliases сейчас являются optional provider examples. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки raw model IDs на целевом LiteLLM image и конкретной подписке.
+Имена моделей Anthropic сейчас являются примерами дополнительных провайдеров. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки исходных идентификаторов моделей на целевом образе LiteLLM и конкретной подписке.
 
-Claude Code отправляет virtual key в proxy. Затем proxy использует серверный
-`ANTHROPIC_API_KEY` для вызова Anthropic. Считайте это setup target до тех пор,
-пока отдельный Claude Code gateway smoke не покроет `?beta=true`, SSE streaming
-и forwarding `anthropic-*` headers.
+Claude Code отправляет пользовательский ключ в прокси. Затем прокси использует серверный
+`ANTHROPIC_API_KEY` для вызова Anthropic. Считайте это проверяемым целевым сценарием до тех пор,
+пока отдельная быстрая проверка шлюза Claude Code не покроет `?beta=true`, потоковую передачу SSE
+и пересылку заголовков `anthropic-*`.
 
-## Anthropic API-Key BYOK
+## Сквозная передача клиентского Anthropic API-ключа
 
-Используйте этот режим, когда клиент приносит собственный Anthropic API key, но
-по-прежнему аутентифицируется в proxy через LiteLLM virtual key. Это opt-in
-deployment mode; он не включён в дефолтном config репозитория.
+Используйте этот режим, когда клиент приносит собственный Anthropic API-ключ, но
+по-прежнему аутентифицируется в прокси через пользовательский ключ LiteLLM. Это отдельный
+режим развёртывания; он не включён в конфигурации репозитория по умолчанию.
 
-LiteLLM BYOK forwarding рассчитан на provider-specific headers вроде
-`x-api-key` и `api-key`. Proxy token остаётся отдельным:
+Сквозная передача ключа через LiteLLM рассчитана на провайдерские заголовки вроде
+`x-api-key` и `api-key`. Токен прокси остаётся отдельным:
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
@@ -79,20 +79,20 @@ curl "$ANTHROPIC_BASE_URL/v1/messages" \
   -d '{"model":"anthropic-example-standard","max_tokens":32,"messages":[{"role":"user","content":"Reply with ok."}]}'
 ```
 
-## Claude subscription passthrough
+## Сквозная передача подписки Claude
 
 Используйте этот режим, когда Claude Code должен работать с локальной Claude
-subscription пользователя, но всё ещё идти через proxy для guardrails, tracking и
-proxy access control.
+подпиской пользователя, но всё ещё идти через прокси для защитных слоёв, учёта и
+контроля доступа на прокси.
 
-Это opt-in validation target, а не production-ready default. Claude subscription
-auth обычно опирается на provider `Authorization`; стандартный LiteLLM path не
-считается способным гарантированно форвардить этот header upstream. Дефолтный
-config репозитория не включает header forwarding.
+Это отдельный сценарий для проверки, а не готовый промышленный режим по умолчанию. Авторизация подписки Claude
+обычно опирается на провайдерский `Authorization`; стандартный путь LiteLLM не
+считается способным гарантированно пересылать этот заголовок провайдеру. Конфигурация
+репозитория по умолчанию не включает пересылку заголовков.
 
-Не задавайте `ANTHROPIC_AUTH_TOKEN` равным proxy key в этом режиме. Вместо этого
-передавайте proxy key через `ANTHROPIC_CUSTOM_HEADERS`, а Claude Code пусть
-управляет Claude account auth локально:
+Не задавайте `ANTHROPIC_AUTH_TOKEN` равным ключу прокси в этом режиме. Вместо этого
+передавайте ключ прокси через `ANTHROPIC_CUSTOM_HEADERS`, а Claude Code пусть
+управляет авторизацией аккаунта Claude локально:
 
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:4000"
@@ -102,19 +102,19 @@ export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer $RU_LLM_PROXY_TOKEN"
 claude
 ```
 
-Если Claude Code попросит login, выберите Claude account subscription flow. Proxy
+Если Claude Code попросит войти, выберите поток входа через подписку аккаунта Claude. Прокси
 аутентифицирует запрос через `x-litellm-api-key`; Claude Code отдельно отправляет
-Claude OAuth provider auth. Если live validation покажет, что обычный LiteLLM
-`/v1/messages` route удаляет нужный provider `Authorization` header, этому режиму
-нужен pass-through route, sidecar или custom adapter перед production-использованием.
+провайдерскую OAuth-авторизацию Claude. Если проверка на живом сервисе покажет, что обычный маршрут LiteLLM
+`/v1/messages` удаляет нужный провайдерский заголовок `Authorization`, этому режиму
+нужен сквозной маршрут, боковой контейнер или отдельный адаптер перед промышленным использованием.
 
-Не копируйте общий Claude credentials file на proxy для всех пользователей. Этот
-режим нужно live-валидировать на pinned LiteLLM image перед production rollout.
+Не копируйте общий файл учётных данных Claude на прокси для всех пользователей. Этот
+режим нужно проверить на живом сервисе и зафиксированном образе LiteLLM перед промышленным внедрением.
 
-## Dynamic token setup
+## Динамическая выдача токена
 
-Claude Code поддерживает `apiKeyHelper` для CLI workflows. Используйте его,
-когда локальная команда должна получать или ротировать proxy token:
+Claude Code поддерживает `apiKeyHelper` для сценариев командной строки. Используйте его,
+когда локальная команда должна получать или ротировать токен прокси:
 
 ```json
 {
@@ -122,50 +122,50 @@ Claude Code поддерживает `apiKeyHelper` для CLI workflows. Исп
 }
 ```
 
-Helper должен печатать LiteLLM virtual key, а не upstream Anthropic API key.
+Помощник должен печатать пользовательский ключ LiteLLM, а не внешний Anthropic API-ключ.
 
-## Поверхность Anthropic Messages gateway
+## Поверхность шлюза Anthropic Messages
 
-Для полностью валидированного Claude Code gateway через `ANTHROPIC_BASE_URL`
-основной inference path выглядит так:
+Для полностью проверенного шлюза Claude Code через `ANTHROPIC_BASE_URL`
+основной путь вывода модели выглядит так:
 
 ```text
 POST /v1/messages?beta=true
 ```
 
-Gateway должен сохранять Anthropic Messages semantics, ретранслировать streaming
-SSE responses и передавать `anthropic-version` и `anthropic-beta` без изменений.
-LiteLLM поддерживает Anthropic-compatible `/v1/messages` endpoint, но в этом
-репозитории ещё нет отдельного Claude Code gateway smoke для `?beta=true`
-streaming path и header forwarding в дефолтном config.
+Шлюз должен сохранять семантику Anthropic Messages, ретранслировать потоковые
+SSE-ответы и передавать `anthropic-version` и `anthropic-beta` без изменений.
+LiteLLM поддерживает маршрут `/v1/messages`, совместимый с Anthropic, но в этом
+репозитории ещё нет отдельной быстрой проверки шлюза Claude Code для `?beta=true`,
+потокового пути и пересылки заголовков в конфигурации по умолчанию.
 
-Опциональные Claude Code gateway endpoints:
+Дополнительные маршруты шлюза Claude Code:
 
 ```text
 POST /v1/messages/count_tokens
 GET /v1/models?limit=1000
 ```
 
-`POST /v1/messages/count_tokens` опционален; при его отсутствии Claude Code
+`POST /v1/messages/count_tokens` необязателен; при его отсутствии Claude Code
 может вернуться к локальной оценке контекста. `GET /v1/models?limit=1000` —
-опциональный model discovery endpoint, когда gateway model discovery включён.
+необязательный маршрут обнаружения моделей, когда эта функция включена на шлюзе.
 
-`make client-auth-smoke` — basic Anthropic Messages auth smoke. Он отправляет
-non-streaming `POST /v1/messages` с LiteLLM virtual key только когда настроен
-`ANTHROPIC_API_KEY`, а `MESSAGES_MODEL` указывает на live-validated proxy alias:
+`make client-auth-smoke` — базовая быстрая проверка авторизации Anthropic Messages. Она отправляет
+обычный `POST /v1/messages` без потоковой передачи с пользовательским ключом LiteLLM только когда настроен
+`ANTHROPIC_API_KEY`, а `MESSAGES_MODEL` указывает на проверенное на живом сервисе имя модели прокси:
 
 ```bash
 MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
 ```
 
-Он не проверяет Claude Code `?beta=true` query, forwarding `anthropic-*` headers,
-SSE streaming, token counting или model discovery. Добавьте отдельный Claude Code
-gateway smoke перед тем, как считать эту поверхность полностью валидированной.
+Он не проверяет параметр `?beta=true` Claude Code, пересылку заголовков `anthropic-*`,
+потоковую передачу SSE, подсчёт токенов или обнаружение моделей. Добавьте отдельную
+быструю проверку шлюза Claude Code перед тем, как считать эту поверхность полностью проверенной.
 
 ## Ссылки
 
-- Claude Code LLM gateway: https://docs.anthropic.com/en/docs/claude-code/llm-gateway
+- Шлюз LLM Claude Code: https://docs.anthropic.com/en/docs/claude-code/llm-gateway
 - Claude Code environment variables: https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables
-- LiteLLM Claude Code Max subscription: https://docs.litellm.ai/docs/tutorials/claude_code_max_subscription
+- Подписка Claude Code Max в LiteLLM: https://docs.litellm.ai/docs/tutorials/claude_code_max_subscription
 - LiteLLM forward client headers: https://docs.litellm.ai/docs/proxy/forward_client_headers
 - LiteLLM Anthropic Messages API: https://docs.litellm.ai/docs/anthropic_unified/

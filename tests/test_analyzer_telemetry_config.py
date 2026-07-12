@@ -46,8 +46,8 @@ def test_docs_describe_analyzer_telemetry_contract():
         assert "presidio_analyzer_request" in text
         assert "ru_presidio_analyzer_requests_total" in text
         assert "ru_presidio_analyzer_latency_seconds" in text
-        assert "raw" in text
-        assert "entity values" in text or "raw values" in text
+        assert "исходн" in text
+        assert "значен" in text
 
     assert "Per-request telemetry Presidio Analyzer будет реализована в #31" not in (
         compliance

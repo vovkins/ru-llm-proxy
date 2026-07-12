@@ -1,51 +1,51 @@
 # ZCode
 
-ZCode подключается к прокси как OpenAI-compatible клиент в режиме API Key.
+ZCode подключается к прокси как клиент, совместимый с OpenAI API, в режиме API Key.
 
 Поддерживаемый сценарий:
 
 - ZCode настроен через `Use API Key`.
-- В ZCode выбран custom/OpenAI-compatible provider с OpenAI Base URL и API key.
+- В ZCode выбран пользовательский провайдер, совместимый с OpenAI API, с OpenAI Base URL и API key.
 - Доступ к Z.AI/GLM оплачивается серверными ключами ru-llm-proxy.
 
 Что не входит в этот гайд:
 
-- ZCode account login through `Continue with Z.ai` or `Continue with BigModel`.
-- хранение общих ZCode account/session credentials на прокси;
-- subscription или account-auth passthrough для ZCode;
-- прямой ZCode account login или upstream Z.AI credentials внутри ZCode, если запросы должны идти через ru-llm-proxy.
+- вход в аккаунт ZCode через `Continue with Z.ai` или `Continue with BigModel`.
+- хранение общих учётных данных аккаунта/сессии ZCode на прокси;
+- сквозная передача подписки или авторизации аккаунта для ZCode;
+- прямой вход в аккаунт ZCode или учётные данные внешнего Z.AI внутри ZCode, если запросы должны идти через ru-llm-proxy.
 
 ## Ключи доступа
 
-Используйте LiteLLM virtual key как клиентский токен ZCode:
+Используйте пользовательский ключ LiteLLM как клиентский токен ZCode:
 
 ```bash
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-Настоящие `ZAI_API_KEY`, `ZAI_API_KEY_2`, GLM Coding Plan keys, optional provider keys и `LITELLM_MASTER_KEY` остаются только на proxy host. ZCode получает только proxy token. Не кладите `ZAI_API_KEY` или `LITELLM_MASTER_KEY` в настройки ZCode.
+Настоящие `ZAI_API_KEY`, `ZAI_API_KEY_2`, ключи GLM Coding Plan, ключи дополнительных провайдеров и `LITELLM_MASTER_KEY` остаются только на хосте прокси. ZCode получает только токен прокси. Не кладите `ZAI_API_KEY` или `LITELLM_MASTER_KEY` в настройки ZCode.
 
 Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-Обычные пользовательские ключи создавайте в LiteLLM Admin UI. CLI helper нужен только как дополнительный DevOps/CI/bootstrap путь с proxy host:
+Обычные пользовательские ключи создавайте в административном интерфейсе LiteLLM. Вспомогательный скрипт командной строки нужен только как дополнительный путь для DevOps, CI и первичной настройки с хоста прокси:
 
 ```bash
 scripts/create_virtual_key.sh --alias zcode-local --models standard,zai --duration 30d
 ```
 
-Helper печатает `RU_LLM_PROXY_TOKEN=...`; это значение нужно вставить в поле API Key в ZCode.
+Помощник печатает `RU_LLM_PROXY_TOKEN=...`; это значение нужно вставить в поле API Key в ZCode.
 
 ## Настройка ZCode
 
-При первом запуске выберите `Use API Key`. Если ZCode уже настроен, откройте настройки модели/провайдера и добавьте OpenAI-compatible custom provider.
+При первом запуске выберите `Use API Key`. Если ZCode уже настроен, откройте настройки модели/провайдера и добавьте пользовательского провайдера, совместимого с OpenAI API.
 
 Используйте такие значения:
 
-| ZCode field | Local value | Deployed value |
+| Поле ZCode | Локальное значение | Значение в развёрнутом окружении |
 | --- | --- | --- |
 | OpenAI Base URL | `http://localhost:4000/v1` | `https://<proxy-host>/v1` |
-| API Key | `$RU_LLM_PROXY_TOKEN` | LiteLLM virtual key, выданный прокси |
-| Model | `glm-5.2` | `glm-5.2` или другой разрешённый proxy alias |
+| API Key | `$RU_LLM_PROXY_TOKEN` | Пользовательский ключ LiteLLM, выданный прокси |
+| Model | `glm-5.2` | `glm-5.2` или другое разрешённое имя модели прокси |
 
 Дополнительный алиас `glm-5.1` также доступен в текущей конфигурации репозитория для установок, которым нужна предыдущая версия модели. Для новых настроек и smoke-проверок используйте `glm-5.2`.
 
@@ -58,19 +58,19 @@ API Key: $RU_LLM_PROXY_TOKEN
 Model: glm-5.2
 ```
 
-С такой настройкой запросы ZCode проходят тот же путь, что и запросы других клиентов: virtual-key auth, guardrails, PII masking/restoration, dictionary substitutions, routing, budgets, audit logs и metrics.
+С такой настройкой запросы ZCode проходят тот же путь, что и запросы других клиентов: авторизация по пользовательскому ключу, защитные слои, маскирование/восстановление персональных данных, словарные подстановки, маршрутизация, бюджеты, журналы аудита и метрики.
 
 ## Настройка Z.AI на стороне прокси
 
-Upstream-ключ Z.AI должен находиться в окружении прокси:
+Ключ внешнего провайдера Z.AI должен находиться в окружении прокси:
 
 ```env
 ZAI_API_KEY=...
 ZAI_API_KEY_2=...
 ```
 
-Дефолтные Z.AI entries в `litellm-config.yaml` используют GLM Coding Plan
-OpenAI-compatible endpoint:
+Записи Z.AI по умолчанию в `litellm-config.yaml` используют конечную точку GLM Coding Plan,
+совместимую с OpenAI API:
 
 ```yaml
 model_list:
@@ -90,11 +90,11 @@ model_list:
       id: glm-5-2-zai-coding-secondary
 ```
 
-Не настраивайте этот upstream endpoint или upstream API key напрямую в ZCode, если ZCode должен работать через ru-llm-proxy. ZCode вызывает proxy endpoint `/v1`, а уже прокси вызывает Z.AI.
+Не настраивайте эту внешнюю конечную точку или внешний API-ключ напрямую в ZCode, если ZCode должен работать через ru-llm-proxy. ZCode вызывает маршрут прокси `/v1`, а уже прокси вызывает Z.AI.
 
 ## Дополнительные GLM-модели
 
-`glm-5.1` доступна как дополнительный proxy alias. Используйте его только там,
+`glm-5.1` доступна как дополнительное имя модели прокси. Используйте его только там,
 где клиенту или установке намеренно нужна предыдущая версия модели:
 
 ```bash
@@ -105,13 +105,13 @@ CHAT_MODEL=glm-5.1 make client-auth-smoke
 
 ## Проверка
 
-Когда proxy запущен и virtual key создан, проверьте OpenAI-compatible chat path:
+Когда прокси запущен и пользовательский ключ создан, проверьте путь чата, совместимый с OpenAI API:
 
 ```bash
 CHAT_MODEL=glm-5.2 make client-auth-smoke
 ```
 
-Для проверки поведения guardrail:
+Для проверки поведения защитного слоя:
 
 ```bash
 CHAT_MODEL=glm-5.2 make guardrails-smoke
@@ -119,14 +119,14 @@ CHAT_MODEL=glm-5.2 make guardrails-smoke
 
 Частые ошибки:
 
-- `401` or `403`: the LiteLLM virtual key is missing, expired, or not allowed to use the selected model group.
-- Provider authentication error: `ZAI_API_KEY` or `ZAI_API_KEY_2` is missing or invalid on the proxy host.
-- Connection or model-not-found error: the ZCode Base URL does not end with `/v1`, or the model alias is not present in `litellm-config.yaml`.
+- `401` или `403`: пользовательский ключ LiteLLM отсутствует, истёк или не имеет доступа к выбранной группе моделей.
+- Ошибка авторизации провайдера: `ZAI_API_KEY` или `ZAI_API_KEY_2` отсутствует или некорректен на хосте прокси.
+- Ошибка соединения или отсутствующей модели: ZCode Base URL не заканчивается на `/v1` или имя модели отсутствует в `litellm-config.yaml`.
 
 ## Ссылки
 
-- ZCode configuration: https://zcode.z.ai/en/docs/configuration
-- Z.AI API authentication and OpenAI SDK style access: https://docs.z.ai/api-reference/introduction
-- Z.AI GLM Coding Plan tooling endpoint: https://docs.z.ai/devpack/tool/crush
-- LiteLLM virtual keys: https://docs.litellm.ai/docs/proxy/virtual_keys
-- LiteLLM OpenAI-compatible provider: https://docs.litellm.ai/docs/providers/openai_compatible
+- Конфигурация ZCode: https://zcode.z.ai/en/docs/configuration
+- Аутентификация Z.AI API и доступ в стиле OpenAI SDK: https://docs.z.ai/api-reference/introduction
+- Инструментальная конечная точка Z.AI GLM Coding Plan: https://docs.z.ai/devpack/tool/crush
+- Пользовательские ключи LiteLLM: https://docs.litellm.ai/docs/proxy/virtual_keys
+- Провайдер LiteLLM, совместимый с OpenAI API: https://docs.litellm.ai/docs/providers/openai_compatible

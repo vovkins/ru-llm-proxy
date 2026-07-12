@@ -1,118 +1,117 @@
-# Production Egress Controls
+# Промышленные ограничения исходящих соединений
 
-Этот документ описывает production network layer для `ru-llm-proxy`: deny-by-default
-egress, allowlist LLM providers и внутренние зависимости. Это defense-in-depth слой,
+Этот документ описывает промышленный сетевой слой для `ru-llm-proxy`: запрет исходящих соединений по умолчанию,
+список разрешённых LLM-провайдеров и внутренние зависимости. Это слой глубокой защиты,
 который дополняет, но не заменяет `PRE_EGRESS_POLICY_MODE`,
-`FINAL_PAYLOAD_LEAK_CHECK_MODE`, PII mask/block и `make test-egress-security`.
-Переменные окружения для этих policy layers и build-time загрузок описаны в
+`FINAL_PAYLOAD_LEAK_CHECK_MODE`, маскирование/блокировку персональных данных и `make test-egress-security`.
+Переменные окружения для этих политик и загрузок во время сборки описаны в
 [configuration.md](configuration.md).
 
-## Security Goal
+## Цель безопасности
 
-Production окружение должно отвечать на простой вопрос: даже если в приложении
-появился sanitizer miss, ошибка маршрутизации или неожиданная зависимость, сможет ли
+Промышленное окружение должно отвечать на простой вопрос: даже если в приложении
+появился пропуск очистки, ошибка маршрутизации или неожиданная зависимость, сможет ли
 контейнер отправить данные в неразрешенный внешний адрес? Целевое состояние:
 
 - `litellm` может ходить только во внутренние сервисы проекта и к явно разрешенным
-  LLM provider endpoints;
-- `presidio-analyzer` не имеет внешнего runtime egress;
-- `redis` и `db` не имеют internet egress;
-- DNS и provider egress логируются на инфраструктурном уровне;
-- изменение `litellm-config.yaml` или provider endpoint требует обновления allowlist.
+  конечным точкам LLM-провайдеров;
+- `presidio-analyzer` не имеет внешних исходящих соединений во время работы;
+- `redis` и `db` не имеют интернет-доступа;
+- DNS и выход к провайдерам логируются на инфраструктурном уровне;
+- изменение `litellm-config.yaml` или конечной точки провайдера требует обновления списка разрешённых направлений.
 
-## Scope Boundaries
+## Границы области
 
-Local Docker Compose bridge network не является production egress enforcement. Compose
-удобен для разработки и smoke-тестов, но сам по себе не доказывает deny-all outbound
-egress. Для production нужен отдельный слой: Kubernetes NetworkPolicy с CNI, egress
-gateway/proxy, cloud firewall или host firewall.
+Локальная bridge-сеть Docker Compose не является промышленным механизмом принудительного ограничения исходящих соединений. Compose
+удобен для разработки и быстрых тестов, но сам по себе не доказывает запрет всех исходящих
+соединений. Для промышленной среды нужен отдельный слой: Kubernetes NetworkPolicy с CNI, шлюз/прокси
+исходящего трафика, облачный firewall или firewall хоста.
 
-`make test-egress-security` доказывает application-level свойство через mock provider
-capture: raw тестовые значения не доходят до provider-bound payload, а blocked-запросы
-не создают provider request. Этот gate не заменяет production firewall/CNI allowlist,
-потому что внешний провайдер в live окружении не дает проекту полный network capture.
+`make test-egress-security` доказывает свойство на уровне приложения через захват запроса к имитации провайдера:
+исходные тестовые значения не доходят до полезной нагрузки перед провайдером, а заблокированные запросы
+не создают вызов провайдера. Этот контур не заменяет промышленный firewall/CNI-список разрешённых направлений,
+потому что внешний провайдер в живом окружении не дает проекту полный сетевой захват.
 
-Build-time загрузки отделены от runtime egress. Analyzer image может скачивать spaCy и
+Загрузки во время сборки отделены от исходящих соединений во время работы. Образ Analyzer может скачивать spaCy и
 DeepPavlov `ner_rus_bert` во время сборки, включая `DEEPPAVLOV_NER_MODEL_URL`. После
-сборки `presidio-analyzer` в runtime не должен обращаться в интернет для обработки
+сборки `presidio-analyzer` во время работы не должен обращаться в интернет для обработки
 запросов.
 
-## Runtime Allowlist
+## Список разрешённых направлений во время работы
 
-Минимальная allowlist для текущего `litellm-config.yaml`:
+Минимальный список разрешённых направлений для текущего `litellm-config.yaml`:
 
-| Service | Allowed destinations | Purpose |
+| Сервис | Разрешённые направления | Назначение |
 | --- | --- | --- |
-| `litellm` | `presidio-analyzer:5001` | PII detection via `POST /api/v1/analyze` |
-| `litellm` | `redis:6379` | PII placeholder mappings and LiteLLM deployment affinity |
-| `litellm` | `db:5432` | LiteLLM persistence |
-| `litellm` | `api.z.ai:443` | Z.AI GLM provider (`api_base: https://api.z.ai/api/coding/paas/v4`) |
-| `litellm` | `api.openai.com:443` | OpenAI aliases when `api_base` is not overridden |
-| `litellm` | `api.anthropic.com:443` | Anthropic aliases when `api_base` is not overridden |
-| `presidio-analyzer` | none | Runtime analysis is local after image build |
-| `redis` | none | Internal dependency only |
-| `db` | none | Internal dependency only |
+| `litellm` | `presidio-analyzer:5001` | Поиск персональных данных через `POST /api/v1/analyze` |
+| `litellm` | `redis:6379` | Сопоставления плейсхолдеров персональных данных и закрепление развёртывания LiteLLM |
+| `litellm` | `db:5432` | Постоянное состояние LiteLLM |
+| `litellm` | `api.z.ai:443` | Провайдер Z.AI GLM (`api_base: https://api.z.ai/api/coding/paas/v4`) |
+| `litellm` | `api.openai.com:443` | Имена моделей OpenAI, когда `api_base` не переопределён |
+| `litellm` | `api.anthropic.com:443` | Имена моделей Anthropic, когда `api_base` не переопределён |
+| `presidio-analyzer` | нет | Анализ выполняется локально после сборки образа |
+| `redis` | нет | Только внутренняя зависимость |
+| `db` | нет | Только внутренняя зависимость |
 
-If you add a provider deployment with explicit `api_base`, add that FQDN to the
-production allowlist before enabling the deployment. If the provider uses regional
-hosts, private endpoints or an enterprise gateway, allowlist the concrete host used by
-that deployment instead of a broad wildcard.
+Если вы добавляете развёртывание провайдера с явным `api_base`, добавьте этот FQDN в
+промышленный список разрешённых направлений до включения развёртывания. Если провайдер использует региональные
+хосты, частные конечные точки или корпоративный шлюз, разрешайте конкретный хост этого
+развёртывания, а не широкий wildcard.
 
-## Kubernetes Pattern
+## Шаблон Kubernetes
 
-Recommended baseline:
+Рекомендуемая базовая схема:
 
-1. Put runtime services in a dedicated namespace such as `ru-llm-proxy`.
-2. Apply namespace-level default deny egress.
-3. Allow `litellm` to reach only `presidio-analyzer`, `redis`, `db` and approved
-   provider FQDNs over `443/TCP`.
-4. Keep `presidio-analyzer`, `redis` and `db` without internet egress.
-5. Monitor DNS queries and denied flows with the CNI, egress gateway or firewall used
-   by your platform.
+1. Разместите сервисы времени выполнения в отдельном namespace, например `ru-llm-proxy`.
+2. Примените запрет исходящих соединений по умолчанию на уровне namespace.
+3. Разрешите `litellm` обращаться только к `presidio-analyzer`, `redis`, `db` и одобренным
+   FQDN провайдеров по `443/TCP`.
+4. Оставьте `presidio-analyzer`, `redis` и `db` без интернет-доступа.
+5. Мониторьте DNS-запросы и запрещённые потоки через CNI, шлюз исходящего трафика или firewall вашей платформы.
 
-Vanilla Kubernetes `NetworkPolicy` can express default-deny and internal service
-traffic, but it does not provide portable FQDN allowlisting for dynamic provider
-hosts. For provider FQDNs use a CNI or gateway that supports DNS-aware policies. The
-template in `deploy/kubernetes/egress/litellm-provider-egress.cilium.yaml` uses
-Cilium `CiliumNetworkPolicy`, `toFQDNs`, `matchName` and DNS proxy rules.
+Обычная Kubernetes `NetworkPolicy` умеет выразить запрет по умолчанию и внутренний
+трафик между сервисами, но не даёт переносимый список разрешённых FQDN для динамических хостов
+провайдеров. Для FQDN провайдеров используйте CNI или шлюз, который поддерживает DNS-aware политики. Шаблон
+`deploy/kubernetes/egress/litellm-provider-egress.cilium.yaml` использует
+Cilium `CiliumNetworkPolicy`, `toFQDNs`, `matchName` и правила DNS proxy.
 
-Templates:
+Шаблоны:
 
 - `deploy/kubernetes/egress/default-deny-egress.yaml`
 - `deploy/kubernetes/egress/internal-dependencies.networkpolicy.yaml`
 - `deploy/kubernetes/egress/analyzer-no-internet-egress.networkpolicy.yaml`
 - `deploy/kubernetes/egress/litellm-provider-egress.cilium.yaml`
 
-These files are intentionally templates. Before applying them, align namespace names,
-pod labels, CoreDNS labels and provider endpoints with your cluster.
+Эти файлы намеренно являются шаблонами. Перед применением согласуйте имена namespace,
+метки pod, метки CoreDNS и конечные точки провайдеров с вашим кластером.
 
-## Validation Checklist
+## Проверочный список
 
-Use a staging namespace before production:
+Используйте стендовый namespace перед промышленной средой:
 
-1. Apply default-deny and internal dependency policies.
-2. Apply provider FQDN policy for the configured providers.
-3. Confirm `make health` equivalent probes pass through the service mesh/CNI path.
-4. Send a clean request through each enabled provider alias and confirm success.
-5. From the `litellm` pod, verify that a request to a non-allowlisted external host is
-   denied by the network layer.
-6. Confirm `presidio-analyzer`, `redis` and `db` cannot reach arbitrary internet hosts.
-7. Run `make test-egress-security` in the application test environment to keep the
-   application-level no-raw-provider-egress gate green.
-8. Check CNI/egress logs for denied flows and unexpected DNS queries.
+1. Примените политики запрета по умолчанию и внутренних зависимостей.
+2. Примените FQDN-политику провайдеров для настроенных провайдеров.
+3. Убедитесь, что проверки, эквивалентные `make health`, проходят через service mesh/CNI.
+4. Отправьте чистый запрос через каждое включённое имя модели провайдера и подтвердите успех.
+5. Из pod `litellm` проверьте, что запрос к внешнему хосту вне списка разрешённых направлений
+   запрещается сетевым слоем.
+6. Подтвердите, что `presidio-analyzer`, `redis` и `db` не могут обращаться к произвольным интернет-хостам.
+7. Запустите `make test-egress-security` в тестовом окружении приложения, чтобы сохранить зелёным
+   контур «исходные значения не уходят провайдеру».
+8. Проверьте журналы CNI/исходящего трафика на запрещённые потоки и неожиданные DNS-запросы.
 
-## Operational Checklist
+## Эксплуатационный список
 
-- Review provider hosts whenever `litellm-config.yaml` changes.
-- Review provider hosts during LiteLLM upgrades and provider SDK/API migrations.
-- Keep `model_info.id` stable for sticky routing; egress allowlist should be tied to
-  deployment endpoints, not to user-facing model aliases.
-- Alert on denied outbound connections from `litellm`, especially new external FQDNs.
-- Alert on any external outbound attempt from `presidio-analyzer`, `redis` or `db`.
-- Store egress policy manifests together with production deployment manifests and run
-  policy validation as part of release review.
+- Пересматривайте хосты провайдеров при каждом изменении `litellm-config.yaml`.
+- Пересматривайте хосты провайдеров при обновлениях LiteLLM и миграциях SDK/API провайдеров.
+- Держите `model_info.id` стабильными для закрепления маршрутов; список разрешённых исходящих направлений должен быть привязан к
+  конечным точкам развёртываний, а не к пользовательским именам моделей.
+- Настройте алерты на запрещённые исходящие соединения из `litellm`, особенно к новым внешним FQDN.
+- Настройте алерты на любую попытку внешнего исходящего соединения из `presidio-analyzer`, `redis` или `db`.
+- Храните манифесты сетевых политик вместе с промышленными манифестами развёртывания и запускайте
+  проверку политик в рамках ревью релиза.
 
-## References
+## Ссылки
 
 - [Kubernetes Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
 - [Cilium DNS-based policies](https://docs.cilium.io/en/stable/security/dns/)

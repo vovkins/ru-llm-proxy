@@ -90,13 +90,13 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("make guardrails-smoke", self.readme)
 
     def test_docs_capture_local_smoke_and_update_checklist(self):
-        self.assertIn("локальном docker-compose", self.readme)
-        self.assertIn("smoke-owned", self.architecture)
+        self.assertIn("локальном Docker Compose", self.readme)
+        self.assertIn("принадлежащих проверке Redis-сопоставлений", self.monitoring)
         self.assertIn("docker compose exec -T redis", self.monitoring)
         self.assertIn("CURL_CONNECT_TIMEOUT", self.monitoring)
-        checklist = self.monitoring.split("Минимальный update checklist:", 1)[1]
-        checklist = checklist.split("## References", 1)[0]
-        self.assertIn("локальном docker-compose окружении", checklist)
+        checklist = self.monitoring.split("Минимальный проверочный список обновления:", 1)[1]
+        checklist = checklist.split("## Ссылки", 1)[0]
+        self.assertIn("локальном окружении Docker Compose", checklist)
         self.assertIn("`make guardrails-smoke`", checklist)
         self.assertLess(
             checklist.index("`make guardrails-list`"),

@@ -268,7 +268,7 @@ def test_docs_explain_inn_threshold_policy_and_address_limits():
         assert "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM" in text, path
         assert "score_threshold=0.35" in text or '"score_threshold": 0.35' in text, path
         assert "checksum" in text or "контрольн" in text, path
-        assert "bare INN" in text or "гол" in text, path
+        assert "без контекст" in text, path
 
     for path in ("docs/architecture.md", "docs/examples.md"):
         text = docs[path]
@@ -315,7 +315,7 @@ def test_counterparty_requisite_recognizers_are_wired_and_documented():
     assert "score_threshold=0.35" in readme
     assert "score_threshold=0.35" in architecture
     assert '"score_threshold": 0.35' in examples
-    assert "online lookup" in architecture
+    assert "онлайн-провер" in architecture
 
 
 def test_infrastructure_secret_recognizers_are_wired_and_documented():
@@ -365,8 +365,8 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
     assert "score_threshold=0.35" in readme
     assert "score_threshold=0.35" in architecture
     assert '"score_threshold": 0.35' in examples
-    assert "not a whole-payload classifier" in architecture
-    assert "full source-code secret scanning" in compliance
+    assert "не как классификатор всей полезной нагрузки" in architecture
+    assert "не является полноценным сканированием секретов в исходном коде" in compliance
 
 
 def test_phone_recognizer_requires_digit_boundaries_for_country_code_pattern():
@@ -380,7 +380,7 @@ def test_readme_documents_recognizer_api_target():
     readme = (ROOT / "README.md").read_text()
 
     assert "| `make test` | Быстрый локальный набор: `test-unit` и `test-static`. |" in readme
-    assert "| `make test-static` | Легкие static/asyncio regression tests на host через `PYTHON_LOCAL`. |" in readme
+    assert "| `make test-static` | Лёгкие статические и asyncio-регрессионные тесты на хосте через `PYTHON_LOCAL`. |" in readme
     assert "| `make test-recognizer-api` |" in readme
     assert "make test-recognizer-api" in readme
     assert "PYTHON_LOCAL" in readme

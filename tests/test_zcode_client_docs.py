@@ -32,7 +32,7 @@ def test_zcode_doc_documents_api_key_mode_contract():
         "http://localhost:4000/v1",
         "https://<proxy-host>/v1",
         "RU_LLM_PROXY_TOKEN",
-        "LiteLLM virtual key",
+        "Пользовательский ключ LiteLLM",
         "glm-5.2",
         "glm-5.1",
         "CHAT_MODEL=glm-5.2 make client-auth-smoke",
@@ -46,8 +46,8 @@ def test_zcode_doc_separates_client_and_upstream_credentials():
 
     assert "ZAI_API_KEY" in doc
     assert "Не кладите `ZAI_API_KEY` или `LITELLM_MASTER_KEY` в настройки ZCode" in doc
-    assert "ZCode получает только proxy token" in doc
-    assert "ZCode вызывает proxy endpoint `/v1`" in doc
+    assert "ZCode получает только токен прокси" in doc
+    assert "ZCode вызывает маршрут прокси `/v1`" in doc
 
     forbidden_client_credentials = (
         "API Key: $ZAI_API_KEY",

@@ -1,25 +1,25 @@
 # Kilo Code VS Code / CLI
 
-Kilo Code подключается к прокси как OpenAI-compatible provider.
+Kilo Code подключается к прокси как провайдер, совместимый с OpenAI API.
 
 Поддерживаемый сценарий:
 
-- Kilo Code VS Code extension.
-- Kilo Code CLI configuration с той же provider schema.
+- расширение Kilo Code для VS Code.
+- конфигурация Kilo Code CLI с той же схемой провайдера.
 
 ## Ключи доступа
 
-Используйте LiteLLM virtual key как клиентский токен:
+Используйте пользовательский ключ LiteLLM как клиентский токен:
 
 ```bash
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-Настоящие `ZAI_API_KEY`, `ZAI_API_KEY_2`, optional provider keys и `LITELLM_MASTER_KEY` остаются только на proxy host.
+Настоящие `ZAI_API_KEY`, `ZAI_API_KEY_2`, ключи дополнительных провайдеров и `LITELLM_MASTER_KEY` остаются только на хосте прокси.
 
 Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-Обычные пользовательские ключи создавайте в LiteLLM Admin UI. CLI helper нужен только как дополнительный DevOps/CI/bootstrap путь с proxy host:
+Обычные пользовательские ключи создавайте в административном интерфейсе LiteLLM. Вспомогательный скрипт командной строки нужен только как дополнительный путь для DevOps, CI и первичной настройки с хоста прокси:
 
 ```bash
 scripts/create_virtual_key.sh --alias kilo-code-local --models standard,zai --duration 30d
@@ -31,12 +31,12 @@ scripts/create_virtual_key.sh --alias kilo-code-local --models standard,zai --du
 
 - API Provider: `OpenAI Compatible`
 - Base URL: `http://localhost:4000/v1`
-- API Key: LiteLLM virtual key или env-backed secret, если ваша установка это поддерживает
-- Model: `glm-5.2`, `glm-5.1` или другой разрешённый proxy alias
+- API Key: пользовательский ключ LiteLLM или секрет из переменной окружения, если ваша установка это поддерживает
+- Model: `glm-5.2`, `glm-5.1` или другое разрешённое имя модели прокси
 
-OpenAI/Anthropic aliases сейчас являются optional provider examples. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки model IDs на целевом LiteLLM image и конкретной подписке.
+Имена моделей OpenAI/Anthropic сейчас являются примерами дополнительных провайдеров. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки идентификаторов моделей на целевом образе LiteLLM и конкретной подписке.
 
-## CLI / JSON configuration
+## Конфигурация CLI / JSON
 
 Пример конфигурации:
 
@@ -70,9 +70,9 @@ OpenAI/Anthropic aliases сейчас являются optional provider example
 }
 ```
 
-## Dynamic auth
+## Динамическая авторизация
 
-В некоторых установках Kilo поддерживает более продвинутые provider/plugin hooks. Считайте это интеграцией второго уровня: hook должен возвращать или добавлять LiteLLM virtual key, а не upstream provider credentials.
+В некоторых установках Kilo поддерживает более продвинутые обработчики провайдера или плагина. Считайте это интеграцией второго уровня: такой обработчик должен возвращать или добавлять пользовательский ключ LiteLLM, а не учётные данные внешнего провайдера.
 
 ## Проверка
 
@@ -90,6 +90,6 @@ make client-auth-smoke
 
 ## Ссылки
 
-- Kilo custom models: https://kilo.ai/docs/code-with-ai/agents/custom-models
-- Kilo OpenAI-compatible provider: https://kilo.ai/docs/ai-providers/openai-compatible
-- LiteLLM model access groups: https://docs.litellm.ai/docs/proxy/model_access_groups
+- Пользовательские модели Kilo: https://kilo.ai/docs/code-with-ai/agents/custom-models
+- Kilo: провайдер, совместимый с OpenAI API: https://kilo.ai/docs/ai-providers/openai-compatible
+- Группы доступа моделей LiteLLM: https://docs.litellm.ai/docs/proxy/model_access_groups

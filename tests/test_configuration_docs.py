@@ -144,19 +144,19 @@ def test_configuration_reference_documents_expected_env_vars():
     for heading in (
         "## Дефолтный пул GLM-провайдеров",
         "## Примеры дополнительных провайдеров",
-        "## LiteLLM Admin UI и секреты",
-        "## Runtime и хранилища LiteLLM",
+        "## Административный интерфейс LiteLLM и секреты",
+        "## Запуск и хранилища LiteLLM",
         "## Сервис Presidio Analyzer",
-        "## Калибровка recognizers",
-        "## Политики guardrail",
-        "## Dictionary substitutions",
-        "## Allowlist синтетических PII",
-        "## Regulated-topic policy",
-        "## Клиенты зависимостей guardrail",
-        "## Модель и runtime DeepPavlov",
+        "## Калибровка распознавателей",
+        "## Политики защитного слоя",
+        "## Словарные подстановки",
+        "## Список разрешённых синтетических персональных данных",
+        "## Политика регулируемых тем",
+        "## Клиенты зависимостей защитного слоя",
+        "## Модель и запуск DeepPavlov",
         "## Клиентские токены и локальные гайды",
-        "## Live smoke-проверки и диагностика",
-        "## Helper для virtual keys",
+        "## Быстрые проверки и диагностика",
+        "## Вспомогательный скрипт для пользовательских ключей",
         "## Внутренние переменные разработки и контейнеров",
     ):
         assert heading in configuration
@@ -195,10 +195,10 @@ def test_quick_start_env_example_stays_minimal_and_grouped():
     for name in EXPECTED_DOCUMENTED_ENV - QUICK_START_ENV:
         assert f"{name}=" not in env_example, name
 
-    assert "Full grouped reference: docs/configuration.md" in env_example
-    assert "# === Default GLM Provider Pool ===" in env_example
-    assert "# === LiteLLM Admin And Secrets ===" in env_example
-    assert "# === LiteLLM Persistence ===" in env_example
+    assert "Полный сгруппированный справочник: docs/configuration.md" in env_example
+    assert "# === Пул GLM-провайдера по умолчанию ===" in env_example
+    assert "# === Административный доступ LiteLLM и секреты ===" in env_example
+    assert "# === Постоянное состояние LiteLLM ===" in env_example
 
 
 def test_primary_docs_link_to_configuration_reference():

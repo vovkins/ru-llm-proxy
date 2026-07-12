@@ -98,5 +98,5 @@ def test_metrics_endpoint_is_public_and_monitoring_targets_follow_redirects():
     assert "require_auth_for_metrics_endpoint: false" in config
     assert "curl -L -sf http://localhost:4000/metrics" in makefile
     assert "Presidio Analyzer metrics exposed" in makefile
-    assert "открыт без LiteLLM API key" in readme
+    assert "открыт без ключа LiteLLM API" in readme
     assert "require_auth_for_metrics_endpoint: false" in monitoring

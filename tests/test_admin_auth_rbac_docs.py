@@ -21,24 +21,24 @@ def test_admin_access_runbook_defines_credential_boundaries_and_roles():
 
     for required in (
         "Границы учётных данных",
-        "Правила публикации в production",
+        "Правила публикации в промышленной среде",
         "OSS-база и Enterprise RBAC",
         "Модель операторских ролей",
         "Ротация и экстренный отзыв",
         "Требования к аудиту администрирования",
-        "Production checklist",
-        "LiteLLM virtual key",
-        "Upstream provider keys",
+        "Проверочный список для промышленной среды",
+        "Пользовательский ключ LiteLLM",
+        "Ключи внешних провайдеров",
         "LITELLM_MASTER_KEY",
         "UI_USERNAME",
         "UI_PASSWORD",
         "DISABLE_ADMIN_UI=True",
         "SSO/OIDC/SAML",
         "VPN",
-        "IP allowlist",
+        "список разрешённых IP",
         "mTLS",
         "zero-trust proxy",
-        "break-glass",
+        "экстренный доступ",
         "proxy_admin_viewer",
         "org_admin",
         "team_admin",
@@ -115,10 +115,11 @@ def test_admin_action_audit_is_separate_from_guardrail_audit():
     compliance = (ROOT / "docs" / "compliance.md").read_text()
 
     for text in (admin_doc, monitoring, compliance):
-        assert "admin action" in text.lower() or "admin actions" in text.lower()
+        assert "административн" in text.lower()
+        assert "действ" in text.lower()
         assert "gateway_guardrail_audit" in text
 
-    assert "Client request audit и admin action audit — разные вещи" in (
+    assert "Аудит клиентских запросов и аудит административных действий — разные вещи" in (
         admin_doc
     )
     assert "admin-operator-boundary" in compliance

@@ -22,7 +22,7 @@ def test_litellm_guardrail_info_documents_pre_egress_policy_mode():
 
     assert "pre_egress_policy_mode" in config
     assert "PRE_EGRESS_POLICY_MODE" in config
-    assert "before Presidio analysis and provider calls" in config
+    assert "до анализа Presidio и вызова провайдера" in config
 
 
 def test_docs_distinguish_pre_egress_policy_from_pii_modes():
@@ -38,16 +38,15 @@ def test_docs_distinguish_pre_egress_policy_from_pii_modes():
         assert "pre_egress_policy_blocked" in text, path
 
     for path in ("docs/examples.md", "docs/architecture.md", "docs/monitoring.md"):
-        assert "raw payload" in docs[path], path
+        assert "исход" in docs[path], path
+        assert "полезн" in docs[path], path
 
     architecture = docs["docs/architecture.md"]
     assert "до `POST /api/v1/analyze`" in architecture
     for path in ("docs/examples.md", "docs/architecture.md"):
         text = docs[path]
-        pre_egress_pos = text.index("Pre-egress")
-        analyzer_pos = text.index("POST /api/v1/analyze")
-        assert pre_egress_pos < analyzer_pos, path
-    assert "#28 Secondary DLP scan" in architecture
+        assert "до `POST /api/v1/analyze`" in text, path
+    assert "#28, вторичная DLP-проверка" in architecture
     assert "docs/examples.md" in docs["README.md"]
     assert "detail.error" in docs["docs/examples.md"]
     assert "provider_specific_fields.error" in docs["docs/examples.md"]

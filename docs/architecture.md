@@ -4,51 +4,52 @@
 
 ## Компоненты
 
-| Компонент | Service | Ответственность |
+| Компонент | Сервис | Ответственность |
 | --- | --- | --- |
-| LiteLLM Proxy | `litellm` | OpenAI-compatible gateway, sticky routing к provider deployments, выполнение guardrails |
-| PII Guardrail | `litellm_guardrails/pii_guardrail.py` | Маскирование запросов, Redis-маппинг, восстановление ответов |
-| Presidio Analyzer | `presidio-analyzer` | Детекция PII через русские regex recognizers и опциональный DeepPavlov NER |
-| Redis | `redis` | Временное хранение обратимых placeholder mappings и LiteLLM deployment affinity |
-| PostgreSQL | `db` | Persistence для LiteLLM |
+| LiteLLM Proxy | `litellm` | Шлюз, совместимый с OpenAI API, закрепление маршрута за развёртыванием провайдера, выполнение защитных слоёв LiteLLM |
+| PII Guardrail | `litellm_guardrails/pii_guardrail.py` | Маскирование персональных данных в запросах, сопоставления в Redis, восстановление ответов |
+| Presidio Analyzer | `presidio-analyzer` | Поиск персональных данных через русскоязычные распознаватели на регулярных выражениях и DeepPavlov NER |
+| Redis | `redis` | Временное хранение обратимых сопоставлений плейсхолдеров и привязки LiteLLM к развёртыванию |
+| PostgreSQL | `db` | Хранение состояния LiteLLM |
 
 ## Поток запроса
 
 ```text
 1. Клиент отправляет `POST /v1/chat/completions`, `POST /v1/responses` или `POST /v1/messages` в LiteLLM.
-2. LiteLLM запускает ru-pii-mask-pre в режиме pre_call.
-3. Guardrail собирает provider-bound строковые поля: `message.content`, Anthropic top-level `system` string/text blocks, Responses API `instructions` / `input` string/list text items, tool-call `arguments`, tool-output `output` string/list text items, text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-4. Pre-egress regulated-topic policy, если включён, проверяет high-confidence AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass темы. При срабатывании guardrail возвращает безопасную `422` ошибку до `POST /api/v1/analyze`, Redis mapping save и provider egress.
-5. Pre-egress classifier проверяет эти поля на `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании guardrail возвращает безопасную `422` ошибку до `POST /api/v1/analyze`, Redis mapping save и provider egress.
-6. Если pre-egress policy не сработала, reversible dictionary policy заменяет configured business terms из `dictionary-substitutions.default.json` / `DICTIONARY_SUBSTITUTIONS_JSON` на synthetic replacements.
-7. Guardrail отправляет substituted строковые поля запроса в Presidio Analyzer через `POST /api/v1/analyze`.
-8. Analyzer возвращает entity spans, entity types и scores.
-9. В `PII_GUARDRAIL_MODE=mask` guardrail строит request-scoped placeholders в порядке provider-bound текста, исключая dictionary replacement spans.
-10. Guardrail применяет masked/substituted text к provider-bound request fields.
-11. Final payload leak check сканирует уже provider-bound payload после dictionary substitution и masking, до provider call, включая request containers `messages` / `input` / `instructions` / `system` (в том числе Anthropic Messages `system` и `tool_use` blocks), `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata`. Этот scan-only слой не расширяет PII masking/Redis mapping на служебные provider поля.
-12. При final-check block guardrail откатывает masked text и substituted text обратно к исходному request и возвращает безопасную `422` ошибку без Redis mapping и provider egress.
-13. Если final-check чистый, guardrail генерирует server-side `pii_request_id` и сохраняет combined restore mapping в Redis. Если Redis save падает, guardrail откатывает mutated text обратно к исходному request; для dictionary mapping default failure mode — `fail_closed`.
-14. LiteLLM отправляет masked/substituted request настроенному LLM-провайдеру.
-15. LiteLLM запускает ru-pii-mask-post в режиме post_call.
-16. Guardrail загружает Redis mapping и заменяет placeholders/dictionary replacements в `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`.
-17. Для streaming ответа guardrail оборачивает stream через `async_post_call_streaming_iterator_hook`, заменяет placeholders/replacements в `delta.content` и `delta.reasoning_content` с учетом разрыва значения между чанками.
-18. Redis mapping удаляется после post-call или streaming-iterator обработки.
+2. LiteLLM запускает `ru-pii-mask-pre` в режиме `pre_call`.
+3. Защитный слой собирает строковые поля, которые могут уйти провайдеру: `message.content`, верхнеуровневый `system` в Anthropic Messages, строки и текстовые блоки Responses API `instructions` / `input`, `arguments` у вызовов инструментов, `output` у результатов инструментов, текстовые блоки, `tool_calls[].function.arguments` и `function_call.arguments`.
+4. Политика регулируемых тем, если включена, проверяет AML/CFT / ПОД/ФТ, санкционные проверки, мониторинг транзакций, сценарии подозрительной активности и обход комплаенс-процедур с высокой уверенностью. При срабатывании защитный слой возвращает безопасную ошибку `422` до `POST /api/v1/analyze`, сохранения сопоставления в Redis и выхода к провайдеру.
+5. Предварительная проверка перед выходом к провайдеру ищет в этих полях выгрузки `.env` с секретами, kubeconfig/манифесты Kubernetes, конфигурации nginx, журналы доступа/аутентификации и трассировки ошибок. При срабатывании защитный слой возвращает безопасную ошибку `422` до `POST /api/v1/analyze`, сохранения сопоставления в Redis и выхода к провайдеру.
+6. Если предварительная проверка не сработала, политика словарных подстановок заменяет настроенные бизнес-термины из `dictionary-substitutions.default.json` / `DICTIONARY_SUBSTITUTIONS_JSON` на синтетические значения.
+7. Защитный слой отправляет строковые поля запроса после словарных подстановок в Presidio Analyzer через `POST /api/v1/analyze`.
+8. Analyzer возвращает найденные фрагменты, типы сущностей и оценки.
+9. В `PII_GUARDRAIL_MODE=mask` защитный слой строит плейсхолдеры в рамках запроса в порядке текста, который уйдёт провайдеру, исключая фрагменты словарных замен.
+10. Защитный слой применяет маскированный текст и словарные подстановки к полям запроса, которые уйдут провайдеру.
+11. Финальная проверка полезной нагрузки сканирует уже подготовленный запрос после словарных подстановок и маскирования, но до вызова провайдера. Проверяются контейнеры запроса `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, устаревшие `functions` / `function_call`, `prediction`, `response_format`, `text`, `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и провайдерские `metadata`. Этот слой только сканирует и не расширяет PII-маскирование или Redis-сопоставления на служебные поля провайдера.
+12. При блокировке на финальной проверке защитный слой откатывает маскированный текст и словарные подстановки обратно к исходному запросу и возвращает безопасную ошибку `422` без Redis-сопоставления и выхода к провайдеру.
+13. Если финальная проверка чистая, защитный слой генерирует серверный `pii_request_id` и сохраняет объединённое сопоставление для восстановления в Redis. Если сохранение в Redis падает, защитный слой откатывает изменённый текст обратно к исходному запросу; для словарных сопоставлений поведение по умолчанию — `fail_closed`.
+14. LiteLLM отправляет маскированный запрос со словарными подстановками настроенному провайдеру модели.
+15. LiteLLM запускает `ru-pii-mask-post` в режиме `post_call`.
+16. Защитный слой загружает сопоставление из Redis и заменяет плейсхолдеры/словарные замены в `content`, `reasoning_content`, текстовых блоках ответа, `tool_calls[].function.arguments` и `function_call.arguments`.
+17. Для потокового ответа защитный слой оборачивает поток через `async_post_call_streaming_iterator_hook`, заменяет плейсхолдеры и словарные замены в `delta.content` и `delta.reasoning_content` с учетом разрыва значения между фрагментами потока.
+18. Сопоставление в Redis удаляется после `post_call` или обработки потокового итератора.
 
-В `PII_GUARDRAIL_MODE=block` поток заканчивается после Analyzer, если PII найдена вне dictionary replacement spans: guardrail возвращает безопасную `422` ошибку с entity types, не меняет request payload, не создаёт Redis mapping и не вызывает провайдера.
+В `PII_GUARDRAIL_MODE=block` поток заканчивается после Analyzer, если персональные данные найдены вне фрагментов словарных замен: защитный слой возвращает безопасную ошибку `422` с типами сущностей, не меняет полезную нагрузку запроса, не создаёт сопоставление в Redis и не вызывает провайдера.
 ```
 
 Пример трансформации:
 
 ```text
-Input:       Мой телефон +79031234567, ИНН 7707083893
-To provider: Мой телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>
-Mapping:     <PHONE_NUMBER_1> -> +79031234567
+Вход:        Мой телефон +79031234567, ИНН 7707083893
+Провайдеру:  Мой телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>
+Сопоставление:
+             <PHONE_NUMBER_1> -> +79031234567
              <RU_INN_1>       -> 7707083893
 ```
 
-## Конфигурация Guardrail
+## Конфигурация защитного слоя
 
-В LiteLLM настроены два guardrail entry, потому что pre-call и post-call hooks выполняются через разные modes:
+В LiteLLM настроены две записи `guardrail`, потому что проверки до вызова модели и восстановление после ответа выполняются через разные режимы:
 
 ```yaml
 guardrails:
@@ -58,63 +59,63 @@ guardrails:
       mode: "pre_call"
       default_on: true
     guardrail_info:
-      description: "Masks Russian PII before the provider request."
+      description: "Маскирует русскоязычные персональные данные перед запросом к провайдеру."
       params:
         - name: "stage"
           type: "string"
-          description: "pre_call; masks Russian PII before the provider request."
+          description: "pre_call; маскирует русскоязычные персональные данные перед запросом к провайдеру."
         - name: "policy_mode"
           type: "string"
-          description: "PII_GUARDRAIL_MODE: mask preserves reversible masking, block rejects detected PII before provider calls."
+          description: "PII_GUARDRAIL_MODE: mask сохраняет обратимое маскирование, block отклоняет найденные персональные данные до вызова провайдера."
         - name: "regulated_topic_policy_mode"
           type: "string"
-          description: "REGULATED_TOPIC_POLICY_MODE: off by default; block rejects high-confidence AML/CFT, sanctions-screening, transaction-monitoring, suspicious-activity, and compliance-bypass topics before Presidio analysis and provider calls."
+          description: "REGULATED_TOPIC_POLICY_MODE: по умолчанию выключен; block отклоняет уверенно распознанные темы AML/CFT, санкционных проверок, мониторинга транзакций, подозрительной активности и обхода комплаенс-процедур до анализа Presidio и вызова провайдера."
         - name: "regulated_topic_policy_extra_rules"
           type: "string"
-          description: "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON: optional operator-defined block-only regex rules with bounded category, rule_id, action, pattern, and flags fields."
+          description: "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON: дополнительные операторские правила блокировки на регулярных выражениях с ограниченными полями category, rule_id, action, pattern и flags."
         - name: "pre_egress_policy_mode"
           type: "string"
-          description: "PRE_EGRESS_POLICY_MODE: block rejects high-confidence config/log operational payloads before Presidio analysis and provider calls; off disables this classifier."
+          description: "PRE_EGRESS_POLICY_MODE: block отклоняет уверенно распознанные конфигурации и журналы до анализа Presidio и вызова провайдера; off отключает этот классификатор."
         - name: "final_payload_leak_check_mode"
           type: "string"
-          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block rejects configured canaries and high-confidence raw leak markers after request mutation and before provider calls, including provider-bound request containers (messages/input/instructions/system), tools/tool_choice, legacy functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user, and provider metadata; off disables this final check."
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block отклоняет настроенные контрольные маркеры и уверенно распознанные признаки утечки после изменения запроса и до вызова провайдера, включая контейнеры запроса messages/input/instructions/system, tools/tool_choice, устаревшие functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user и провайдерские metadata; off отключает финальную проверку."
         - name: "request_fields"
           type: "list[string]"
-          description: "Masks message.content, Anthropic Messages system and tool_result.content, Responses API instructions/input string/list text items, tool-call arguments, tool-output output string/list text items, text content blocks, tool_calls[].function.arguments, and function_call.arguments."
+          description: "Маскирует message.content, system и tool_result.content в Anthropic Messages, строковые/списочные текстовые элементы instructions/input в Responses API, аргументы вызовов инструментов, строковые/списочные output у результатов инструментов, текстовые блоки, tool_calls[].function.arguments и function_call.arguments."
   - guardrail_name: "ru-pii-mask-post"
     litellm_params:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "post_call"
       default_on: true
     guardrail_info:
-      description: "Restores request-scoped placeholders in model responses."
+      description: "Восстанавливает плейсхолдеры текущего запроса в ответах модели."
       params:
         - name: "stage"
           type: "string"
-          description: "post_call; restores placeholders in model responses."
+          description: "post_call; восстанавливает плейсхолдеры в ответах модели."
         - name: "response_fields"
           type: "list[string]"
-          description: "Non-streaming: content, reasoning_content, response content blocks, tool_calls[].function.arguments, and function_call.arguments. Streaming: delta.content and delta.reasoning_content."
+          description: "Без потоковой передачи: content, reasoning_content, текстовые блоки ответа, tool_calls[].function.arguments и function_call.arguments. С потоковой передачей: delta.content и delta.reasoning_content."
         - name: "streaming"
           type: "string"
-          description: "Uses async_post_call_streaming_iterator_hook to restore placeholders across chunk boundaries and clean up Redis mapping."
+          description: "Использует async_post_call_streaming_iterator_hook, чтобы восстанавливать плейсхолдеры на границах фрагментов потока и удалять сопоставление из Redis."
 ```
 
-Если финальная проверка provider-bound payload срабатывает после proxy-side
-mutation, guardrail возвращает безопасную ошибку
+Если финальная проверка полезной нагрузки, подготовленной для провайдера,
+срабатывает после изменений на стороне прокси, защитный слой возвращает безопасную ошибку
 `final_payload_leak_check_blocked` до вызова внешнего провайдера.
 
-`async_pre_call_hook` сначала применяет reversible dictionary substitutions из `dictionary-substitutions.default.json` / `DICTIONARY_SUBSTITUTIONS_JSON`, затем в `mask` mode маскирует `message.content`, Anthropic Messages top-level `system` и `tool_result.content`, Responses API top-level `instructions` / `input` strings, message-like `input[]` string content, tool-call `arguments`, tool-output `output` strings/content blocks, text/input_text/output_text content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; в `block` mode блокирует запросы с найденной PII до вызова провайдера. Dictionary replacement spans исключаются из PII mask/block, чтобы synthetic replacement дошёл до провайдера как настроенное business value. Non-text Responses inputs such as images/files are passed through unchanged. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, response content blocks, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов post-call hook не нужен.
+`async_pre_call_hook` сначала применяет обратимые словарные подстановки из `dictionary-substitutions.default.json` / `DICTIONARY_SUBSTITUTIONS_JSON`, затем в режиме `mask` маскирует `message.content`, верхнеуровневый `system` и `tool_result.content` в Anthropic Messages, верхнеуровневые `instructions` / `input` в Responses API, строковый `content` в элементах `input[]`, `arguments` у вызовов инструментов, строки/блоки `output` у результатов инструментов, блоки `text`/`input_text`/`output_text`, `tool_calls[].function.arguments` и `function_call.arguments`; в режиме `block` блокирует запросы с найденными персональными данными до вызова провайдера. Фрагменты словарных замен исключаются из маскирования/блокировки персональных данных, чтобы синтетическая замена дошла до провайдера как настроенное бизнес-значение. Нестроковые входы Responses API, например изображения и файлы, проходят без изменений. `async_post_call_success_hook` восстанавливает `content`, `reasoning_content`, текстовые блоки ответа, `tool_calls[].function.arguments` и `function_call.arguments`; для заблокированных запросов восстановление после ответа не требуется.
 
-`async_post_call_streaming_iterator_hook` восстанавливает streaming `delta.content` и `delta.reasoning_content`, удерживая только возможный суффикс placeholder или dictionary replacement, чтобы не отдавать клиенту разорванное значение. Если LiteLLM получает `stream: true`, но возвращает обычный `ModelResponse`, восстановление выполняет `async_post_call_success_hook`.
+`async_post_call_streaming_iterator_hook` восстанавливает потоковые `delta.content` и `delta.reasoning_content`, удерживая только возможный суффикс плейсхолдера или словарной замены, чтобы не отдавать клиенту разорванное значение. Если LiteLLM получает `stream: true`, но возвращает обычный `ModelResponse`, восстановление выполняет `async_post_call_success_hook`.
 
-`guardrail_info` добавляет metadata для LiteLLM API. Регистрацию и metadata можно проверить через `GET /guardrails/list` или `make guardrails-list`. LiteLLM UI может показывать список guardrails, но не обязан отображать все произвольные поля `guardrail_info`.
+`guardrail_info` добавляет метаданные для LiteLLM API. Регистрацию и метаданные можно проверить через `GET /guardrails/list` или `make guardrails-list`. Административный интерфейс LiteLLM может показывать список защитных слоёв, но не обязан отображать все произвольные поля `guardrail_info`.
 
-`make guardrails-smoke` служит local docker-compose canary для hook-dispatch: он делает live non-streaming и streaming `/v1/chat/completions`, проверяет applied guardrails header, дочитывает SSE до `[DONE]` и подтверждает, что после завершения stream в Redis не осталось smoke-owned `pii_mapping:*` ключей с уникальным PII-маркером текущего запуска. Команда рассчитана на локальный `LITELLM_URL` и локальный `docker compose exec redis`, чтобы не сравнивать удаленный proxy с неверным Redis.
+`make guardrails-smoke` служит локальной проверкой Docker Compose для логики вызова обработчиков: он выполняет обычный и потоковый `/v1/chat/completions`, проверяет заголовок применённых защитных слоёв, дочитывает SSE до `[DONE]` и подтверждает, что после завершения потока в Redis не осталось ключей `pii_mapping:*` текущего запуска с уникальным PII-маркером. Команда рассчитана на локальный `LITELLM_URL` и локальный `docker compose exec redis`, чтобы не сравнивать удалённый прокси с неверным Redis.
 
-## Guardrails UI и наблюдаемость
+## Административный интерфейс и наблюдаемость
 
-`default_on: true` включает guardrail для обычных запросов, но для диагностики полезно явно передавать request parameter:
+`default_on: true` включает защитный слой для обычных запросов, но для диагностики полезно явно передавать параметр запроса:
 
 ```json
 {
@@ -122,12 +123,12 @@ mutation, guardrail возвращает безопасную ошибку
 }
 ```
 
-`make guardrails-smoke` отправляет live non-streaming и streaming requests с этим параметром,
-проверяет header `x-litellm-applied-guardrails`, читает SSE stream до конца и проверяет,
-что после завершения streaming response в Redis не осталось smoke-owned `pii_mapping:*`
+`make guardrails-smoke` отправляет обычный и потоковый запрос к локально запущенному сервису с этим параметром,
+проверяет заголовок `x-litellm-applied-guardrails`, читает SSE-поток до конца и проверяет,
+что после завершения потокового ответа в Redis не осталось `pii_mapping:*`
 ключей с тестовой PII текущего запуска.
 
-Guardrails Monitor в LiteLLM UI опирается на события/traces, которые LiteLLM пишет через свою logging/observability подсистему. В текущем проекте primary monitoring path — Prometheus `/metrics`, health checks и structured logs guardrail.
+Раздел Guardrails Monitor в интерфейсе LiteLLM опирается на события и трассировки, которые LiteLLM пишет через свою подсистему журналирования и наблюдаемости. В текущем проекте основной путь мониторинга — Prometheus `/metrics`, проверки состояния и структурированные журналы защитного слоя.
 
 В `litellm_settings` включён Prometheus callback:
 
@@ -138,15 +139,15 @@ litellm_settings:
   drop_params: true
 ```
 
-Проект добавляет собственные метрики `ru_pii_guardrail_*` для pre-call/post-call outcomes, entity counts, fail-open/fail-closed событий, Presidio latency, Redis latency и mapping size, `ru_regulated_topic_policy_blocked_total` для regulated-topic blocks и `ru_synthetic_pii_allowlist_hits_total` для synthetic/test PII allowlist hits. Structured logs guardrail пишутся в JSON без prompt text, raw PII и raw matched text. Подробный DevOps guide: [monitoring.md](monitoring.md).
+Проект добавляет собственные метрики `ru_pii_guardrail_*` для итогов проверок до вызова модели и после ответа, количества сущностей, событий fail-open/fail-closed, задержки Presidio, задержки Redis и размера сопоставлений, `ru_regulated_topic_policy_blocked_total` для блокировок регулируемых тем и `ru_synthetic_pii_allowlist_hits_total` для срабатываний списка разрешённых синтетических тестовых PII. Структурированные журналы защитного слоя пишутся в JSON без текста запроса, исходной PII и исходного найденного фрагмента. Подробный эксплуатационный справочник: [monitoring.md](monitoring.md).
 
-References:
+Ссылки:
 
 - https://docs.litellm.ai/docs/proxy/guardrails/quick_start
 - https://docs.litellm.ai/docs/proxy/guardrails/custom_guardrail
 - https://docs.litellm.ai/docs/proxy/prometheus
 
-## Provider routing и sticky affinity
+## Маршрутизация провайдеров и закрепление развёртывания
 
 В `litellm-config.yaml` включена Router pre-call проверка `deployment_affinity`:
 
@@ -159,9 +160,9 @@ router_settings:
   deployment_affinity_ttl_seconds: 86400
 ```
 
-LiteLLM использует `user_api_key_hash` из request metadata и сохраняет в Redis привязку этого клиента к конкретному `model_info.id`. При следующих запросах того же ключа Router старается выбрать тот же healthy deployment. Если deployment недоступен или mapping отсутствует/истёк, LiteLLM возвращается к обычной стратегии выбора и обновляет привязку.
+LiteLLM использует `user_api_key_hash` из метаданных запроса и сохраняет в Redis привязку этого клиента к конкретному `model_info.id`. При следующих запросах того же ключа Router старается выбрать то же доступное развёртывание. Если развёртывание недоступно или сопоставление отсутствует/истекло, LiteLLM возвращается к обычной стратегии выбора и обновляет привязку.
 
-Это помогает provider-side кэшированию входных токенов, когда в одной model group настроено несколько аккаунтов или провайдеров. Для стабильной работы у каждого deployment должен быть постоянный `model_info.id`:
+Это помогает кэшированию входных токенов на стороне провайдера, когда в одной группе моделей настроено несколько аккаунтов или провайдеров. Для стабильной работы у каждого развёртывания должен быть постоянный `model_info.id`:
 
 ```yaml
 model_list:
@@ -175,11 +176,11 @@ model_list:
       base_model: glm-5.2
 ```
 
-Подробности, пример второго аккаунта и smoke-проверка описаны в [routing.md](routing.md).
+Подробности, пример второго аккаунта и быстрая проверка описаны в [routing.md](routing.md).
 
 ## Семантика плейсхолдеров
 
-Плейсхолдеры уникальны в рамках одного запроса и группируются по entity type:
+Плейсхолдеры уникальны в рамках одного запроса и группируются по типу сущности:
 
 ```text
 <PERSON_1>
@@ -188,227 +189,227 @@ model_list:
 <RU_INN_1>
 ```
 
-Счётчик request-scoped, а не message-scoped. Если один запрос содержит два user messages с телефонами, второй телефон получит `<PHONE_NUMBER_2>`.
+Счётчик ведётся в рамках запроса, а не отдельного сообщения. Если один запрос содержит два пользовательских сообщения с телефонами, второй телефон получит `<PHONE_NUMBER_2>`.
 
-`presidio/analyzer_server.py` дедуплицирует пересекающиеся результаты analyzer/NER. Guardrail дополнительно пропускает некорректные spans и оставшиеся пересечения во время построения замен.
+`presidio/analyzer_server.py` дедуплицирует пересекающиеся результаты Analyzer/NER. Защитный слой дополнительно пропускает некорректные фрагменты и оставшиеся пересечения во время построения замен.
 
-## PII policy и failure modes
+## Политика персональных данных и режимы отказа
 
-`PII_GUARDRAIL_MODE` управляет штатной политикой после успешной детекции PII:
+`PII_GUARDRAIL_MODE` управляет штатной политикой после успешного поиска персональных данных:
 
-| Mode | Поведение |
+| Режим | Поведение |
 | --- | --- |
-| `mask` | По умолчанию. Маскирует PII, сохраняет Redis mapping, вызывает провайдера и восстанавливает placeholders в ответе. |
-| `block` | Если PII найдена, возвращает клиентскую `422` ошибку до вызова провайдера. Ответ содержит только entity types и не содержит raw PII, offsets или исходный текст. |
+| `mask` | По умолчанию. Маскирует персональные данные, сохраняет сопоставление в Redis, вызывает провайдера и восстанавливает плейсхолдеры в ответе. |
+| `block` | Если персональные данные найдены, возвращает клиентскую ошибку `422` до вызова провайдера. Ответ содержит только типы сущностей и не содержит исходные персональные данные, смещения или исходный текст. |
 
-Guardrail поддерживает два режима через `PII_GUARDRAIL_FAILURE_MODE`. Полный справочник по runtime-переменным и допустимым значениям: [configuration.md](configuration.md).
+Защитный слой поддерживает два режима отказа через `PII_GUARDRAIL_FAILURE_MODE`. Полный справочник по переменным запуска и допустимым значениям: [configuration.md](configuration.md).
 
-| Mode | Поведение |
+| Режим | Поведение |
 | --- | --- |
 | `fail_closed` | Значение по умолчанию. При сбоях Presidio/Redis выбрасывается ошибка, запрос не продолжается. |
-| `fail_open` | При сбоях Presidio/Redis запрос остаётся неизменённым. Если Redis save не удался, guardrail не применяет частичную маскировку. Используйте только как осознанное dev/test исключение. |
+| `fail_open` | При сбоях Presidio/Redis запрос остаётся неизменённым. Если сохранение в Redis не удалось, защитный слой не применяет частичную маскировку. Используйте только как осознанное исключение для разработки или тестов. |
 
-TTL Redis-маппингов задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
+Время жизни сопоставлений в Redis задаётся через `PII_MAPPING_TTL_SECONDS`, значение по умолчанию `3600`.
 
-## Dictionary Substitution Policy
+## Политика словарных подстановок
 
-`DICTIONARY_SUBSTITUTIONS_ENABLED=true` включает deterministic reversible business dictionary policy до Presidio Analyzer. Это не Presidio recognizer и не зависит от DeepPavlov `ORGANIZATION`: source phrases заменяются на configured synthetic replacements, replacement spans исключаются из последующего PII mask/block, а restore mapping сохраняется в том же request-scoped Redis key `pii_mapping:<pii_request_id>`.
+`DICTIONARY_SUBSTITUTIONS_ENABLED=true` включает детерминированную обратимую политику словарных бизнес-подстановок до Presidio Analyzer. Это не распознаватель Presidio и не зависит от DeepPavlov `ORGANIZATION`: исходные фразы заменяются на настроенные синтетические значения, фрагменты замен исключаются из последующего маскирования/блокировки персональных данных, а сопоставление для восстановления сохраняется в том же Redis-ключе `pii_mapping:<pii_request_id>` в рамках запроса.
 
-Default config file `litellm_guardrails/dictionary-substitutions.default.json` монтируется в контейнер как `/app/litellm_guardrails/dictionary-substitutions.default.json` и содержит seed из 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Оператор может заменить файл через `DICTIONARY_SUBSTITUTIONS_FILE` или полностью переопределить config через `DICTIONARY_SUBSTITUTIONS_JSON`.
+Файл конфигурации по умолчанию `litellm_guardrails/dictionary-substitutions.default.json` монтируется в контейнер как `/app/litellm_guardrails/dictionary-substitutions.default.json` и содержит базовый набор из 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Оператор может заменить файл через `DICTIONARY_SUBSTITUTIONS_FILE` или полностью переопределить конфигурацию через `DICTIONARY_SUBSTITUTIONS_JSON`.
 
-Правила валидируются при старте guardrail: пустые source/replacement, duplicate ids, одинаковые restore replacements и source==replacement считаются invalid config. Production default `DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed`, потому что отправка substituted request без restore mapping ломает обратимость. Если исходный request уже содержит replacement text рядом с source phrase, request считается ambiguous и блокируется в fail-closed режиме.
+Правила валидируются при старте защитного слоя: пустые исходные значения или замены, повторяющиеся идентификаторы, одинаковые значения для восстановления и совпадение исходной фразы с заменой считаются некорректной конфигурацией. Промышленное значение по умолчанию — `DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed`, потому что отправка запроса с подстановкой без сопоставления для восстановления ломает обратимость. Если исходный запрос уже содержит текст замены рядом с исходной фразой, запрос считается неоднозначным и блокируется в режиме `fail_closed`.
 
-Restoration exact-match only. Если модель вернула replacement без изменений, guardrail восстановит исходный source в non-streaming response fields и streaming `delta.content` / `delta.reasoning_content`, включая разрыв replacement между чанками. Если модель перевела, склонила, сократила или перефразировала replacement, восстановление не выполняется.
+Восстановление работает только по точному совпадению. Если модель вернула замену без изменений, защитный слой восстановит исходную фразу в обычных полях ответа и в потоковых `delta.content` / `delta.reasoning_content`, включая разрыв замены между фрагментами потока. Если модель перевела, склонила, сократила или перефразировала замену, восстановление не выполняется.
 
-## Synthetic/test PII allowlist
+## Список разрешённых синтетических персональных данных
 
-`SYNTHETIC_PII_ALLOWLIST_MODE=allow` включает узкое исключение для явно заданных synthetic/test PII fixtures. По умолчанию режим выключен (`off`), поэтому production behavior совпадает с обычным `PII_GUARDRAIL_MODE`.
+`SYNTHETIC_PII_ALLOWLIST_MODE=allow` включает узкое исключение для явно заданных синтетических тестовых значений персональных данных. По умолчанию режим выключен (`off`), поэтому промышленное поведение совпадает с обычным `PII_GUARDRAIL_MODE`.
 
-Allowlist запускается после `POST /api/v1/analyze`, когда Presidio уже вернул entity spans, и до ветвления `mask`/`block`. Если найденный span совпадает с правилом из `SYNTHETIC_PII_ALLOWLIST_JSON`, guardrail удаляет только этот span из списка PII. Остальные entity spans в том же запросе остаются в обработке: в `mask` mode они получают placeholders и Redis mapping, в `block` mode запрос блокируется безопасной `422` ошибкой до provider egress.
+Список разрешённых значений применяется после `POST /api/v1/analyze`, когда Presidio уже вернул найденные фрагменты, и до ветвления `mask`/`block`. Если найденный фрагмент совпадает с правилом из `SYNTHETIC_PII_ALLOWLIST_JSON`, защитный слой удаляет только этот фрагмент из списка персональных данных. Остальные найденные фрагменты в том же запросе остаются в обработке: в режиме `mask` они получают плейсхолдеры и сопоставление в Redis, в режиме `block` запрос блокируется безопасной ошибкой `422` до выхода к провайдеру.
 
-Правило должно быть PII-only: поле `policies` по умолчанию равно `["pii"]`, а значения для других policy families игнорируются этим слоем. Regex patterns принимаются только в безопасной форме: полный anchor (`^...$` или `\A...\Z`) и контролируемый synthetic namespace (`example.test`, `example.com`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Broad patterns вроде `^.*$` и слишком длинные patterns игнорируются.
+Правило должно относиться только к персональным данным: поле `policies` по умолчанию равно `["pii"]`, а значения для других семейств политик игнорируются этим слоем. Шаблоны регулярных выражений принимаются только в безопасной форме: полная привязка к началу и концу строки (`^...$` или `\A...\Z`) и контролируемое синтетическое пространство имён (`example.test`, `example.com`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Слишком широкие шаблоны вроде `^.*$` и слишком длинные шаблоны игнорируются.
 
-Allowlist не отключает `REGULATED_TOPIC_POLICY_MODE`, `PRE_EGRESS_POLICY_MODE` или `FINAL_PAYLOAD_LEAK_CHECK_MODE`. Он также не должен использоваться для реальных персональных данных: raw allowlisted values не пишутся в logs/metrics/audit, но сам механизм предназначен только для тестовых наборов и демонстраций.
+Список разрешённых значений не отключает `REGULATED_TOPIC_POLICY_MODE`, `PRE_EGRESS_POLICY_MODE` или `FINAL_PAYLOAD_LEAK_CHECK_MODE`. Он также не должен использоваться для реальных персональных данных: исходные разрешённые значения не пишутся в журналы, метрики и аудит, но сам механизм предназначен только для тестовых наборов и демонстраций.
 
-## Regulated-topic policy
+## Политика регулируемых тем
 
-`REGULATED_TOPIC_POLICY_MODE=block` включает conservative block-only policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем. По умолчанию режим `off`, потому что включение широкой business/compliance блокировки должно быть deployment decision.
+`REGULATED_TOPIC_POLICY_MODE=block` включает консервативный пакет правил только на блокировку для AML/CFT / ПОД/ФТ, санкционных проверок, мониторинга транзакций, сценариев подозрительной активности и обхода комплаенс-процедур. По умолчанию режим `off`, потому что включение широкой бизнес/комплаенс-блокировки должно быть решением конкретного развёртывания.
 
-Этот слой не является PII recognizer: он не создаёт entity spans, placeholders или Redis mapping и не участвует в response restoration. Он работает после сбора request text targets, но до `POST /api/v1/analyze`, pre-egress config/log policy, Redis mapping save и provider egress.
+Этот слой не является распознавателем персональных данных: он не создаёт найденные фрагменты, плейсхолдеры или сопоставления в Redis и не участвует в восстановлении ответа. Он работает после сбора текстовых частей запроса, но до `POST /api/v1/analyze`, предварительной проверки конфигураций/журналов, сохранения сопоставления в Redis и выхода к провайдеру.
 
-Public defaults содержат только rule ids/categories/action type `block`, без organization-specific confidential terms. Operator-defined block-only rules добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`; они также логируются только через bounded `category`, `rule_id`, `action` и counts. При срабатывании guardrail возвращает `422` с `code=regulated_topic_policy_blocked`; тело ответа, `gateway_guardrail_audit`, metric `ru_regulated_topic_policy_blocked_total` и structured logs не содержат raw prompt, raw matched text, snippets или offsets.
+Публичные правила по умолчанию содержат только идентификаторы правил, категории и действие `block`, без конфиденциальных терминов конкретной организации. Операторские правила только на блокировку добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`; они также логируются только через ограниченные `category`, `rule_id`, `action` и счётчики. При срабатывании защитный слой возвращает `422` с `code=regulated_topic_policy_blocked`; тело ответа, `gateway_guardrail_audit`, метрика `ru_regulated_topic_policy_blocked_total` и структурированные журналы не содержат исходный запрос, исходный найденный текст, фрагменты или смещения.
 
-Mask и dictionary-substitute actions не включены в regulated-topic policy. Reversible dictionary substitution реализован отдельным слоем через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используется для broad semantic topic blocking.
+Действия маскирования и словарной подстановки не включены в политику регулируемых тем. Обратимые словарные подстановки реализованы отдельным слоем через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используются для широкой семантической блокировки тем.
 
-## Pre-egress config/log policy
+## Предварительная проверка конфигураций и журналов
 
-`PRE_EGRESS_POLICY_MODE=block` включает отдельный whole-payload classifier внутри pre-call guardrail. Он запускается после сбора строковых request targets, но до `POST /api/v1/analyze`, Redis mapping save и provider egress.
+`PRE_EGRESS_POLICY_MODE=block` включает отдельный классификатор всей полезной нагрузки внутри проверки до вызова модели. Он запускается после сбора строковых частей запроса, но до `POST /api/v1/analyze`, сохранения сопоставления в Redis и выхода к провайдеру.
 
-Цель слоя — не искать отдельные PII spans, а остановить операционные артефакты, которые нельзя безопасно отправлять внешнему LLM: `.env` secret dumps, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces. При срабатывании guardrail возвращает `422` с `code=pre_egress_policy_blocked`; тело ответа и structured logs содержат только bounded categories/rule ids/counts без raw payload, snippets, offsets или secret values.
+Цель слоя — не искать отдельные фрагменты персональных данных, а остановить операционные артефакты, которые нельзя безопасно отправлять внешней модели: выгрузки `.env` с секретами, kubeconfig/манифесты Kubernetes, конфигурации nginx, журналы доступа/аутентификации и трассировки ошибок. При срабатывании защитный слой возвращает `422` с `code=pre_egress_policy_blocked`; тело ответа и структурированные журналы содержат только ограниченные категории, идентификаторы правил и счётчики без исходной полезной нагрузки, фрагментов, смещений или значений секретов.
 
-Если classifier блокирует запрос, PII Redis mapping `pii_mapping:*` не создаётся и `metadata.pii_request_id` не добавляется. Router-level Redis state вроде `deployment_affinity` относится к LiteLLM routing и не является PII restoration mapping.
+Если классификатор блокирует запрос, сопоставление персональных данных в Redis `pii_mapping:*` не создаётся и `metadata.pii_request_id` не добавляется. Redis-состояние маршрутизатора вроде `deployment_affinity` относится к маршрутизации LiteLLM и не является сопоставлением для восстановления персональных данных.
 
-#28 Secondary DLP scan остаётся отдельным слоем: он должен проверять уже provider-bound payload после возможных мутаций. Pre-egress policy из этого раздела проверяет исходный operational artifact до Analyzer.
+#28, вторичная DLP-проверка, остаётся отдельным слоем: она должна проверять уже подготовленную для провайдера полезную нагрузку после возможных изменений. Политика из этого раздела проверяет исходный операционный артефакт до Analyzer.
 
-## Production egress controls
+## Сетевые ограничения исходящих соединений в промышленной среде
 
-Application-level guardrails не заменяют сетевой deny-by-default слой. В production
-`litellm` должен иметь egress только к внутренним зависимостям (`presidio-analyzer`,
-Redis, PostgreSQL) и явно разрешенным provider FQDNs; `presidio-analyzer`, Redis и
-PostgreSQL не должны иметь internet egress в runtime.
+Защитные слои на уровне приложения не заменяют сетевую политику «запрещено всё, кроме явно разрешённого». В промышленной среде
+`litellm` должен иметь исходящие соединения только к внутренним зависимостям (`presidio-analyzer`,
+Redis, PostgreSQL) и явно разрешенным FQDN провайдеров; `presidio-analyzer`, Redis и
+PostgreSQL не должны иметь исходящего интернет-доступа во время работы.
 
-Local Docker Compose bridge network используется для разработки и smoke-тестов, но не
-считается production egress enforcement. Production guidance, runtime allowlist и
-стартовые Kubernetes/Cilium templates описаны в [docs/egress-controls.md](egress-controls.md)
+Локальная bridge-сеть Docker Compose используется для разработки и быстрых проверок, но не
+считается механизмом принудительного ограничения для промышленной среды. Рекомендации для промышленного запуска, список разрешённых направлений и
+стартовые шаблоны Kubernetes/Cilium описаны в [docs/egress-controls.md](egress-controls.md)
 и [deploy/kubernetes/egress](../deploy/kubernetes/egress).
 
 ## Analyzer
 
-Analyzer service — FastAPI приложение в `presidio/analyzer_server.py`.
+Analyzer — FastAPI-приложение в `presidio/analyzer_server.py`.
 
-LiteLLM guardrail использует Analyzer в основном request path. На `pre_call` guardrail отправляет каждое строковое сообщение в `POST /api/v1/analyze`, получает spans и строит обратимые плейсхолдеры самостоятельно. Без `presidio-analyzer` автоматическая PII-детекция в запросах не работает.
+Защитный слой LiteLLM использует Analyzer в основном пути обработки запроса. На `pre_call` он отправляет каждое строковое сообщение в `POST /api/v1/analyze`, получает найденные фрагменты и строит обратимые плейсхолдеры самостоятельно. Без `presidio-analyzer` автоматический поиск персональных данных в запросах не работает.
 
-Analyzer имеет явную process-local capacity model:
+Analyzer имеет явную модель ёмкости внутри процесса:
 
 | Настройка | По умолчанию | Эффект |
 | --- | --- | --- |
-| `PRESIDIO_ANALYZER_WORKERS` | `1` | Количество uvicorn worker processes. Каждый worker загружает отдельный экземпляр spaCy/DeepPavlov, поэтому память растёт примерно линейно. |
-| `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Количество активных analyzer jobs внутри одного worker. Default `1` избегает параллельного доступа к одной DeepPavlov model instance. |
-| `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Максимум запросов, ожидающих свободный slot внутри worker. |
-| `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Максимальное ожидание slot перед `503 analyzer_overloaded`. |
-| `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Internal suffix allowlist для `INTERNAL_DOMAIN`. |
-| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | Опционально считать global public IP чувствительными наряду с internal/private ranges. |
+| `PRESIDIO_ANALYZER_WORKERS` | `1` | Количество рабочих процессов uvicorn. Каждый процесс загружает отдельный экземпляр spaCy/DeepPavlov, поэтому потребление памяти растёт примерно линейно. |
+| `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Количество активных задач анализа внутри одного рабочего процесса. Значение `1` по умолчанию избегает параллельного доступа к одному экземпляру модели DeepPavlov. |
+| `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Максимум запросов, ожидающих свободное место внутри рабочего процесса. |
+| `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25` | Максимальное ожидание свободного места перед `503 analyzer_overloaded`. |
+| `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Список внутренних суффиксов для `INTERNAL_DOMAIN`. |
+| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | Дополнительно считать публичные IP чувствительными наряду с внутренними/приватными диапазонами. |
 
-Эффективная ёмкость активных model calls: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память планируйте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + headroom`, потому что uvicorn workers не шарят загруженный DeepPavlov model instance.
+Эффективная ёмкость активных вызовов модели: `replicas * PRESIDIO_ANALYZER_WORKERS * PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Память планируйте как `replicas * PRESIDIO_ANALYZER_WORKERS * measured_RSS_per_worker + запас`, потому что рабочие процессы uvicorn не разделяют загруженный экземпляр модели DeepPavlov.
 
-`POST /api/v1/analyze` сначала занимает capacity slot, затем выполняет sync Presidio/DeepPavlov работу через threadpool, чтобы не блокировать uvicorn event loop. Capacity slot освобождается после завершения blocking analysis; timeout применяется к ожиданию slot, но не прерывает уже начатый DeepPavlov inference. `GET /api/v1/health` не проходит через limiter и возвращает `capacity` snapshot вместе с `ner`.
+`POST /api/v1/analyze` сначала занимает место в ограничителе ёмкости, затем выполняет синхронную работу Presidio/DeepPavlov через пул потоков, чтобы не блокировать цикл событий uvicorn. Место освобождается после завершения анализа; таймаут применяется к ожиданию места, но не прерывает уже начатый вывод модели DeepPavlov. `GET /api/v1/health` не проходит через ограничитель и возвращает снимок `capacity` вместе с `ner`.
 
-`503 analyzer_overloaded` считается fail-closed override для guardrail независимо от `PII_GUARDRAIL_FAILURE_MODE`: LiteLLM останавливает запрос, чтобы перегрузка Analyzer не привела к отправке raw PII провайдеру. Для PII-sensitive deployment используйте `fail_closed` и для остальных инфраструктурных сбоев, а Analyzer масштабируйте через workers/replicas с учётом памяти модели.
+`503 analyzer_overloaded` считается безопасным отказом для защитного слоя независимо от `PII_GUARDRAIL_FAILURE_MODE`: LiteLLM останавливает запрос, чтобы перегрузка Analyzer не привела к отправке исходных персональных данных провайдеру. Для развёртываний с чувствительными данными используйте `fail_closed` и для остальных инфраструктурных сбоев, а Analyzer масштабируйте через рабочие процессы/реплики с учётом памяти модели.
 
 Источники детекции:
 
-| Источник | Entity types |
+| Источник | Типы сущностей |
 | --- | --- |
-| Regex recognizers | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS`, `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD` |
+| Распознаватели на регулярных выражениях | `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS`, `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `LOGIN`, `PASSWORD` |
 | DeepPavlov NER | `PERSON`, `LOCATION`, `ORGANIZATION` |
 
-### Recognizer Threshold Policy
+### Пороговая политика распознавателей
 
-Analyzer API по умолчанию использует `score_threshold=0.35`. Для `RU_INN` checksum validation всегда обязательна: невалидный контрольный разряд не детектируется даже рядом с контекстом. Настройка `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` включает более sensitive default для 12-digit INN: checksum-valid bare 12-digit INN без контекстного слова проходит `score_threshold=0.35`. Bare 10-digit INN остаётся ниже threshold даже в default mode, потому что checksum пропускает слишком много случайных 10-значных чисел.
+Analyzer API по умолчанию использует `score_threshold=0.35`. Для `RU_INN` проверка контрольной суммы всегда обязательна: невалидный контрольный разряд не детектируется даже рядом с контекстом. Настройка `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` включает более чувствительное поведение для 12-значного ИНН: 12-значный ИНН с корректной контрольной суммой без контекстного слова проходит `score_threshold=0.35`. 10-значный ИНН без контекста остаётся ниже порога даже в режиме по умолчанию, потому что контрольная сумма пропускает слишком много случайных 10-значных чисел.
 
-Если `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, включается strict mode: любой голый ИНН остаётся ниже `score_threshold=0.35`, а детекция требует контекст вроде `ИНН`, `индивидуальный номер налогоплательщика`, `налоговый`, `КПП` или `ОГРН`. Это снижает false positives для длинных числовых последовательностей, но может пропустить bare INN в коротких prompt'ах.
+Если `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, включается строгий режим: любой ИНН без контекста остаётся ниже `score_threshold=0.35`, а детекция требует контекст вроде `ИНН`, `индивидуальный номер налогоплательщика`, `налоговый`, `КПП` или `ОГРН`. Это снижает ложные срабатывания для длинных числовых последовательностей, но может пропустить ИНН без контекста в коротких запросах.
 
-Counterparty/bank-requisite recognizers also use conservative thresholds. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` and `RU_CORRESPONDENT_ACCOUNT` require explicit context such as `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` or `к/с`; bare 9- and 20-digit runs stay below `score_threshold=0.35`. `RU_OGRN` and `RU_OGRNIP` are checksum-gated. Settlement and correspondent account recognizers validate the Russian account control key when a contextual BIK is nearby; without BIK they rely on strong context and structural constraints. The Analyzer does not perform online lookup in the Bank of Russia BIK directory.
+Распознаватели контрагентских и банковских реквизитов также используют консервативные пороги. `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный контекст вроде `КПП`, `БИК`, `расчетный счет`, `р/с`, `корреспондентский счет` или `к/с`; 9- и 20-значные последовательности без контекста остаются ниже `score_threshold=0.35`. `RU_OGRN` и `RU_OGRNIP` проходят через проверку контрольной суммы. Распознаватели расчётного и корреспондентского счетов проверяют российский контрольный ключ, если рядом есть контекстный БИК; без БИК они опираются на сильный контекст и структурные ограничения. Analyzer не выполняет онлайн-проверку по справочнику БИК Банка России.
 
-Infrastructure/secret recognizers are entity-level rules, not a whole-payload classifier. `INTERNAL_IP` validates candidates with Python `ipaddress` and defaults to private/loopback/link-local/CGNAT/ULA ranges; `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true` extends it to global public IPs when deployment policy treats them as sensitive. `INTERNAL_DOMAIN` only matches configured suffixes from `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`. `HOSTNAME`, `LOGIN` and `PASSWORD` require key-value style context. `DB_URL` matches credential-bearing DB/service URLs, `JWT` requires decodable JSON header/payload, and `API_KEY` focuses on provider-specific keys or context-bound token assignments while rejecting obvious documentation placeholders.
+Распознаватели инфраструктуры и секретов работают на уровне отдельных сущностей, а не как классификатор всей полезной нагрузки. `INTERNAL_IP` проверяет кандидатов через Python `ipaddress` и по умолчанию покрывает приватные, loopback, link-local, CGNAT и ULA-диапазоны; `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true` расширяет покрытие на публичные IP, если политика развёртывания считает их чувствительными. `INTERNAL_DOMAIN` ищет только настроенные суффиксы из `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`. `HOSTNAME`, `LOGIN` и `PASSWORD` требуют контекст в формате «ключ-значение». `DB_URL` ищет URL баз данных/сервисов с учётными данными, `JWT` требует декодируемые JSON-заголовок и тело, а `API_KEY` фокусируется на ключах конкретных провайдеров или присваиваниях токенов с явным контекстом, отбрасывая очевидные документационные плейсхолдеры.
 
-`RU_ADDRESS` intentionally limited: это regex recognizer для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Street-type сокращения требуют границу слева, а форма `name + type + number` требует явное `дом`/`д.`, чтобы не ловить обычные фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`. Unsupported/ограниченные случаи: полный парсинг индексов, регионов, владений, корпусов без улицы, свободные адреса без street/house structure и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
+`RU_ADDRESS` намеренно ограничен: это распознаватель на регулярных выражениях для небольшого корпуса распространённых форм (`ул. Ленина, д. 10`, `ул Ленина 10`, `г. Москва, ул. Тверская`, `Тверская улица, дом 7`). Сокращения типа улицы требуют границу слева, а форма «название + тип + номер» требует явное `дом`/`д.`, чтобы не ловить обычные фразы вроде `стул Иванова 10 раз` или `Тверская улица 10 лет`. Ограниченные случаи: полный разбор индексов, регионов, владений, корпусов без улицы, свободные адреса без структуры «улица/дом» и неоднозначные фразы со словами `улица`, `дом`, `адрес` без фактического адреса.
 
-## Guardrail Dependency Clients
+## Клиенты зависимостей защитного слоя
 
-`RuPIIGuardrail` переиспользует Redis и HTTP clients между pre-call и post-call guardrail instances внутри одного процесса/event loop LiteLLM. Это снижает connection churn: Redis mapping store и HTTP-вызовы Presidio Analyzer используют shared clients, а не создаются заново на каждый guardrail instance или текстовое поле.
+`RuPIIGuardrail` переиспользует Redis и HTTP-клиенты между экземплярами защитного слоя до вызова модели и после ответа внутри одного процесса и цикла событий LiteLLM. Это снижает количество создаваемых соединений: хранилище сопоставлений Redis и HTTP-вызовы Presidio Analyzer используют общие клиенты, а не создаются заново на каждый экземпляр защитного слоя или текстовое поле.
 
-Настройки dependency clients:
+Настройки клиентов зависимостей:
 
 | Настройка | По умолчанию | Эффект |
 | --- | --- | --- |
-| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis connections в shared pool guardrail на один процесс/event loop. |
-| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis connection. |
-| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis операций mapping store. |
-| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий HTTP timeout для Analyzer request. |
-| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP connection к Analyzer. |
-| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP connections к Analyzer в shared client на один процесс/event loop. |
-| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум keep-alive HTTP connections к Analyzer. |
+| `PII_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Максимум Redis-соединений в общем пуле защитного слоя на один процесс/цикл событий. |
+| `PII_GUARDRAIL_REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS` | `1.0` | Таймаут установки Redis-соединения. |
+| `PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS` | `2.0` | Таймаут Redis-операций с хранилищем сопоставлений. |
+| `PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `30.0` | Общий HTTP-таймаут для запроса к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS` | `5.0` | Таймаут установки HTTP-соединения к Analyzer. |
+| `PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Максимум HTTP-соединений к Analyzer в общем клиенте на один процесс/цикл событий. |
+| `PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS` | `10` | Максимум постоянных HTTP-соединений к Analyzer. |
 
-Эти лимиты управляют сетевыми клиентами guardrail. Они не увеличивают фактическую compute capacity Analyzer: параллельность NER/regex inference по-прежнему задаётся `PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`, `PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`.
+Эти лимиты управляют сетевыми клиентами защитного слоя. Они не увеличивают фактическую вычислительную ёмкость Analyzer: параллельность NER и распознавателей на регулярных выражениях по-прежнему задаётся `PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`, `PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`.
 
-Lifecycle shared clients управляется явно: `close_guardrail_dependency_clients()` очищает process-local caches и закрывает HTTPX/Redis pools. В Docker Compose это в основном важно для тестов и graceful teardown custom hosting; обычный stop контейнера завершает весь процесс, но embedding-код не должен просто удалять ссылки на clients без `aclose()`.
+Жизненный цикл общих клиентов управляется явно: `close_guardrail_dependency_clients()` очищает локальные кэши процесса и закрывает пулы HTTPX/Redis. В Docker Compose это в основном важно для тестов и корректного завершения встраиваемого запуска; обычная остановка контейнера завершает весь процесс, но встраиваемый код не должен просто удалять ссылки на клиенты без `aclose()`.
 
-### NLP Stack
+### NLP-стек
 
 Analyzer использует две разные NLP-составляющие:
 
 | Компонент | Где подключается | Назначение |
 | --- | --- | --- |
-| spaCy `ru_core_news_sm` | `NlpEngineProvider` в `presidio/analyzer_server.py` | NLP backend для Presidio Analyzer: токенизация и базовая языковая обработка |
-| DeepPavlov `ner_rus_bert` | `presidio/ner/deeppavlov_recognizer.py` | Отдельная BERT-based NER модель для `PERSON`, `LOCATION`, `ORGANIZATION` |
+| spaCy `ru_core_news_sm` | `NlpEngineProvider` в `presidio/analyzer_server.py` | NLP-движок для Presidio Analyzer: токенизация и базовая языковая обработка |
+| DeepPavlov `ner_rus_bert` | `presidio/ner/deeppavlov_recognizer.py` | Отдельная BERT-модель NER для `PERSON`, `LOCATION`, `ORGANIZATION` |
 
-`ru_core_news_sm` не является обёрткой над `ner_rus_bert`, и `ner_rus_bert` не заменяет spaCy backend. Regex recognizers работают через Presidio Analyzer, а DeepPavlov NER запускается дополнительно и затем объединяется с результатами analyzer.
+`ru_core_news_sm` не является обёрткой над `ner_rus_bert`, и `ner_rus_bert` не заменяет spaCy-движок. Распознаватели на регулярных выражениях работают через Presidio Analyzer, а DeepPavlov NER запускается дополнительно и затем объединяется с результатами Analyzer.
 
-DeepPavlov загружается на startup. По умолчанию `DEEPPAVLOV_NER_REQUIRED=true`, поэтому analyzer отказывается стартовать без NER: это fail-fast защита от незаметной деградации `PERSON`, `LOCATION` и `ORGANIZATION`. Если оператор явно задаёт `DEEPPAVLOV_NER_REQUIRED=false`, analyzer может стартовать в degraded regex-only режиме, а `/api/v1/health` возвращает `status: "degraded"`, `ner: "not_loaded"` и `ner_required: false`.
+DeepPavlov загружается при старте. По умолчанию `DEEPPAVLOV_NER_REQUIRED=true`, поэтому Analyzer отказывается стартовать без NER: это ранний отказ, который защищает от незаметной деградации `PERSON`, `LOCATION` и `ORGANIZATION`. Если оператор явно задаёт `DEEPPAVLOV_NER_REQUIRED=false`, Analyzer может стартовать в деградированном режиме только с распознавателями на регулярных выражениях, а `/api/v1/health` возвращает `status: "degraded"`, `ner: "not_loaded"` и `ner_required: false`.
 
 NER запускается только когда он может повлиять на ответ Analyzer:
 
 - если `entities` не указан, NER добавляет `PERSON`, `LOCATION` и `ORGANIZATION`;
 - если `entities` указан, NER добавляет только пересечение запрошенного списка с `PERSON`, `LOCATION`, `ORGANIZATION`;
-- если `score_threshold > 0.7`, NER пропускается, потому что DeepPavlov не отдаёт per-entity confidence, а проект присваивает NER spans фиксированный score `0.7`.
+- если `score_threshold > 0.7`, NER пропускается, потому что DeepPavlov не отдаёт уверенность по отдельным сущностям, а проект присваивает найденным NER-фрагментам фиксированную оценку `0.7`.
 
-Offsets для NER spans вычисляются по исходному тексту после объединения BIO-тегов. Для повторяющихся сущностей с одинаковым текстом поиск идёт последовательно от конца предыдущего найденного span, поэтому одинаковые значения получают разные позиции.
+Смещения для NER-фрагментов вычисляются по исходному тексту после объединения BIO-тегов. Для повторяющихся сущностей с одинаковым текстом поиск идёт последовательно от конца предыдущего найденного фрагмента, поэтому одинаковые значения получают разные позиции.
 
-## Health Checks
+## Проверки состояния
 
-LiteLLM container healthcheck использует `GET /health/liveliness`, а не `GET /health`.
+Проверка состояния контейнера LiteLLM использует `GET /health/liveliness`, а не `GET /health`.
 
 Причины:
 
-- `/health/liveliness` — unauthenticated liveness probe, предназначенный для проверки, что proxy process жив;
-- `/health` предназначен для model health monitoring и делает реальные LLM API calls;
-- официальный LiteLLM image не обязан содержать `curl`, поэтому Docker healthcheck запускает Python stdlib `urllib.request` внутри контейнера.
+- `/health/liveliness` — проверка живости без аутентификации, предназначенная для подтверждения, что процесс прокси работает;
+- `/health` предназначен для проверки состояния моделей и делает реальные вызовы LLM API;
+- официальный образ LiteLLM не обязан содержать `curl`, поэтому проверка состояния Docker запускает `urllib.request` из стандартной библиотеки Python внутри контейнера.
 
-Host-side `make health` также проверяет LiteLLM через `/health/liveliness`, чтобы не требовать `LITELLM_MASTER_KEY` для обычной проверки статуса сервисов.
+Команда `make health` со стороны хоста также проверяет LiteLLM через `/health/liveliness`, чтобы не требовать `LITELLM_MASTER_KEY` для обычной проверки статуса сервисов.
 
-Reference: https://docs.litellm.ai/docs/proxy/health
+Ссылка: https://docs.litellm.ai/docs/proxy/health
 
-## Admin UI
+## Административный интерфейс
 
-LiteLLM Admin UI доступен на `/ui`. Для входа используются `UI_USERNAME` и `UI_PASSWORD`, которые `make setup` генерирует в `.env` отдельно от `LITELLM_MASTER_KEY`.
+Административный интерфейс LiteLLM доступен на `/ui`. Для входа используются `UI_USERNAME` и `UI_PASSWORD`, которые `make setup` генерирует в `.env` отдельно от `LITELLM_MASTER_KEY`.
 
-`LITELLM_MASTER_KEY` остаётся admin API key для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через LiteLLM virtual keys.
+`LITELLM_MASTER_KEY` остаётся административным API-ключом для автоматизации и не должен выдаваться обычным пользователям. Пользовательский доступ оформляется через пользовательские ключи LiteLLM.
 
-В production Admin UI и admin API routes должны жить за отдельной operator boundary: SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy или private network. Shared `UI_USERNAME` / `UI_PASSWORD` и `LITELLM_MASTER_KEY` не считаются достаточной public internet boundary. Для API-only deployment LiteLLM UI можно отключить через `DISABLE_ADMIN_UI=True`.
+В промышленной среде административный интерфейс и административные API-маршруты должны жить за отдельной операторской границей доступа: SSO/OIDC/SAML, VPN, список разрешённых IP, mTLS, zero-trust proxy или частная сеть. Общие `UI_USERNAME` / `UI_PASSWORD` и `LITELLM_MASTER_KEY` не считаются достаточной границей для публичного интернета. Для развёртывания только с API интерфейс LiteLLM можно отключить через `DISABLE_ADMIN_UI=True`.
 
-Operator access model, role split, rotation and admin audit expectations are documented in [admin-access.md](admin-access.md).
+Модель операторского доступа, разделение ролей, ротация и ожидания по административному аудиту описаны в [admin-access.md](admin-access.md).
 
-Для обычного server-funded режима client virtual key передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает upstream через серверные provider keys. Для BYOK passthrough режима client virtual key передаётся как `x-litellm-api-key`, чтобы поддерживаемые provider-specific headers (`x-api-key`, `api-key`, `x-goog-api-key` и аналогичные) могли быть переданы upstream. Этот режим не включён в default config: header forwarding должен включаться явно в отдельном deployment и проходить live validation на текущем LiteLLM image.
+В обычном режиме, где провайдера оплачивает и вызывает прокси, клиентский ключ передаётся как `Authorization: Bearer <key>`, а LiteLLM вызывает внешнего провайдера через серверные ключи. В режиме передачи ключа клиента провайдеру клиентский ключ передаётся как `x-litellm-api-key`, чтобы поддерживаемые заголовки провайдера (`x-api-key`, `api-key`, `x-goog-api-key` и аналогичные) могли быть переданы внешнему провайдеру. Этот режим не включён в конфигурацию по умолчанию: пересылка заголовков должна включаться явно в отдельном развёртывании и проходить проверку на текущем образе LiteLLM.
 
-Codex/ChatGPT и Claude subscription OAuth обычно требуют provider `Authorization`. Обычный LiteLLM route не считается подтверждённым passthrough для такого header; если live validation покажет, что OAuth `Authorization` не форвардится, нужен pass-through route, sidecar или custom adapter. Shared Codex/Claude auth files на proxy не являются частью этой модели.
+OAuth-доступ подписок Codex/ChatGPT и Claude обычно требует провайдерский `Authorization`. Обычный маршрут LiteLLM не считается подтверждённым способом сквозной передачи такого заголовка; если проверка покажет, что OAuth `Authorization` не пересылается, нужен сквозной маршрут, боковой контейнер или отдельный адаптер. Общие файлы авторизации Codex/Claude на прокси не являются частью этой модели.
 
-Reference: https://docs.litellm.ai/docs/proxy/ui
+Ссылка: https://docs.litellm.ai/docs/proxy/ui
 
 ## Границы данных
 
-Ожидаемая privacy boundary:
+Ожидаемая граница приватности:
 
-- Presidio Analyzer и Redis работают внутри Docker Compose network.
-- Внешний LLM-провайдер получает masked prompt text.
-- Redis временно хранит исходные PII для post-call восстановления.
-- Redis также хранит LiteLLM deployment affinity mapping по хэшу клиентского ключа и `model_info.id`; raw API key в mapping не сохраняется.
-- PostgreSQL хранит состояние LiteLLM; текущий guardrail mapping там не сохраняется.
+- Presidio Analyzer и Redis работают внутри сети Docker Compose.
+- Внешний LLM-провайдер получает маскированный текст запроса.
+- Redis временно хранит исходные персональные данные для восстановления после ответа.
+- Redis также хранит сопоставление `deployment_affinity` по хэшу клиентского ключа и `model_info.id`; исходный API-ключ в сопоставлении не сохраняется.
+- PostgreSQL хранит состояние LiteLLM; текущее сопоставление защитного слоя там не сохраняется.
 
 ## Сборка и зависимости
 
-Presidio Analyzer image собирается из target `analyzer` в `presidio/Dockerfile`.
+Образ Presidio Analyzer собирается из цели `analyzer` в `presidio/Dockerfile`.
 
-Dependency constraints вынесены из Dockerfile:
+Ограничения зависимостей вынесены из Dockerfile:
 
 | Файл | Использование |
 | --- | --- |
-| `presidio/requirements-analyzer.txt` | Analyzer runtime, Presidio, spaCy, torch, transformers, pytest |
+| `presidio/requirements-analyzer.txt` | Запуск Analyzer, Presidio, spaCy, torch, transformers, pytest |
 | `presidio/requirements-torchcrf.txt` | `pytorch-crf`, устанавливается после `torch` |
-| `tests/requirements-guardrails.txt` | Test-only зависимости guardrail test runner |
+| `tests/requirements-guardrails.txt` | Тестовые зависимости для запуска проверок защитного слоя |
 
-DeepPavlov устанавливается отдельно с `--no-deps`, потому что его transitive pins тянут старые версии зависимостей, неподходящие для текущего Python 3.11 образа. Совместимые runtime dependencies задаются явно в requirements-файлах.
+DeepPavlov устанавливается отдельно с `--no-deps`, потому что его транзитивные ограничения тянут старые версии зависимостей, неподходящие для текущего образа Python 3.11. Совместимые зависимости времени выполнения задаются явно в requirements-файлах.
 
-Analyzer build скачивает DeepPavlov model archive через `presidio/download_model.py`. Скрипт:
+Сборка Analyzer скачивает архив модели DeepPavlov через `presidio/download_model.py`. Скрипт:
 
-- скачивает archive во временный файл и атомарно переименовывает его после успешной загрузки;
-- разрешает только `http`/`https` URLs;
+- скачивает архив во временный файл и атомарно переименовывает его после успешной загрузки;
+- разрешает только URL со схемами `http`/`https`;
 - считает SHA-256;
 - проверяет SHA-256, если задан `DEEPPAVLOV_NER_MODEL_SHA256`;
-- отклоняет absolute paths, path traversal и link entries при распаковке tar;
-- распаковывает модель во временную директорию и затем атомарно переносит ожидаемый model directory.
+- отклоняет абсолютные пути, выход за пределы целевой директории и ссылки при распаковке tar;
+- распаковывает модель во временную директорию и затем атомарно переносит ожидаемую директорию модели.
 
-Build args пробрасываются из `.env` через `docker-compose.yml`:
+Аргументы сборки пробрасываются из `.env` через `docker-compose.yml`:
 
 ```env
 DEEPPAVLOV_NER_MODEL_URL=http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz
@@ -419,6 +420,6 @@ DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=120
 ## Текущие ограничения
 
 - Восстановление ответа работает только для плейсхолдеров, которые провайдер вернул.
-- Streaming post-call restoration реализован для `delta.content` и `delta.reasoning_content`. Streaming tool/function-call argument deltas пока не переписываются; non-streaming ответы по-прежнему покрывают function/tool call arguments.
-- DeepPavlov span alignment основан на поиске token text в исходной строке и может пропускать сущности, если модель токенизировала их в форме, которой нет в исходной строке.
-- Requirements-файлы задают compatibility constraints, но это ещё не полный lockfile с hash-проверкой всех Python wheels.
+- Восстановление для потоковых ответов после вызова модели реализовано для `delta.content` и `delta.reasoning_content`. Потоковые фрагменты аргументов вызовов инструментов/функций пока не переписываются; обычные ответы по-прежнему покрывают аргументы вызовов функций и инструментов.
+- Выравнивание фрагментов DeepPavlov основано на поиске текста токена в исходной строке и может пропускать сущности, если модель токенизировала их в форме, которой нет в исходной строке.
+- Requirements-файлы задают ограничения совместимости, но это ещё не полный lockfile с проверкой хэшей всех Python-пакетов.

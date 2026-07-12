@@ -1,176 +1,176 @@
-# Контуры доказательной проверки compliance-требований
+# Контуры доказательной проверки требований
 
 Этот документ описывает, какими проверками проект доказывает ключевые свойства
-маскирующего proxy. Он дополняет README и гайд по мониторингу: README отвечает за
-быстрый старт, `docs/monitoring.md` — за production-наблюдаемость, а этот документ
-разделяет security evidence, observability evidence и live compatibility smoke.
-Переменные окружения, которые управляют этими gates и политиками, описаны в
+маскирующего прокси. Он дополняет README и руководство по мониторингу: README отвечает за
+быстрый старт, `docs/monitoring.md` — за наблюдаемость в промышленной среде, а этот документ
+разделяет подтверждения безопасности, подтверждения наблюдаемости и быстрые проверки совместимости на живом сервисе.
+Переменные окружения, которые управляют этими контурами и политиками, описаны в
 [configuration.md](configuration.md).
 
 ## Границы проверочных контуров
 
-| Gate | Команда | Что доказывает | Что не доказывает |
+| Контур | Команда | Что доказывает | Что не доказывает |
 | --- | --- | --- | --- |
-| Egress-security gate | `make test-egress-security` | Mock provider capture показывает, что raw PII, секреты, regulated AML/CFT / ПОД/ФТ topics, config/log payloads и final leak canaries не доходят до provider-bound request; blocked-запросы дают zero provider capture. | Полноту audit schema, production log shipping и production network firewall/CNI enforcement. |
-| Observability gate | `make test-observability-gates` | Lightweight checks фиксируют, что egress и observability gates существуют отдельно, smoke проверяет safe logs, gateway audit schema и Analyzer telemetry описаны, а документация не смешивает live smoke с leakage proof. | Production log shipping и vendor-specific dashboards. |
-| Live-provider smoke | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный LiteLLM image, guardrail hooks, provider protocol и sticky routing работают в live окружении. | Live-provider smoke не доказывает отсутствие утечки, потому что проект не видит фактический provider-bound payload у внешнего провайдера. |
+| Безопасность исходящего запроса | `make test-egress-security` | Захват запроса к имитации провайдера показывает, что исходные персональные данные, секреты, регулируемые темы AML/CFT / ПОД/ФТ, конфигурации/журналы и финальные контрольные маркеры утечки не доходят до запроса перед провайдером; заблокированные запросы не создают вызов провайдера. | Полноту схемы аудита, промышленную доставку журналов и принудительные сетевые ограничения firewall/CNI. |
+| Наблюдаемость | `make test-observability-gates` | Лёгкие проверки фиксируют, что контуры исходящего запроса и наблюдаемости существуют отдельно, быстрые проверки не пишут опасные значения в журналы, схема аудита шлюза и телеметрия Analyzer описаны, а документация не смешивает быстрый запрос к живому провайдеру с доказательством отсутствия утечки. | Промышленную доставку журналов и дашборды конкретного поставщика. |
+| Проверка с живым провайдером | `make guardrails-smoke`, `make test-e2e`, `make routing-smoke` | Реальный образ LiteLLM, обработчики защитного слоя, протокол провайдера и закрепление маршрутов работают в живом окружении. | Проверка с живым провайдером не доказывает отсутствие утечки, потому что проект не видит фактическую полезную нагрузку, ушедшую внешнему провайдеру. |
 
-## Egress-security fixtures
+## Тестовые наборы безопасности исходящего запроса
 
-`make test-egress-security` агрегирует Docker smoke с локальным mock upstream:
+`make test-egress-security` агрегирует быстрые Docker-проверки с локальной имитацией внешнего провайдера:
 
-- `make test-pre-egress-proxy` проверяет блокировку operational payloads до Analyzer и provider.
-- `make test-final-leak-proxy` проверяет final provider-bound leak check после request mutation и до provider call.
+- `make test-pre-egress-proxy` проверяет блокировку операционных полезных нагрузок до Analyzer и провайдера.
+- `make test-final-leak-proxy` проверяет финальную проверку утечки в запросе перед провайдером после изменений запроса и до вызова провайдера.
 
-Текущий fixture set покрывает следующие семейства:
+Текущий тестовый набор покрывает следующие семейства:
 
-| Семейство | Где проверяется | Ожидаемое evidence |
+| Семейство | Где проверяется | Ожидаемое подтверждение |
 | --- | --- | --- |
-| `negative-clean` | pre-egress и final leak smoke | Analyzer получает clean text, provider получает один request. |
-| `pii-full-profile` baseline | final leak smoke, masked phone case | Provider получает placeholder `<PHONE_NUMBER_1>`, но не raw phone. |
-| `config-env-block` | pre-egress smoke | `422`, `pre_egress_policy_blocked`, Analyzer/provider requests равны `0`. |
-| `logs-block` | pre-egress smoke, access-log case | `422`, category `log`, rule `log_or_stacktrace_payload`, Analyzer/provider requests равны `0`. |
-| `regulated-topic-block` | pre-egress smoke, regulated-topic case | `422`, `regulated_topic_policy_blocked`, bounded category/rule/action, Analyzer/provider requests равны `0`. |
-| `dlp-canary-leak` | final leak smoke | `422`, `final_payload_leak_check_blocked`, provider requests равны `0`. |
-| `auth-secrets` deterministic markers | final leak smoke | Private key/env-secret-like markers in provider-bound fields block before provider. |
-| `synthetic-fixtures` | guardrail unit tests and manual/demo smoke | Explicit synthetic/test PII values can be allowlisted without masking, while non-allowlisted PII in the same request is still masked or blocked. |
-| `admin-operator-boundary` | docs/static checks and production deployment evidence | Client credentials, provider credentials and admin credentials are separated; Admin UI/API is protected by SSO/reverse-proxy/private-network boundary or disabled. |
-| `repeated-and-placeholder-collision` | guardrail unit tests and flow tests | Placeholder replacement remains deterministic; broader egress evidence should stay in mock-provider smoke when new fixtures are added. |
+| `negative-clean` | быстрые проверки предварительной и финальной проверок | Analyzer получает чистый текст, провайдер получает один запрос. |
+| `pii-full-profile` baseline | финальная проверка утечки, кейс с маскированным телефоном | Провайдер получает плейсхолдер `<PHONE_NUMBER_1>`, но не исходный телефон. |
+| `config-env-block` | быстрая проверка предварительной блокировки | `422`, `pre_egress_policy_blocked`, запросы к Analyzer/провайдеру равны `0`. |
+| `logs-block` | быстрая проверка предварительной блокировки, кейс с журналом доступа | `422`, категория `log`, правило `log_or_stacktrace_payload`, запросы к Analyzer/провайдеру равны `0`. |
+| `regulated-topic-block` | быстрая проверка предварительной блокировки, кейс регулируемой темы | `422`, `regulated_topic_policy_blocked`, ограниченные категория/правило/действие, запросы к Analyzer/провайдеру равны `0`. |
+| `dlp-canary-leak` | финальная проверка утечки | `422`, `final_payload_leak_check_blocked`, запросы к провайдеру равны `0`. |
+| `auth-secrets` детерминированные маркеры | финальная проверка утечки | Маркеры приватного ключа и секретов в стиле `.env` в полях перед провайдером блокируются до вызова провайдера. |
+| `synthetic-fixtures` | модульные тесты защитного слоя и ручные/демонстрационные быстрые проверки | Явные синтетические тестовые персональные данные можно разрешить без маскирования, а остальные персональные данные в том же запросе всё равно маскируются или блокируются. |
+| `admin-operator-boundary` | документация, статические проверки и подтверждения промышленного развёртывания | Клиентские, провайдерские и административные учётные данные разделены; административный интерфейс/API защищён SSO/reverse-proxy/частной сетью или отключён. |
+| `repeated-and-placeholder-collision` | модульные тесты защитного слоя и тесты потока | Замена плейсхолдеров остаётся детерминированной; более широкие подтверждения исходящего запроса должны оставаться в быстрых проверках с имитацией провайдера при добавлении новых тестовых наборов. |
 
-Не все compliance families из внешних требований уже имеют полный coverage.
-`counterparty-full-profile` теперь частично покрыт Presidio recognizers для
+Не все семейства требований из внешних документов уже имеют полное покрытие.
+`counterparty-full-profile` теперь частично покрыт распознавателями Presidio для
 российских реквизитов: `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_BIK`,
-`RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT`. Эти recognizers закрывают
+`RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT`. Эти распознаватели закрывают
 налоговые и банковские реквизиты, но не заменяют словарную замену названий
 организаций из #25.
 
-`infrastructure-internal` теперь имеет entity-level coverage через
+`infrastructure-internal` теперь имеет покрытие на уровне отдельных сущностей через
 `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`,
 `PRIVATE_KEY`, `API_KEY`, `LOGIN` и `PASSWORD`. Это покрытие предназначено для
-одиночных технических идентификаторов и секретов внутри обычных prompt'ов. Оно
-не является full source-code secret scanning, не классифицирует бинарные
-attachments и не заменяет production egress allowlist из #38. Семейство
-`code-identifiers-companies` частично покрывается reversible dictionary substitution:
-названия организаций и business terms можно заменять exact rules до Analyzer без
-ожидания NER-срабатывания. Для class names, env vars и code identifiers нужны
-явные operator rules в dictionary config; generic source-code rewriting остаётся вне
-scope recognizers.
+одиночных технических идентификаторов и секретов внутри обычных запросов. Оно
+не является полноценным сканированием секретов в исходном коде, не классифицирует бинарные
+вложения и не заменяет промышленный список разрешённых исходящих направлений из #38. Семейство
+`code-identifiers-companies` частично покрывается обратимыми словарными подстановками:
+названия организаций и бизнес-термины можно заменять точными правилами до Analyzer без
+ожидания NER-срабатывания. Для имён классов, переменных окружения и идентификаторов кода нужны
+явные операторские правила в словарной конфигурации; общее переписывание исходного кода остаётся вне
+области ответственности распознавателей.
 
 `business-dictionary-substitution` покрывает требования к детерминированной замене
-организаций, банков и продуктовых/проектных терминов перед provider egress. По
+организаций, банков и продуктовых/проектных терминов перед выходом к провайдеру. По
 умолчанию `DICTIONARY_SUBSTITUTIONS_ENABLED=true`, а
-`dictionary-substitutions.default.json` содержит seed из 10 крупных российских
+`dictionary-substitutions.default.json` содержит начальный набор из 10 крупных российских
 банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`,
 `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`,
-`Совкомбанк`. Это business policy, не PII recognizer: replacement spans
-исключаются из последующего mask/block, combined restore mapping хранится в Redis
-с TTL `PII_MAPPING_TTL_SECONDS`, logs/metrics содержат только bounded `rule_id`
-и counts. Restore exact-match only; склонения, переводы и paraphrase не являются
+`Совкомбанк`. Это бизнес-политика, а не распознаватель персональных данных: фрагменты замен
+исключаются из последующего маскирования/блокировки, объединённое сопоставление для восстановления хранится в Redis
+с временем жизни `PII_MAPPING_TTL_SECONDS`, журналы/метрики содержат только ограниченный `rule_id`
+и счётчики. Восстановление работает только по точному совпадению; склонения, переводы и перефразирование не являются
 гарантированно обратимыми.
 
 `regulated-topic-block` покрывает требование не раскрывать внутренние AML/CFT /
-ПОД/ФТ меры внешним моделям. Это не является PII: запрос может описывать внутренние
-контроли, санкционный скрининг, transaction-monitoring thresholds, suspicious-activity
-playbooks или compliance-bypass процедуры без персональных данных. Первая версия
-policy pack intentionally block-only и по умолчанию `REGULATED_TOPIC_POLICY_MODE=off`;
-включение `block` является deployment decision. Public defaults содержат только
-bounded categories/rule ids/action type, а organization-specific confidential terms
-добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`. Metric
-`ru_regulated_topic_policy_blocked_total` считает blocks по bounded `category` и
-`rule_id`; logs не содержат raw prompt или raw matched text. Mask и
-dictionary-substitute actions не смешиваются с broad topic blocking: reversible
-dictionary substitution реализован отдельным exact-match слоем.
+ПОД/ФТ меры внешним моделям. Это не персональные данные: запрос может описывать внутренние
+контроли, санкционный скрининг, пороги мониторинга транзакций, сценарии подозрительной активности
+или процедуры обхода комплаенса без персональных данных. Первая версия
+набора правил намеренно работает только на блокировку и по умолчанию `REGULATED_TOPIC_POLICY_MODE=off`;
+включение `block` является решением конкретного развёртывания. Публичные правила по умолчанию содержат только
+ограниченные категории, идентификаторы правил и тип действия, а конфиденциальные термины конкретной организации
+добавляются через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`. Метрика
+`ru_regulated_topic_policy_blocked_total` считает блокировки по ограниченным `category` и
+`rule_id`; журналы не содержат исходный запрос или исходный найденный текст. Маскирование и
+словарные подстановки не смешиваются с широкой блокировкой тем: обратимые
+словарные подстановки реализованы отдельным слоем точных совпадений.
 
 `synthetic-fixtures` покрывает эксплуатационную потребность использовать заранее
-согласованные тестовые PII-значения в smoke/demo/checklist сценариях. Это narrow
-exception после Analyzer и до обычного `mask`/`block` поведения, а не способ
+согласованные тестовые значения персональных данных в быстрых проверках, демонстрациях и проверочных списках. Это узкое
+исключение после Analyzer и до обычного поведения `mask`/`block`, а не способ
 пропускать реальные персональные данные. По умолчанию `SYNTHETIC_PII_ALLOWLIST_MODE=off`;
-rules задаются через `SYNTHETIC_PII_ALLOWLIST_JSON`, broad regex patterns
-игнорируются, а logs/metrics пишут только bounded `rule_id`, entity type и counts без
-raw values. Если в production traffic появляются
+правила задаются через `SYNTHETIC_PII_ALLOWLIST_JSON`, слишком широкие регулярные выражения
+игнорируются, а журналы/метрики пишут только ограниченный `rule_id`, тип сущности и счётчики без
+исходных значений. Если в промышленном трафике появляются
 `ru_synthetic_pii_allowlist_hits_total`, это должно быть ожидаемым тестовым контуром
-или отдельным incident/usage review.
+или отдельным разбором инцидента/использования.
 
 `admin-operator-boundary` покрывает требование отделить пользовательский доступ к
-proxy от administrator/operator access. Нормальные пользователи и приложения получают
-LiteLLM virtual keys или validated JWT/OIDC tokens; upstream provider keys остаются
-только на proxy; `LITELLM_MASTER_KEY`, `UI_USERNAME` и `UI_PASSWORD` считаются
-privileged admin credentials. Production Admin UI/API должны быть закрыты
-operator-only boundary (SSO/OIDC/SAML, VPN, IP allowlist, mTLS, zero-trust proxy,
-private network) или UI должен быть отключён через `DISABLE_ADMIN_UI=True`.
-Подробный runbook: [docs/admin-access.md](admin-access.md).
+прокси от административного/операторского доступа. Обычные пользователи и приложения получают
+пользовательские ключи LiteLLM или валидированные JWT/OIDC-токены; ключи внешних провайдеров остаются
+только на прокси; `LITELLM_MASTER_KEY`, `UI_USERNAME` и `UI_PASSWORD` считаются
+привилегированными административными учётными данными. Промышленные административный интерфейс/API должны быть закрыты
+операторской границей (SSO/OIDC/SAML, VPN, список разрешённых IP, mTLS, zero-trust proxy,
+частная сеть) или интерфейс должен быть отключён через `DISABLE_ADMIN_UI=True`.
+Подробный регламент: [docs/admin-access.md](admin-access.md).
 
-## Production evidence по сетевому egress
+## Подтверждения сетевых ограничений в промышленной среде
 
-Production egress controls покрываются отдельным инфраструктурным слоем, а не только
-application smoke-тестами. Требуемое целевое состояние и стартовые manifests описаны в
+Промышленные ограничения исходящих соединений покрываются отдельным инфраструктурным слоем, а не только
+быстрыми проверками приложения. Требуемое целевое состояние и стартовые манифесты описаны в
 [docs/egress-controls.md](egress-controls.md) и
 [deploy/kubernetes/egress](../deploy/kubernetes/egress):
 
-- namespace/pod-level default deny egress;
-- allowlist для текущих provider FQDNs (`api.z.ai`, `api.openai.com`,
-  `api.anthropic.com`) и явно настроенных `api_base` hosts;
-- internal-only egress от `litellm` к `presidio-analyzer`, Redis и PostgreSQL;
-- отсутствие runtime internet egress у `presidio-analyzer`, Redis и PostgreSQL;
-- CNI/egress/firewall logs для denied outbound flows и DNS drift.
+- запрет исходящих соединений по умолчанию на уровне namespace/pod;
+- список разрешённых FQDN текущих провайдеров (`api.z.ai`, `api.openai.com`,
+  `api.anthropic.com`) и явно настроенных хостов `api_base`;
+- исходящие соединения `litellm` только к внутренним `presidio-analyzer`, Redis и PostgreSQL;
+- отсутствие интернет-доступа во время работы у `presidio-analyzer`, Redis и PostgreSQL;
+- журналы CNI/исходящего шлюза/firewall для запрещённых исходящих потоков и изменений DNS-запросов.
 
 Этот слой не заменяет `PRE_EGRESS_POLICY_MODE`, `FINAL_PAYLOAD_LEAK_CHECK_MODE` и
-`make test-egress-security`: он ограничивает сеть, а application gates доказывают, что
-provider-bound payload очищается или блокируется до внешнего вызова. Local Docker
-Compose bridge network не считается evidence для production deny-all outbound egress.
+`make test-egress-security`: он ограничивает сеть, а проверки приложения доказывают, что
+полезная нагрузка перед провайдером очищается или блокируется до внешнего вызова. Локальная
+bridge-сеть Docker Compose не считается подтверждением промышленного запрета всех исходящих соединений.
 
-## Observability evidence
+## Подтверждения наблюдаемости
 
-В рамках #30 observability gate остается lightweight:
+В рамках #30 контур наблюдаемости остаётся лёгким:
 
-- smoke scripts проверяют, что LiteLLM logs не содержат raw forbidden values из
-  blocked/masked test payloads;
-- static checks гарантируют, что egress-security и observability статусы не
-  схлопываются в один target;
-- документация явно говорит, что live-provider smoke не является leakage proof.
+- быстрые скрипты проверяют, что журналы LiteLLM не содержат исходные запрещённые значения из
+  заблокированных/маскированных тестовых полезных нагрузок;
+- статические проверки гарантируют, что статусы безопасности исходящего запроса и наблюдаемости не
+  схлопываются в одну цель;
+- документация явно говорит, что быстрый запрос к живому провайдеру не является доказательством отсутствия утечки.
 
-Gateway audit logging из #29 пишет `gateway_guardrail_audit` один раз на pre-call
-решение. Event содержит safe decision fields: `request_id`, `model`, `status`,
+Журналирование аудита шлюза из #29 пишет `gateway_guardrail_audit` один раз на
+решение до вызова модели. Событие содержит безопасные поля решения: `request_id`, `model`, `status`,
 `latency_ms`, `guardrail_mode`, `call_type`, `policy_mode`,
 `regulated_topic_policy_mode`, `policy_result`,
 `redaction_count`, `entity_counts`, а для блокировок/ошибок — `block_reason`,
-`error_code`, bounded `categories`/`rules`/`actions`, synthetic allowlist rule/entity counts
-и counts. Он не содержит raw prompt
-text, raw PII, raw matched text, snippets, offsets, provider keys или Redis mapping contents.
+`error_code`, ограниченные `categories`/`rules`/`actions`, счётчики правил/сущностей списка разрешённых синтетических значений
+и общие счётчики. Он не содержит исходный текст запроса,
+исходные персональные данные, исходный найденный текст, фрагменты, смещения, ключи провайдеров или содержимое сопоставлений Redis.
 
-Per-request telemetry Presidio Analyzer из #31 пишет `presidio_analyzer_request`
-на каждый `/api/v1/analyze` request и exposes metrics
+Телеметрия Presidio Analyzer на каждый запрос из #31 пишет `presidio_analyzer_request`
+на каждый запрос `/api/v1/analyze` и отдаёт метрики
 `ru_presidio_analyzer_requests_total`,
 `ru_presidio_analyzer_latency_seconds_*`,
 `ru_presidio_analyzer_entities_detected_total`,
 `ru_presidio_analyzer_capacity_rejections_total` и
-`ru_presidio_analyzer_failures_total`. Telemetry содержит safe outcome, latency,
-entity type counts, capacity snapshot, NER state и bounded failure reason без raw
-input text, raw entity values, reconstructable offsets, API keys или proxy tokens.
+`ru_presidio_analyzer_failures_total`. Телеметрия содержит безопасный результат, задержку,
+счётчики типов сущностей, снимок ёмкости, состояние NER и ограниченную причину отказа без исходного
+входного текста, исходных значений сущностей, восстанавливаемых смещений, API-ключей или токенов прокси.
 
 ## Evidence для ручного ревью
 
 Для ручной проверки требований удобно прикладывать:
 
-1. Команду и gate: `make test-egress-security` или `make test-observability-gates`.
-2. Request family: например `regulated-topic-block`, `config-env-block`, `logs-block` или `dlp-canary-leak`.
-3. HTTP status и safe error code: `regulated_topic_policy_blocked`, `pre_egress_policy_blocked` или
+1. Команду и контур: `make test-egress-security` или `make test-observability-gates`.
+2. Семейство запроса: например `regulated-topic-block`, `config-env-block`, `logs-block` или `dlp-canary-leak`.
+3. HTTP-статус и безопасный код ошибки: `regulated_topic_policy_blocked`, `pre_egress_policy_blocked` или
    `final_payload_leak_check_blocked`.
-4. Capture summary из mock upstream: `provider_requests=0` для block/no-egress
-   сценариев или `provider_saw_raw_phone=false` для mask сценариев.
-5. Подтверждение log safety: raw forbidden value отсутствует в LiteLLM logs.
+4. Сводку захвата имитации внешнего провайдера: `provider_requests=0` для сценариев блокировки без выхода к провайдеру
+   или `provider_saw_raw_phone=false` для сценариев маскирования.
+5. Подтверждение безопасности журналов: исходное запрещённое значение отсутствует в журналах LiteLLM.
 
-Для admin/operator boundary дополнительно прикладывайте:
+Для административной/операторской границы дополнительно прикладывайте:
 
-1. Схему ingress/reverse-proxy/SSO, которая показывает, что `/ui` и admin API routes
-   не являются публичными без operator boundary.
-2. Список operator roles/groups и break-glass owners.
-3. Evidence ротации `LITELLM_MASTER_KEY` и `UI_PASSWORD` в staging.
-4. Пример admin action audit события или ticket/change record для key/budget/model change.
-5. Подтверждение, что client docs and configs use `RU_LLM_PROXY_TOKEN` or OIDC/JWT,
-   not `LITELLM_MASTER_KEY`, as the client credential.
+1. Схему ingress/reverse-proxy/SSO, которая показывает, что `/ui` и административные API-маршруты
+   не являются публичными без операторской границы.
+2. Список операторских ролей/групп и владельцев экстренного доступа.
+3. Подтверждение ротации `LITELLM_MASTER_KEY` и `UI_PASSWORD` на стенде.
+4. Пример события аудита административного действия или тикета/записи изменения для ключей, бюджетов или моделей.
+5. Подтверждение, что клиентская документация и конфиги используют `RU_LLM_PROXY_TOKEN` или OIDC/JWT,
+   а не `LITELLM_MASTER_KEY`, как клиентские учётные данные.
 
-Если egress-security gate проходит, а observability gate падает, это означает, что
-защита provider egress может быть корректной, но evidence/logging недостаточны для
-аудита. Если observability gate проходит, а egress-security падает, это означает
-реальный security regression независимо от качества логов.
+Если контур безопасности исходящего запроса проходит, а контур наблюдаемости падает, это означает, что
+защита выхода к провайдеру может быть корректной, но подтверждения/журналирование недостаточны для
+аудита. Если контур наблюдаемости проходит, а контур безопасности исходящего запроса падает, это означает
+реальную регрессию безопасности независимо от качества журналов.

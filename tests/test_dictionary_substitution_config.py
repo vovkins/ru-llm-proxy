@@ -78,5 +78,5 @@ def test_dictionary_policy_is_documented_in_primary_docs():
         assert "dictionary-substitutions.default.json" in text, path
 
     readme = _read("README.md")
-    assert "Dictionary substitutions" in readme
+    assert "Словарные подстановки" in readme
     assert "docs/examples.md" in readme
