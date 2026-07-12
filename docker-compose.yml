@@ -1,5 +1,5 @@
 services:
-  # === LiteLLM Proxy ===
+  # === LiteLLM-прокси ===
   litellm:
     image: docker.litellm.ai/berriai/litellm:main-stable
     container_name: ru-llm-proxy
@@ -48,7 +48,7 @@ services:
       - PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS=${PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS:-5.0}
       - PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=${PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}
       - PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=${PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS:-10}
-      # Tell LiteLLM to find our guardrail module
+      # Позволяет LiteLLM найти модуль защитного слоя
       - PYTHONPATH=/app
     depends_on:
       db:
@@ -134,7 +134,7 @@ services:
     networks:
       - ru-llm-proxy
 
-  # === Test runner for LiteLLM guardrail unit tests ===
+  # === Запуск модульных тестов защитного слоя LiteLLM ===
   guardrail-tests:
     build:
       context: .
@@ -152,7 +152,7 @@ services:
     networks:
       - ru-llm-proxy
 
-  # === Test runner for Analyzer API recognizer regression tests ===
+  # === Запуск регрессионных тестов распознавателей Analyzer API ===
   presidio-analyzer-tests:
     build:
       context: ./presidio

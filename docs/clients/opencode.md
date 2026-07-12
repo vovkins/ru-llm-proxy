@@ -1,33 +1,33 @@
 # OpenCode CLI / Desktop
 
-OpenCode connects to this proxy as a custom OpenAI-compatible provider.
+OpenCode подключается к прокси как пользовательский провайдер, совместимый с OpenAI API.
 
-Supported scope:
+Поддерживаемый сценарий:
 
 - OpenCode CLI.
-- OpenCode Desktop using the same server-side OpenCode configuration.
+- OpenCode Desktop с той же серверной конфигурацией OpenCode.
 
-## Credentials
+## Ключи доступа
 
-Use a LiteLLM virtual key as the client token:
+Используйте пользовательский ключ LiteLLM как клиентский токен:
 
 ```bash
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-The real `ZAI_API_KEY`, `ZAI_API_KEY_2`, optional provider keys, and `LITELLM_MASTER_KEY` stay only on the proxy host. OpenCode receives only the proxy token.
+Настоящие `ZAI_API_KEY`, `ZAI_API_KEY_2`, ключи дополнительных провайдеров и `LITELLM_MASTER_KEY` остаются только на хосте прокси. OpenCode получает только токен прокси.
 
-All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
+Обычные пользовательские ключи создавайте в административном интерфейсе LiteLLM. Вспомогательный скрипт командной строки нужен только как дополнительный путь для DevOps, CI и первичной настройки с хоста прокси:
 
 ```bash
 scripts/create_virtual_key.sh --alias opencode-local --models standard,zai --duration 30d
 ```
 
-## Configuration
+## Настройка
 
-Add a provider to `opencode.json`:
+Добавьте провайдера в `opencode.json`:
 
 ```jsonc
 {
@@ -54,25 +54,26 @@ Add a provider to `opencode.json`:
 }
 ```
 
-Use `glm-5.2` for new setup. `glm-5.1` remains available as an additional alias when the key allows it.
+Для новых настроек используйте `glm-5.2`. Алиас `glm-5.1` остаётся доступным
+как дополнительная модель, если выданный ключ разрешает её использовать.
 
-OpenAI/Anthropic aliases are optional provider examples now. Add them from `examples/litellm-config.optional-providers.yaml` only after validating model IDs against the target LiteLLM image and provider subscription.
+Имена моделей OpenAI/Anthropic сейчас являются примерами дополнительных провайдеров. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки идентификаторов моделей на целевом образе LiteLLM и конкретной подписке.
 
-## Smoke Test
+## Проверка
 
-OpenCode uses the same OpenAI-compatible surface as the chat smoke:
+OpenCode использует ту же поверхность, совместимую с OpenAI API, что и быстрая проверка чата:
 
 ```text
 POST /v1/chat/completions
 ```
 
-Run:
+Запустите:
 
 ```bash
 make client-auth-smoke
 ```
 
-## References
+## Ссылки
 
 - OpenCode providers: https://opencode.ai/docs/providers/
 - LiteLLM virtual keys: https://docs.litellm.ai/docs/proxy/virtual_keys

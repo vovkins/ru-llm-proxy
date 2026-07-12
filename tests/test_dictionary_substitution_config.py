@@ -68,7 +68,6 @@ def test_default_dictionary_seed_contains_top_ten_bank_rules():
 
 def test_dictionary_policy_is_documented_in_primary_docs():
     for path in (
-        "README.md",
         "docs/architecture.md",
         "docs/examples.md",
         "docs/monitoring.md",
@@ -77,3 +76,7 @@ def test_dictionary_policy_is_documented_in_primary_docs():
         text = _read(path)
         assert "DICTIONARY_SUBSTITUTIONS_ENABLED" in text, path
         assert "dictionary-substitutions.default.json" in text, path
+
+    readme = _read("README.md")
+    assert "Словарные подстановки" in readme
+    assert "docs/examples.md" in readme

@@ -20,25 +20,25 @@ def test_admin_access_runbook_defines_credential_boundaries_and_roles():
     doc = (ROOT / "docs" / "admin-access.md").read_text()
 
     for required in (
-        "Credential Boundaries",
-        "Production Exposure Rules",
-        "OSS Baseline vs Enterprise RBAC",
-        "Operator Role Model",
-        "Rotation and Emergency Revocation",
-        "Admin Audit Requirements",
-        "Production Checklist",
-        "LiteLLM virtual key",
-        "Upstream provider keys",
+        "Границы учётных данных",
+        "Правила публикации в промышленной среде",
+        "OSS-база и Enterprise RBAC",
+        "Модель операторских ролей",
+        "Ротация и экстренный отзыв",
+        "Требования к аудиту администрирования",
+        "Проверочный список для промышленной среды",
+        "Пользовательский ключ LiteLLM",
+        "Ключи внешних провайдеров",
         "LITELLM_MASTER_KEY",
         "UI_USERNAME",
         "UI_PASSWORD",
         "DISABLE_ADMIN_UI=True",
         "SSO/OIDC/SAML",
         "VPN",
-        "IP allowlist",
+        "список разрешённых IP",
         "mTLS",
         "zero-trust proxy",
-        "break-glass",
+        "экстренный доступ",
         "proxy_admin_viewer",
         "org_admin",
         "team_admin",
@@ -98,13 +98,13 @@ def test_user_facing_client_docs_do_not_use_master_key_as_client_credential():
 
     assert "Authorization: Bearer $RU_LLM_PROXY_TOKEN" in docs["README.md"]
     assert "Authorization: Bearer $RU_LLM_PROXY_TOKEN" in docs["docs/examples.md"]
-    assert "Do not put `OPENAI_API_KEY` or `LITELLM_MASTER_KEY`" in docs[
+    assert "Не кладите `OPENAI_API_KEY` или `LITELLM_MASTER_KEY`" in docs[
         "docs/clients/codex.md"
     ]
-    assert "Do not put `ANTHROPIC_API_KEY` or `LITELLM_MASTER_KEY`" in docs[
+    assert "Не кладите `ANTHROPIC_API_KEY` или `LITELLM_MASTER_KEY`" in docs[
         "docs/clients/claude-code.md"
     ]
-    assert "Do not put `ZAI_API_KEY` or `LITELLM_MASTER_KEY`" in docs[
+    assert "Не кладите `ZAI_API_KEY` или `LITELLM_MASTER_KEY`" in docs[
         "docs/clients/zcode.md"
     ]
 
@@ -115,10 +115,11 @@ def test_admin_action_audit_is_separate_from_guardrail_audit():
     compliance = (ROOT / "docs" / "compliance.md").read_text()
 
     for text in (admin_doc, monitoring, compliance):
-        assert "admin action" in text.lower() or "admin actions" in text.lower()
+        assert "административн" in text.lower()
+        assert "действ" in text.lower()
         assert "gateway_guardrail_audit" in text
 
-    assert "Client request audit and admin action audit are different things" in (
+    assert "Аудит клиентских запросов и аудит административных действий — разные вещи" in (
         admin_doc
     )
     assert "admin-operator-boundary" in compliance

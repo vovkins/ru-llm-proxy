@@ -1,8 +1,8 @@
 # Примеры API
 
-Все базовые примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, дефолтная публичная модель `glm-5.2` и дополнительный алиас `glm-5.1`. Оба GLM-алиаса используют Z.AI Coding Plan endpoint через серверные ключи proxy.
+Все базовые примеры соответствуют текущей конфигурации репозитория: LiteLLM на `localhost:4000`, публичная модель по умолчанию `glm-5.2` и дополнительное имя модели `glm-5.1`. Оба имени GLM используют конечную точку Z.AI Coding Plan через серверные ключи прокси.
 
-OpenAI/Anthropic aliases больше не включены в активный дефолтный `litellm-config.yaml`. Если нужны эти провайдеры, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, затем проверьте model IDs live на текущем LiteLLM image и реальных provider keys.
+Имена моделей OpenAI/Anthropic больше не включены в активный `litellm-config.yaml` по умолчанию. Если нужны эти провайдеры, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, затем проверьте идентификаторы моделей на текущем образе LiteLLM и реальных ключах провайдеров.
 
 ## Окружение
 
@@ -11,24 +11,25 @@ OpenAI/Anthropic aliases больше не включены в активный 
 ```bash
 export API_URL="http://localhost:4000"
 export RU_LLM_PROXY_TOKEN="sk-..."
-# Optional only for BYOK passthrough examples:
+# Нужен только для примеров со сквозной передачей ключа клиента провайдеру:
 export ANTHROPIC_BYOK_API_KEY="sk-ant-..."
 ```
 
-Полный сгруппированный справочник по переменным окружения, допустимым значениям и влиянию на runtime: [configuration.md](configuration.md).
+Полный сгруппированный справочник по переменным окружения, допустимым значениям и влиянию на запуск: [configuration.md](configuration.md).
 
-Создавайте обычные пользовательские `RU_LLM_PROXY_TOKEN` через LiteLLM Admin UI. CLI helper нужен для DevOps/CI/bootstrap/runbook-сценариев:
+Обычные пользовательские `RU_LLM_PROXY_TOKEN` создавайте через административный интерфейс LiteLLM. Вспомогательный скрипт командной строки нужен для сценариев DevOps, CI, первичной настройки и эксплуатационных регламентов:
 
 ```bash
 make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai DURATION=30d
 ```
 
-`LITELLM_MASTER_KEY` используется только для admin-операций, например создания virtual keys и просмотра списка guardrails.
-Production Admin UI/API boundary, operator roles and credential rotation are covered in [admin-access.md](admin-access.md).
+`LITELLM_MASTER_KEY` используется только для административных операций, например создания пользовательских ключей и просмотра списка защитных слоёв.
+Граница доступа для административного интерфейса/API в промышленной среде, операторские роли и ротация учётных данных
+описаны в [admin-access.md](admin-access.md).
 
 ## Режимы авторизации
 
-Server-funded режим использует proxy token как обычный bearer token. В дефолтном профиле proxy сам вызывает GLM через серверные `ZAI_API_KEY` и `ZAI_API_KEY_2`:
+В обычном режиме провайдерские ключи хранятся на стороне прокси, а клиент использует выданный ему ключ прокси как обычный bearer-токен. В профиле по умолчанию прокси сам вызывает GLM через серверные `ZAI_API_KEY` и `ZAI_API_KEY_2`:
 
 ```bash
 curl -s "$API_URL/v1/chat/completions" \
@@ -37,7 +38,7 @@ curl -s "$API_URL/v1/chat/completions" \
   -d '{"model":"glm-5.2","messages":[{"role":"user","content":"Привет"}]}'
 ```
 
-BYOK passthrough режим разделяет proxy auth и provider auth. Proxy token передаётся в `x-litellm-api-key`, а provider auth передаётся через поддерживаемый provider-specific header вроде `x-api-key`, `api-key` или `x-goog-api-key`. Этот режим не включён в default config; включайте его отдельным opt-in deployment после live validation на текущем LiteLLM image.
+Режим сквозной передачи ключа клиента провайдеру разделяет авторизацию на прокси и авторизацию у провайдера. Ключ прокси передаётся в `x-litellm-api-key`, а ключ провайдера — через поддерживаемый заголовок провайдера вроде `x-api-key`, `api-key` или `x-goog-api-key`. Этот режим не включён в конфигурацию по умолчанию; включайте его только в отдельной установке после проверки на текущем образе LiteLLM.
 
 ```bash
 curl -s "$API_URL/v1/messages" \
@@ -51,9 +52,9 @@ curl -s "$API_URL/v1/messages" \
   }'
 ```
 
-Codex/ChatGPT и Claude subscription OAuth обычно используют provider `Authorization`. Обычный LiteLLM path может не форвардить этот header upstream, поэтому subscription passthrough нужно считать experimental до live validation; при необходимости выносите его в pass-through route, sidecar или custom adapter. Не кладите общий Codex `auth.json` или Claude credentials на proxy.
+OAuth-доступ подписок Codex/ChatGPT и Claude обычно использует провайдерский `Authorization`. Обычный маршрут LiteLLM может не пересылать этот заголовок провайдеру, поэтому сквозную передачу подписки нужно считать экспериментальной до проверки на текущем образе; при необходимости выносите её в сквозной маршрут, боковой контейнер или отдельный адаптер. Не кладите общий Codex `auth.json` или учётные данные Claude на прокси.
 
-## Chat completion без PII
+## Chat Completions без персональных данных
 
 ```bash
 curl -s "$API_URL/v1/chat/completions" \
@@ -71,7 +72,7 @@ curl -s "$API_URL/v1/chat/completions" \
   }' | jq '.choices[0].message'
 ```
 
-## Chat completion с PII
+## Chat Completions с персональными данными
 
 ```bash
 curl -s "$API_URL/v1/chat/completions" \
@@ -89,13 +90,13 @@ curl -s "$API_URL/v1/chat/completions" \
   }' | jq '.choices[0].message'
 ```
 
-Перед вызовом провайдера guardrail отправляет masked text примерно такого вида:
+Перед вызовом провайдера защитный слой отправляет маскированный текст примерно такого вида:
 
 ```text
 Клиент <PERSON_1>, телефон <PHONE_NUMBER_1>, ИНН <RU_INN_1>. Составь краткую справку.
 ```
 
-Если ответ провайдера содержит эти плейсхолдеры, post-call hook восстановит исходные значения перед возвратом клиенту.
+Если ответ провайдера содержит эти плейсхолдеры, обработчик после ответа восстановит исходные значения перед возвратом клиенту.
 
 ## Несколько значений одного типа
 
@@ -121,9 +122,9 @@ curl -s "$API_URL/v1/chat/completions" \
 Основной телефон <PHONE_NUMBER_1>, резервный телефон <PHONE_NUMBER_2>.
 ```
 
-## Optional OpenAI Responses API
+## Дополнительный пример OpenAI Responses API
 
-Codex CLI/App local tasks используют Responses API. Этот пример требует, чтобы администратор добавил OpenAI-compatible alias в `litellm-config.yaml`, например на основе `examples/litellm-config.optional-providers.yaml`:
+Локальные задачи Codex CLI/App используют Responses API. Этот пример требует, чтобы администратор добавил имя модели, совместимое с OpenAI API, в `litellm-config.yaml`, например на основе `examples/litellm-config.optional-providers.yaml`:
 
 ```bash
 curl -s "$API_URL/v1/responses" \
@@ -136,17 +137,17 @@ curl -s "$API_URL/v1/responses" \
   }' | jq
 ```
 
-PII guardrail applies to Anthropic top-level `system` string/text blocks, Responses API top-level `instructions` / `input` strings, message-like `input[]` items with string `content`, tool-call `arguments`, tool-output items with string/list `output`, and text blocks with `text`, `input_text`, or `output_text` types. Non-text inputs such as images/files are passed through unchanged.
+Защитный слой персональных данных обрабатывает верхнеуровневый `system` в Anthropic Messages, строковые и текстовые блоки `instructions` / `input` в Responses API, элементы `input[]` со строковым `content`, `arguments` у вызовов инструментов, строковые/списочные `output` у результатов инструментов и текстовые блоки с `text`, `input_text` или `output_text`. Нестроковые входы, например изображения и файлы, проходят без изменений.
 
-Для live smoke этого endpoint задайте `RESPONSES_MODEL` явно:
+Для быстрой проверки этого маршрута на живом сервисе задайте `RESPONSES_MODEL` явно:
 
 ```bash
 RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
 ```
 
-## Optional Basic Anthropic Messages API
+## Дополнительный базовый пример Anthropic Messages API
 
-Это базовый non-streaming пример Anthropic Messages API через proxy. Он требует, чтобы администратор добавил Anthropic-compatible alias в `litellm-config.yaml`:
+Это базовый пример Anthropic Messages API без потоковой передачи через прокси. Он требует, чтобы администратор добавил имя модели, совместимое с Anthropic API, в `litellm-config.yaml`:
 
 ```bash
 curl -s "$API_URL/v1/messages" \
@@ -164,13 +165,13 @@ curl -s "$API_URL/v1/messages" \
   }' | jq
 ```
 
-Для live smoke этого endpoint задайте `MESSAGES_MODEL` явно:
+Для быстрой проверки этого маршрута на живом сервисе задайте `MESSAGES_MODEL` явно:
 
 ```bash
 MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
 ```
 
-Полный Claude Code gateway contract строже этого примера: `POST /v1/messages?beta=true`, streaming SSE responses, forwarding `anthropic-version` / `anthropic-beta`, optional token counting и model discovery. Его статус описан в [clients/claude-code.md](clients/claude-code.md).
+Полный контракт шлюза для Claude Code строже этого примера: `POST /v1/messages?beta=true`, потоковые SSE-ответы, пересылка `anthropic-version` / `anthropic-beta`, дополнительный подсчёт токенов и обнаружение моделей. Его статус описан в [clients/claude-code.md](clients/claude-code.md).
 
 ## Прямая проверка Analyzer
 
@@ -183,9 +184,9 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
-Ожидаемые entity types: `PHONE_NUMBER` и `RU_INN`.
+Ожидаемые типы сущностей: `PHONE_NUMBER` и `RU_INN`.
 
-По умолчанию Analyzer API использует `score_threshold=0.35`, а `RU_INN` проходит checksum validation. При `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` checksum-valid bare 12-digit INN детектируется даже без контекстного слова:
+По умолчанию Analyzer API использует `score_threshold=0.35`, а `RU_INN` проходит проверку контрольной суммы. При `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=true` 12-значный ИНН с корректной контрольной суммой детектируется даже без контекстного слова:
 
 ```bash
 curl -s http://localhost:5001/api/v1/analyze \
@@ -197,9 +198,9 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
-10-digit INN требует контекст даже в default mode, потому что checksum пропускает заметную долю случайных 10-значных чисел. Если выставить `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, strict mode требует контекст вроде `ИНН` или `налогоплательщик` для любого голого ИНН; bare INN без контекста не проходит `score_threshold=0.35`. Это снижает false positives для случайных длинных числовых последовательностей, которые прошли checksum.
+10-значный ИНН требует контекст даже в режиме по умолчанию, потому что контрольная сумма пропускает заметную долю случайных 10-значных чисел. Если выставить `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=false`, строгий режим требует контекст вроде `ИНН` или `налогоплательщик` для любого ИНН без соседних поясняющих слов; такой ИНН без контекста не проходит `score_threshold=0.35`. Это снижает ложные срабатывания для случайных длинных числовых последовательностей, которые прошли проверку контрольной суммы.
 
-`RU_ADDRESS` — ограниченный regex recognizer. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, требует границу слева у street-type сокращений и явное `дом`/`д.` для `Тверская улица, дом 7`; unsupported cases включают полный разбор индексов, регионов, владений и свободных адресов без явной street/house structure.
+`RU_ADDRESS` — ограниченный распознаватель на регулярных выражениях. Он покрывает базовые формы вроде `ул. Ленина, д. 10`, `ул Ленина 10`, `Тверская улица, дом 7`, требует границу слева у сокращений типа улицы и явное `дом`/`д.` для формы `Тверская улица, дом 7`. Ограничения: полный разбор индексов, регионов, владений и свободных адресов без явной структуры «улица/дом» не поддерживается.
 
 Реквизиты контрагента покрываются отдельными entity types:
 
@@ -210,7 +211,7 @@ curl -s http://localhost:5001/api/v1/analyze \
 - `RU_SETTLEMENT_ACCOUNT`;
 - `RU_CORRESPONDENT_ACCOUNT`.
 
-`RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный реквизитный контекст. `RU_OGRN` и `RU_OGRNIP` проходят checksum validation. Для расчётных и корреспондентских счетов при наличии БИК рядом Analyzer дополнительно проверяет контрольный ключ; без БИК используется сильный контекст и структурные ограничения, без online lookup по справочнику банков.
+`RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT` требуют явный реквизитный контекст. `RU_OGRN` и `RU_OGRNIP` проходят проверку контрольной суммы. Для расчётных и корреспондентских счетов при наличии БИК рядом Analyzer дополнительно проверяет контрольный ключ; без БИК используется сильный контекст и структурные ограничения, без онлайн-проверки по справочнику банков.
 
 ```bash
 curl -s http://localhost:5001/api/v1/analyze \
@@ -222,8 +223,8 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
-Infrastructure/secret recognizers работают на том же Analyzer API и возвращают
-entity-level spans для одиночных технических идентификаторов и секретов:
+Распознаватели инфраструктуры и секретов работают в том же Analyzer API и возвращают
+фрагменты на уровне отдельных сущностей для технических идентификаторов и секретов:
 
 - `INTERNAL_IP`;
 - `INTERNAL_DOMAIN`;
@@ -246,15 +247,15 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
-`INTERNAL_DOMAIN` использует suffix list из
+`INTERNAL_DOMAIN` использует список суффиксов из
 `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES`. По умолчанию публичные IP не
-детектируются как `INTERNAL_IP`; если deployment policy считает любые IP
+детектируются как `INTERNAL_IP`; если политика установки считает любые IP
 чувствительными, включите `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=true` и
 пересоздайте контейнер `presidio-analyzer`.
 
-## Фильтрация Analyzer по entity types
+## Фильтрация Analyzer по типам сущностей
 
-Analyzer API поддерживает стандартный Presidio-параметр `entities`. Regex recognizers и DeepPavlov NER соблюдают этот список одинаково: если запрошен только `RU_INN`, NER-типы `PERSON`, `LOCATION` и `ORGANIZATION` не вычисляются.
+Analyzer API поддерживает стандартный параметр Presidio `entities`. Распознаватели на регулярных выражениях и DeepPavlov NER соблюдают этот список одинаково: если запрошен только `RU_INN`, NER-типы `PERSON`, `LOCATION` и `ORGANIZATION` не вычисляются.
 
 ```bash
 curl -s http://localhost:5001/api/v1/analyze \
@@ -279,45 +280,45 @@ curl -s http://localhost:5001/api/v1/analyze \
   }' | jq
 ```
 
-NER-результаты имеют фиксированный score `0.7`; при `score_threshold` выше `0.7` DeepPavlov NER не запускается.
+NER-результаты имеют фиксированную оценку `0.7`; при `score_threshold` выше `0.7` DeepPavlov NER не запускается.
 
-## Health Checks
+## Проверки здоровья LiteLLM
 
-LiteLLM liveness endpoint не требует `LITELLM_MASTER_KEY` и используется для Docker healthcheck контейнера `ru-llm-proxy`:
+Маршрут проверки живости LiteLLM не требует `LITELLM_MASTER_KEY` и используется для проверки состояния Docker-контейнера `ru-llm-proxy`:
 
 ```bash
 curl -s http://localhost:4000/health/liveliness
 ```
 
-`/health` у LiteLLM предназначен для проверки моделей и может делать реальные LLM API calls, поэтому для liveness/readiness лучше использовать специализированные endpoints.
+`/health` у LiteLLM предназначен для проверки моделей и может делать реальные вызовы LLM API, поэтому для проверок живости и готовности лучше использовать специализированные маршруты.
 
-## Health Analyzer
+## Проверка здоровья Analyzer
 
 ```bash
 curl -s http://localhost:5001/api/v1/health | jq
 ```
 
-NER status возвращается отдельно:
+Статус NER возвращается отдельно:
 
 ```json
 {"status":"ok","ner":"loaded","ner_required":true}
 ```
 
-По умолчанию `presidio-analyzer` не должен стартовать без DeepPavlov NER. Если оператор явно разрешил fallback через `DEEPPAVLOV_NER_REQUIRED=false`, health показывает degraded state:
+По умолчанию `presidio-analyzer` не должен стартовать без DeepPavlov NER. Если оператор явно разрешил деградированный режим через `DEEPPAVLOV_NER_REQUIRED=false`, проверка состояния показывает пониженный статус:
 
 ```json
 {"status":"degraded","ner":"not_loaded","ner_required":false}
 ```
 
-## Guardrails
+## Защитные слои LiteLLM
 
-Список guardrails, зарегистрированных в LiteLLM, смотрит администратор через Makefile target:
+Список защитных слоёв, зарегистрированных в LiteLLM, администратор смотрит через цель Makefile:
 
 ```bash
 make guardrails-list
 ```
 
-Live-запрос с явным `guardrails` parameter:
+Запрос к живому сервису с явным параметром `guardrails`:
 
 ```bash
 curl -s -D /tmp/ru-llm-proxy-headers "$API_URL/v1/chat/completions" \
@@ -344,15 +345,15 @@ grep -i '^x-litellm-applied-guardrails:' /tmp/ru-llm-proxy-headers
 make guardrails-smoke
 ```
 
-## PII block mode
+## Режим блокировки PII
 
-По умолчанию guardrail работает в reversible masking mode:
+По умолчанию защитный слой работает в режиме обратимого маскирования:
 
 ```env
 PII_GUARDRAIL_MODE=mask
 ```
 
-Чтобы отклонять запросы с найденной PII до вызова провайдера, задайте block mode и перезапустите LiteLLM:
+Чтобы отклонять запросы с найденными персональными данными до вызова провайдера, задайте режим блокировки и перезапустите LiteLLM:
 
 ```env
 PII_GUARDRAIL_MODE=block
@@ -362,7 +363,7 @@ PII_GUARDRAIL_MODE=block
 make restart
 ```
 
-В block mode запрос с PII возвращает `422` и безопасный error body. Ответ содержит только типы сущностей:
+В режиме блокировки запрос с персональными данными возвращает `422` и безопасное тело ошибки. Ответ содержит только типы сущностей:
 
 ```json
 {
@@ -377,11 +378,11 @@ make restart
 }
 ```
 
-Raw PII, offsets и исходный текст в error body не возвращаются. Clean-запросы продолжают идти к провайдеру.
+Исходные персональные данные, смещения и исходный текст в теле ошибки не возвращаются. Запросы без персональных данных продолжают идти к провайдеру.
 
-## Dictionary substitutions
+## Словарные подстановки
 
-Dictionary substitutions включены по умолчанию:
+Словарные подстановки включены по умолчанию:
 
 ```env
 DICTIONARY_SUBSTITUTIONS_ENABLED=true
@@ -390,14 +391,14 @@ DICTIONARY_SUBSTITUTIONS_JSON=
 DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed
 ```
 
-Default file содержит seed из 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Это стартовая business dictionary policy; в production замените или дополните файл под свои термины.
+Файл по умолчанию содержит начальный набор из 10 крупных российских банков: `Сбербанк`, `ВТБ`, `Газпромбанк`, `Альфа-Банк`, `ПСБ`, `Россельхозбанк`, `Т-Банк`, `Московский кредитный банк`, `Банк Дом.РФ`, `Совкомбанк`. Это стартовая политика бизнес-словаря; в промышленной среде замените или дополните файл под свои термины.
 
 Пример:
 
 ```text
-Client request:   Проверь договор с Т-Банк.
-Provider request: Проверь договор с Зетта Групп.
-Client response:  Договор с Т-Банк проверен.
+Запрос клиента:      Проверь договор с Т-Банк.
+Запрос провайдеру:   Проверь договор с Зетта Групп.
+Ответ клиенту:       Договор с Т-Банк проверен.
 ```
 
 Правило в JSON:
@@ -420,42 +421,42 @@ Client response:  Договор с Т-Банк проверен.
 }
 ```
 
-Dictionary policy запускается до Analyzer и не зависит от DeepPavlov NER. Replacement spans исключаются из PII mask/block, поэтому `Зетта Групп` не будет заменён на `<ORGANIZATION_1>`. Если request уже содержит replacement text вместе с source, например `Сравни Т-Банк и Зетта Групп`, proxy считает restore ambiguous и при default `fail_closed` останавливает запрос.
+Политика словарных подстановок запускается до Analyzer и не зависит от DeepPavlov NER. Фрагменты замен исключаются из маскирования/блокировки персональных данных, поэтому `Зетта Групп` не будет заменён на `<ORGANIZATION_1>`. Если запрос уже содержит текст замены вместе с исходной фразой, например `Сравни Т-Банк и Зетта Групп`, прокси считает восстановление неоднозначным и при `fail_closed` по умолчанию останавливает запрос.
 
-Ограничение: restore exact-match only. Если модель вернула `Зетте Групп`, `Zetta Group` или любое перефразирование вместо точного `Зетта Групп`, proxy не сможет восстановить `Т-Банк`.
+Ограничение: восстановление работает только по точному совпадению. Если модель вернула `Зетте Групп`, `Zetta Group` или любое перефразирование вместо точного `Зетта Групп`, прокси не сможет восстановить `Т-Банк`.
 
-## Synthetic/test PII allowlist
+## Список разрешённых синтетических персональных данных
 
-По умолчанию allowlist выключен:
+По умолчанию список разрешённых значений выключен:
 
 ```env
 SYNTHETIC_PII_ALLOWLIST_MODE=off
 SYNTHETIC_PII_ALLOWLIST_JSON=[]
 ```
 
-Включайте его только для controlled fixtures, которые нужны в smoke-тестах, демо или проверочных документах. Пример ниже разрешает один synthetic phone exact value и synthetic email namespace `example.test`:
+Включайте его только для контролируемых тестовых наборов, которые нужны в быстрых проверках, демонстрациях или проверочных документах. Пример ниже разрешает один точный синтетический телефон и синтетические адреса электронной почты в пространстве имён `example.test`:
 
 ```env
 SYNTHETIC_PII_ALLOWLIST_MODE=allow
 SYNTHETIC_PII_ALLOWLIST_JSON=[{"rule_id":"docs_synthetic_contacts","entity_types":["PHONE_NUMBER","EMAIL_ADDRESS"],"values":["+79031234567"],"patterns":["^[A-Za-z0-9._%+-]+@example\\.test$"]}]
 ```
 
-В `mask` mode allowlisted spans остаются как есть, а остальные PII в том же запросе маскируются:
+В режиме `mask` разрешённые фрагменты остаются как есть, а остальные персональные данные в том же запросе маскируются:
 
 ```text
-Input:  Тестовый телефон +79031234567, реальный +79035551234
-Output: Тестовый телефон +79031234567, реальный <PHONE_NUMBER_1>
+Вход:   Тестовый телефон +79031234567, реальный +79035551234
+Выход:  Тестовый телефон +79031234567, реальный <PHONE_NUMBER_1>
 ```
 
-В `block` mode allowlisted-only запрос проходит дальше, но mixed request с allowlisted и real PII всё равно блокируется из-за оставшихся real spans. Allowlist hits видны в `synthetic_pii_allowlist_applied`, `gateway_guardrail_audit` и `ru_synthetic_pii_allowlist_hits_total`; raw allowlisted values в logs/metrics не пишутся.
+В режиме `block` запрос только с разрешёнными синтетическими значениями проходит дальше, но смешанный запрос с разрешёнными синтетическими и реальными персональными данными всё равно блокируется из-за оставшихся реальных фрагментов. Срабатывания списка разрешённых значений видны в `synthetic_pii_allowlist_applied`, `gateway_guardrail_audit` и `ru_synthetic_pii_allowlist_hits_total`; исходные разрешённые значения в журналы и метрики не пишутся.
 
-Broad regex patterns вроде `^.*$` игнорируются. Regex должен быть anchored и ссылаться на controlled synthetic namespace (`example.test`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Allowlist не применяется к pre-egress, regulated-topic и final leak-check policies.
+Слишком широкие регулярные выражения вроде `^.*$` игнорируются. Шаблон должен быть привязан к началу и концу строки и ссылаться на контролируемое синтетическое пространство имён (`example.test`, `TEST_`, `RU_PROXY_`, `SYNTHETIC_`, `CANARY_`). Список разрешённых значений не применяется к политикам предварительной проверки, регулируемых тем и финальной проверки утечек.
 
-## Regulated-topic policy
+## Политика регулируемых тем
 
-`REGULATED_TOPIC_POLICY_MODE=off` по умолчанию. Это отдельный policy pack для AML/CFT / ПОД/ФТ, sanctions-screening, transaction-monitoring, suspicious-activity и compliance-bypass тем; он не является PII recognizer, не маскирует entity spans и не создаёт Redis mapping.
+`REGULATED_TOPIC_POLICY_MODE=off` по умолчанию. Это отдельный набор правил для AML/CFT / ПОД/ФТ, санкционных проверок, мониторинга транзакций, сценариев подозрительной активности и обхода комплаенс-процедур; он не является распознавателем персональных данных, не маскирует найденные фрагменты и не создаёт сопоставление в Redis.
 
-Чтобы включить conservative block-only режим:
+Чтобы включить консервативный режим только на блокировку:
 
 ```env
 REGULATED_TOPIC_POLICY_MODE=block
@@ -482,19 +483,22 @@ docker compose up -d --force-recreate --no-deps litellm
 }
 ```
 
-Ответ, structured logs, `gateway_guardrail_audit` и метрика `ru_regulated_topic_policy_blocked_total` содержат только bounded categories/rule ids/actions/counts, без raw prompt, raw matched text, snippets или offsets. Public defaults не содержат organization-specific confidential terms. Если нужны внутренние правила, добавьте operator-defined block-only regex rules через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`.
+Ответ, структурированные журналы, `gateway_guardrail_audit` и метрика `ru_regulated_topic_policy_blocked_total` содержат только ограниченные категории, идентификаторы правил, действия и счётчики, без исходного запроса, исходного найденного текста, фрагментов или смещений. Публичные правила по умолчанию не содержат конфиденциальных терминов конкретной организации. Если нужны внутренние правила, добавьте операторские правила блокировки на регулярных выражениях через `REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON`.
 
 ```env
 REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON=[{"category":"internal_watchlist","rule_id":"custom_watchlist_codename","action":"block","pattern":"PROJECT_MARS_WATCHLIST","flags":"i"}]
 ```
 
-Regulated-topic policy остаётся block-only. Reversible dictionary substitution работает отдельным exact-match слоем через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используется для broad semantic topic blocking.
+Политика регулируемых тем остаётся режимом только на блокировку. Обратимые словарные подстановки работают отдельным слоем точных совпадений через `DICTIONARY_SUBSTITUTIONS_ENABLED` и не используются для широкой семантической блокировки тем.
 
-## Pre-egress config/log policy
+## Предварительная проверка конфигураций и журналов
 
-`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio Analyzer. Он останавливает целые operational payloads: `.env` dumps с секретами, kubeconfig/Kubernetes manifests, nginx configs, access/auth logs и stack traces.
+`PRE_EGRESS_POLICY_MODE=block` включён по умолчанию и работает раньше Presidio
+Analyzer, то есть до `POST /api/v1/analyze`. Он останавливает целые операционные
+полезные нагрузки: выгрузки `.env` с секретами, kubeconfig/манифесты Kubernetes,
+конфигурации nginx, журналы доступа/аутентификации и трассировки ошибок.
 
-При срабатывании запрос не отправляется в Analyzer и провайдеру, а Redis mapping `pii_mapping:*` не создаётся:
+При срабатывании запрос не отправляется в Analyzer и провайдеру, а сопоставление Redis `pii_mapping:*` не создаётся:
 
 ```json
 {
@@ -510,21 +514,21 @@ Regulated-topic policy остаётся block-only. Reversible dictionary substi
 }
 ```
 
-Ответ и structured logs содержат только bounded categories/rule ids/counts, без raw payload, snippets, offsets или secret values. Если нужно временно разрешить такие payloads в dev-среде, задайте `PRE_EGRESS_POLICY_MODE=off`; PII mask/block при этом продолжит работать отдельно. После изменения этой переменной в `.env` пересоздайте контейнер LiteLLM: `docker compose up -d --force-recreate --no-deps litellm`.
+Ответ и структурированные журналы содержат только ограниченные категории, идентификаторы правил и счётчики, без исходной полезной нагрузки, фрагментов, смещений или значений секретов. Если нужно временно разрешить такие данные в среде разработки, задайте `PRE_EGRESS_POLICY_MODE=off`; маскирование/блокировка персональных данных при этом продолжит работать отдельно. После изменения этой переменной в `.env` пересоздайте контейнер LiteLLM: `docker compose up -d --force-recreate --no-deps litellm`.
 
-В зависимости от LiteLLM/FastAPI wrapper JSON может быть обёрнут как `detail.error`, `error.provider_specific_fields.error` или `error.param.pre_egress_policy`, но поля `message`, `type`, `code`, `details.categories` и `details.rules` остаются обязательными.
+В зависимости от обёртки LiteLLM/FastAPI JSON может быть вложен как `detail.error`, `error.provider_specific_fields.error` или `error.param.pre_egress_policy`, но поля `message`, `type`, `code`, `details.categories` и `details.rules` остаются обязательными.
 
-Black-box smoke с test-only LiteLLM proxy и mock upstream проверяет `/v1/chat/completions`, `/v1/responses` и `/v1/messages`: clean prompt доходит до Analyzer/provider, а blocked config payload не доходит ни до Analyzer, ни до provider:
+Быстрая проверка «чёрного ящика» с тестовым LiteLLM-прокси и имитацией внешнего провайдера проверяет `/v1/chat/completions`, `/v1/responses` и `/v1/messages`: чистый запрос доходит до Analyzer и провайдера, а заблокированная конфигурационная полезная нагрузка не доходит ни до Analyzer, ни до провайдера:
 
 ```bash
 make test-pre-egress-proxy
 ```
 
-## Final payload leak check
+## Финальная проверка полезной нагрузки перед провайдером
 
-`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после proxy-side mutation: PII masking уже применён к mutable request text fields, а provider-bound request containers `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, legacy `functions` / `function_call`, `prediction`, `response_format`, `text`, provider-specific `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и provider `metadata` дополнительно просканированы без мутации. Внешний provider на этом этапе ещё не вызван. Этот слой останавливает configured canaries из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и high-confidence raw leak markers вроде `BEGIN PRIVATE KEY`, bearer/JWT-like tokens, provider-key-like values и env-secret-like assignments.
+`FINAL_PAYLOAD_LEAK_CHECK_MODE=block` включён по умолчанию и работает после изменений на стороне прокси: маскирование персональных данных уже применено к изменяемым текстовым полям запроса, а контейнеры запроса перед провайдером `messages` / `input` / `instructions` / `system`, `tools` / `tool_choice`, устаревшие `functions` / `function_call`, `prediction`, `response_format`, `text`, провайдерский `extra_body`, `stop` / `stop_sequences`, `prompt_cache_key`, `safety_identifier`, `web_search_options`, `user` и провайдерские `metadata` дополнительно просканированы без изменения. Внешний провайдер на этом этапе ещё не вызван. Этот слой останавливает настроенные контрольные маркеры из `FINAL_PAYLOAD_LEAK_CHECK_CANARIES` и уверенно распознанные признаки исходной утечки вроде `BEGIN PRIVATE KEY`, bearer/JWT-подобных токенов, значений, похожих на ключи провайдеров, и присваиваний секретов в стиле `.env`.
 
-При срабатывании запрос не отправляется провайдеру. Canonical guardrail body:
+При срабатывании запрос не отправляется провайдеру. Каноническое тело ошибки защитного слоя:
 
 ```json
 {
@@ -539,25 +543,25 @@ make test-pre-egress-proxy
 }
 ```
 
-LiteLLM proxy может завернуть этот body и вернуть `error.code="422"`, сохранив безопасное сообщение. Ответ, structured logs и метрика `ru_final_payload_leak_check_blocked_total` содержат только bounded rule ids/counts, без raw matched values, prompt snippets, offsets, provider keys или mapping contents. Если нужно временно отключить слой в dev-среде, задайте `FINAL_PAYLOAD_LEAK_CHECK_MODE=off`; PII mask/block и `PRE_EGRESS_POLICY_MODE` продолжат работать отдельно.
+LiteLLM-прокси может обернуть это тело и вернуть `error.code="422"`, сохранив безопасное сообщение. Ответ, структурированные журналы и метрика `ru_final_payload_leak_check_blocked_total` содержат только ограниченные идентификаторы правил и счётчики, без исходных найденных значений, фрагментов запроса, смещений, ключей провайдеров или содержимого сопоставлений. Если нужно временно отключить слой в среде разработки, задайте `FINAL_PAYLOAD_LEAK_CHECK_MODE=off`; маскирование/блокировка персональных данных и `PRE_EGRESS_POLICY_MODE` продолжат работать отдельно.
 
-Black-box smoke с test-only LiteLLM proxy и mock OpenAI-compatible upstream проверяет, что Analyzer видит configured canary/private-key marker, tool schema canary блокируется без provider egress, а sanitized PII prompt доходит до provider только с placeholder:
+Быстрая проверка «чёрного ящика» с тестовым LiteLLM-прокси и имитацией провайдера, совместимого с OpenAI API, проверяет, что Analyzer видит настроенный контрольный маркер и маркер приватного ключа, контрольный маркер в схеме инструмента блокируется без выхода к провайдеру, а очищенный запрос с персональными данными доходит до провайдера только с плейсхолдером:
 
 ```bash
 make test-final-leak-proxy
 ```
 
-## Sticky routing
+## Закрепление маршрута за провайдером модели
 
-Если за моделью настроено несколько deployments, LiteLLM должен удерживать один клиентский ключ на одном healthy deployment. Для быстрой проверки:
+Если за моделью настроено несколько провайдеров моделей, LiteLLM должен удерживать один клиентский ключ на одном доступном провайдере модели. Для быстрой проверки:
 
 ```bash
 make routing-smoke
 ```
 
-Команда отправляет два live-запроса одним ключом и сравнивает header `x-litellm-model-id`.
+Команда отправляет два запроса к живому сервису одним ключом и сравнивает заголовок `x-litellm-model-id`.
 
-Если хотите проверять не master key, а пользовательский virtual key, задайте его в `.env`:
+Если хотите проверять не административный ключ, а пользовательский ключ, задайте его в `.env`:
 
 ```env
 LITELLM_ROUTING_TEST_KEY=sk-...
@@ -565,9 +569,9 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 
 Подробности настройки нескольких аккаунтов одной модели: [routing.md](routing.md).
 
-## Metrics
+## Метрики
 
-LiteLLM и PII guardrail метрики доступны через Prometheus endpoint:
+Метрики LiteLLM и защитного слоя персональных данных доступны через маршрут Prometheus:
 
 ```bash
 curl -L -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
@@ -580,22 +584,22 @@ make metrics
 make monitor-smoke
 ```
 
-PII guardrail метрики `ru_pii_guardrail_*` появятся после первого запроса, который прошёл через guardrail. Метрики не содержат raw PII или текст пользовательского запроса.
+Метрики защитного слоя `ru_pii_guardrail_*` появятся после первого запроса, который прошёл через него. Метрики не содержат исходные персональные данные или текст пользовательского запроса.
 
 ## Клиентские гайды
 
-- Codex CLI / Codex App local tasks: [clients/codex.md](clients/codex.md)
+- Codex CLI / локальные задачи Codex App: [clients/codex.md](clients/codex.md)
 - Claude Code: [clients/claude-code.md](clients/claude-code.md)
 - ZCode: [clients/zcode.md](clients/zcode.md)
 - OpenCode CLI / Desktop: [clients/opencode.md](clients/opencode.md)
 - Kilo Code VS Code / CLI: [clients/kilo-code.md](clients/kilo-code.md)
 - JWT/OIDC proxy auth: [clients/jwt.md](clients/jwt.md)
 
-Для ZCode используйте `Use API Key` / OpenAI-compatible provider settings: `OpenAI Base URL = http://localhost:4000/v1`, `API Key = $RU_LLM_PROXY_TOKEN`, model `glm-5.2`. `ZAI_API_KEY` и `ZAI_API_KEY_2` остаются только в окружении proxy.
+Для ZCode используйте `Use API Key` и настройки провайдера, совместимого с OpenAI API: `OpenAI Base URL = http://localhost:4000/v1`, `API Key = $RU_LLM_PROXY_TOKEN`, модель `glm-5.2`. `ZAI_API_KEY` и `ZAI_API_KEY_2` остаются только в окружении прокси.
 
 ## Добавление моделей
 
-По умолчанию настроен GLM-first профиль: `glm-5.2` как основной публичный алиас и `glm-5.1` как дополнительная модель. Чтобы добавить ещё один провайдер, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, добавьте нужный API key в окружение и перезапустите LiteLLM:
+По умолчанию настроен профиль с GLM как основной моделью: `glm-5.2` как публичное имя модели по умолчанию и `glm-5.1` как дополнительная модель. Чтобы добавить ещё одного провайдера, скопируйте и адаптируйте пример из `examples/litellm-config.optional-providers.yaml`, добавьте нужный API-ключ в окружение и перезапустите LiteLLM:
 
 ```yaml
 model_list:
@@ -613,11 +617,11 @@ model_list:
 make restart
 ```
 
-Если это второй deployment той же публичной модели, оставьте прежний `model_name`, но задайте новый `model_info.id`. Так LiteLLM сможет корректно хранить sticky affinity.
+Если это второй провайдер той же публичной модели, оставьте прежний `model_name`, но задайте новый `model_info.id`. Так LiteLLM сможет корректно хранить закрепление клиентского ключа за провайдером модели.
 
-## Streaming
+## Потоковая передача
 
-LiteLLM принимает streaming requests, а `ru-pii-mask-post` восстанавливает request-scoped placeholders в streaming `delta.content` и `delta.reasoning_content`. Guardrail удерживает возможный суффикс placeholder между чанками, поэтому `<PHONE_` в одном чанке и `NUMBER_1>` в следующем клиент получит как исходное значение из Redis mapping.
+LiteLLM принимает потоковые запросы, а `ru-pii-mask-post` восстанавливает плейсхолдеры текущего запроса в потоковых `delta.content` и `delta.reasoning_content`. Защитный слой удерживает возможный суффикс плейсхолдера между фрагментами потока, поэтому `<PHONE_` в одном фрагменте и `NUMBER_1>` в следующем клиент получит как исходное значение из сопоставления Redis.
 
 ```bash
 curl -sS "$API_URL/v1/chat/completions" \
@@ -633,4 +637,4 @@ curl -sS "$API_URL/v1/chat/completions" \
   }'
 ```
 
-Streaming restoration покрывает текстовые deltas. Если провайдер стримит placeholders внутри tool/function-call argument deltas, они могут остаться в ответе как placeholders; raw PII при этом не раскрывается.
+Потоковое восстановление покрывает текстовые дельты. Если провайдер передаёт плейсхолдеры внутри потоковых дельт аргументов вызова инструмента/функции, они могут остаться в ответе как плейсхолдеры; исходные персональные данные при этом не раскрываются.

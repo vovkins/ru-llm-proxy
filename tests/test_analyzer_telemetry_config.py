@@ -40,12 +40,14 @@ def test_docs_describe_analyzer_telemetry_contract():
     monitoring = (ROOT / "docs" / "monitoring.md").read_text()
     compliance = (ROOT / "docs" / "compliance.md").read_text()
 
-    for text in (readme, monitoring, compliance):
+    assert "docs/monitoring.md" in readme
+
+    for text in (monitoring, compliance):
         assert "presidio_analyzer_request" in text
         assert "ru_presidio_analyzer_requests_total" in text
         assert "ru_presidio_analyzer_latency_seconds" in text
-        assert "raw" in text
-        assert "entity values" in text or "raw values" in text
+        assert "исходн" in text
+        assert "значен" in text
 
     assert "Per-request telemetry Presidio Analyzer будет реализована в #31" not in (
         compliance

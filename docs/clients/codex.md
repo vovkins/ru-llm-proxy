@@ -1,44 +1,44 @@
 # Codex CLI / Codex App
 
-Codex connects to this proxy through the OpenAI Responses API.
+Codex подключается к прокси через OpenAI Responses API.
 
-Supported scope:
+Поддерживаемый сценарий:
 
 - Codex CLI.
-- Codex App local tasks that use local Codex configuration.
+- локальные задачи Codex App, которые используют локальную конфигурацию Codex.
 
-Not covered here:
+Что не входит в этот гайд:
 
-- Codex cloud tasks and hosted integrations.
-- Passing ChatGPT/Codex login files to the proxy as upstream credentials.
+- облачные задачи Codex и размещённые интеграции;
+- передача файлов входа ChatGPT/Codex на прокси как учётных данных внешнего провайдера.
 
-## Credentials
+## Ключи доступа
 
-Use a LiteLLM virtual key as the client token:
+Используйте пользовательский ключ LiteLLM как клиентский токен:
 
 ```bash
 export RU_LLM_PROXY_TOKEN="sk-..."
 ```
 
-The real `OPENAI_API_KEY` stays only on the proxy host in server-funded mode. Do not put `OPENAI_API_KEY` or `LITELLM_MASTER_KEY` into local Codex client config.
+Настоящий `OPENAI_API_KEY` в режиме, где провайдера оплачивает и вызывает прокси, остается только на хосте прокси. Не кладите `OPENAI_API_KEY` или `LITELLM_MASTER_KEY` в локальную конфигурацию Codex.
 
-All environment variables used in this guide are documented in [../configuration.md](../configuration.md).
+Все переменные окружения из этого гайда описаны в [../configuration.md](../configuration.md).
 
-Create routine user/client keys in LiteLLM Admin UI. The CLI helper is only an optional DevOps/CI/bootstrap path from the proxy host:
+Обычные пользовательские ключи создавайте в административном интерфейсе LiteLLM. Вспомогательный скрипт командной строки нужен только как дополнительный путь для DevOps, CI и первичной настройки с хоста прокси:
 
 ```bash
 make virtual-key-create MODELS=openai,standard KEY_ALIAS=codex-local
 ```
 
-If you call the script directly, pass the same values as flags:
+Если запускаете скрипт напрямую, передайте те же значения флагами:
 
 ```bash
 scripts/create_virtual_key.sh --alias codex-local --models openai,standard --duration 30d
 ```
 
-## Server-Funded Configuration
+## Настройка с оплатой провайдера на стороне прокси
 
-Use this mode when the proxy should pay with its server-side `OPENAI_API_KEY`. Add a custom provider to `~/.codex/config.toml`:
+Используйте этот режим, когда прокси должен вызывать провайдера через серверный `OPENAI_API_KEY`. Добавьте пользовательского провайдера в `~/.codex/config.toml`:
 
 ```toml
 model_provider = "ru_llm_proxy"
@@ -51,27 +51,33 @@ env_key = "RU_LLM_PROXY_TOKEN"
 wire_api = "responses"
 ```
 
-Use a higher-capability model when the issued key allows it:
+Модель большего класса используйте только если выданный ключ разрешает её публичное имя:
 
 ```toml
 model = "openai-example-premium"
 ```
 
-OpenAI aliases are optional provider examples now. Add them from `examples/litellm-config.optional-providers.yaml` only after validating raw model IDs against the target LiteLLM image and provider subscription.
+Имена моделей OpenAI сейчас являются примерами дополнительных провайдеров. Добавляйте их из `examples/litellm-config.optional-providers.yaml` только после проверки исходных идентификаторов моделей на целевом образе LiteLLM и конкретной подписке.
 
-## ChatGPT Subscription Passthrough
+## Сквозная передача подписки ChatGPT
 
-Use this mode when Codex should use the local user's ChatGPT/Codex subscription while still routing through the proxy for guardrails, tracking, and proxy access control.
+Используйте этот режим, когда Codex должен работать с локальной ChatGPT/Codex
+подпиской пользователя, но всё ещё идти через прокси для защитных слоёв, учёта и
+контроля доступа на прокси.
 
-This is an opt-in validation target, not a production-ready default. ChatGPT/Codex subscription auth normally relies on provider `Authorization`; the standard LiteLLM path is not assumed to forward that header upstream. The default repo config does not enable header forwarding.
+Это отдельный сценарий для проверки, а не готовый промышленный режим по умолчанию. Авторизация подписки ChatGPT/Codex
+обычно опирается на провайдерский `Authorization`; стандартный путь
+LiteLLM не считается способным гарантированно пересылать этот заголовок
+провайдеру. Конфигурация репозитория по умолчанию не включает пересылку заголовков.
 
-First sign in locally with Codex:
+Сначала войдите локально через Codex:
 
 ```bash
 codex login
 ```
 
-Then configure a provider that uses OpenAI authentication and sends the LiteLLM virtual key in a separate proxy-auth header:
+Затем настройте провайдера, который использует авторизацию OpenAI и отправляет
+пользовательский ключ LiteLLM в отдельном заголовке авторизации прокси:
 
 ```toml
 model_provider = "ru_llm_proxy_chatgpt"
@@ -85,39 +91,43 @@ requires_openai_auth = true
 env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }
 ```
 
-In this mode:
+В этом режиме:
 
-- Codex keeps `~/.codex/auth.json` or OS credential-store auth on the client machine.
-- The proxy authenticates the client with `x-litellm-api-key`.
-- OpenAI/ChatGPT auth remains in the provider auth path and must be proven to reach upstream before this mode can be used beyond a spike.
+- Codex хранит `~/.codex/auth.json` или авторизацию в системном хранилище учётных данных на клиентской машине.
+- Прокси аутентифицирует клиента через `x-litellm-api-key`.
+- Авторизация OpenAI/ChatGPT остаётся в провайдерском пути авторизации; перед использованием за пределами эксперимента нужно доказать, что она доходит до провайдера.
 
-Do not copy a shared Codex `auth.json` onto the proxy for all users. If live validation shows the normal LiteLLM `/v1/responses` route strips the required provider `Authorization` header, this mode needs a pass-through route, sidecar, or custom adapter before it can be marked production-ready.
+Не копируйте общий Codex `auth.json` на прокси для всех пользователей. Если проверка на живом сервисе покажет, что обычный маршрут LiteLLM `/v1/responses` удаляет нужный
+провайдерский заголовок `Authorization`, этому режиму нужен сквозной маршрут, боковой контейнер
+или отдельный адаптер перед промышленным использованием.
 
-## Codex App Local Tasks
+## Локальные задачи Codex App
 
-For local app workflows, keep the provider config in `~/.codex/config.toml`. Put the token in `~/.codex/.env` if the app process does not inherit your shell environment:
+Для локальных сценариев Codex App держите конфигурацию провайдера в `~/.codex/config.toml`.
+Положите токен в `~/.codex/.env`, если процесс приложения не наследует окружение shell:
 
 ```env
 RU_LLM_PROXY_TOKEN=sk-...
 ```
 
-Restart Codex App after changing `~/.codex/.env`.
+Перезапустите Codex App после изменения `~/.codex/.env`.
 
-## Smoke Test
+## Проверка
 
-From the proxy repo:
+Из репозитория proxy:
 
 ```bash
 make client-auth-smoke
 ```
 
-The Codex-specific part checks `POST /v1/responses` only when `OPENAI_API_KEY` is configured and `RESPONSES_MODEL` is set to a live-validated proxy alias:
+Часть, относящаяся к Codex, проверяет `POST /v1/responses` только когда настроен
+`OPENAI_API_KEY`, а `RESPONSES_MODEL` указывает на проверенное на живом сервисе имя модели прокси:
 
 ```bash
 RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
 ```
 
-## References
+## Ссылки
 
 - Codex authentication: https://developers.openai.com/codex/auth
 - Codex configuration: https://developers.openai.com/codex/config/

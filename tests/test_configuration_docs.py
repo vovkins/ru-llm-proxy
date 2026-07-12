@@ -142,24 +142,48 @@ def test_configuration_reference_documents_expected_env_vars():
         assert f"`{name}`" in configuration, name
 
     for heading in (
-        "## Default GLM Provider Pool",
-        "## Optional Provider Examples",
-        "## LiteLLM Admin And Secrets",
-        "## LiteLLM Runtime And Storage",
-        "## Presidio Analyzer Service",
-        "## Recognizer Calibration",
-        "## Guardrail Policy",
-        "## Dictionary Substitutions",
-        "## Synthetic/Test PII Allowlist",
-        "## Regulated-Topic Policy",
-        "## Guardrail Dependency Clients",
-        "## DeepPavlov Model And Runtime",
-        "## Client Tokens And Local Client Guides",
-        "## Live Smoke And Diagnostics",
-        "## Virtual Key Helper",
-        "## Developer And Container Internals",
+        "## Дефолтный пул GLM-провайдеров",
+        "## Примеры дополнительных провайдеров",
+        "## Административный интерфейс LiteLLM и секреты",
+        "## Запуск и хранилища LiteLLM",
+        "## Сервис Presidio Analyzer",
+        "## Калибровка распознавателей",
+        "## Политики защитного слоя",
+        "## Словарные подстановки",
+        "## Список разрешённых синтетических персональных данных",
+        "## Политика регулируемых тем",
+        "## Клиенты зависимостей защитного слоя",
+        "## Модель и запуск DeepPavlov",
+        "## Клиентские токены и локальные гайды",
+        "## Быстрые проверки и диагностика",
+        "## Вспомогательный скрипт для пользовательских ключей",
+        "## Внутренние переменные разработки и контейнеров",
     ):
         assert heading in configuration
+
+
+def test_docs_index_maps_reader_tasks_to_canonical_docs():
+    docs_index = _read("docs/README.md")
+
+    for required in (
+        "## Как читать",
+        "## Учебный путь",
+        "## Концепции",
+        "## Практические инструкции",
+        "## Справочники",
+        "## Клиенты",
+        "## Правила поддержки документации",
+        "[configuration.md](configuration.md)",
+        "[architecture.md](architecture.md)",
+        "[examples.md](examples.md)",
+        "[monitoring.md](monitoring.md)",
+        "[compliance.md](compliance.md)",
+    ):
+        assert required in docs_index
+
+    readme = _read("README.md")
+    assert "docs/README.md" in readme
+    assert len(readme.splitlines()) < 230
 
 
 def test_quick_start_env_example_stays_minimal_and_grouped():
@@ -171,10 +195,10 @@ def test_quick_start_env_example_stays_minimal_and_grouped():
     for name in EXPECTED_DOCUMENTED_ENV - QUICK_START_ENV:
         assert f"{name}=" not in env_example, name
 
-    assert "Full grouped reference: docs/configuration.md" in env_example
-    assert "# === Default GLM Provider Pool ===" in env_example
-    assert "# === LiteLLM Admin And Secrets ===" in env_example
-    assert "# === LiteLLM Persistence ===" in env_example
+    assert "Полный сгруппированный справочник: docs/configuration.md" in env_example
+    assert "# === Пул GLM-провайдера по умолчанию ===" in env_example
+    assert "# === Административный доступ LiteLLM и секреты ===" in env_example
+    assert "# === Постоянное состояние LiteLLM ===" in env_example
 
 
 def test_primary_docs_link_to_configuration_reference():

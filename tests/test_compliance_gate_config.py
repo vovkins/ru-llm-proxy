@@ -80,9 +80,9 @@ def test_docs_define_compliance_gate_boundaries():
         assert "test-observability-gates" in text
 
     for required in (
-        "Egress-security gate",
-        "Observability gate",
-        "Live-provider smoke",
+        "Безопасность исходящего запроса",
+        "Наблюдаемость",
+        "Проверка с живым провайдером",
         "make test-egress-security",
         "make test-observability-gates",
         "make guardrails-smoke",

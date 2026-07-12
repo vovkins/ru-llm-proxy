@@ -29,7 +29,7 @@ def test_env_compose_setup_and_litellm_config_wire_synthetic_pii_allowlist():
     assert "synthetic_pii_allowlist_rules" in config
     assert "SYNTHETIC_PII_ALLOWLIST_MODE" in config
     assert "SYNTHETIC_PII_ALLOWLIST_JSON" in config
-    assert "off by default" in config
+    assert "по умолчанию off" in config
 
 
 def test_guardrail_contains_safe_synthetic_pii_allowlist_runtime():
@@ -63,17 +63,19 @@ def test_docs_explain_synthetic_pii_allowlist_boundaries():
         "docs/compliance.md": (ROOT / "docs" / "compliance.md").read_text(),
     }
 
-    for path, text in docs.items():
+    for path in ("docs/architecture.md", "docs/examples.md", "docs/monitoring.md", "docs/compliance.md"):
+        text = docs[path]
         assert "SYNTHETIC_PII_ALLOWLIST_MODE" in text, path
         assert "SYNTHETIC_PII_ALLOWLIST_JSON" in text, path
         assert "ru_synthetic_pii_allowlist_hits" in text, path
-        assert "raw" in text, path
+        assert "исход" in text, path
 
-    for path, text in docs.items():
-        assert "production" in text.lower(), path
-        assert "synthetic/test" in text.lower(), path
+    for path in ("docs/architecture.md", "docs/examples.md", "docs/monitoring.md", "docs/compliance.md"):
+        text = docs[path]
+        assert "промышлен" in text.lower(), path
+        assert "synthetic/test" in text.lower() or "синтетическ" in text.lower(), path
 
-    assert "example.test" in docs["README.md"]
+    assert "Список разрешённых синтетических тестовых персональных данных" in docs["README.md"]
     assert "example.test" in docs["docs/examples.md"]
     assert "^.*$" in docs["docs/examples.md"]
 

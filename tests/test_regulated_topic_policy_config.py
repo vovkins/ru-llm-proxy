@@ -26,8 +26,8 @@ def test_env_compose_setup_and_litellm_config_wire_regulated_topic_policy():
     assert "REGULATED_TOPIC_POLICY_MODE" in config
     assert "regulated_topic_policy_extra_rules" in config
     assert "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON" in config
-    assert "off by default" in config
-    assert "before Presidio analysis and provider calls" in config
+    assert "по умолчанию off" in config
+    assert "до анализа Presidio и вызова провайдера" in config
 
 
 def test_guardrail_contains_block_only_regulated_topic_policy_pack():
@@ -78,13 +78,20 @@ def test_docs_explain_regulated_topic_policy_boundaries():
         "docs/compliance.md": (ROOT / "docs" / "compliance.md").read_text(),
     }
 
-    for path, text in docs.items():
+    for path in ("docs/architecture.md", "docs/examples.md", "docs/monitoring.md", "docs/compliance.md"):
+        text = docs[path]
         assert "REGULATED_TOPIC_POLICY_MODE" in text, path
         assert "regulated_topic_policy_blocked" in text, path
         assert "ru_regulated_topic_policy_blocked" in text, path
         assert "ПОД/ФТ" in text or "AML/CFT" in text, path
-        assert "не является PII" in text or "not PII" in text, path
-        assert "raw" in text, path
+        assert (
+            "не является распознавателем персональных данных" in text
+            or "Это не персональные данные" in text
+        ), path
+        assert "исход" in text, path
+
+    assert "REGULATED_TOPIC_POLICY_MODE" in docs["README.md"]
+    assert "docs/compliance.md" in docs["README.md"]
 
 
 def test_static_suite_runs_regulated_topic_policy_regression():

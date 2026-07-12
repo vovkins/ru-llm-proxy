@@ -11,12 +11,12 @@ def test_production_egress_guide_documents_boundaries_and_allowlist():
     guide = (ROOT / "docs" / "egress-controls.md").read_text()
 
     for required in (
-        "Production Egress Controls",
+        "Промышленные ограничения исходящих соединений",
         "PRE_EGRESS_POLICY_MODE",
         "FINAL_PAYLOAD_LEAK_CHECK_MODE",
         "make test-egress-security",
-        "Local Docker Compose bridge network",
-        "не доказывает deny-all outbound",
+        "Локальная bridge-сеть Docker Compose",
+        "не доказывает запрет всех исходящих",
         "DEEPPAVLOV_NER_MODEL_URL",
         "api.z.ai",
         "api.openai.com",
