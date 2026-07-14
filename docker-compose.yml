@@ -135,6 +135,8 @@ services:
         DEEPPAVLOV_NER_MODEL_URL: ${DEEPPAVLOV_NER_MODEL_URL:-http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz}
         DEEPPAVLOV_NER_MODEL_SHA256: ${DEEPPAVLOV_NER_MODEL_SHA256:-}
         DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS: ${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS:-120}
+        # Dedicated proxy just for the DeepPavlov archive download (empty = use the generic proxy).
+        DEEPPAVLOV_NER_MODEL_PROXY: ${DEEPPAVLOV_NER_MODEL_PROXY:-}
     container_name: presidio-analyzer
     restart: unless-stopped
     ports:

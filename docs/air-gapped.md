@@ -59,6 +59,7 @@ make setup
   PIP_INDEX_URL=https://mirror-host/artifactory/api/pypi/<repo>/simple
   PIP_TRUSTED_HOST=mirror-host
   PIP_PROXY=http://pip-proxy-host:3128   # если pip ходит через отдельный прокси
+  DEEPPAVLOV_NER_MODEL_PROXY=http://dp-proxy-host:3128   # если архив DeepPavlov доступен только через отдельный прокси
   ```
 - ключи провайдера по умолчанию `ZAI_API_KEY` и `ZAI_API_KEY_2`;
 - секреты, которые сгенерировал `make setup` (`LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`,
@@ -85,6 +86,8 @@ make build
 (`docker build` не наследует `environment:` сервиса). Через них идут `apt`, установка пакетов
 из внутреннего зеркала, загрузка spaCy `ru_core_news_sm` и архива DeepPavlov `ner_rus_bert`
 (`DEEPPAVLOV_NER_MODEL_URL`). Корпоративный CA уже установлен в trust store к моменту этих шагов.
+Если `files.deeppavlov.ai` доступен только через отдельный прокси, задайте
+`DEEPPAVLOV_NER_MODEL_PROXY` — он переопределяет общий прокси только для этого шага загрузки.
 
 ### 4. Запустить
 

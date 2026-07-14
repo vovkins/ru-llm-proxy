@@ -90,11 +90,20 @@ FROM analyzer-runtime AS analyzer
 ARG DEEPPAVLOV_NER_MODEL_URL="http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz"
 ARG DEEPPAVLOV_NER_MODEL_SHA256=""
 ARG DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS="120"
+# Optional dedicated proxy for JUST this archive download, for when files.deeppavlov.ai is only
+# reachable through a proxy node different from the generic HTTP_PROXY/HTTPS_PROXY (mirrors
+# PIP_PROXY). ARG-only + RUN-scoped export, so it overrides the generic proxy for this step only
+# and does not linger in the final image. Empty -> the generic proxy (or direct egress) is used.
+ARG DEEPPAVLOV_NER_MODEL_PROXY=""
 ENV DEEPPAVLOV_NER_MODEL_URL=${DEEPPAVLOV_NER_MODEL_URL}
 ENV DEEPPAVLOV_NER_MODEL_SHA256=${DEEPPAVLOV_NER_MODEL_SHA256}
 ENV DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS}
 COPY presidio/download_model.py .
-RUN python download_model.py
+RUN if [ -n "$DEEPPAVLOV_NER_MODEL_PROXY" ]; then \
+        export HTTP_PROXY="$DEEPPAVLOV_NER_MODEL_PROXY"  HTTPS_PROXY="$DEEPPAVLOV_NER_MODEL_PROXY" \
+               http_proxy="$DEEPPAVLOV_NER_MODEL_PROXY"  https_proxy="$DEEPPAVLOV_NER_MODEL_PROXY"; \
+    fi; \
+    python download_model.py
 
 WORKDIR /app
 COPY presidio/analyzer_server.py .

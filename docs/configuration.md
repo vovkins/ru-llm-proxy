@@ -138,6 +138,7 @@
 | `PIP_INDEX_URL` | Пусто | URL PyPI-совместимого индекса | Внутреннее PyPI-зеркало для сборки `presidio-analyzer` (корпоративный прокси часто блокирует CONNECT к публичному pypi.org). Пусто — публичный PyPI. |
 | `PIP_TRUSTED_HOST` | Пусто | Хост зеркала | `trusted-host` для pip, если зеркало отдаёт HTTP или сертификат вне доверенного CA. |
 | `PIP_PROXY` | Пусто | URL прокси для pip | Отдельный прокси только для pip (пишется в `/etc/pip.conf`), если pip должен ходить не через общий `HTTP_PROXY`. |
+| `DEEPPAVLOV_NER_MODEL_PROXY` | Пусто | URL прокси | Отдельный прокси только для загрузки архива DeepPavlov `ner_rus_bert` при сборке `presidio-analyzer`, если он доступен не через общий `HTTP_PROXY`/`HTTPS_PROXY`. Действует только на этапе сборки, в рантайм-образ не попадает. Пусто — используется общий прокси. |
 | `NGINX_HTTP_PORT` | `80` | TCP-порт | Порт хоста, на котором `nginx` публикует единую точку входа. |
 
 Доверие корневому CA перехватывающего прокси задаётся не переменной окружения, а файлом `certs/proxy-ca.crt` (см. [../certs/README.md](../certs/README.md)): он запекается в системный trust store образов и в `certifi`. Дополнительно у `litellm` включены `DISABLE_AIOHTTP_TRANSPORT=True` и `AIOHTTP_TRUST_ENV=True`, а у `presidio-analyzer` — `HF_HOME=/opt/hf-cache` и `HF_HUB_DISABLE_XET=1`; эти значения фиксированы в `docker-compose.yml` и обычно не меняются. `STORE_MODEL_IN_DB=True` для `litellm` сохраняет добавленные через административный интерфейс модели в PostgreSQL.
