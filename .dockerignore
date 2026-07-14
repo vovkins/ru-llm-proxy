@@ -1,0 +1,37 @@
+# Build context is the repo root for the litellm, presidio-analyzer and test images.
+# Keep the context small and never ship local state or secrets into an image layer.
+
+# Version control / IDE / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Local state and caches (huge: rubert ~1.4 GB) — never needed at build time
+cache/
+pgdata/
+data/
+models/
+*.log
+logs/
+
+# Python envs / bytecode
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime secrets (never bake into an image)
+.env
+.env.*
+env
+docker-compose.override.yml
+
+# Docs and plans are not needed to build images
+# (kept out to shrink context; source under presidio/, litellm_guardrails/, tests/ is included)
+
+# NOTE: certs/ is intentionally NOT ignored — the Dockerfiles COPY certs/proxy-ca.crt.

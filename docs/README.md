@@ -15,6 +15,7 @@
 | Настроить мониторинг, метрики и алерты | [monitoring.md](monitoring.md) |
 | Подготовить подтверждения для проверки требований | [compliance.md](compliance.md) |
 | Ограничить исходящие сетевые соединения в промышленной среде | [egress-controls.md](egress-controls.md) |
+| Развернуть в air-gapped среде (http_proxy, DLP-CA, внутреннее PyPI-зеркало) | [air-gapped.md](air-gapped.md) |
 | Разобраться с закреплением маршрутов | [routing.md](routing.md) |
 | Посмотреть историческое исследование выбора стека | [research.md](research.md) |
 
@@ -47,6 +48,7 @@
 | Проверить защитные слои через API | [examples.md](examples.md) |
 | Настроить алерты | [monitoring.md](monitoring.md) |
 | Обновить образ LiteLLM | [monitoring.md](monitoring.md) |
+| Настроить корпоративный прокси, доверие CA и внутреннее PyPI-зеркало | [air-gapped.md](air-gapped.md) |
 
 ## Справочники
 

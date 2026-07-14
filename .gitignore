@@ -17,6 +17,13 @@ env/
 .env
 .env.local
 .env.production
+# air-gapped runtime env file (some operators keep it as plain `env`, not `.env`)
+/env
+
+# Corporate proxy / DLP root CA — never commit the certificate (see certs/README.md)
+certs/*.crt
+certs/*.pem
+certs/*.key
 
 # IDE
 .vscode/
@@ -44,6 +51,8 @@ logs/
 # Data
 data/
 pgdata/
+# HuggingFace / model cache (bind-mounted into presidio-analyzer)
+cache/
 
 # Testing
 .pytest_cache/
