@@ -189,3 +189,27 @@ def test_default_dictionary_contains_ten_unique_enabled_bank_rules():
 
     policy = DictionarySubstitutionPolicy.from_config(config)
     assert len(policy.rules) == 10
+
+
+def test_project_dictionary_matches_shared_corp_gateway_rules():
+    config_path = Path(__file__).resolve().parents[2] / "config" / "dictionary-replacements.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    rules = config["substitutions"]
+
+    assert {rule["source"]: rule["replacement"] for rule in rules} == {
+        "kdir": "companynameabc",
+        "betadirect": "companynameabd",
+        "beta direct": "company name abe",
+        "zephyr ledger": "confidential project acn",
+        "db-legacy-7": "internalhostaco",
+    }
+
+    result = DictionarySubstitutionPolicy.from_config(config).apply(
+        "mkdir -p KdirService; BetadirectClient; beta direct; "
+        "Zephyr Ledger zephyr leDger db-legacy-7"
+    )
+
+    assert result.text == (
+        "mkdir -p CompanynameabcService; CompanynameabdClient; company name abe; "
+        "Confidential Project Acn confidential project acn internalhostaco"
+    )

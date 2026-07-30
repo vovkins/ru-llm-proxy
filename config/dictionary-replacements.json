@@ -28,6 +28,20 @@
       "replacement": "company name abe",
       "match": { "case_sensitive": false, "whole_phrase": true },
       "restore": true
+    },
+    {
+      "id": "zephyr_ledger_to_confidential_project_acn",
+      "source": "zephyr ledger",
+      "replacement": "confidential project acn",
+      "match": { "case_sensitive": false, "whole_phrase": true },
+      "restore": true
+    },
+    {
+      "id": "db_legacy_7_to_internalhostaco",
+      "source": "db-legacy-7",
+      "replacement": "internalhostaco",
+      "match": { "case_sensitive": false, "whole_phrase": true },
+      "restore": true
     }
   ]
 }
