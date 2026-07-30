@@ -1,5 +1,8 @@
 """Tests for DeepPavlov NER integration."""
 
+import sys
+import types
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +10,7 @@ from presidio.ner.deeppavlov_recognizer import (
     DEFAULT_NER_SCORE,
     DeepPavlovRecognizer,
     _merge_bio_tags,
+    _patch_deeppavlov_torch_loading,
     should_run_ner,
     DEEPPAVLOV_ENTITY_MAP,
 )
@@ -51,6 +55,66 @@ class TestDeepPavlovRecognizer:
         assert DEEPPAVLOV_ENTITY_MAP["PER"] == "PERSON"
         assert DEEPPAVLOV_ENTITY_MAP["LOC"] == "LOCATION"
         assert DEEPPAVLOV_ENTITY_MAP["ORG"] == "ORGANIZATION"
+
+    def test_legacy_position_ids_key_is_ignored(self, monkeypatch):
+        calls = []
+
+        def original_load_state_dict(_module, state_dict, *args, **kwargs):
+            calls.append(dict(state_dict))
+            if "bert.embeddings.position_ids" in state_dict:
+                raise RuntimeError(
+                    'Unexpected key(s) in state_dict: "bert.embeddings.position_ids".'
+                )
+            return "loaded"
+
+        def original_torch_load(*args, **kwargs):
+            return {
+                "model_state_dict": {"classifier.bias": object()},
+                "optimizer_state_dict": {"state": {"exp_avg": object()}},
+            }
+
+        def original_optimizer_load_state_dict(_optimizer, _state_dict):
+            raise AssertionError("optimizer state should be skipped")
+
+        fake_torch = types.SimpleNamespace(
+            load=original_torch_load,
+            nn=types.SimpleNamespace(
+                Module=types.SimpleNamespace(load_state_dict=original_load_state_dict)
+            ),
+            optim=types.SimpleNamespace(
+                Optimizer=types.SimpleNamespace(
+                    load_state_dict=original_optimizer_load_state_dict
+                )
+            ),
+        )
+        monkeypatch.setitem(sys.modules, "torch", fake_torch)
+        module = MagicMock()
+        optimizer = MagicMock()
+        state_dict = {"bert.embeddings.position_ids": object(), "classifier.bias": object()}
+
+        with _patch_deeppavlov_torch_loading():
+            checkpoint = fake_torch.load("model.pth.tar")
+            result = fake_torch.nn.Module.load_state_dict(module, state_dict)
+            optimizer_result = fake_torch.optim.Optimizer.load_state_dict(
+                optimizer, checkpoint["optimizer_state_dict"]
+            )
+
+        assert result == "loaded"
+        assert optimizer_result is None
+        assert checkpoint["optimizer_state_dict"] == {
+            "__ru_llm_proxy_skip_optimizer_state__": True
+        }
+        assert "bert.embeddings.position_ids" not in state_dict
+        assert len(calls) == 2
+        assert "bert.embeddings.position_ids" in calls[0]
+        assert "bert.embeddings.position_ids" not in calls[1]
+        assert "classifier.bias" in calls[1]
+        assert fake_torch.load is original_torch_load
+        assert fake_torch.nn.Module.load_state_dict is original_load_state_dict
+        assert (
+            fake_torch.optim.Optimizer.load_state_dict
+            is original_optimizer_load_state_dict
+        )
 
     @patch("presidio.ner.deeppavlov_recognizer.DeepPavlovRecognizer.load_model")
     def test_analyze_with_mock(self, mock_load):

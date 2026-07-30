@@ -10,6 +10,7 @@ services:
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
       - ./litellm_guardrails:/app/litellm_guardrails:ro
+      - ./config/dictionary-replacements.json:/app/config/dictionary-replacements.json:ro
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY}
@@ -29,7 +30,7 @@ services:
       - PRESIDIO_ANALYZER_URL=${PRESIDIO_ANALYZER_URL:-http://presidio-analyzer:5001}
       - PII_GUARDRAIL_MODE=${PII_GUARDRAIL_MODE:-mask}
       - DICTIONARY_SUBSTITUTIONS_ENABLED=${DICTIONARY_SUBSTITUTIONS_ENABLED:-true}
-      - DICTIONARY_SUBSTITUTIONS_FILE=${DICTIONARY_SUBSTITUTIONS_FILE:-/app/litellm_guardrails/dictionary-substitutions.default.json}
+      - DICTIONARY_SUBSTITUTIONS_FILE=${DICTIONARY_SUBSTITUTIONS_FILE:-/app/config/dictionary-replacements.json}
       - DICTIONARY_SUBSTITUTIONS_JSON=${DICTIONARY_SUBSTITUTIONS_JSON:-}
       - DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=${DICTIONARY_SUBSTITUTIONS_FAILURE_MODE:-fail_closed}
       - SYNTHETIC_PII_ALLOWLIST_MODE=${SYNTHETIC_PII_ALLOWLIST_MODE:-off}

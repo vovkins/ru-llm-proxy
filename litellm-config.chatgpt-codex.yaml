@@ -1,0 +1,54 @@
+model_list:
+  # Codex keeps the model selected by the user. LiteLLM only switches the
+  # provider to the ChatGPT subscription Responses endpoint.
+  - model_name: "*"
+    litellm_params:
+      model: "openai/*"
+      api_base: "os.environ/CHATGPT_CODEX_API_BASE"
+      # The auth bridge replaces this startup value with the OAuth token from
+      # the current Codex request before LiteLLM constructs Authorization.
+      api_key: "oauth-passthrough-placeholder"
+
+router_settings:
+  redis_url: os.environ/REDIS_URL
+  routing_strategy: simple-shuffle
+  num_retries: 0
+  timeout: 600
+
+guardrails:
+  - guardrail_name: "ru-pii-mask-pre"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "pre_call"
+      default_on: true
+    guardrail_info:
+      description: "Маскирует PII и словарные термины перед отправкой в ChatGPT."
+
+  # This must run after ru-pii-mask-pre: it moves the Redis mapping id away
+  # from the provider payload and installs per-request ChatGPT OAuth.
+  - guardrail_name: "chatgpt-codex-auth"
+    litellm_params:
+      guardrail: litellm_guardrails.chatgpt_codex_bridge.ChatGPTCodexAuthBridge
+      mode: "pre_call"
+      default_on: true
+    guardrail_info:
+      description: "Разделяет ключ прокси и OAuth текущей подписки ChatGPT."
+
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
+      default_on: true
+    guardrail_info:
+      description: "Восстанавливает значения в unary и streaming Responses API."
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  callbacks:
+    - prometheus
+  require_auth_for_metrics_endpoint: false
+  drop_params: true
+  json_logs: true

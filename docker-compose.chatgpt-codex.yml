@@ -1,0 +1,9 @@
+# Opt-in overlay for using the current Codex user's ChatGPT subscription.
+# Start it together with docker-compose.yml; the default GLM config is untouched.
+
+services:
+  litellm:
+    volumes:
+      - ./litellm-config.chatgpt-codex.yaml:/app/config.yaml:ro
+    environment:
+      - CHATGPT_CODEX_API_BASE=${CHATGPT_CODEX_API_BASE:-https://chatgpt.com/backend-api/codex}

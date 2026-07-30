@@ -26,6 +26,7 @@ class DictionarySubstitutionRule:
     replacement: str
     case_sensitive: bool = False
     whole_phrase: bool = True
+    identifier_prefix: bool = False
     restore: bool = True
 
     def compile_pattern(self) -> re.Pattern[str]:
@@ -36,6 +37,11 @@ class DictionarySubstitutionRule:
         escaped_source = re.escape(self.source)
         if self.whole_phrase:
             pattern = rf"(?<!\w){escaped_source}(?!\w)"
+        elif self.identifier_prefix:
+            # Match the beginning of an identifier while allowing a suffix,
+            # e.g. KdirService. A preceding letter/digit blocks matches inside
+            # unrelated words such as mkdir.
+            pattern = rf"(?<![^\W_]){escaped_source}"
         else:
             pattern = escaped_source
         return re.compile(pattern, flags)
@@ -137,6 +143,9 @@ class DictionarySubstitutionPolicy:
                         match_config.get("case_sensitive", False)
                     ),
                     whole_phrase=_bool_value(match_config.get("whole_phrase", True)),
+                    identifier_prefix=_bool_value(
+                        match_config.get("identifier_prefix", False)
+                    ),
                     restore=restore,
                 )
             )
@@ -187,13 +196,14 @@ class DictionarySubstitutionPolicy:
             parts.append(unchanged)
             output_length += len(unchanged)
             replacement_start = output_length
-            parts.append(match.rule.replacement)
-            replacement_end = replacement_start + len(match.rule.replacement)
+            replacement = _replacement_for_match(match.rule, match.original)
+            parts.append(replacement)
+            replacement_end = replacement_start + len(replacement)
             output_length = replacement_end
             replacement_spans.append((replacement_start, replacement_end))
 
             if match.rule.restore:
-                mapping[match.rule.replacement] = match.original
+                mapping[replacement] = match.original
             rule_counts[match.rule.rule_id] = rule_counts.get(match.rule.rule_id, 0) + 1
             last_end = match.end
 
@@ -236,7 +246,8 @@ class DictionarySubstitutionPolicy:
         for match in matches:
             if not match.rule.restore:
                 continue
-            if match.rule.replacement in text:
+            replacement = _replacement_for_match(match.rule, match.original)
+            if replacement in text:
                 raise DictionaryPolicyAmbiguousRequestError(
                     f"replacement already present for rule {match.rule.rule_id}"
                 )
@@ -244,6 +255,27 @@ class DictionarySubstitutionPolicy:
 
 def _overlaps_any(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
     return any(start < span_end and end > span_start for span_start, span_end in spans)
+
+
+def _replacement_for_match(
+    rule: DictionarySubstitutionRule,
+    original: str,
+) -> str:
+    """Apply deterministic case style for lowercase case-insensitive rules."""
+    replacement = rule.replacement
+    if (
+        rule.case_sensitive
+        or rule.source != rule.source.casefold()
+        or replacement != replacement.casefold()
+    ):
+        return replacement
+    if original.isupper():
+        return replacement.upper()
+    if original.istitle():
+        return replacement.title()
+    if original and original[0].isupper():
+        return replacement[0].upper() + replacement[1:]
+    return replacement
 
 
 def _safe_rule_id(value: Any) -> str:
