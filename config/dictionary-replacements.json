@@ -1,0 +1,47 @@
+{
+  "substitutions": [
+    {
+      "id": "kdir_to_companynameabc",
+      "source": "kdir",
+      "replacement": "companynameabc",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": false,
+        "identifier_prefix": true
+      },
+      "restore": true
+    },
+    {
+      "id": "betadirect_to_companynameabd",
+      "source": "betadirect",
+      "replacement": "companynameabd",
+      "match": {
+        "case_sensitive": false,
+        "whole_phrase": false,
+        "identifier_prefix": true
+      },
+      "restore": true
+    },
+    {
+      "id": "beta_direct_to_company_name_abe",
+      "source": "beta direct",
+      "replacement": "company name abe",
+      "match": { "case_sensitive": false, "whole_phrase": true },
+      "restore": true
+    },
+    {
+      "id": "zephyr_ledger_to_confidential_project_acn",
+      "source": "zephyr ledger",
+      "replacement": "confidential project acn",
+      "match": { "case_sensitive": false, "whole_phrase": true },
+      "restore": true
+    },
+    {
+      "id": "db_legacy_7_to_internalhostaco",
+      "source": "db-legacy-7",
+      "replacement": "internalhostaco",
+      "match": { "case_sensitive": false, "whole_phrase": true },
+      "restore": true
+    }
+  ]
+}

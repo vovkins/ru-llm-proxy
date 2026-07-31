@@ -5,6 +5,7 @@ Entity mapping: PER → PERSON, LOC → LOCATION, ORG → ORGANIZATION
 """
 
 import logging
+from contextlib import contextmanager
 from typing import List, Optional, Tuple
 
 from presidio_analyzer import RecognizerResult
@@ -23,6 +24,64 @@ DEEPPAVLOV_ENTITY_MAP = {
 
 DEFAULT_NER_SCORE = 0.7
 NER_ENTITY_TYPES = frozenset(DEEPPAVLOV_ENTITY_MAP.values())
+_BERT_POSITION_IDS_KEY = "bert.embeddings.position_ids"
+_SKIP_OPTIMIZER_STATE_MARKER = "__ru_llm_proxy_skip_optimizer_state__"
+
+
+@contextmanager
+def _patch_deeppavlov_torch_loading():
+    """Patch legacy DeepPavlov checkpoint loading for inference-only runtime."""
+    import torch
+
+    original_torch_load = torch.load
+    original_load_state_dict = torch.nn.Module.load_state_dict
+    original_optimizer_load_state_dict = torch.optim.Optimizer.load_state_dict
+
+    def torch_load_compat(*args, **kwargs):
+        checkpoint = original_torch_load(*args, **kwargs)
+        if (
+            isinstance(checkpoint, dict)
+            and "model_state_dict" in checkpoint
+            and "optimizer_state_dict" in checkpoint
+        ):
+            logger.info("Skipping DeepPavlov optimizer state restore for inference")
+            checkpoint["optimizer_state_dict"] = {_SKIP_OPTIMIZER_STATE_MARKER: True}
+        return checkpoint
+
+    def load_state_dict_compat(module, state_dict, *args, **kwargs):
+        try:
+            return original_load_state_dict(module, state_dict, *args, **kwargs)
+        except RuntimeError as exc:
+            message = str(exc)
+            if (
+                _BERT_POSITION_IDS_KEY not in state_dict
+                or "Unexpected key(s)" not in message
+                or _BERT_POSITION_IDS_KEY not in message
+            ):
+                raise
+
+            logger.warning(
+                "Ignoring legacy DeepPavlov checkpoint key %s while loading %s",
+                _BERT_POSITION_IDS_KEY,
+                module.__class__.__name__,
+            )
+            state_dict.pop(_BERT_POSITION_IDS_KEY, None)
+            return original_load_state_dict(module, state_dict, *args, **kwargs)
+
+    def optimizer_load_state_dict_compat(optimizer, state_dict):
+        if isinstance(state_dict, dict) and state_dict.get(_SKIP_OPTIMIZER_STATE_MARKER):
+            return None
+        return original_optimizer_load_state_dict(optimizer, state_dict)
+
+    torch.load = torch_load_compat
+    torch.nn.Module.load_state_dict = load_state_dict_compat
+    torch.optim.Optimizer.load_state_dict = optimizer_load_state_dict_compat
+    try:
+        yield
+    finally:
+        torch.load = original_torch_load
+        torch.nn.Module.load_state_dict = original_load_state_dict
+        torch.optim.Optimizer.load_state_dict = original_optimizer_load_state_dict
 
 
 def _merge_bio_tags(tokens: list[str], tags: list[str]) -> list[dict]:
@@ -147,7 +206,8 @@ class DeepPavlovRecognizer:
         logger.info("Loading DeepPavlov ner_rus_bert model...")
         from deeppavlov import build_model, configs
 
-        self._model = build_model(configs.ner.ner_rus_bert, download=False)
+        with _patch_deeppavlov_torch_loading():
+            self._model = build_model(configs.ner.ner_rus_bert, download=False)
         logger.info("DeepPavlov model loaded successfully")
 
     def is_loaded(self) -> bool:

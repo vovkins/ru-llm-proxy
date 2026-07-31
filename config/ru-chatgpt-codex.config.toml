@@ -1,0 +1,12 @@
+# Install as ~/.codex/ru-chatgpt-codex.config.toml.
+# RU_LLM_PROXY_TOKEN is a LiteLLM virtual key (or the master key for local tests).
+model = "gpt-5.6-sol"
+model_provider = "ru-chatgpt-codex"
+
+[model_providers.ru-chatgpt-codex]
+name = "ru-llm-proxy / ChatGPT Codex"
+base_url = "http://127.0.0.1:4100/v1"
+wire_api = "responses"
+requires_openai_auth = true
+supports_websockets = false
+env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }

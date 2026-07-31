@@ -1,0 +1,32 @@
+services:
+  litellm:
+    container_name: ru-llm-proxy-compare
+    volumes:
+      - ./litellm-config.compare.yaml:/app/config.yaml:ro
+      - ./litellm_guardrails:/app/litellm_guardrails:ro
+      - ./config/dictionary-replacements.json:/app/config/dictionary-replacements.json:ro
+    environment:
+      - GLM_LLM_ENDPOINT=${GLM_LLM_ENDPOINT}
+      - GLM_LLM_AUTH_TOKEN=${GLM_LLM_AUTH_TOKEN}
+      - DICTIONARY_SUBSTITUTIONS_ENABLED=true
+      - DICTIONARY_SUBSTITUTIONS_FILE=/app/config/dictionary-replacements.json
+      - DICTIONARY_SUBSTITUTIONS_FAILURE_MODE=fail_closed
+
+  presidio-analyzer:
+    build:
+      context: ./presidio
+      dockerfile: Dockerfile
+      target: analyzer
+      args:
+        DEEPPAVLOV_NER_MODEL_URL: ${DEEPPAVLOV_NER_MODEL_URL:-http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz}
+        DEEPPAVLOV_NER_MODEL_SHA256: ${DEEPPAVLOV_NER_MODEL_SHA256:-}
+        DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS: ${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS:-120}
+    container_name: ru-llm-proxy-presidio-compare
+    ports:
+      - "${PRESIDIO_ANALYZER_PORT:-5101}:5001"
+
+  db:
+    container_name: ru-llm-proxy-db-compare
+
+  redis:
+    container_name: ru-llm-proxy-redis-compare

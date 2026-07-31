@@ -84,6 +84,85 @@ def test_original_replacement_text_in_request_is_rejected_as_ambiguous():
         policy.apply("Сравни Т-Банк и Зетта Групп")
 
 
+@pytest.mark.parametrize(
+    ("source_text", "expected", "mapping"),
+    [
+        ("class kdirService", "class companynameabcService", {"companynameabc": "kdir"}),
+        ("class KdirService", "class CompanynameabcService", {"Companynameabc": "Kdir"}),
+        ("const KDIR_HOST", "const COMPANYNAMEABC_HOST", {"COMPANYNAMEABC": "KDIR"}),
+        (
+            "new BetaDirectReportBuilder()",
+            "new CompanynameabdReportBuilder()",
+            {"Companynameabd": "BetaDirect"},
+        ),
+    ],
+)
+def test_code_identifiers_preserve_case_style(source_text, expected, mapping):
+    policy = _policy(
+        {
+            "id": "kdir",
+            "source": "kdir",
+            "replacement": "companynameabc",
+            "match": {
+                "case_sensitive": False,
+                "whole_phrase": False,
+                "identifier_prefix": True,
+            },
+        },
+        {
+            "id": "betadirect",
+            "source": "betadirect",
+            "replacement": "companynameabd",
+            "match": {
+                "case_sensitive": False,
+                "whole_phrase": False,
+                "identifier_prefix": True,
+            },
+        },
+    )
+
+    result = policy.apply(source_text)
+
+    assert result.text == expected
+    assert result.mapping == mapping
+
+
+def test_identifier_prefix_does_not_replace_inside_mkdir_command():
+    policy = _policy(
+        {
+            "id": "kdir",
+            "source": "kdir",
+            "replacement": "companynameabc",
+            "match": {
+                "case_sensitive": False,
+                "whole_phrase": False,
+                "identifier_prefix": True,
+            },
+        }
+    )
+
+    result = policy.apply("mkdir -p KdirService1")
+
+    assert result.text == "mkdir -p CompanynameabcService1"
+    assert result.mapping == {"Companynameabc": "Kdir"}
+
+
+def test_multiword_phrase_preserves_title_case_style():
+    policy = _policy(
+        {
+            "id": "beta_direct",
+            "source": "beta direct",
+            "replacement": "company name abe",
+            "match": {"case_sensitive": False, "whole_phrase": True},
+        }
+    )
+
+    result = policy.apply("Проверь Beta Direct")
+
+    assert result.text == "Проверь Company Name Abe"
+    assert result.mapping == {"Company Name Abe": "Beta Direct"}
+
+
 def test_default_dictionary_contains_ten_unique_enabled_bank_rules():
     config_path = (
         Path(__file__).resolve().parents[1] / "dictionary-substitutions.default.json"
@@ -110,3 +189,27 @@ def test_default_dictionary_contains_ten_unique_enabled_bank_rules():
 
     policy = DictionarySubstitutionPolicy.from_config(config)
     assert len(policy.rules) == 10
+
+
+def test_project_dictionary_matches_shared_corp_gateway_rules():
+    config_path = Path(__file__).resolve().parents[2] / "config" / "dictionary-replacements.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    rules = config["substitutions"]
+
+    assert {rule["source"]: rule["replacement"] for rule in rules} == {
+        "kdir": "companynameabc",
+        "betadirect": "companynameabd",
+        "beta direct": "company name abe",
+        "zephyr ledger": "confidential project acn",
+        "db-legacy-7": "internalhostaco",
+    }
+
+    result = DictionarySubstitutionPolicy.from_config(config).apply(
+        "mkdir -p KdirService; BetadirectClient; beta direct; "
+        "Zephyr Ledger zephyr leDger db-legacy-7"
+    )
+
+    assert result.text == (
+        "mkdir -p CompanynameabcService; CompanynameabdClient; company name abe; "
+        "Confidential Project Acn confidential project acn internalhostaco"
+    )

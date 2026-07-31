@@ -65,10 +65,15 @@ model = "openai-example-premium"
 подпиской пользователя, но всё ещё идти через прокси для защитных слоёв, учёта и
 контроля доступа на прокси.
 
-Это отдельный сценарий для проверки, а не готовый промышленный режим по умолчанию. Авторизация подписки ChatGPT/Codex
-обычно опирается на провайдерский `Authorization`; стандартный путь
-LiteLLM не считается способным гарантированно пересылать этот заголовок
-провайдеру. Конфигурация репозитория по умолчанию не включает пересылку заголовков.
+Репозиторий содержит отдельный opt-in контур `chatgpt-codex`. Он не меняет
+обычный GLM-контур и включает специальный guardrail, который разделяет два вида
+авторизации:
+
+- `x-litellm-api-key` проверяется самим ru-llm-proxy;
+- OAuth из `Authorization` текущего пользователя пересылается в ChatGPT backend;
+- остальные входящие HTTP-заголовки, включая ключ прокси, не пересылаются;
+- PII и словарные термины маскируются до OAuth bridge и восстанавливаются в
+  unary/streaming-ответах Responses API.
 
 Сначала войдите локально через Codex:
 
@@ -76,30 +81,67 @@ LiteLLM не считается способным гарантированно 
 codex login
 ```
 
-Затем настройте провайдера, который использует авторизацию OpenAI и отправляет
-пользовательский ключ LiteLLM в отдельном заголовке авторизации прокси:
+Запустите профиль на порту из `.env` (`4100` в локальной конфигурации):
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.chatgpt-codex.yml \
+  up -d --build db redis presidio-analyzer litellm
+```
+
+Установите готовую конфигурацию Codex:
+
+```bash
+cp config/ru-chatgpt-codex.config.toml \
+  ~/.codex/ru-chatgpt-codex.config.toml
+```
+
+Её эквивалент:
 
 ```toml
-model_provider = "ru_llm_proxy_chatgpt"
-model = "openai-example-standard"
+model_provider = "ru-chatgpt-codex"
+model = "gpt-5.6-sol"
 
-[model_providers.ru_llm_proxy_chatgpt]
+[model_providers.ru-chatgpt-codex]
 name = "ru-llm-proxy via ChatGPT auth"
-base_url = "http://localhost:4000/v1"
+base_url = "http://127.0.0.1:4100/v1"
 wire_api = "responses"
 requires_openai_auth = true
+supports_websockets = false
 env_http_headers = { "x-litellm-api-key" = "RU_LLM_PROXY_TOKEN" }
 ```
 
 В этом режиме:
 
-- Codex хранит `~/.codex/auth.json` или авторизацию в системном хранилище учётных данных на клиентской машине.
+- Codex хранит OAuth в системном хранилище или локальном auth-файле клиента.
 - Прокси аутентифицирует клиента через `x-litellm-api-key`.
-- Авторизация OpenAI/ChatGPT остаётся в провайдерском пути авторизации; перед использованием за пределами эксперимента нужно доказать, что она доходит до провайдера.
+- Guardrail получает исходный OAuth из закрытого `secret_fields.raw_headers` LiteLLM,
+  устанавливает его как per-request provider key и удаляет provider-несовместимое
+  поле `metadata` из egress payload.
 
 Не копируйте общий Codex `auth.json` на прокси для всех пользователей. Если проверка на живом сервисе покажет, что обычный маршрут LiteLLM `/v1/responses` удаляет нужный
-провайдерский заголовок `Authorization`, этому режиму нужен сквозной маршрут, боковой контейнер
-или отдельный адаптер перед промышленным использованием.
+провайдерский заголовок `Authorization`, проверьте, что запущен именно overlay
+`docker-compose.chatgpt-codex.yml`, а в `/guardrails/list` присутствует
+`chatgpt-codex-auth`.
+
+Перед запуском задайте клиентский ключ прокси и откройте Codex:
+
+```bash
+export RU_LLM_PROXY_TOKEN="sk-..."
+codex --profile ru-chatgpt-codex
+```
+
+Для локальной проверки вместо virtual key можно временно использовать
+`LITELLM_MASTER_KEY` из `.env`, не выводя его в терминал:
+
+```bash
+set -a
+source .env
+set +a
+export RU_LLM_PROXY_TOKEN="$LITELLM_MASTER_KEY"
+codex --profile ru-chatgpt-codex
+```
 
 ## Локальные задачи Codex App
 
@@ -114,7 +156,20 @@ RU_LLM_PROXY_TOKEN=sk-...
 
 ## Проверка
 
-Из репозитория proxy:
+Проверка ChatGPT-профиля без записи файлов:
+
+```bash
+codex exec --profile ru-chatgpt-codex \
+  --sandbox read-only --ephemeral --skip-git-repo-check \
+  'Ответь только идентификатором: KdirService'
+```
+
+Ожидаемый клиентский ответ: `KdirService`. Для доказательства полного цикла
+используйте `tests/e2e/mock_chatgpt_codex_upstream.py`: его `/capture` показывает,
+что провайдер получил `CompanynameabcService`, но не получил `KdirService` и
+`x-litellm-api-key`.
+
+Общая проверка client-auth для режима с серверными API-ключами:
 
 ```bash
 make client-auth-smoke

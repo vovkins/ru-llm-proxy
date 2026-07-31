@@ -23,6 +23,12 @@ from litellm_guardrails.dictionary_policy import (
     DictionarySubstitutionPolicy,
     DictionarySubstitutionResult,
 )
+from litellm_guardrails.responses_restore import (
+    ResponsesStreamRestorer,
+    is_responses_event,
+    is_responses_response,
+    restore_responses_response,
+)
 
 try:
     from fastapi import HTTPException
@@ -1425,6 +1431,13 @@ class RuPIIGuardrail(CustomGuardrail):
             if isinstance(item.get("arguments"), str):
                 targets.append((item, "arguments"))
 
+            # Responses custom tools store their raw payload in `input`, not
+            # `arguments`. These items are replayed on the next agent turn, so
+            # leaving them restored would expose PII and make provider history
+            # inconsistent with the sanitized user request.
+            if isinstance(item.get("input"), str):
+                targets.append((item, "input"))
+
             output = item.get("output")
             if isinstance(output, str):
                 targets.append((item, "output"))
@@ -2426,38 +2439,52 @@ class RuPIIGuardrail(CustomGuardrail):
     @staticmethod
     def _get_response_request_id(data: dict) -> Optional[str]:
         """Return request ID used for post-call response restoration."""
-        metadata = data.get("metadata", {})
-        if not isinstance(metadata, dict):
-            return None
-        request_id = metadata.get(PII_REQUEST_ID_METADATA_KEY)
-        if not request_id:
-            return None
-        return str(request_id)
+        for metadata in RuPIIGuardrail._internal_metadata_buckets(data):
+            request_id = metadata.get(PII_REQUEST_ID_METADATA_KEY)
+            if request_id:
+                return str(request_id)
+        return None
+
+    @staticmethod
+    def _internal_metadata_buckets(data: dict) -> list[dict]:
+        """Return LiteLLM metadata containers that can carry internal state."""
+        buckets: list[dict] = []
+        for value in (data.get("metadata"), data.get("litellm_metadata")):
+            if isinstance(value, dict):
+                buckets.append(value)
+
+        litellm_params = data.get("litellm_params")
+        if isinstance(litellm_params, dict):
+            metadata = litellm_params.get("metadata")
+            if isinstance(metadata, dict):
+                buckets.append(metadata)
+        return buckets
 
     @staticmethod
     def _mark_streaming_restoration_done(data: dict) -> None:
         """Mark that streaming iterator hook already handled post-call restoration."""
-        if not isinstance(data.get("metadata"), dict):
-            data["metadata"] = {}
-        data["metadata"][PII_STREAMING_RESTORATION_DONE_METADATA_KEY] = True
+        metadata = data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = data.get("litellm_metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            data["metadata"] = metadata
+        metadata[PII_STREAMING_RESTORATION_DONE_METADATA_KEY] = True
 
     @staticmethod
     def _streaming_restoration_done(data: dict) -> bool:
         """Return whether streaming iterator hook already handled this response."""
-        metadata = data.get("metadata", {})
-        return (
-            isinstance(metadata, dict)
-            and metadata.get(PII_STREAMING_RESTORATION_DONE_METADATA_KEY) is True
+        return any(
+            metadata.get(PII_STREAMING_RESTORATION_DONE_METADATA_KEY) is True
+            for metadata in RuPIIGuardrail._internal_metadata_buckets(data)
         )
 
     @staticmethod
     def _clear_inbound_pii_metadata(data: dict) -> None:
         """Remove caller-supplied guardrail-internal metadata from a new request."""
-        metadata = data.get("metadata")
-        if not isinstance(metadata, dict):
-            return
-        metadata.pop(PII_REQUEST_ID_METADATA_KEY, None)
-        metadata.pop(PII_STREAMING_RESTORATION_DONE_METADATA_KEY, None)
+        for metadata in RuPIIGuardrail._internal_metadata_buckets(data):
+            metadata.pop(PII_REQUEST_ID_METADATA_KEY, None)
+            metadata.pop(PII_STREAMING_RESTORATION_DONE_METADATA_KEY, None)
 
     @staticmethod
     def _entity_counts_from_mapping(mapping: dict[str, str]) -> dict[str, int]:
@@ -3207,7 +3234,10 @@ class RuPIIGuardrail(CustomGuardrail):
         """Unmask PII in response after receiving from LLM."""
         if data.get("stream") is True and (
             self._streaming_restoration_done(data)
-            or not isinstance(response, litellm.ModelResponse)
+            or not (
+                isinstance(response, litellm.ModelResponse)
+                or is_responses_response(response)
+            )
         ):
             PII_POST_CALLS.labels(result="skipped").inc()
             return
@@ -3248,6 +3278,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     if restored_value != original_value:
                         restored_fields += 1
                         self._set_container_field(target, field, restored_value)
+        elif is_responses_response(response):
+            restored_fields = restore_responses_response(response, mapping)
         else:
             PII_POST_CALLS.labels(result="unsupported_response").inc()
             _safe_log(
@@ -3389,9 +3421,17 @@ class RuPIIGuardrail(CustomGuardrail):
             return
 
         replacer = _StreamingPlaceholderReplacer(mapping)
+        responses_restorer = ResponsesStreamRestorer(mapping)
         restored_fields = 0
         try:
             async for item in response:
+                if is_responses_event(item):
+                    restored_items, changed = responses_restorer.feed(item)
+                    restored_fields += changed
+                    for restored_item in restored_items:
+                        yield restored_item
+                    continue
+
                 for choice_index, target, field in self._iter_stream_delta_text_targets(
                     item
                 ):
@@ -3415,6 +3455,11 @@ class RuPIIGuardrail(CustomGuardrail):
             for (choice_index, field), text in replacer.flush_all().items():
                 restored_fields += 1
                 yield self._build_stream_flush_chunk(choice_index, field, text)
+
+            response_tails, changed = responses_restorer.flush()
+            restored_fields += changed
+            for response_tail in response_tails:
+                yield response_tail
         finally:
             self._mark_streaming_restoration_done(request_data)
             try:

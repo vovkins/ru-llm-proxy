@@ -1536,6 +1536,68 @@ class TestPreCallHook:
         }
 
     @pytest.mark.asyncio
+    async def test_masks_dictionary_term_in_replayed_custom_tool_input(self):
+        guardrail = RuPIIGuardrail(
+            dictionary_substitutions_enabled=True,
+            dictionary_substitutions_file="",
+            dictionary_substitutions_json=_dictionary_substitutions(
+                {
+                    "id": "kdir",
+                    "source": "kdir",
+                    "replacement": "companynameabc",
+                    "match": {
+                        "case_sensitive": False,
+                        "whole_phrase": False,
+                        "identifier_prefix": True,
+                    },
+                    "restore": True,
+                }
+            ),
+        )
+        guardrail._redis = _mock_redis()
+        save_mapping = AsyncMock()
+        data = {
+            "model": "gpt-5.6-luna",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Создай папку KdirService1",
+                        }
+                    ],
+                },
+                {
+                    "type": "custom_tool_call",
+                    "call_id": "call-1",
+                    "name": "exec",
+                    "input": "mkdir -p KdirService1",
+                },
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "call-1",
+                    "output": "completed",
+                },
+            ],
+        }
+
+        with patch.object(guardrail, "_analyze_text", return_value=[]):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        assert result["input"][0]["content"][0]["text"] == (
+            "Создай папку CompanynameabcService1"
+        )
+        assert result["input"][1]["input"] == "mkdir -p CompanynameabcService1"
+        assert save_mapping.call_args[0][1] == {"Companynameabc": "Kdir"}
+
+    @pytest.mark.asyncio
     async def test_clean_responses_input_is_analyzed_and_passes_through(self):
         guardrail = RuPIIGuardrail()
         guardrail._redis = _mock_redis()
