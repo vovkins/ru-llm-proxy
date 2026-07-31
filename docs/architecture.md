@@ -12,6 +12,143 @@
 | Redis | `redis` | Временное хранение обратимых сопоставлений плейсхолдеров и привязки LiteLLM к провайдеру модели |
 | PostgreSQL | `db` | Хранение состояния LiteLLM |
 
+## Компонентная схема
+
+Схема показывает основные компоненты текущего Docker Compose-стека без входного
+обратного прокси. Стрелки отражают потоки данных и служебные обращения между
+компонентами.
+
+```mermaid
+flowchart LR
+    client["Клиент / интеграция<br/>OpenAI API, Responses API,<br/>Anthropic Messages API"]
+    admin["Администратор LiteLLM<br/>UI / Admin API"]
+    provider["Внешний провайдер модели<br/>например, GLM-5.2"]
+
+    subgraph system["ru-llm-proxy"]
+        subgraph litellm_container["Контейнер litellm"]
+            litellm["LiteLLM Proxy<br/>API-шлюз, Router,<br/>авторизация клиентских ключей"]
+            pre["ru-pii-mask-pre<br/>PII Guardrail pre_call"]
+            post["ru-pii-mask-post<br/>PII Guardrail post_call<br/>и streaming iterator"]
+        end
+
+        subgraph analyzer_container["Контейнер presidio-analyzer"]
+            analyzer["Presidio Analyzer API<br/>POST /api/v1/analyze"]
+            recognizers["Русскоязычные распознаватели<br/>регулярные выражения,<br/>spaCy, DeepPavlov NER"]
+        end
+
+        redis[("Redis<br/>pii_mapping:*<br/>deployment_affinity")]
+        postgres[("PostgreSQL<br/>состояние LiteLLM")]
+        observability["Наблюдаемость<br/>Prometheus-метрики<br/>и безопасные JSON-журналы"]
+    end
+
+    client -->|"Запрос к модели"| litellm
+    admin -->|"Администрирование ключей,<br/>моделей и настроек"| litellm
+
+    litellm -->|"pre_call"| pre
+    pre -->|"Текст после ранних политик<br/>и словарных подстановок"| analyzer
+    analyzer -->|"Использует локальные<br/>распознаватели"| recognizers
+    analyzer -->|"Найденные сущности,<br/>типы и оценки"| pre
+
+    pre -->|"Сохранить сопоставление<br/>плейсхолдеров"| redis
+    litellm -->|"Закрепление провайдера модели<br/>за клиентским ключом"| redis
+    litellm -->|"Состояние LiteLLM"| postgres
+
+    pre -->|"Маскированная полезная нагрузка"| litellm
+    litellm -->|"Маскированный запрос<br/>к выбранному провайдеру"| provider
+    provider -->|"Ответ модели<br/>или поток фрагментов"| litellm
+
+    litellm -->|"post_call / streaming hook"| post
+    post -->|"Загрузить и удалить<br/>сопоставление"| redis
+    post -->|"Ответ с восстановленными<br/>значениями"| litellm
+    litellm -->|"Ответ клиенту"| client
+
+    litellm -.->|"Метрики LiteLLM"| observability
+    pre -.->|"Итоги политик,<br/>аудит без исходных данных"| observability
+    post -.->|"Итоги восстановления"| observability
+    analyzer -.->|"Метрики здоровья,<br/>ёмкости и задержки"| observability
+```
+
+## Последовательность обработки запроса
+
+Диаграмма отражает основной поток для `PII_GUARDRAIL_MODE=mask`, а также
+ключевые ветвления, где запрос может быть остановлен до вызова внешнего
+провайдера.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Клиент
+    participant LiteLLM as LiteLLM Proxy
+    participant Pre as ru-pii-mask-pre (pre_call)
+    participant Analyzer as Presidio Analyzer
+    participant Redis as Redis
+    participant Provider as Провайдер модели
+    participant Post as ru-pii-mask-post (post_call / stream)
+    participant Obs as Метрики и журналы
+
+    Client->>LiteLLM: POST /v1/chat/completions<br/>или /v1/responses, /v1/messages
+    LiteLLM->>Pre: Запустить pre_call guardrail
+    Pre->>Pre: Собрать строковые поля,<br/>которые могут уйти провайдеру
+
+    alt Сработала политика регулируемых тем или pre-egress policy
+        Pre->>Obs: Записать безопасное событие блокировки
+        Pre-->>LiteLLM: Безопасная ошибка 422
+        LiteLLM-->>Client: 422 без исходной полезной нагрузки
+    else Ранние политики не заблокировали запрос
+        Pre->>Pre: Применить словарные подстановки
+        Pre->>Analyzer: POST /api/v1/analyze
+        Analyzer-->>Pre: Сущности, типы и оценки
+
+        alt Analyzer недоступен или превысил таймаут при fail_closed
+            Pre->>Obs: Записать fail_closed
+            Pre-->>LiteLLM: Ошибка без выхода к провайдеру
+            LiteLLM-->>Client: Ошибка защитного слоя
+        else Analyzer вернул результат
+            alt PII_GUARDRAIL_MODE=block и найдены персональные данные
+                Pre->>Obs: Записать типы сущностей и счётчики
+                Pre-->>LiteLLM: Безопасная ошибка 422
+                LiteLLM-->>Client: 422 без исходных персональных данных
+            else PII_GUARDRAIL_MODE=mask
+                Pre->>Pre: Построить плейсхолдеры<br/>и применить маскирование
+                Pre->>Pre: Выполнить финальную проверку<br/>полезной нагрузки
+
+                alt Найден контрольный маркер или признак сырой утечки
+                    Pre->>Obs: Записать final_payload_leak_check_blocked
+                    Pre-->>LiteLLM: Безопасная ошибка 422
+                    LiteLLM-->>Client: 422 до вызова провайдера
+                else Финальная проверка чистая
+                    opt Есть плейсхолдеры или словарные подстановки
+                        Pre->>Redis: SETEX pii_mapping:{pii_request_id}
+                    end
+                    Pre-->>LiteLLM: Вернуть подготовленный запрос
+                    LiteLLM->>Redis: Найти или обновить<br/>deployment_affinity
+                    LiteLLM->>Provider: Отправить маскированный запрос
+
+                    alt Обычный ответ
+                        Provider-->>LiteLLM: Ответ модели
+                        LiteLLM->>Post: Запустить post_call guardrail
+                        Post->>Redis: GET pii_mapping:{pii_request_id}
+                        Post->>Post: Восстановить плейсхолдеры<br/>и словарные подстановки
+                        Post->>Redis: DEL pii_mapping:{pii_request_id}
+                        Post-->>LiteLLM: Восстановленный ответ
+                        LiteLLM-->>Client: Ответ клиенту
+                    else Потоковый ответ
+                        Provider-->>LiteLLM: Поток фрагментов
+                        LiteLLM->>Post: Обернуть потоковый итератор
+                        Post->>Redis: GET pii_mapping:{pii_request_id}
+                        loop Каждый фрагмент потока
+                            Post->>Post: Восстановить delta.content<br/>и delta.reasoning_content
+                            Post-->>LiteLLM: Восстановленный фрагмент
+                            LiteLLM-->>Client: SSE-фрагмент
+                        end
+                        Post->>Redis: DEL pii_mapping:{pii_request_id}
+                    end
+                end
+            end
+        end
+    end
+```
+
 ## Поток запроса
 
 ```text
