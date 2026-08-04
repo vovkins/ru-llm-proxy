@@ -1,0 +1,3707 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "fef2/ner_rus_bert-secret_detection",
+    "revision": "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4",
+    "gitleaks_sha256": "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+    "upstream_git_blob_sha1": "256f64790ea6d954f0041024be2938089ae1e7a7"
+  },
+  "policy": {
+    "active_runtime_rules_changed": true,
+    "selected_formats_adapted": true,
+    "regex_and_descriptions_copied": false,
+    "approval_required_before_integration": false
+  },
+  "counts": {
+    "source_rules": 222,
+    "recommendations": {
+      "adapt": 23,
+      "already_covered": 9,
+      "reject": 16,
+      "requires_evidence": 174
+    },
+    "model_loader": {
+      "excluded": 31,
+      "incompatible": 23,
+      "loaded": 168
+    }
+  },
+  "rules": [
+    {
+      "source_id": "1password-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "1password-service-account-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "adafruit-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "adobe-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "adobe-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "age-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "airtable-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "airtable-personnal-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "FutureWarning"
+    },
+    {
+      "source_id": "algolia-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "alibaba-access-key-id",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "alibaba-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "anthropic-admin-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "anthropic-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "artifactory-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "artifactory-reference-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "asana-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "asana-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "atlassian-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "authress-service-client-access-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "aws-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "aws-amazon-bedrock-api-key-long-lived",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "aws-amazon-bedrock-api-key-short-lived",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "azure-ad-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "beamer-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "bitbucket-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "bitbucket-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "bittrex-access-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "bittrex-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "cisco-meraki-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "clickhouse-cloud-api-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "clojars-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "cloudflare-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "cloudflare-global-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "cloudflare-origin-ca-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "codecov-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "cohere-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "coinbase-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "confluent-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "confluent-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "contentful-delivery-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "curl-auth-header",
+      "source_loader_label": null,
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "curl-auth-user",
+      "source_loader_label": null,
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present",
+        "not_python_re_compatible",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "databricks-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "datadog-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "defined-networking-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "digitalocean-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "digitalocean-pat",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "digitalocean-refresh-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "discord-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "discord-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "discord-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "doppler-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "droneci-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "dropbox-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "dropbox-long-lived-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "dropbox-short-lived-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "duffel-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "dynatrace-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "easypost-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "easypost-test-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "etsy-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "facebook-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "facebook-page-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "facebook-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "fastly-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "finicity-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "finicity-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "finnhub-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "flickr-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "flutterwave-encryption-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "flutterwave-public-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "flutterwave-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "flyio-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "frameio-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "freemius-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": true,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "path_constraint_ignored_by_model_loader"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "freshbooks-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gcp-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "generic-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "github-app-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "github-fine-grained-pat",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "github-oauth",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "github-pat",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "github-refresh-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-cicd-job-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-deploy-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-feature-flag-client-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-feed-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-incoming-mail-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-kubernetes-agent-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-oauth-app-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-pat",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-pat-routable",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-ptt",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-rrt",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-runner-authentication-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-runner-authentication-token-routable",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-scim-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitlab-session-cookie",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gitter-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "gocardless-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "grafana-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "grafana-cloud-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "grafana-service-account-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "harness-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "hashicorp-tf-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "hashicorp-tf-password",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": true,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "path_constraint_ignored_by_model_loader",
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "heroku-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "heroku-api-key-v2",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "hubspot-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "huggingface-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "huggingface-organization-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "infracost-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "intercom-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "intra42-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "jfrog-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "jfrog-identity-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "jwt",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "jwt-base64",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "kraken-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "kubernetes-secret-yaml",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": true,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "path_constraint_ignored_by_model_loader"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "kucoin-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "kucoin-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "launchdarkly-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "linear-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "linear-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "linkedin-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "linkedin-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "lob-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "lob-pub-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "looker-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "looker-client-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mailchimp-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mailgun-private-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mailgun-pub-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mailgun-signing-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mapbox-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "mattermost-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "maxmind-license-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "messagebird-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "messagebird-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "microsoft-teams-webhook",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "netlify-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "new-relic-browser-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "new-relic-insert-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "new-relic-user-api-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "new-relic-user-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "notion-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "npm-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "nuget-config-password",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": true,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "path_constraint_ignored_by_model_loader",
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "nytimes-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "octopus-deploy-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "okta-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "openai-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "openshift-user-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "perplexity-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "pkcs12-file",
+      "source_loader_label": null,
+      "source_python_compatible": null,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": false,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": true,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "path_constraint_ignored_by_model_loader",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": "missing_regex"
+    },
+    {
+      "source_id": "plaid-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "plaid-client-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "plaid-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "planetscale-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "planetscale-oauth-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "planetscale-password",
+      "source_loader_label": null,
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "postman-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "prefect-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "private-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "privateai-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "pulumi-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "pypi-upload-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "rapidapi-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "readme-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "rubygems-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "scalingo-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sendbird-access-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sendbird-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sendgrid-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "sendinblue-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "sentry-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sentry-org-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": false,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "not_python_re_compatible"
+      ],
+      "compatibility_error_type": "error"
+    },
+    {
+      "source_id": "sentry-user-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "settlemint-application-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "settlemint-personal-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "settlemint-service-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "shippo-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "shopify-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "shopify-custom-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "shopify-private-app-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "shopify-shared-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sidekiq-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sidekiq-sensitive-url",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-app-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-bot-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "full",
+      "recommendation": "already_covered",
+      "reason_code": "existing_structured_recognizer",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-config-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-config-refresh-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-legacy-bot-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-legacy-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-legacy-workspace-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-user-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "slack-webhook-url",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "snyk-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sonar-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sourcegraph-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "square-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "squarespace-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "stripe-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sumologic-access-id",
+      "source_loader_label": null,
+      "source_python_compatible": true,
+      "source_loader_would_load": false,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "reject",
+      "reason_code": "public_identifier_generic_rule_or_file_metadata",
+      "risk_flags": [
+        "entropy_threshold_present",
+        "excluded_by_identifier_label_mapping"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "sumologic-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "telegram-bot-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "travisci-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twilio-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitch-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitter-access-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitter-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitter-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitter-api-secret",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "twitter-bearer-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "typeform-api-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "vault-batch-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "vault-service-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": true,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": true,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [
+        "rule_allowlist_ignored_by_model_loader",
+        "entropy_threshold_present"
+      ],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "yandex-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "yandex-api-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "yandex-aws-access-token",
+      "source_loader_label": "AUTH_TOKEN",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "adapted",
+      "recommendation": "adapt",
+      "reason_code": "high_signal_format_requires_native_presidio_rule",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    },
+    {
+      "source_id": "zendesk-secret-key",
+      "source_loader_label": "SECRET_KEY",
+      "source_python_compatible": true,
+      "source_loader_would_load": true,
+      "source_has_entropy_threshold": false,
+      "source_has_keywords": true,
+      "source_has_rule_allowlist": false,
+      "source_has_path_constraint": false,
+      "current_coverage": "not_demonstrated",
+      "recommendation": "requires_evidence",
+      "reason_code": "provider_specific_rule_not_in_active_default_scope",
+      "risk_flags": [],
+      "compatibility_error_type": null
+    }
+  ]
+}

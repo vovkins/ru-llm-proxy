@@ -1,4 +1,4 @@
-# Python 3.11 base (3.12 incompatible with deeppavlov's numpy dependency)
+# Python 3.11 remains the supported Analyzer runtime for this migration.
 FROM python:3.11-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl gcc g++ && \
@@ -9,40 +9,36 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # === Presidio Analyzer dependencies ===
 FROM base AS analyzer-runtime
 
-COPY requirements-analyzer.txt requirements-torchcrf.txt ./
+COPY requirements-analyzer.txt ./
 RUN pip install --no-cache-dir -r requirements-analyzer.txt
-
-# Install DeepPavlov without deps. Its transitive pins include older packages
-# that are not suitable for this Python 3.11 image.
-RUN pip install --no-cache-dir --no-deps 'deeppavlov>=1.0,<2.0'
-
-# pytorch-crf must be installed AFTER torch.
-RUN pip install --no-cache-dir -r requirements-torchcrf.txt
 
 # Download spaCy Russian model
 RUN python -m spacy download ru_core_news_sm
 
-# Lightweight test target: Analyzer/FastAPI dependencies without the large
-# pre-downloaded DeepPavlov model archive.
+# Lightweight test target without the large model weights.
 FROM analyzer-runtime AS analyzer-test
+COPY requirements-analyzer-test.txt ./
+RUN pip install --no-cache-dir -r requirements-analyzer-test.txt
+
+# Download only the reviewed files from the immutable model revision.
+FROM analyzer-runtime AS model-download
+WORKDIR /model-build
+COPY model_artifact.py download_hf_model.py model_manifest.json ./
+RUN python download_hf_model.py
 
 # === Presidio Analyzer ===
 FROM analyzer-runtime AS analyzer
-
-# Pre-download DeepPavlov ner_rus_bert model (~1.4 GB)
-# Only download files, don't build model (avoids transformers compat issues at build time)
-ARG DEEPPAVLOV_NER_MODEL_URL="http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz"
-ARG DEEPPAVLOV_NER_MODEL_SHA256=""
-ARG DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS="120"
-ENV DEEPPAVLOV_NER_MODEL_URL=${DEEPPAVLOV_NER_MODEL_URL}
-ENV DEEPPAVLOV_NER_MODEL_SHA256=${DEEPPAVLOV_NER_MODEL_SHA256}
-ENV DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS=${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS}
-COPY download_model.py .
-RUN python download_model.py
-
 WORKDIR /app
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    TOKENIZERS_PARALLELISM=false
+COPY --from=model-download /opt/models/ner_rus_bert-secret_detection /opt/models/ner_rus_bert-secret_detection
 COPY analyzer_server.py .
 COPY capacity.py .
+COPY model_artifact.py .
+COPY result_merging.py .
+COPY real_model_smoke.py .
 COPY recognizers/ ./recognizers/
 COPY ner/ ./ner/
 

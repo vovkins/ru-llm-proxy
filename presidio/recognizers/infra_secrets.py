@@ -8,6 +8,8 @@ import re
 
 from presidio_analyzer import Pattern, PatternRecognizer
 
+from recognizers.credential_rules import LoginRecognizer, PasswordRecognizer
+
 
 _PRIVATE_IP_NETWORKS = tuple(
     ipaddress.ip_network(network)
@@ -100,19 +102,17 @@ def _is_placeholder_secret(value: str) -> bool:
         return True
     if normalized in _COMMON_NON_SECRET_VALUES:
         return True
-    placeholder_fragments = (
-        "replace",
-        "placeholder",
-        "example",
-        "your-",
-        "your_",
-        "optional",
-        "dummy",
-        "fake",
-        "test-secret",
-        "local-secret",
+    return bool(
+        re.fullmatch(
+            r"(?:\$\{[^}]+\}|<[^>]+>|\[(?:PII_)?REDACTED(?::[A-Z_]+)?\]|"
+            r"(?:your|replace|example|placeholder)(?:[-_][a-z0-9_-]+)?)",
+            normalized,
+            re.IGNORECASE,
+        )
+        or normalized.startswith(
+            ("your-", "your_", "replace-", "replace_", "example-", "example_")
+        )
     )
-    return any(fragment in normalized for fragment in placeholder_fragments)
 
 
 def _decode_base64url_json(segment: str) -> dict | None:
@@ -448,7 +448,7 @@ class PrivateKeyRecognizer(PatternRecognizer):
 
 
 class ApiKeyRecognizer(PatternRecognizer):
-    """Recognize high-confidence API key and token values."""
+    """Recognize high-confidence provider API key values."""
 
     PATTERNS = [
         Pattern(
@@ -457,22 +457,10 @@ class ApiKeyRecognizer(PatternRecognizer):
                 r"(?<![A-Za-z0-9_-])(?:"
                 r"sk-ant-[A-Za-z0-9_-]{20,}|"
                 r"sk-[A-Za-z0-9_-]{20,}|"
-                r"ghp_[A-Za-z0-9_]{20,}|"
-                r"glpat-[A-Za-z0-9_-]{20,}|"
-                r"xox[baprs]-[A-Za-z0-9-]{20,}|"
                 r"AIza[0-9A-Za-z_-]{20,}"
                 r")(?![A-Za-z0-9_-])"
             ),
             score=0.9,
-        ),
-        Pattern(
-            name="api_key_assignment",
-            regex=(
-                r"\b(?:[A-Z][A-Z0-9_]*_)?(?:API[_-]?KEY|ACCESS[_-]?TOKEN|"
-                r"AUTH[_-]?TOKEN|SECRET[_-]?KEY|CLIENT[_-]?SECRET|TOKEN)"
-                r"(?:_[0-9]+)?\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{16,}[\"']?"
-            ),
-            score=0.75,
         ),
     ]
 
@@ -494,78 +482,5 @@ class ApiKeyRecognizer(PatternRecognizer):
 
     def invalidate_result(self, pattern_text: str) -> bool:
         """Reject documentation placeholders and low-signal token examples."""
-        value = _extract_key_value_value(pattern_text)
-        return _is_placeholder_secret(value)
-
-
-class LoginRecognizer(PatternRecognizer):
-    """Recognize login/user key-value assignments."""
-
-    PATTERNS = [
-        Pattern(
-            name="login_assignment",
-            regex=(
-                r"\b(?:login|username|user|логин|пользователь|"
-                r"уч[её]тная[ \t]+запись)"
-                r"\s*[:=]\s*[\"']?[A-Za-zА-Яа-яЁё0-9._@-]{3,64}[\"']?"
-            ),
-            score=0.55,
-        ),
-    ]
-
-    CONTEXT = ["login", "username", "user", "account", "логин", "пользователь"]
-
-    def __init__(
-        self,
-        name: str = "LoginRecognizer",
-        supported_language: str = "ru",
-        supported_entity: str = "LOGIN",
-    ):
-        super().__init__(
-            supported_entity=supported_entity,
-            patterns=self.PATTERNS,
-            context=self.CONTEXT,
-            name=name,
-            supported_language=supported_language,
-        )
-
-    def invalidate_result(self, pattern_text: str) -> bool:
-        """Reject obvious placeholder login values."""
-        value = _extract_key_value_value(pattern_text).lower()
-        return value in _COMMON_NON_SECRET_VALUES
-
-
-class PasswordRecognizer(PatternRecognizer):
-    """Recognize password key-value assignments."""
-
-    PATTERNS = [
-        Pattern(
-            name="password_assignment",
-            regex=(
-                r"\b(?:password|passwd|pwd|пароль)"
-                r"\s*[:=]\s*[\"']?[^\"'\s,;}\]]{6,128}[\"']?"
-            ),
-            score=0.85,
-        ),
-    ]
-
-    CONTEXT = ["password", "passwd", "pwd", "credential", "пароль"]
-
-    def __init__(
-        self,
-        name: str = "PasswordRecognizer",
-        supported_language: str = "ru",
-        supported_entity: str = "PASSWORD",
-    ):
-        super().__init__(
-            supported_entity=supported_entity,
-            patterns=self.PATTERNS,
-            context=self.CONTEXT,
-            name=name,
-            supported_language=supported_language,
-        )
-
-    def invalidate_result(self, pattern_text: str) -> bool:
-        """Reject obvious placeholder password values."""
         value = _extract_key_value_value(pattern_text)
         return _is_placeholder_secret(value)

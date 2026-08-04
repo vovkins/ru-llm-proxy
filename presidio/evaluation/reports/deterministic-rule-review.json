@@ -1,0 +1,995 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "generated_at": "2026-08-04T08:12:29.272089+00:00",
+    "source_repository": "fef2/ner_rus_bert-secret_detection",
+    "source_revision": "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4",
+    "source_verified": true,
+    "corpus_path": "presidio/evaluation/data/deterministic_rules_review.jsonl",
+    "corpus_sha256": "25048529105bbcc271ced50b9ff2bc3a639aa03b24ff02dd4f8ad9ff7857cf8e",
+    "case_count": 75,
+    "git": {
+      "revision": null,
+      "worktree_dirty": "unknown"
+    },
+    "active_runtime_rules_changed": true
+  },
+  "source_loader": {
+    "loaded_gitleaks_rules": 168,
+    "skipped_selected_rules": 23,
+    "global_allowlist_applied": false,
+    "rule_allowlists_applied": false,
+    "path_constraints_applied": false,
+    "label_mapping": "identifier substring: token, then key or secret"
+  },
+  "detector_prediction_counts": {
+    "cli": 8,
+    "contract": 4,
+    "gitleaks": 29,
+    "kv": 20,
+    "opaque": 39
+  },
+  "performance": {
+    "source_total_seconds": 0.025273,
+    "source_max_case_seconds": 0.012291,
+    "source_slowest_case_id": "stress_long_repetition"
+  },
+  "aggregate": {
+    "model_repository_rules": {
+      "case_count": 75,
+      "expected_count": 40,
+      "predicted_count": 83,
+      "exact_true_positives": 33,
+      "exact_false_positives": 50,
+      "exact_false_negatives": 7,
+      "exact_precision": 0.39759,
+      "exact_recall": 0.825,
+      "exact_f1": 0.536585,
+      "typed_overlap_recall": 0.825,
+      "masking_overlap_recall": 0.925,
+      "false_positive_predictions": 20,
+      "findings": [
+        {
+          "case_id": "kv_login",
+          "family": "kv",
+          "expected_types": [
+            "LOGIN"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "kv_multiple",
+          "family": "kv",
+          "expected_types": [
+            "AUTH_TOKEN",
+            "LOGIN",
+            "PASSWORD"
+          ],
+          "predicted_types": [
+            "AUTH_TOKEN",
+            "PASSWORD",
+            "SECRET_KEY",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "kv_reference_code",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "kv_quoted_reference",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "PASSWORD",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "kv_stop_tokenizer",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "kv_stop_max_tokens",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "kv_stop_user_agent",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "kv_stop_monkey",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "kv_user_numeric_id",
+          "family": "kv",
+          "expected_types": [],
+          "predicted_types": [
+            "LOGIN"
+          ]
+        },
+        {
+          "case_id": "cli_redis_password",
+          "family": "cli",
+          "expected_types": [
+            "PASSWORD"
+          ],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "cli_psql_environment",
+          "family": "cli",
+          "expected_types": [
+            "PASSWORD"
+          ],
+          "predicted_types": [
+            "SECRET",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "cli_dsn",
+          "family": "cli",
+          "expected_types": [
+            "SECRET_KEY"
+          ],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_random_secret",
+          "family": "opaque",
+          "expected_types": [
+            "SECRET_KEY"
+          ],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_uuid",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_sha256",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_git_commit",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_image_digest",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_base64_example",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_product_code",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "opaque_long_hex_id",
+          "family": "opaque",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET"
+          ]
+        },
+        {
+          "case_id": "gitleaks_false_public_key",
+          "family": "gitleaks",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "gitleaks_generic_docs",
+          "family": "gitleaks",
+          "expected_types": [],
+          "predicted_types": [
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "case_id": "contract_inflected_number",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        }
+      ]
+    },
+    "current_project_rules": {
+      "case_count": 75,
+      "expected_count": 40,
+      "predicted_count": 35,
+      "exact_true_positives": 34,
+      "exact_false_positives": 1,
+      "exact_false_negatives": 6,
+      "exact_precision": 0.971429,
+      "exact_recall": 0.85,
+      "exact_f1": 0.906667,
+      "typed_overlap_recall": 0.85,
+      "masking_overlap_recall": 0.85,
+      "false_positive_predictions": 0,
+      "findings": [
+        {
+          "case_id": "opaque_random_secret",
+          "family": "opaque",
+          "expected_types": [
+            "SECRET_KEY"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "contract_symbol",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "contract_plain_digits",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "contract_cyrillic",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "contract_agreement",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        },
+        {
+          "case_id": "contract_inflected_number",
+          "family": "contract",
+          "expected_types": [
+            "CONTRACT_NUMBER"
+          ],
+          "predicted_types": []
+        }
+      ]
+    }
+  },
+  "per_family": {
+    "cli": {
+      "model_repository_family_only": {
+        "case_count": 15,
+        "expected_count": 11,
+        "predicted_count": 8,
+        "exact_true_positives": 8,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 3,
+        "exact_precision": 1.0,
+        "exact_recall": 0.727273,
+        "exact_f1": 0.842105,
+        "typed_overlap_recall": 0.727273,
+        "masking_overlap_recall": 0.727273,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "cli_redis_password",
+            "family": "cli",
+            "expected_types": [
+              "PASSWORD"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "cli_psql_environment",
+            "family": "cli",
+            "expected_types": [
+              "PASSWORD"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "cli_dsn",
+            "family": "cli",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": []
+          }
+        ]
+      },
+      "model_repository_rules": {
+        "case_count": 15,
+        "expected_count": 11,
+        "predicted_count": 21,
+        "exact_true_positives": 8,
+        "exact_false_positives": 13,
+        "exact_false_negatives": 3,
+        "exact_precision": 0.380952,
+        "exact_recall": 0.727273,
+        "exact_f1": 0.5,
+        "typed_overlap_recall": 0.727273,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "cli_redis_password",
+            "family": "cli",
+            "expected_types": [
+              "PASSWORD"
+            ],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "cli_psql_environment",
+            "family": "cli",
+            "expected_types": [
+              "PASSWORD"
+            ],
+            "predicted_types": [
+              "SECRET",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "cli_dsn",
+            "family": "cli",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": [
+              "SECRET"
+            ]
+          }
+        ]
+      },
+      "current_project_rules": {
+        "case_count": 15,
+        "expected_count": 11,
+        "predicted_count": 12,
+        "exact_true_positives": 11,
+        "exact_false_positives": 1,
+        "exact_false_negatives": 0,
+        "exact_precision": 0.916667,
+        "exact_recall": 1.0,
+        "exact_f1": 0.956522,
+        "typed_overlap_recall": 1.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 0,
+        "findings": []
+      }
+    },
+    "contract": {
+      "model_repository_family_only": {
+        "case_count": 10,
+        "expected_count": 5,
+        "predicted_count": 4,
+        "exact_true_positives": 4,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 1,
+        "exact_precision": 1.0,
+        "exact_recall": 0.8,
+        "exact_f1": 0.888889,
+        "typed_overlap_recall": 0.8,
+        "masking_overlap_recall": 0.8,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "contract_inflected_number",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          }
+        ]
+      },
+      "model_repository_rules": {
+        "case_count": 10,
+        "expected_count": 5,
+        "predicted_count": 4,
+        "exact_true_positives": 4,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 1,
+        "exact_precision": 1.0,
+        "exact_recall": 0.8,
+        "exact_f1": 0.888889,
+        "typed_overlap_recall": 0.8,
+        "masking_overlap_recall": 0.8,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "contract_inflected_number",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          }
+        ]
+      },
+      "current_project_rules": {
+        "case_count": 10,
+        "expected_count": 5,
+        "predicted_count": 0,
+        "exact_true_positives": 0,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 5,
+        "exact_precision": 0.0,
+        "exact_recall": 0.0,
+        "exact_f1": 0.0,
+        "typed_overlap_recall": 0.0,
+        "masking_overlap_recall": 0.0,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "contract_symbol",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "contract_plain_digits",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "contract_cyrillic",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "contract_agreement",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "contract_inflected_number",
+            "family": "contract",
+            "expected_types": [
+              "CONTRACT_NUMBER"
+            ],
+            "predicted_types": []
+          }
+        ]
+      }
+    },
+    "gitleaks": {
+      "model_repository_family_only": {
+        "case_count": 9,
+        "expected_count": 7,
+        "predicted_count": 12,
+        "exact_true_positives": 5,
+        "exact_false_positives": 7,
+        "exact_false_negatives": 2,
+        "exact_precision": 0.416667,
+        "exact_recall": 0.714286,
+        "exact_f1": 0.526316,
+        "typed_overlap_recall": 0.714286,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 2,
+        "findings": [
+          {
+            "case_id": "gitleaks_github",
+            "family": "gitleaks",
+            "expected_types": [
+              "AUTH_TOKEN"
+            ],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "gitleaks_gitlab",
+            "family": "gitleaks",
+            "expected_types": [
+              "AUTH_TOKEN"
+            ],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "gitleaks_false_public_key",
+            "family": "gitleaks",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "gitleaks_generic_docs",
+            "family": "gitleaks",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          }
+        ]
+      },
+      "model_repository_rules": {
+        "case_count": 9,
+        "expected_count": 7,
+        "predicted_count": 16,
+        "exact_true_positives": 7,
+        "exact_false_positives": 9,
+        "exact_false_negatives": 0,
+        "exact_precision": 0.4375,
+        "exact_recall": 1.0,
+        "exact_f1": 0.608696,
+        "typed_overlap_recall": 1.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 3,
+        "findings": [
+          {
+            "case_id": "gitleaks_false_public_key",
+            "family": "gitleaks",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "gitleaks_generic_docs",
+            "family": "gitleaks",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          }
+        ]
+      },
+      "current_project_rules": {
+        "case_count": 9,
+        "expected_count": 7,
+        "predicted_count": 7,
+        "exact_true_positives": 7,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 0,
+        "exact_precision": 1.0,
+        "exact_recall": 1.0,
+        "exact_f1": 1.0,
+        "typed_overlap_recall": 1.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 0,
+        "findings": []
+      }
+    },
+    "kv": {
+      "model_repository_family_only": {
+        "case_count": 28,
+        "expected_count": 16,
+        "predicted_count": 14,
+        "exact_true_positives": 13,
+        "exact_false_positives": 1,
+        "exact_false_negatives": 3,
+        "exact_precision": 0.928571,
+        "exact_recall": 0.8125,
+        "exact_f1": 0.866667,
+        "typed_overlap_recall": 0.8125,
+        "masking_overlap_recall": 0.8125,
+        "false_positive_predictions": 1,
+        "findings": [
+          {
+            "case_id": "kv_login",
+            "family": "kv",
+            "expected_types": [
+              "LOGIN"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "kv_api_key",
+            "family": "kv",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "kv_multiple",
+            "family": "kv",
+            "expected_types": [
+              "AUTH_TOKEN",
+              "LOGIN",
+              "PASSWORD"
+            ],
+            "predicted_types": [
+              "AUTH_TOKEN",
+              "PASSWORD"
+            ]
+          },
+          {
+            "case_id": "kv_quoted_reference",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "PASSWORD"
+            ]
+          }
+        ]
+      },
+      "model_repository_rules": {
+        "case_count": 28,
+        "expected_count": 16,
+        "predicted_count": 34,
+        "exact_true_positives": 14,
+        "exact_false_positives": 20,
+        "exact_false_negatives": 2,
+        "exact_precision": 0.411765,
+        "exact_recall": 0.875,
+        "exact_f1": 0.56,
+        "typed_overlap_recall": 0.875,
+        "masking_overlap_recall": 0.875,
+        "false_positive_predictions": 10,
+        "findings": [
+          {
+            "case_id": "kv_login",
+            "family": "kv",
+            "expected_types": [
+              "LOGIN"
+            ],
+            "predicted_types": []
+          },
+          {
+            "case_id": "kv_multiple",
+            "family": "kv",
+            "expected_types": [
+              "AUTH_TOKEN",
+              "LOGIN",
+              "PASSWORD"
+            ],
+            "predicted_types": [
+              "AUTH_TOKEN",
+              "PASSWORD",
+              "SECRET_KEY",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "kv_reference_code",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "kv_quoted_reference",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "PASSWORD",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "kv_stop_tokenizer",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "kv_stop_max_tokens",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "kv_stop_user_agent",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "kv_stop_monkey",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET",
+              "SECRET_KEY"
+            ]
+          },
+          {
+            "case_id": "kv_user_numeric_id",
+            "family": "kv",
+            "expected_types": [],
+            "predicted_types": [
+              "LOGIN"
+            ]
+          }
+        ]
+      },
+      "current_project_rules": {
+        "case_count": 28,
+        "expected_count": 16,
+        "predicted_count": 16,
+        "exact_true_positives": 16,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 0,
+        "exact_precision": 1.0,
+        "exact_recall": 1.0,
+        "exact_f1": 1.0,
+        "typed_overlap_recall": 1.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 0,
+        "findings": []
+      }
+    },
+    "opaque": {
+      "model_repository_family_only": {
+        "case_count": 10,
+        "expected_count": 1,
+        "predicted_count": 8,
+        "exact_true_positives": 0,
+        "exact_false_positives": 8,
+        "exact_false_negatives": 1,
+        "exact_precision": 0.0,
+        "exact_recall": 0.0,
+        "exact_f1": 0.0,
+        "typed_overlap_recall": 0.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 7,
+        "findings": [
+          {
+            "case_id": "opaque_random_secret",
+            "family": "opaque",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_uuid",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_sha256",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_git_commit",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_image_digest",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_base64_example",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_product_code",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_long_hex_id",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          }
+        ]
+      },
+      "model_repository_rules": {
+        "case_count": 10,
+        "expected_count": 1,
+        "predicted_count": 8,
+        "exact_true_positives": 0,
+        "exact_false_positives": 8,
+        "exact_false_negatives": 1,
+        "exact_precision": 0.0,
+        "exact_recall": 0.0,
+        "exact_f1": 0.0,
+        "typed_overlap_recall": 0.0,
+        "masking_overlap_recall": 1.0,
+        "false_positive_predictions": 7,
+        "findings": [
+          {
+            "case_id": "opaque_random_secret",
+            "family": "opaque",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_uuid",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_sha256",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_git_commit",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_image_digest",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_base64_example",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_product_code",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          },
+          {
+            "case_id": "opaque_long_hex_id",
+            "family": "opaque",
+            "expected_types": [],
+            "predicted_types": [
+              "SECRET"
+            ]
+          }
+        ]
+      },
+      "current_project_rules": {
+        "case_count": 10,
+        "expected_count": 1,
+        "predicted_count": 0,
+        "exact_true_positives": 0,
+        "exact_false_positives": 0,
+        "exact_false_negatives": 1,
+        "exact_precision": 0.0,
+        "exact_recall": 0.0,
+        "exact_f1": 0.0,
+        "typed_overlap_recall": 0.0,
+        "masking_overlap_recall": 0.0,
+        "false_positive_predictions": 0,
+        "findings": [
+          {
+            "case_id": "opaque_random_secret",
+            "family": "opaque",
+            "expected_types": [
+              "SECRET_KEY"
+            ],
+            "predicted_types": []
+          }
+        ]
+      }
+    }
+  }
+}

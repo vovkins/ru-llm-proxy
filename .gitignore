@@ -43,6 +43,10 @@ logs/
 
 # Data
 data/
+!presidio/evaluation/data/
+presidio/evaluation/data/*
+!presidio/evaluation/data/ner_migration.jsonl
+!presidio/evaluation/data/deterministic_rules_review.jsonl
 pgdata/
 
 # Testing

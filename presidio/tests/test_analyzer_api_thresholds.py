@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
-from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
+from presidio_analyzer import AnalyzerEngine, RecognizerRegistry, RecognizerResult
 
 from presidio import analyzer_server
 from recognizers.ru_bank_requisites import (
@@ -31,8 +31,19 @@ from recognizers.infra_secrets import (
     PasswordRecognizer,
     PrivateKeyRecognizer,
 )
+from recognizers.credential_rules import (
+    AuthTokenRecognizer,
+    CommandLineCredentialRecognizer,
+    SecretKeyRecognizer,
+)
 from recognizers.ru_address import RuAddressRecognizer
 from recognizers.ru_inn import RuInnRecognizer
+from result_merging import (
+    DETECTION_SOURCE_METADATA_KEY,
+    SOURCE_NATIVE_CREDENTIAL,
+    SOURCE_NER,
+    SOURCE_STRUCTURAL,
+)
 
 
 def _build_analyzer(*recognizers):
@@ -46,9 +57,20 @@ def _build_analyzer(*recognizers):
     )
 
 
+def _stub_loaded_ner(monkeypatch):
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_loaded", lambda: True)
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_warmed_up", lambda: True)
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_ready", lambda: True)
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "analyze",
+        lambda *_args, **_kwargs: [],
+    )
+
+
 def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
     monkeypatch.setattr(analyzer_server, "analyzer", analyzer)
-    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+    _stub_loaded_ner(monkeypatch)
     client = TestClient(analyzer_server.app)
 
     response = client.post(
@@ -68,11 +90,228 @@ def _entity_texts(entities, entity_type):
     return [entity["text"] for entity in entities if entity["entity_type"] == entity_type]
 
 
+class _EmptyAnalyzer:
+    def analyze(self, **_kwargs):
+        return []
+
+
+class _FixedAnalyzer:
+    def __init__(self, results):
+        self.results = results
+
+    def analyze(self, **_kwargs):
+        return list(self.results)
+
+
+def _sourced_result(entity_type, start, end, score, source):
+    return RecognizerResult(
+        entity_type=entity_type,
+        start=start,
+        end=end,
+        score=score,
+        recognition_metadata={DETECTION_SOURCE_METADATA_KEY: source},
+    )
+
+
+def test_api_prefers_native_value_and_hides_internal_source_metadata(monkeypatch):
+    text = "curl -H 'Authorization: Bearer SyntheticToken42'"
+    value = "SyntheticToken42"
+    start = text.index(value)
+    monkeypatch.setattr(
+        analyzer_server,
+        "analyzer",
+        _FixedAnalyzer(
+            [
+                _sourced_result(
+                    "BEARER_TOKEN",
+                    text.index("Authorization"),
+                    start + len(value),
+                    0.99,
+                    SOURCE_STRUCTURAL,
+                ),
+                _sourced_result(
+                    "AUTH_TOKEN",
+                    start,
+                    start + len(value),
+                    0.7,
+                    SOURCE_NATIVE_CREDENTIAL,
+                ),
+            ]
+        ),
+    )
+    _stub_loaded_ner(monkeypatch)
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["entities"] == [
+        {
+            "entity_type": "AUTH_TOKEN",
+            "start": start,
+            "end": start + len(value),
+            "score": 0.7,
+            "text": value,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "text, value, expected_count",
+    [
+        ("Договор № AB-2026/0042 вступает в силу.", "AB-2026/0042", 1),
+        ("Версия приложения AB-2026/0042 используется в тестах.", "AB-2026/0042", 0),
+    ],
+)
+def test_api_requires_contract_context_for_ner_result(
+    monkeypatch, text, value, expected_count
+):
+    start = text.index(value)
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_ready", lambda: True)
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "analyze",
+        lambda *_args, **_kwargs: [
+            _sourced_result(
+                "CONTRACT_NUMBER",
+                start,
+                start + len(value),
+                0.99,
+                SOURCE_NER,
+            )
+        ],
+    )
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["entities"]) == expected_count
+
+
+def test_api_uses_context_fallback_when_ner_misses_contract(monkeypatch):
+    text = "Agreement no. AG-2026-0044 was signed."
+    value = "AG-2026-0044"
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    _stub_loaded_ner(monkeypatch)
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert _entity_texts(response.json()["entities"], "CONTRACT_NUMBER") == [
+        value
+    ]
+
+
+@pytest.mark.parametrize(
+    "request_overrides",
+    [
+        {"entities": ["PERSON"]},
+        {"score_threshold": 0.9},
+    ],
+)
+def test_api_contract_context_fallback_respects_filters(
+    monkeypatch,
+    request_overrides,
+):
+    text = "Договор № AB-2026/0042 вступает в силу."
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    _stub_loaded_ner(monkeypatch)
+    payload = {"text": text, "language": "ru", "score_threshold": 0.35}
+    payload.update(request_overrides)
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["entities"] == []
+
+
+def test_api_preserves_original_unicode_text_and_mapped_ner_offsets(monkeypatch):
+    text = "Клиент Сергеи\u0306 Петров согласовал документ."
+    entity_text = "Сергеи\u0306 Петров"
+    start = text.index(entity_text)
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_ready", lambda: True)
+
+    def mapped_ner_results(received_text, **_kwargs):
+        assert received_text == text
+        return [
+            RecognizerResult(
+                entity_type="PERSON",
+                start=start,
+                end=start + len(entity_text),
+                score=0.99,
+            )
+        ]
+
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "analyze",
+        mapped_ner_results,
+    )
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == text
+    assert response.json()["entities"] == [
+        {
+            "entity_type": "PERSON",
+            "start": start,
+            "end": start + len(entity_text),
+            "score": 0.99,
+            "text": entity_text,
+        }
+    ]
+
+
+def test_api_accepts_long_request_and_returns_tail_ner_result(monkeypatch):
+    prefix = "Служебная запись без чувствительных значений. " * 90
+    entity_text = "Анна Соколова"
+    text = prefix + "Ответственный: " + entity_text + "."
+    start = text.index(entity_text)
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "is_ready", lambda: True)
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "analyze",
+        lambda *_args, **_kwargs: [
+            RecognizerResult(
+                entity_type="PERSON",
+                start=start,
+                end=start + len(entity_text),
+                score=0.99,
+            )
+        ],
+    )
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert _entity_texts(response.json()["entities"], "PERSON") == [entity_text]
+
+
 def test_production_analyzer_wiring_detects_registered_russian_recognizers(
     monkeypatch,
 ):
     monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM", "true")
-    monkeypatch.setattr(analyzer_server.dp_recognizer, "is_loaded", lambda: False)
+    _stub_loaded_ner(monkeypatch)
     client = TestClient(analyzer_server.app)
 
     response = client.post(
@@ -109,9 +348,10 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
     assert _entity_texts(entities, "INTERNAL_DOMAIN") == [
         "api.payments.corp.local"
     ]
-    assert _entity_texts(entities, "BEARER_TOKEN") == [
-        "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
+    assert _entity_texts(entities, "AUTH_TOKEN") == [
+        "abcdefghijklmnopqrstuvwxyz123456"
     ]
+    assert _entity_texts(entities, "BEARER_TOKEN") == []
 
 
 class TestAnalyzerCounterpartyRequisiteThresholdPolicy:
@@ -216,6 +456,9 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
             BearerTokenRecognizer(),
             PrivateKeyRecognizer(),
             ApiKeyRecognizer(),
+            SecretKeyRecognizer(),
+            AuthTokenRecognizer(),
+            CommandLineCredentialRecognizer(),
             LoginRecognizer(),
             PasswordRecognizer(),
         )
@@ -232,7 +475,9 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
             f"JWT {self.JWT}, "
             "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456, "
             f"provider key {api_key}, "
-            "login=svc-bot password=S3cure-Value42\n"
+            "login=svc-bot password=S3cure-Value42, "
+            "SECRET_KEY=SyntheticSecretKey42, "
+            "AUTH_TOKEN=SyntheticAuthToken42\n"
             f"{private_key}"
         )
 
@@ -247,13 +492,20 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
             "postgresql://svc_user:S3curePass42@db.internal:5432/app"
         ]
         assert _entity_texts(entities, "JWT") == [self.JWT]
-        assert _entity_texts(entities, "BEARER_TOKEN") == [
-            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456"
-        ]
+        assert "abcdefghijklmnopqrstuvwxyz123456" in _entity_texts(
+            entities,
+            "AUTH_TOKEN",
+        )
+        assert _entity_texts(entities, "BEARER_TOKEN") == []
         assert _entity_texts(entities, "PRIVATE_KEY") == [private_key]
         assert _entity_texts(entities, "API_KEY") == [api_key]
-        assert _entity_texts(entities, "LOGIN") == ["login=svc-bot"]
-        assert _entity_texts(entities, "PASSWORD") == ["password=S3cure-Value42"]
+        assert _entity_texts(entities, "SECRET_KEY") == ["SyntheticSecretKey42"]
+        assert _entity_texts(entities, "AUTH_TOKEN") == [
+            "abcdefghijklmnopqrstuvwxyz123456",
+            "SyntheticAuthToken42",
+        ]
+        assert _entity_texts(entities, "LOGIN") == ["svc-bot"]
+        assert _entity_texts(entities, "PASSWORD") == ["S3cure-Value42"]
 
     @pytest.mark.parametrize(
         "text, entity_type",

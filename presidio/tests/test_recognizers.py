@@ -306,10 +306,8 @@ class TestInfrastructureSecrets:
     def test_login_and_password_assignments_are_detected(self, analyzer):
         text = "login=svc-bot password=S3cure-Value42"
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
-        assert _entity_texts(text, results, "LOGIN") == ["login=svc-bot"]
-        assert _entity_texts(text, results, "PASSWORD") == [
-            "password=S3cure-Value42"
-        ]
+        assert _entity_texts(text, results, "LOGIN") == ["svc-bot"]
+        assert _entity_texts(text, results, "PASSWORD") == ["S3cure-Value42"]
 
     def test_incidental_secret_words_are_not_detected(self, analyzer):
         text = "Объясни, чем API key отличается от bearer token и password."

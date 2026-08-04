@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "model_repository": {
+    "repository": "fef2/ner_rus_bert-secret_detection",
+    "repository_url": "https://huggingface.co/fef2/ner_rus_bert-secret_detection",
+    "revision": "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4",
+    "declared_license": "Apache-2.0",
+    "license_source": "README.md metadata",
+    "license_file_present": false,
+    "files": [
+      {
+        "path": "README.md",
+        "sha256": "5cbeec41539ce68dd9ed45e86232d7f71dcee7d81850697012c57bd647719523",
+        "size_bytes": 16919
+      },
+      {
+        "path": "predict.py",
+        "sha256": "4bd97f376bd151ba5eb46667fefc2b4b04d4f3901cb9e026c78e92a91033f313",
+        "size_bytes": 11301
+      },
+      {
+        "path": "core/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "path": "core/_shim.py",
+        "sha256": "db22351ea5681990069fa50ab76546e62d24cb99d1b7b7652f628a83e51ca6c1",
+        "size_bytes": 3104
+      },
+      {
+        "path": "core/scrubber.py",
+        "sha256": "55c85dcb177c5bc847e31e4909fa2e46f1f8be2e4affbecdd5f50587b36d9018",
+        "size_bytes": 38129
+      },
+      {
+        "path": "core/slot_ontology.yaml",
+        "sha256": "4ae71c8c409de346bd8c427146afe74c4d0b4f232d750269f625f765fb1152f5",
+        "size_bytes": 1098
+      },
+      {
+        "path": "gitleaks.toml",
+        "sha256": "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+        "size_bytes": 97731
+      }
+    ]
+  },
+  "gitleaks_upstream": {
+    "repository_url": "https://github.com/gitleaks/gitleaks",
+    "config_path": "config/gitleaks.toml",
+    "last_config_commit": "09242ce9c8a60d9b051fc2d166f9e849b88c7ac0",
+    "git_blob_sha1": "256f64790ea6d954f0041024be2938089ae1e7a7",
+    "sha256": "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+    "license": "MIT",
+    "license_url": "https://github.com/gitleaks/gitleaks/blob/master/LICENSE",
+    "matches_model_repository_file": true
+  },
+  "review_policy": {
+    "source_code_vendored": false,
+    "runtime_integration_approved": false,
+    "allowed_use": "isolated evaluation after checksum verification"
+  }
+}

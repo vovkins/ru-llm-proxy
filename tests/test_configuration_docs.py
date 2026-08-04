@@ -41,7 +41,6 @@ EXPECTED_DOCUMENTED_ENV = {
     "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM",
     "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES",
     "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
-    "DEEPPAVLOV_NER_REQUIRED",
     # Guardrail policy
     "PII_GUARDRAIL_MODE",
     "PII_GUARDRAIL_FAILURE_MODE",
@@ -65,11 +64,6 @@ EXPECTED_DOCUMENTED_ENV = {
     "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS",
     "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS",
     "PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS",
-    # DeepPavlov build
-    "DEEPPAVLOV_NER_MODEL_URL",
-    "DEEPPAVLOV_NER_MODEL_SHA256",
-    "DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS",
-    "DEEPPAVLOV_NER_MODEL_DIR",
     # Client and smoke helpers
     "RU_LLM_PROXY_TOKEN",
     "RU_LLM_PROXY_URL",
@@ -142,7 +136,7 @@ def test_configuration_reference_documents_expected_env_vars():
         assert f"`{name}`" in configuration, name
 
     for heading in (
-        "## Дефолтный пул GLM-провайдеров",
+        "## Пул GLM-провайдеров по умолчанию",
         "## Примеры дополнительных провайдеров",
         "## Административный интерфейс LiteLLM и секреты",
         "## Запуск и хранилища LiteLLM",
@@ -153,8 +147,8 @@ def test_configuration_reference_documents_expected_env_vars():
         "## Список разрешённых синтетических персональных данных",
         "## Политика регулируемых тем",
         "## Клиенты зависимостей защитного слоя",
-        "## Модель и запуск DeepPavlov",
-        "## Клиентские токены и локальные гайды",
+        "## Закреплённая модель NER",
+        "## Клиентские токены и локальные руководства",
         "## Быстрые проверки и диагностика",
         "## Вспомогательный скрипт для пользовательских ключей",
         "## Внутренние переменные разработки и контейнеров",
@@ -166,18 +160,16 @@ def test_docs_index_maps_reader_tasks_to_canonical_docs():
     docs_index = _read("docs/README.md")
 
     for required in (
-        "## Как читать",
-        "## Учебный путь",
-        "## Концепции",
-        "## Практические инструкции",
-        "## Справочники",
+        "## Начало работы",
+        "## Эксплуатация",
         "## Клиенты",
-        "## Правила поддержки документации",
-        "[configuration.md](configuration.md)",
-        "[architecture.md](architecture.md)",
-        "[examples.md](examples.md)",
-        "[monitoring.md](monitoring.md)",
-        "[compliance.md](compliance.md)",
+        "## Технические материалы",
+        "## Правила поддержки",
+        "(configuration.md)",
+        "(architecture.md)",
+        "(examples.md)",
+        "(monitoring.md)",
+        "(compliance.md)",
     ):
         assert required in docs_index
 
@@ -220,17 +212,30 @@ def test_compose_defaults_use_fail_closed_and_optional_provider_keys_are_quiet()
     assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" in compose
     assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" in compose
     assert "REDIS_URL=${REDIS_URL:-redis://redis:6379}" in compose
-    assert "DEEPPAVLOV_NER_REQUIRED=${DEEPPAVLOV_NER_REQUIRED:-true}" in compose
+    assert "DEEPPAVLOV_NER_REQUIRED" not in compose
 
 
-def test_analyzer_pins_deeppavlov_compatible_transformers_runtime():
+def test_analyzer_pins_huggingface_model_and_transformers_runtime():
     requirements = _read("presidio/requirements-analyzer.txt")
+    manifest = _read("presidio/model_manifest.json")
+    dockerfile = _read("presidio/Dockerfile")
     makefile = _read("Makefile")
     e2e = _read("tests/e2e/test_e2e.sh")
 
-    assert "transformers==4.30.2" in requirements
-    assert '"ner":"loaded"' in makefile
-    assert '"ner":"loaded"' in e2e
+    assert "transformers==4.57.6" in requirements
+    assert "fef2/ner_rus_bert-secret_detection" in manifest
+    assert "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4" in manifest
+    assert "HF_HUB_OFFLINE=1" in dockerfile
+    assert "TRANSFORMERS_OFFLINE=1" in dockerfile
+    assert "DEEPPAVLOV" not in dockerfile
+    assert "--network none" in makefile
+    assert "test-hf-model" in makefile
+    assert "ner-migration-candidate" in makefile
+    assert "ner-migration-baseline.md" not in makefile
+    assert '"ner_state":"ready"' in makefile
+    assert '"ner_warmed_up":true' in makefile
+    assert '"ner_state":"ready"' in e2e
+    assert '"ner_warmed_up":true' in e2e
 
 
 def test_setup_env_only_backfills_quick_start_values():
