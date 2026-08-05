@@ -16,7 +16,7 @@ from result_merging import (
     SOURCE_NER,
 )
 
-from .text_processing import normalize_for_ner, plan_token_windows
+from .text_processing import TokenWindow, normalize_for_ner, plan_token_windows
 
 try:
     from model_artifact import (
@@ -80,6 +80,20 @@ class NERConfigurationError(RuntimeError):
 
 class NERWindowBoundaryError(RuntimeError):
     """Raised when overlapping windows cannot establish a complete entity."""
+
+    def __init__(
+        self,
+        unresolved_clusters: tuple["UnresolvedWindowEntityCluster", ...],
+    ):
+        first_type = (
+            unresolved_clusters[0].entity_type
+            if unresolved_clusters
+            else "unknown"
+        )
+        super().__init__(
+            f"NER produced only truncated {first_type} window predictions"
+        )
+        self.unresolved_clusters = unresolved_clusters
 
 
 class NERBackendError(RuntimeError):
@@ -155,6 +169,16 @@ NER_FAILURE_CLASSES = frozenset(
 NER_INFERENCE_OUTCOMES = frozenset(
     {"success", "skipped", "failure", "unavailable"}
 )
+NER_REQUEST_SCOPED_FAILURE_CLASSES = frozenset(
+    {
+        "normalization_failed",
+        "tokenizer_failed",
+        "window_planning_failed",
+        "window_boundary_unresolved",
+        "bio_decoding_failed",
+        "offset_mapping_failed",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -214,6 +238,14 @@ class WindowEntityPrediction:
     @property
     def touches_internal_boundary(self) -> bool:
         return self.touches_left_boundary or self.touches_right_boundary
+
+
+@dataclass(frozen=True)
+class UnresolvedWindowEntityCluster:
+    """Same-type predictions which are all truncated by internal windows."""
+
+    entity_type: str
+    predictions: tuple[WindowEntityPrediction, ...]
 
 
 def _normalize_requested_entities(
@@ -297,6 +329,42 @@ def _spans_overlap(first: EntityPrediction, second: EntityPrediction) -> bool:
     return first.start < second.end and second.start < first.end
 
 
+def _filter_window_predictions(
+    predictions: list[WindowEntityPrediction],
+    *,
+    score_threshold: float,
+    requested_entities: Optional[set[str]],
+) -> list[WindowEntityPrediction]:
+    return [
+        prediction
+        for prediction in predictions
+        if prediction.entity.score >= score_threshold
+        and (
+            requested_entities is None
+            or prediction.entity.entity_type in requested_entities
+        )
+    ]
+
+
+def _select_boundary_recovery_predictions(
+    predictions: list[WindowEntityPrediction],
+    unresolved_clusters: tuple[UnresolvedWindowEntityCluster, ...],
+) -> list[WindowEntityPrediction]:
+    return [
+        prediction
+        for prediction in predictions
+        if not prediction.touches_internal_boundary
+        and any(
+            prediction.entity.entity_type == cluster.entity_type
+            and any(
+                _spans_overlap(prediction.entity, original.entity)
+                for original in cluster.predictions
+            )
+            for cluster in unresolved_clusters
+        )
+    ]
+
+
 def merge_window_predictions(
     predictions: list[WindowEntityPrediction],
 ) -> list[EntityPrediction]:
@@ -306,6 +374,7 @@ def merge_window_predictions(
         grouped.setdefault(prediction.entity.entity_type, []).append(prediction)
 
     merged: list[EntityPrediction] = []
+    unresolved_clusters: list[UnresolvedWindowEntityCluster] = []
     for entity_type in sorted(grouped):
         ordered = sorted(
             grouped[entity_type],
@@ -336,10 +405,17 @@ def merge_window_predictions(
                 ),
             )
             if best.touches_internal_boundary:
-                raise NERWindowBoundaryError(
-                    f"NER produced only truncated {entity_type} window predictions"
+                unresolved_clusters.append(
+                    UnresolvedWindowEntityCluster(
+                        entity_type=entity_type,
+                        predictions=tuple(cluster),
+                    )
                 )
-            merged.append(best.entity)
+            else:
+                merged.append(best.entity)
+
+    if unresolved_clusters:
+        raise NERWindowBoundaryError(tuple(unresolved_clusters))
 
     return sorted(
         merged,
@@ -421,6 +497,15 @@ class HuggingFaceNERRecognizer:
     def _clear_failure(self) -> None:
         self._failure_phase = None
         self._failure_class = None
+
+    def _mark_failed_if_service_wide(self, error: NERBackendError) -> None:
+        if error.failure_class in NER_REQUEST_SCOPED_FAILURE_CLASSES:
+            return
+        self._mark_failed(
+            phase=error.phase,
+            failure_class=error.failure_class,
+            clear_components=False,
+        )
 
     def load_model(self) -> None:
         if self.is_ready():
@@ -695,22 +780,13 @@ class HuggingFaceNERRecognizer:
                 failure_class="normalization_failed",
                 windows_processed=0,
             )
-            self._mark_failed(
-                phase=error.phase,
-                failure_class=error.failure_class,
-                clear_components=False,
-            )
             raise error from exc
         try:
             window_predictions, windows_processed = self._predict_window_entities(
                 normalized.text
             )
         except NERBackendError as error:
-            self._mark_failed(
-                phase=error.phase,
-                failure_class=error.failure_class,
-                clear_components=False,
-            )
+            self._mark_failed_if_service_wide(error)
             raise
         except Exception as exc:
             error = NERProcessingError(
@@ -725,28 +801,73 @@ class HuggingFaceNERRecognizer:
             )
             raise error from exc
         requested_entities = _normalize_requested_entities(entities)
-        filtered_predictions = [
-            prediction
-            for prediction in window_predictions
-            if prediction.entity.score >= score_threshold
-            and (
-                requested_entities is None
-                or prediction.entity.entity_type in requested_entities
-            )
-        ]
+        filtered_predictions = _filter_window_predictions(
+            window_predictions,
+            score_threshold=score_threshold,
+            requested_entities=requested_entities,
+        )
         try:
             entity_predictions = merge_window_predictions(filtered_predictions)
+        except NERWindowBoundaryError as unresolved:
+            try:
+                recovery_predictions, recovery_windows_processed = (
+                    self._recover_window_boundaries(
+                        normalized.text,
+                        unresolved.unresolved_clusters,
+                    )
+                )
+            except NERBackendError as error:
+                combined_error = NERProcessingError(
+                    phase=error.phase,
+                    failure_class=error.failure_class,
+                    windows_processed=windows_processed + error.windows_processed,
+                )
+                self._mark_failed_if_service_wide(combined_error)
+                raise combined_error from error
+            except Exception as exc:
+                error = NERProcessingError(
+                    phase="inference",
+                    failure_class="unexpected_failure",
+                    windows_processed=windows_processed,
+                )
+                self._mark_failed_if_service_wide(error)
+                raise error from exc
+            windows_processed += recovery_windows_processed
+            filtered_recovery_predictions = _filter_window_predictions(
+                recovery_predictions,
+                score_threshold=score_threshold,
+                requested_entities=requested_entities,
+            )
+            selected_recovery_predictions = _select_boundary_recovery_predictions(
+                filtered_recovery_predictions,
+                unresolved.unresolved_clusters,
+            )
+            try:
+                entity_predictions = merge_window_predictions(
+                    filtered_predictions + selected_recovery_predictions
+                )
+            except NERWindowBoundaryError as exc:
+                error = NERProcessingError(
+                    phase="windowing",
+                    failure_class="window_boundary_unresolved",
+                    windows_processed=windows_processed,
+                )
+                raise error from exc
+            except Exception as exc:
+                error = NERProcessingError(
+                    phase="inference",
+                    failure_class="unexpected_failure",
+                    windows_processed=windows_processed,
+                )
+                self._mark_failed_if_service_wide(error)
+                raise error from exc
         except Exception as exc:
             error = NERProcessingError(
-                phase="windowing",
-                failure_class="window_boundary_unresolved",
+                phase="inference",
+                failure_class="unexpected_failure",
                 windows_processed=windows_processed,
             )
-            self._mark_failed(
-                phase=error.phase,
-                failure_class=error.failure_class,
-                clear_components=False,
-            )
+            self._mark_failed_if_service_wide(error)
             raise error from exc
 
         results: list[RecognizerResult] = []
@@ -758,11 +879,6 @@ class HuggingFaceNERRecognizer:
                     phase="offset_mapping",
                     failure_class="offset_mapping_failed",
                     windows_processed=windows_processed,
-                )
-                self._mark_failed(
-                    phase=error.phase,
-                    failure_class=error.failure_class,
-                    clear_components=False,
                 )
                 raise error from exc
             results.append(
@@ -821,6 +937,13 @@ class HuggingFaceNERRecognizer:
         self,
         normalized_text: str,
     ) -> tuple[list[WindowEntityPrediction], int]:
+        input_ids, offsets, windows = self._prepare_window_input(normalized_text)
+        return self._predict_windows(input_ids, offsets, windows)
+
+    def _prepare_window_input(
+        self,
+        normalized_text: str,
+    ) -> tuple[list[int], list[tuple[int, int]], tuple[TokenWindow, ...]]:
         try:
             input_ids, offsets = self._tokenize_content(normalized_text)
         except Exception as exc:
@@ -843,6 +966,14 @@ class HuggingFaceNERRecognizer:
                 failure_class="window_planning_failed",
                 windows_processed=0,
             ) from exc
+        return input_ids, offsets, windows
+
+    def _predict_windows(
+        self,
+        input_ids: list[int],
+        offsets: list[tuple[int, int]],
+        windows: tuple[TokenWindow, ...],
+    ) -> tuple[list[WindowEntityPrediction], int]:
         predictions: list[WindowEntityPrediction] = []
         windows_processed = 0
         token_count = len(input_ids)
@@ -883,6 +1014,61 @@ class HuggingFaceNERRecognizer:
                     )
                 )
         return predictions, windows_processed
+
+    def _recover_window_boundaries(
+        self,
+        normalized_text: str,
+        unresolved_clusters: tuple[UnresolvedWindowEntityCluster, ...],
+    ) -> tuple[list[WindowEntityPrediction], int]:
+        input_ids, offsets, original_windows = self._prepare_window_input(
+            normalized_text
+        )
+        token_count = len(input_ids)
+        if token_count <= MAX_CONTENT_TOKENS:
+            return [], 0
+
+        boundary_tokens: set[int] = set()
+        for cluster in unresolved_clusters:
+            for prediction in cluster.predictions:
+                if not 0 <= prediction.window_index < len(original_windows):
+                    continue
+                window = original_windows[prediction.window_index]
+                if prediction.touches_left_boundary and window.start_token > 0:
+                    boundary_tokens.add(window.start_token)
+                if (
+                    prediction.touches_right_boundary
+                    and window.end_token < token_count
+                ):
+                    boundary_tokens.add(window.end_token)
+
+        original_ranges = {
+            (window.start_token, window.end_token) for window in original_windows
+        }
+        recovery_ranges: set[tuple[int, int]] = set()
+        window_size = min(MAX_CONTENT_TOKENS, token_count)
+        latest_start = token_count - window_size
+        for boundary_token in sorted(boundary_tokens):
+            start_token = min(
+                max(0, boundary_token - (window_size // 2)),
+                latest_start,
+            )
+            recovery_range = (start_token, start_token + window_size)
+            if recovery_range not in original_ranges:
+                recovery_ranges.add(recovery_range)
+
+        recovery_windows = tuple(
+            TokenWindow(
+                index=len(original_windows) + index,
+                start_token=start_token,
+                end_token=end_token,
+            )
+            for index, (start_token, end_token) in enumerate(
+                sorted(recovery_ranges)
+            )
+        )
+        if not recovery_windows:
+            return [], 0
+        return self._predict_windows(input_ids, offsets, recovery_windows)
 
     def _infer_window(
         self,

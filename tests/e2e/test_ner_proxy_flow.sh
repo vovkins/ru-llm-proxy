@@ -153,6 +153,47 @@ if leaked:
 PY
 }
 
+expect_metric_at_least() {
+    local file="$1"
+    local metric="$2"
+    local minimum="$3"
+    local label_name="${4:-}"
+    local label_value="${5:-}"
+    python3 - "$file" "$metric" "$minimum" "$label_name" "$label_value" <<'PY'
+import re
+import sys
+
+path, expected_metric, minimum_raw, label_name, label_value = sys.argv[1:]
+minimum = float(minimum_raw)
+values = []
+with open(path, encoding="utf-8") as stream:
+    for raw_line in stream:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            selector, raw_value = line.rsplit(None, 1)
+            value = float(raw_value)
+        except ValueError:
+            continue
+        metric_name = selector.split("{", 1)[0]
+        if metric_name != expected_metric:
+            continue
+        labels = dict(
+            re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"])*)"', selector)
+        )
+        if label_name and labels.get(label_name) != label_value:
+            continue
+        values.append(value)
+
+if not values or max(values) < minimum:
+    raise SystemExit(
+        f"expected {expected_metric} >= {minimum} "
+        f"for {label_name}={label_value}, got {values!r}"
+    )
+PY
+}
+
 if ! docker image inspect "${ANALYZER_IMAGE:-ru-llm-proxy-presidio-analyzer:latest}" >/dev/null 2>&1; then
     echo "Analyzer image is missing; run 'make test-hf-model' first" >&2
     exit 1
@@ -218,4 +259,31 @@ capture_to "$block_capture"
 expect_capture "$block_capture" provider_requests 0
 expect_capture "$block_capture" provider_saw_canary false
 
-echo "Real Analyzer proxy flow passed: mask restored all 8 NER types; block prevented provider egress"
+mask_metrics="$tmp_dir/mask-metrics.txt"
+block_metrics="$tmp_dir/block-metrics.txt"
+curl -fsS "http://127.0.0.1:${MASK_PORT}/metrics/" >"$mask_metrics"
+curl -fsS "http://127.0.0.1:${BLOCK_PORT}/metrics/" >"$block_metrics"
+expect_metric_at_least "$mask_metrics" ru_pii_guardrail_pre_calls_total 2 result masked
+expect_metric_at_least "$mask_metrics" ru_pii_guardrail_post_calls_total 2 result restored
+expect_metric_at_least "$mask_metrics" ru_pii_guardrail_analyzer_latency_seconds_count 2
+expect_metric_at_least "$block_metrics" ru_pii_guardrail_pre_calls_total 1 result blocked
+expect_metric_at_least "$block_metrics" ru_pii_guardrail_blocked_total 1 entity_type PERSON
+expect_metric_at_least "$block_metrics" ru_pii_guardrail_analyzer_latency_seconds_count 1
+
+proxy_logs="$tmp_dir/proxy-logs.txt"
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs \
+    litellm-mask litellm-block >"$proxy_logs"
+python3 - "$proxy_logs" <<'PY'
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    logs = stream.read()
+for forbidden in (
+    "Prometheus metric already registered, using no-op",
+    "Prometheus metric registration conflict",
+):
+    if forbidden in logs:
+        raise SystemExit(f"unexpected metric registration failure: {forbidden}")
+PY
+
+echo "Real Analyzer proxy flow passed: mask/block and guardrail metrics verified"

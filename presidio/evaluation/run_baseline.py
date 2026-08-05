@@ -140,6 +140,24 @@ def _git_worktree_dirty() -> bool | None:
     return bool(result.stdout.strip())
 
 
+def _validated_git_metadata(*, allow_dirty_worktree: bool) -> dict[str, Any]:
+    revision = _git_revision()
+    dirty = _git_worktree_dirty()
+    if revision == "unknown":
+        raise RuntimeError("Git revision is unavailable for the evaluation report")
+    if dirty is None:
+        raise RuntimeError("Git worktree state is unavailable for the evaluation report")
+    if dirty and not allow_dirty_worktree:
+        raise RuntimeError(
+            "Git worktree has uncommitted changes; use --allow-dirty-worktree "
+            "only for a diagnostic run"
+        )
+    return {
+        "git_revision": revision,
+        "git_worktree_dirty": dirty,
+    }
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -438,6 +456,9 @@ def _write_text(path: Path, content: str) -> None:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    git_metadata = _validated_git_metadata(
+        allow_dirty_worktree=args.allow_dirty_worktree,
+    )
     corpus_path = Path(args.corpus).resolve()
     cases = load_corpus(corpus_path)
     client = AnalyzerClient(args.analyzer_url, timeout_seconds=args.timeout)
@@ -480,8 +501,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     report = {
         "metadata": {
             "system": args.system,
-            "git_revision": _git_revision(),
-            "git_worktree_dirty": _git_worktree_dirty(),
+            **git_metadata,
             "corpus_sha256": _file_sha256(corpus_path),
             "case_count": len(cases),
             "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -545,6 +565,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-case-errors",
         action="store_true",
         help="Write a diagnostic report and exit successfully when individual cases fail.",
+    )
+    parser.add_argument(
+        "--allow-dirty-worktree",
+        action="store_true",
+        help="Allow a diagnostic report from a Git worktree with uncommitted changes.",
     )
     return parser
 

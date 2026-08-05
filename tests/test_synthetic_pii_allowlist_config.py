@@ -34,13 +34,13 @@ def test_env_compose_setup_and_litellm_config_wire_synthetic_pii_allowlist():
 
 def test_guardrail_contains_safe_synthetic_pii_allowlist_runtime():
     guardrail = (ROOT / "litellm_guardrails" / "pii_guardrail.py").read_text()
+    metrics = (ROOT / "litellm_guardrails" / "metrics.py").read_text()
 
     for required in (
         'SYNTHETIC_PII_ALLOWLIST_MODES = {"allow", "off"}',
         'SYNTHETIC_PII_ALLOWLIST_POLICIES = {"pii"}',
         "SYNTHETIC_PII_ALLOWLIST_SAFE_PATTERN_MARKERS",
         "SYNTHETIC_PII_ALLOWLIST_MAX_PATTERN_LENGTH",
-        "ru_synthetic_pii_allowlist_hits",
         "_load_synthetic_pii_allowlist_rules",
         "_is_safe_synthetic_allowlist_pattern",
         "_filter_synthetic_pii_allowlisted_entities",
@@ -50,6 +50,7 @@ def test_guardrail_contains_safe_synthetic_pii_allowlist_runtime():
     ):
         assert required in guardrail
 
+    assert "ru_synthetic_pii_allowlist_hits" in metrics
     assert '^.*$' in guardrail
     assert "pattern.fullmatch(value)" in guardrail
 

@@ -112,8 +112,8 @@ class GlobalLabelModel(FakeModel):
 
 
 class FailOnCallModel(GlobalLabelModel):
-    def __init__(self, fail_on_call):
-        super().__init__()
+    def __init__(self, fail_on_call, labels_by_token=None):
+        super().__init__(labels_by_token)
         self.fail_on_call = fail_on_call
 
     def __call__(self, **kwargs):
@@ -401,6 +401,169 @@ def test_entity_crossing_window_boundary_is_emitted_once():
     assert [(result.entity_type, result.start, result.end) for result in results] == [
         ("PERSON", 382, 386)
     ]
+
+
+def test_shifted_window_recovers_entity_longer_than_overlap():
+    token_count = 500
+    labels = {300: 1, **{index: 2 for index in range(301, 451)}}
+    tokenizer = FakeTokenizer(_character_offsets(token_count))
+    model = GlobalLabelModel(labels)
+    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+    events = []
+
+    results = recognizer.analyze(
+        "x" * token_count,
+        telemetry_callback=events.append,
+    )
+
+    assert [(result.entity_type, result.start, result.end) for result in results] == [
+        ("PERSON", 300, 451)
+    ]
+    assert model.call_count == 3
+    assert model.input_lengths == [386, 182, 386]
+    assert [len(ids) for ids in tokenizer.prepared_input_ids] == [384, 180, 384]
+    assert len(events) == 1
+    assert events[0].outcome == "success"
+    assert events[0].windows_processed == 3
+    assert recognizer.is_ready() is True
+
+
+def test_unresolved_boundary_is_request_scoped_and_next_request_succeeds():
+    token_count = 500
+    labels = {0: 1, **{index: 2 for index in range(1, token_count)}}
+    tokenizer = FakeTokenizer(_character_offsets(token_count))
+    model = GlobalLabelModel(labels)
+    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+    events = []
+
+    with pytest.raises(NERProcessingError) as exc_info:
+        recognizer.analyze(
+            "x" * token_count,
+            telemetry_callback=events.append,
+        )
+
+    assert exc_info.value.phase == "windowing"
+    assert exc_info.value.failure_class == "window_boundary_unresolved"
+    assert exc_info.value.windows_processed == 3
+    assert recognizer.state() == "ready"
+    assert recognizer.is_loaded() is True
+    assert recognizer.is_warmed_up() is True
+    assert recognizer.failure_phase() is None
+    assert recognizer.failure_class() is None
+    assert len(events) == 1
+    assert events[0].outcome == "failure"
+    assert events[0].windows_processed == 3
+    assert events[0].failure_phase == "windowing"
+    assert events[0].failure_class == "window_boundary_unresolved"
+
+    tokenizer.offsets = _character_offsets(2)
+    model.labels_by_token = {}
+    assert recognizer.analyze("ok") == []
+    assert model.call_count == 4
+    assert recognizer.is_ready() is True
+
+
+def test_recovery_forward_failure_marks_backend_failed():
+    token_count = 500
+    labels = {300: 1, **{index: 2 for index in range(301, 451)}}
+    tokenizer = FakeTokenizer(_character_offsets(token_count))
+    model = FailOnCallModel(fail_on_call=3, labels_by_token=labels)
+    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+
+    with pytest.raises(NERProcessingError) as exc_info:
+        recognizer.analyze("x" * token_count)
+
+    assert exc_info.value.phase == "inference"
+    assert exc_info.value.failure_class == "forward_pass_failed"
+    assert exc_info.value.windows_processed == 2
+    assert model.call_count == 3
+    assert recognizer.state() == "failed"
+    assert recognizer.is_loaded() is True
+    assert recognizer.is_warmed_up() is False
+    assert recognizer.is_ready() is False
+
+
+def test_normalization_failure_does_not_poison_backend(monkeypatch):
+    recognizer, _, _ = _recognizer_for([0], [(0, 2)])
+
+    def fail_normalization(_text):
+        raise ValueError("request cannot be normalized")
+
+    with monkeypatch.context() as request_failure:
+        request_failure.setattr(
+            "presidio.ner.huggingface_recognizer.normalize_for_ner",
+            fail_normalization,
+        )
+        with pytest.raises(NERProcessingError) as exc_info:
+            recognizer.analyze("ok")
+
+    assert exc_info.value.phase == "normalization"
+    assert exc_info.value.failure_class == "normalization_failed"
+    assert recognizer.is_ready() is True
+    assert recognizer.failure_phase() is None
+    assert recognizer.failure_class() is None
+    assert recognizer.analyze("ok") == []
+
+
+@pytest.mark.parametrize(
+    ("phase", "failure_class"),
+    [
+        ("tokenization", "tokenizer_failed"),
+        ("windowing", "window_planning_failed"),
+        ("decoding", "bio_decoding_failed"),
+    ],
+)
+def test_input_processing_failure_does_not_poison_backend(
+    monkeypatch,
+    phase,
+    failure_class,
+):
+    recognizer, _, _ = _recognizer_for([0], [(0, 2)])
+    original_predict = recognizer._predict_window_entities
+
+    def fail_request(_text):
+        raise NERProcessingError(
+            phase=phase,
+            failure_class=failure_class,
+        )
+
+    monkeypatch.setattr(recognizer, "_predict_window_entities", fail_request)
+    with pytest.raises(NERProcessingError) as exc_info:
+        recognizer.analyze("ok")
+
+    assert exc_info.value.failure_class == failure_class
+    assert recognizer.is_ready() is True
+    assert recognizer.failure_phase() is None
+    assert recognizer.failure_class() is None
+
+    monkeypatch.setattr(recognizer, "_predict_window_entities", original_predict)
+    assert recognizer.analyze("ok") == []
+
+
+def test_offset_mapping_failure_does_not_poison_backend(monkeypatch):
+    recognizer, _, _ = _recognizer_for([0], [(0, 2)])
+    original_predict = recognizer._predict_window_entities
+    outside_text = WindowEntityPrediction(
+        EntityPrediction("PERSON", 0, 99, 0.99),
+        0,
+        False,
+        False,
+    )
+    monkeypatch.setattr(
+        recognizer,
+        "_predict_window_entities",
+        lambda _text: ([outside_text], 1),
+    )
+
+    with pytest.raises(NERProcessingError) as exc_info:
+        recognizer.analyze("ok")
+
+    assert exc_info.value.phase == "offset_mapping"
+    assert exc_info.value.failure_class == "offset_mapping_failed"
+    assert recognizer.is_ready() is True
+
+    monkeypatch.setattr(recognizer, "_predict_window_entities", original_predict)
+    assert recognizer.analyze("ok") == []
 
 
 def test_full_prediction_wins_over_truncated_overlap_fragment():

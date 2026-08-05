@@ -504,6 +504,18 @@ def test_native_rules_ignore_weak_context_and_standalone_entropy(recognizer, tex
             "PASSWORD",
             "SyntheticBackupPass",
         ),
+        (
+            "backup-tool --password=--SyntheticBackupPass",
+            "generic-password",
+            "PASSWORD",
+            "--SyntheticBackupPass",
+        ),
+        (
+            "backup-tool --password '--SyntheticBackupPass'",
+            "generic-password",
+            "PASSWORD",
+            "--SyntheticBackupPass",
+        ),
     ],
 )
 def test_command_line_rules_return_only_literal_credential_values(
@@ -535,3 +547,33 @@ def test_command_line_rules_return_only_literal_credential_values(
 )
 def test_command_line_rules_ignore_placeholders_and_near_misses(text, rule_id):
     assert _rule_results(CommandLineCredentialRecognizer(), text, rule_id) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "backup-tool --password --verbose",
+        "backup-tool --passwd --verbose",
+        "backup-tool --pass --verbose",
+        "curl --user --verbose https://example.test",
+        "curl --proxy-user --verbose https://example.test",
+        "curl --oauth2-bearer --location https://example.test",
+        "curl --header --compressed https://example.test",
+        "curl -u -v https://example.test",
+        "curl -U -v https://example.test",
+        "curl -H --compressed https://example.test",
+        "wget --http-password --quiet https://example.test/file",
+        "wget --proxy-password --quiet https://example.test/file",
+        "wget --ftp-password --quiet https://example.test/file",
+        "mysql --password --host database.internal",
+        "mysql -p --host database.internal",
+        "http --auth --verbose https://example.test",
+        "http -a --verbose https://example.test",
+        "https --auth --verbose https://example.test",
+        "https -a --verbose https://example.test",
+        "redis-cli --pass --tls ping",
+        "redis-cli -a --tls ping",
+    ],
+)
+def test_command_line_rules_do_not_treat_following_option_as_credential(text):
+    assert _results(CommandLineCredentialRecognizer(), text) == []

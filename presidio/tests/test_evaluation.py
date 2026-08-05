@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from presidio.evaluation import run_baseline
 from presidio.evaluation.corpus import (
     DEFAULT_CORPUS_PATH,
     TARGET_ENTITY_TYPES,
@@ -163,6 +164,59 @@ def test_metrics_reject_prediction_outside_source_text():
             cases,
             {"person": [{"entity_type": "PERSON", "start": 0, "end": 5}]},
         )
+
+
+def test_evaluation_accepts_clean_versioned_worktree(monkeypatch):
+    monkeypatch.setattr(run_baseline, "_git_revision", lambda: "a" * 40)
+    monkeypatch.setattr(run_baseline, "_git_worktree_dirty", lambda: False)
+
+    metadata = run_baseline._validated_git_metadata(
+        allow_dirty_worktree=False,
+    )
+
+    assert metadata == {
+        "git_revision": "a" * 40,
+        "git_worktree_dirty": False,
+    }
+
+
+def test_evaluation_rejects_dirty_worktree_by_default(monkeypatch):
+    monkeypatch.setattr(run_baseline, "_git_revision", lambda: "a" * 40)
+    monkeypatch.setattr(run_baseline, "_git_worktree_dirty", lambda: True)
+
+    with pytest.raises(RuntimeError, match="uncommitted changes"):
+        run_baseline._validated_git_metadata(allow_dirty_worktree=False)
+
+
+def test_evaluation_allows_explicit_dirty_diagnostic_run(monkeypatch):
+    monkeypatch.setattr(run_baseline, "_git_revision", lambda: "a" * 40)
+    monkeypatch.setattr(run_baseline, "_git_worktree_dirty", lambda: True)
+
+    metadata = run_baseline._validated_git_metadata(
+        allow_dirty_worktree=True,
+    )
+
+    assert metadata["git_worktree_dirty"] is True
+
+
+@pytest.mark.parametrize(
+    "revision, dirty, message",
+    [
+        ("unknown", False, "revision is unavailable"),
+        ("a" * 40, None, "worktree state is unavailable"),
+    ],
+)
+def test_evaluation_rejects_unknown_git_provenance(
+    monkeypatch,
+    revision,
+    dirty,
+    message,
+):
+    monkeypatch.setattr(run_baseline, "_git_revision", lambda: revision)
+    monkeypatch.setattr(run_baseline, "_git_worktree_dirty", lambda: dirty)
+
+    with pytest.raises(RuntimeError, match=message):
+        run_baseline._validated_git_metadata(allow_dirty_worktree=True)
 
 
 def test_markdown_report_contains_metrics_but_no_case_text():

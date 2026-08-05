@@ -1302,7 +1302,19 @@ class TestPreCallHook:
         guardrail._redis.setex.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_required_ner_failure_fails_closed_even_in_fail_open_mode(self, caplog):
+    @pytest.mark.parametrize(
+        ("phase", "failure_class"),
+        [
+            ("inference", "forward_pass_failed"),
+            ("windowing", "window_boundary_unresolved"),
+        ],
+    )
+    async def test_required_ner_failure_fails_closed_even_in_fail_open_mode(
+        self,
+        caplog,
+        phase,
+        failure_class,
+    ):
         guardrail = RuPIIGuardrail(failure_mode="fail_open")
         guardrail._redis = _mock_redis()
         secret = "+79031234567"
@@ -1316,8 +1328,8 @@ class TestPreCallHook:
             guardrail,
             "_analyze_text",
             side_effect=AnalyzerUnavailableError(
-                phase="inference",
-                failure_class="forward_pass_failed",
+                phase=phase,
+                failure_class=failure_class,
             ),
         ):
             with caplog.at_level(logging.INFO):

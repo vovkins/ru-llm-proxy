@@ -479,10 +479,19 @@ def _inline_value(text: str, token: _ShellToken, offset: int) -> tuple[int, int,
     return _strip_value_wrapper(text, start, token.value_end)
 
 
+def _is_explicitly_quoted(text: str, token: _ShellToken) -> bool:
+    return (
+        token.end - token.start >= 2
+        and _QUOTE_PAIRS.get(text[token.start]) == text[token.end - 1]
+    )
+
+
 def _next_value(text: str, tokens: list[_ShellToken], index: int) -> tuple[int, int, str] | None:
     if index + 1 >= len(tokens):
         return None
     token = tokens[index + 1]
+    if token.value.startswith("-") and not _is_explicitly_quoted(text, token):
+        return None
     return _strip_value_wrapper(text, token.start, token.end)
 
 

@@ -539,6 +539,17 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
 
         assert _entity_texts(entities, entity_type) == []
 
+    def test_command_line_option_without_value_is_not_a_secret(self, monkeypatch):
+        analyzer = _build_analyzer(CommandLineCredentialRecognizer())
+
+        entities = _api_entities(
+            monkeypatch,
+            analyzer,
+            "backup-tool --password --verbose",
+        )
+
+        assert _entity_texts(entities, "PASSWORD") == []
+
     def test_public_ip_detection_can_be_enabled(self, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "true")
         analyzer = _build_analyzer(InternalIpRecognizer())

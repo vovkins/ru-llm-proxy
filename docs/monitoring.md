@@ -135,6 +135,14 @@ make monitor-smoke
 Метрики появляются после первого подходящего запроса. Они не содержат исходный
 текст, значения, смещения или служебные метки.
 
+LiteLLM создаёт отдельные экземпляры защитного обработчика для стадий до и после
+вызова провайдера, но все они используют одни процессные метрики. После запроса с
+маскированием должны появиться как минимум `ru_pii_guardrail_pre_calls_total`,
+`ru_pii_guardrail_post_calls_total` и
+`ru_pii_guardrail_analyzer_latency_seconds_count`. Их отсутствие при наличии
+трафика означает неисправность регистрации метрик; проверьте журналы запуска на
+`Prometheus metric registration conflict`.
+
 ### Presidio Analyzer
 
 | Метрика | Метки | Назначение |
@@ -154,6 +162,12 @@ make monitor-smoke
 LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в Analyzer вместе
 с ожиданием его локальной очереди. Метки имеют ограниченный набор значений и не
 содержат исходные данные.
+
+`window_boundary_unresolved` в `ru_presidio_analyzer_ner_failures_total`
+означает безопасный отказ одного запроса после повторной проверки границы;
+проверка состояния NER остаётся `ready`. `forward_pass_failed`, ошибки загрузки и
+прогрева означают отказ обязательной модели и переводят Analyzer в `unhealthy`.
+Дополнительные окна входят в `ru_presidio_analyzer_ner_windows_processed_*`.
 
 ## Политики в мониторинге
 

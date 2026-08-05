@@ -19,10 +19,10 @@
 | Преобразование BIO-меток, объединение WordPiece, точные границы и оценки уверенности | Модульный | `presidio/tests/test_ner.py` |
 | Фильтрация типов и применение порога без преждевременного округления | Модульный | `presidio/tests/test_ner.py` |
 | NFC-нормализация, эмодзи, мягкий перенос и перевод смещений в исходный текст | Модульный | `presidio/tests/test_ner.py`, `presidio/tests/test_ner_text_processing.py` |
-| Перекрывающиеся окна, сущности в хвосте длинного текста и защита от неполного результата | Модульный | `presidio/tests/test_ner.py`, `presidio/tests/test_ner_text_processing.py` |
+| Перекрывающиеся и смещённые окна, сущности в хвосте длинного текста и локальный безопасный отказ при неразрешимой границе | Модульный/API | `presidio/tests/test_ner.py`, `presidio/tests/test_ner_text_processing.py`, `presidio/tests/test_analyzer_server_capacity.py` |
 | Детерминированные правила для учётных данных и договоров, подавление заполнителей | Модульный | `presidio/tests/test_credential_rules.py`, `presidio/tests/test_recognizers.py` |
 | Слияние результатов модели и правил с приоритетом специализированных типов | Модульный | `presidio/tests/test_result_merging.py` |
-| Запуск, прогрев, состояния готовности, отказ модели, метрики и безопасные события | Модульный/API | `presidio/tests/test_analyzer_server_capacity.py`, `presidio/tests/test_analyzer_api_thresholds.py` |
+| Запуск, прогрев, состояния готовности, отказ модели, метрики и безопасные события | Модульный/API/e2e | `presidio/tests/test_analyzer_server_capacity.py`, `presidio/tests/test_analyzer_api_thresholds.py`, `litellm_guardrails/tests/test_metrics.py`, `tests/e2e/test_ner_proxy_flow.sh` |
 | Маскирование и блокировка всех восьми типов: `PERSON`, `LOCATION`, `ORGANIZATION`, `LOGIN`, `PASSWORD`, `AUTH_TOKEN`, `SECRET_KEY`, `CONTRACT_NUMBER` | Модульный защитный обработчик | `litellm_guardrails/tests/test_pii_guardrail.py` |
 | Восстановление значений в обычном и потоковом ответе | Модульный защитный обработчик | `litellm_guardrails/tests/test_pii_guardrail.py` |
 | Маскирование до передачи, восстановление ответа и отсутствие исходных значений у провайдера | Сквозной с реальным Analyzer | `tests/e2e/test_ner_proxy_flow.sh`, `tests/e2e/docker-compose.ner-proxy.yml` |

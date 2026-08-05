@@ -771,6 +771,56 @@ async def _runtime_ner_failure_returns_safe_503(monkeypatch, caplog):
     assert secret not in "\n".join(record.getMessage() for record in caplog.records)
 
 
+def test_request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog):
+    asyncio.run(_request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog))
+
+
+async def _request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog):
+    limiter = AnalyzerCapacityLimiter(
+        concurrency_limit=1,
+        queue_limit=0,
+        queue_timeout_seconds=0.01,
+    )
+    monkeypatch.setattr(analyzer_server, "capacity_limiter", limiter)
+    _set_ner_state(
+        monkeypatch,
+        state="ready",
+        loaded=True,
+        warmed_up=True,
+    )
+
+    async def fail_request_boundary(_request):
+        raise analyzer_server.NERProcessingError(
+            phase="windowing",
+            failure_class="window_boundary_unresolved",
+            windows_processed=3,
+        )
+
+    monkeypatch.setattr(
+        analyzer_server,
+        "_run_blocking_analyze",
+        fail_request_boundary,
+    )
+    secret = "boundary-secret-must-not-appear"
+
+    with caplog.at_level(logging.INFO, logger="presidio.analyzer_server"):
+        with pytest.raises(HTTPException) as exc_info:
+            await analyzer_server.analyze(
+                analyzer_server.AnalyzeRequest(text=f"SECRET_KEY={secret}"),
+            )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == {
+        "code": "required_ner_unavailable",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved",
+    }
+    health = await analyzer_server.health()
+    assert health["status"] == "ok"
+    assert health["ner_state"] == "ready"
+    assert secret not in "\n".join(record.getMessage() for record in caplog.records)
+
+
 def test_blocking_analyze_keeps_task_alive_until_thread_finishes_after_double_cancel(
     monkeypatch,
 ):
