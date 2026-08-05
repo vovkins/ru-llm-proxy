@@ -280,7 +280,7 @@ def test_checked_in_candidate_passes_explicit_quality_gate():
     assert all(check["passed"] for check in candidate["quality_gate"])
     assert candidate["case_errors"] == []
     assert metadata["git_revision"] == (
-        "f0f8b879b2e821b15102de00163c1db978285526"
+        "561fd2cb38667138db829341d2a5c712f5741395"
     )
     assert metadata["git_worktree_dirty"] is False
     assert metadata["model_artifact_sha256"] == (
