@@ -8,7 +8,7 @@ fastapi>=0.115,<0.116
 uvicorn>=0.34,<0.35
 
 # Fixed inference stack for fef2/ner_rus_bert-secret_detection.
-torch>=2.0,<3.0
+# PyTorch is installed separately from requirements-analyzer-cpu.txt.
 transformers==4.57.6
 huggingface-hub==0.36.2
 safetensors==0.8.0

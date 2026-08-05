@@ -34,7 +34,11 @@ services:
     ports:
       - "127.0.0.1:${NER_PROXY_ANALYZER_PORT:-15001}:5001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:5001/api/v1/health"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=2).read()
       interval: 3s
       timeout: 5s
       retries: 60

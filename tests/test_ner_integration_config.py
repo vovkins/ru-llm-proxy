@@ -21,6 +21,7 @@ def test_makefile_exposes_separate_real_model_and_proxy_gates():
     makefile = _read(ROOT / "Makefile")
 
     assert "test-hf-model-run:" in makefile
+    assert "python verify_cpu_runtime.py" in makefile
     assert "docker run --rm --network none $(ANALYZER_IMAGE)" in makefile
     assert "test-ner-proxy:" in makefile
     assert "bash tests/e2e/test_ner_proxy_flow.sh" in makefile

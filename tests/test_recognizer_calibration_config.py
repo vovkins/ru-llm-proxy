@@ -63,7 +63,7 @@ def test_static_suite_runs_recognizer_calibration_regression():
     assert "run: make test-recognizer-api" in workflow
     assert "presidio-analyzer-tests:" in compose
     assert "target: analyzer-test" in compose
-    assert "FROM analyzer-runtime AS analyzer-test" in dockerfile
+    assert "FROM analyzer-build AS analyzer-test" in dockerfile
 
 
 def test_analyzer_api_threshold_tests_use_russian_nlp_engine():

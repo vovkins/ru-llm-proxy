@@ -87,7 +87,11 @@ services:
       - PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=${PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES:-internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local}
       - PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=${PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS:-false}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api/v1/health"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=5).read()
       interval: 30s
       timeout: 10s
       retries: 3

@@ -137,6 +137,7 @@ test-hf-model:
 
 test-hf-model-run:
 	@echo "🧪 Run pinned Hugging Face model smoke without network"
+	docker run --rm --network none $(ANALYZER_IMAGE) python verify_cpu_runtime.py
 	docker run --rm --network none $(ANALYZER_IMAGE) python real_model_smoke.py
 
 test-ner-proxy:

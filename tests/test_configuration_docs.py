@@ -217,12 +217,16 @@ def test_compose_defaults_use_fail_closed_and_optional_provider_keys_are_quiet()
 
 def test_analyzer_pins_huggingface_model_and_transformers_runtime():
     requirements = _read("presidio/requirements-analyzer.txt")
+    cpu_requirements = _read("presidio/requirements-analyzer-cpu.txt")
     manifest = _read("presidio/model_manifest.json")
     dockerfile = _read("presidio/Dockerfile")
     makefile = _read("Makefile")
     e2e = _read("tests/e2e/test_e2e.sh")
 
     assert "transformers==4.57.6" in requirements
+    assert "torch==2.13.0+cpu" in cpu_requirements
+    assert "download.pytorch.org/whl/cpu" in cpu_requirements
+    assert "torch>=" not in requirements
     assert "fef2/ner_rus_bert-secret_detection" in manifest
     assert "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4" in manifest
     assert "HF_HUB_OFFLINE=1" in dockerfile
