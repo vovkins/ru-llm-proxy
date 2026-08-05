@@ -56,14 +56,21 @@ guardrails:
       mode: "pre_call"
       default_on: true
     guardrail_info:
-      description: "Маскирует русскоязычные персональные данные перед запросом к провайдеру. Возвращается через GET /guardrails/list для API-клиентов; интерфейс LiteLLM может показывать только имя guardrail."
+      description: "До вызова поставщика модели применяет политики защиты и обрабатывает персональные данные, реквизиты, внутреннюю инфраструктуру и секреты. Возвращается через GET /guardrails/list для API-клиентов; интерфейс LiteLLM может показывать только имя guardrail."
       params:
         - name: "stage"
           type: "string"
           description: "pre_call; маскирует русскоязычные персональные данные перед запросом к провайдеру."
         - name: "entities"
           type: "list[string]"
-          description: "PHONE_NUMBER, EMAIL_ADDRESS, RU_INN, RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, PERSON, LOCATION, ORGANIZATION."
+          description: >-
+            Персональные данные, документы и реквизиты: PERSON, LOCATION,
+            ORGANIZATION, PHONE_NUMBER, EMAIL_ADDRESS, RU_INN, RU_KPP, RU_OGRN,
+            RU_OGRNIP, RU_BIK, RU_SETTLEMENT_ACCOUNT, RU_CORRESPONDENT_ACCOUNT,
+            RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, CONTRACT_NUMBER;
+            инфраструктура, секреты и учётные данные: INTERNAL_IP,
+            INTERNAL_DOMAIN, HOSTNAME, DB_URL, JWT, BEARER_TOKEN, PRIVATE_KEY,
+            API_KEY, SECRET_KEY, AUTH_TOKEN, LOGIN, PASSWORD.
         - name: "mapping_store"
           type: "string"
           description: "Redis-ключ pii_mapping:<pii_request_id> с серверным идентификатором сопоставления и временем жизни из PII_MAPPING_TTL_SECONDS."

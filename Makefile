@@ -96,6 +96,7 @@ test-static: test-routing-diagnostics
 		tests/test_ner_integration_config.py \
 		tests/test_analyzer_telemetry_config.py \
 		tests/test_model_profile_config.py \
+		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
 		tests/test_guardrail_dependency_config.py \

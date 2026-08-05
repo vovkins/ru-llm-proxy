@@ -13,6 +13,7 @@ pytest.importorskip("presidio_analyzer")
 torch = pytest.importorskip("torch")
 
 from presidio.model_artifact import ModelManifest
+from presidio.entity_types import NER_ENTITY_TYPES
 from presidio.ner.huggingface_recognizer import (
     EXPECTED_ID2LABEL,
     MAX_CONTENT_TOKENS,
@@ -59,6 +60,16 @@ class FakeTokenizer:
 
     def create_token_type_ids_from_sequences(self, input_ids):
         return [0] * (len(input_ids) + 2)
+
+
+def test_model_labels_match_public_entity_contract():
+    model_entity_types = {
+        label.partition("-")[2]
+        for label in EXPECTED_ID2LABEL.values()
+        if label != "O"
+    }
+
+    assert model_entity_types == NER_ENTITY_TYPES
 
 
 class FakeModel:

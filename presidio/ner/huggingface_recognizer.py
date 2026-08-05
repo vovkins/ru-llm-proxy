@@ -16,6 +16,11 @@ from result_merging import (
     SOURCE_NER,
 )
 
+try:
+    from entity_types import NER_ENTITY_TYPES
+except ImportError:
+    from presidio.entity_types import NER_ENTITY_TYPES
+
 from .text_processing import TokenWindow, normalize_for_ner, plan_token_windows
 
 try:
@@ -41,18 +46,6 @@ MAX_CONTENT_TOKENS = 384
 WINDOW_OVERLAP_TOKENS = 64
 WINDOW_BOUNDARY_SEARCH_TOKENS = 64
 
-NER_ENTITY_TYPES = frozenset(
-    {
-        "PERSON",
-        "LOCATION",
-        "ORGANIZATION",
-        "LOGIN",
-        "PASSWORD",
-        "AUTH_TOKEN",
-        "SECRET_KEY",
-        "CONTRACT_NUMBER",
-    }
-)
 EXPECTED_ID2LABEL = {
     0: "O",
     1: "B-PERSON",

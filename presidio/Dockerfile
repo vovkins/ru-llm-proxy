@@ -53,6 +53,7 @@ RUN python verify_cpu_runtime.py
 COPY --from=model-download /opt/models/ner_rus_bert-secret_detection /opt/models/ner_rus_bert-secret_detection
 COPY analyzer_server.py .
 COPY capacity.py .
+COPY entity_types.py .
 COPY model_artifact.py .
 COPY result_merging.py .
 COPY real_model_smoke.py .
