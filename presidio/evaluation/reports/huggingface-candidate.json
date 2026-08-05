@@ -7,14 +7,15 @@
       "ner_model": "fef2/ner_rus_bert-secret_detection",
       "ner_required": true,
       "ner_revision": "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4",
+      "ner_state": "ready",
       "ner_warmed_up": true,
       "status": "ok"
     },
     "case_count": 77,
     "corpus_sha256": "8bc2f6e3f10a9d123651839de21bae09b35c708622f9bfcada2f908ec0b5582f",
-    "generated_at": "2026-08-04T09:26:28+00:00",
-    "git_revision": "26935215590cbcf0789c5ed7a7a73d7d9c017dcd",
-    "git_worktree_dirty": true,
+    "generated_at": "2026-08-05T19:40:04+00:00",
+    "git_revision": "f0f8b879b2e821b15102de00163c1db978285526",
+    "git_worktree_dirty": false,
     "model_artifact_sha256": "6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3385d4fd31ef21a4",
     "model_checksum_enforced": true,
     "runtime": {
@@ -26,12 +27,12 @@
         "safetensors": "0.8.0",
         "spacy": "3.8.14",
         "tokenizers": "0.22.2",
-        "torch": "2.13.0",
+        "torch": "2.13.0+cpu",
         "transformers": "4.57.6"
       },
       "python": "3.11.15",
       "torch_cuda_available": false,
-      "torch_cuda_build": "13.0"
+      "torch_cuda_build": null
     },
     "system": "fef2 secret-detection BERT + current recognizers"
   },

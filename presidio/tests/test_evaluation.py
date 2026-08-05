@@ -271,9 +271,33 @@ def test_checked_in_candidate_passes_explicit_quality_gate():
     )
 
     checks = evaluate_quality_gate(candidate["metrics"], baseline["metrics"])
+    metadata = candidate["metadata"]
+    health = metadata["analyzer_health"]
+    runtime = metadata["runtime"]
 
     assert checks
     assert all(check["passed"] for check in checks)
+    assert all(check["passed"] for check in candidate["quality_gate"])
+    assert candidate["case_errors"] == []
+    assert metadata["git_revision"] == (
+        "f0f8b879b2e821b15102de00163c1db978285526"
+    )
+    assert metadata["git_worktree_dirty"] is False
+    assert metadata["model_artifact_sha256"] == (
+        "6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3385d4fd31ef21a4"
+    )
+    assert metadata["model_checksum_enforced"] is True
+    assert health["status"] == "ok"
+    assert health["ner_state"] == "ready"
+    assert health["ner_warmed_up"] is True
+    assert health["ner_backend"] == "huggingface_transformers"
+    assert health["ner_model"] == "fef2/ner_rus_bert-secret_detection"
+    assert health["ner_revision"] == (
+        "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4"
+    )
+    assert runtime["packages"]["torch"] == "2.13.0+cpu"
+    assert runtime["torch_cuda_build"] is None
+    assert runtime["torch_cuda_available"] is False
 
 
 def test_quality_gate_reports_credential_recall_regression():
