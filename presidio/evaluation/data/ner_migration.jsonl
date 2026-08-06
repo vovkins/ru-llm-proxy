@@ -1,0 +1,77 @@
+{"id":"person_full_name_ru","annotated_text":"Клиент {{PERSON:Иван Сергеевич Петров}} подтвердил заявку.","critical":true,"tags":["positive","person","ru","basic"]}
+{"id":"person_full_name_en","annotated_text":"The account owner is {{PERSON:John Michael Smith}}.","tags":["positive","person","en","basic"]}
+{"id":"person_initials_ru","annotated_text":"Документ подписал {{PERSON:Петров И. С.}} вчера.","tags":["positive","person","ru","punctuation"]}
+{"id":"person_repeated_value","annotated_text":"{{PERSON:Иван Петров}} встретил {{PERSON:Иван Петров}} у входа.","tags":["positive","person","ru","repeated"]}
+{"id":"person_decomposed_unicode","annotated_text":"Имя клиента: {{PERSON:Ива\u0301н Петров}}.","tags":["positive","person","ru","unicode","nfd"]}
+{"id":"person_after_emoji","annotated_text":"Ответственный 👩‍💻: {{PERSON:Мария Орлова}}.","tags":["positive","person","ru","unicode","emoji"]}
+{"id":"person_after_long_prefix","prefix_repeat":{"text":"Служебная запись без чувствительных значений. ","count":90},"annotated_text":"Ответственный: {{PERSON:Анна Соколова}}.","tags":["positive","person","ru","long_input","boundary"]}
+{"id":"person_label_negative","annotated_text":"В поле entity_type указано значение PERSON.","tags":["negative","person","ru","explanatory"]}
+{"id":"person_role_negative","annotated_text":"Ответственный сотрудник пока не назначен.","tags":["negative","person","ru","missing_value"]}
+{"id":"location_city_ru","annotated_text":"Встреча состоится в {{LOCATION:Москве}} завтра.","critical":true,"tags":["positive","location","ru","basic"]}
+{"id":"location_city_en","annotated_text":"The office is located in {{LOCATION:London}}.","tags":["positive","location","en","basic"]}
+{"id":"location_multiword_ru","annotated_text":"Команда работает в {{LOCATION:Нижнем Новгороде}}.","tags":["positive","location","ru","multiword"]}
+{"id":"location_region_ru","annotated_text":"Поставка направлена в {{LOCATION:Краснодарский край}}.","tags":["positive","location","ru","region"]}
+{"id":"location_repeated","annotated_text":"Из {{LOCATION:Казани}} груз отправили обратно в {{LOCATION:Казань}}.","tags":["positive","location","ru","repeated"]}
+{"id":"location_label_negative","annotated_text":"Значение поля location пока не задано.","tags":["negative","location","ru","explanatory"]}
+{"id":"location_direction_negative","annotated_text":"Поверните налево и продолжайте движение прямо.","tags":["negative","location","ru","no_named_place"]}
+{"id":"organization_bank_ru","annotated_text":"Платёж подготовлен для {{ORGANIZATION:Альфа-Банка}}.","critical":true,"tags":["positive","organization","ru","basic"]}
+{"id":"organization_legal_form_ru","annotated_text":"Получатель: {{ORGANIZATION:ООО Вектор}}.","tags":["positive","organization","ru","legal_form"]}
+{"id":"organization_en","annotated_text":"The contract was signed by {{ORGANIZATION:Northwind Research Ltd}}.","tags":["positive","organization","en","basic"]}
+{"id":"organization_quoted_ru","annotated_text":"Компания {{ORGANIZATION:«Северный Контур»}} открыла счёт.","tags":["positive","organization","ru","punctuation"]}
+{"id":"organization_repeated","annotated_text":"{{ORGANIZATION:ООО Вектор}} направило письмо в {{ORGANIZATION:ООО Вектор}}.","tags":["positive","organization","ru","repeated"]}
+{"id":"organization_process_negative","annotated_text":"Организация процесса займёт несколько дней.","tags":["negative","organization","ru","common_noun"]}
+{"id":"organization_field_negative","annotated_text":"Параметр organization_id оставлен пустым.","tags":["negative","organization","ru","explanatory"]}
+{"id":"login_assignment_en","annotated_text":"login={{LOGIN:ivan.petrov}}","critical":true,"tags":["positive","login","en","assignment"]}
+{"id":"login_assignment_ru","annotated_text":"Логин пользователя: {{LOGIN:service.user-01}}.","tags":["positive","login","ru","assignment"]}
+{"id":"login_username_en","annotated_text":"username = \"{{LOGIN:john_doe}}\"","tags":["positive","login","en","quoted"]}
+{"id":"login_cyrillic","annotated_text":"Учётная запись: {{LOGIN:иван.петров}}.","tags":["positive","login","ru","unicode"]}
+{"id":"login_email_style","annotated_text":"Пользователь входит как {{LOGIN:tester@example.test}}.","tags":["positive","login","ru","email_style"]}
+{"id":"login_after_emoji","annotated_text":"🔐 login: {{LOGIN:ops-admin_2}}","tags":["positive","login","en","emoji","offset"]}
+{"id":"login_placeholder_negative","annotated_text":"login=example","tags":["negative","login","en","placeholder"]}
+{"id":"login_explanation_negative","annotated_text":"Объясни назначение поля login в форме входа.","tags":["negative","login","ru","explanatory"]}
+{"id":"password_assignment_en","annotated_text":"password={{PASSWORD:S3cure-Value42}}","critical":true,"tags":["positive","password","en","assignment"]}
+{"id":"password_assignment_ru","annotated_text":"Пароль: {{PASSWORD:Qwerty1!}}","tags":["positive","password","ru","assignment"]}
+{"id":"password_hash_symbol","annotated_text":"pwd=\"{{PASSWORD:Xt7#pQm2Zr}}\"","tags":["positive","password","en","punctuation"]}
+{"id":"password_cyrillic","annotated_text":"пароль={{PASSWORD:Пароль2026!}}","tags":["positive","password","ru","unicode"]}
+{"id":"password_short_boundary","annotated_text":"passwd: {{PASSWORD:abC1!x}}.","tags":["positive","password","en","boundary"]}
+{"id":"password_with_spaces","annotated_text":"Новый пароль — «{{PASSWORD:Три слова 42!}}».","tags":["positive","password","ru","spaces"]}
+{"id":"password_multiline","annotated_text":"Данные входа:\nпароль: {{PASSWORD:N3w-Line_Value!}}\nконец записи","tags":["positive","password","ru","multiline"]}
+{"id":"password_placeholder_negative","annotated_text":"password=changeme","tags":["negative","password","en","placeholder"]}
+{"id":"password_explanation_negative","annotated_text":"Чем password отличается от одноразового кода?","tags":["negative","password","ru","explanatory"]}
+{"id":"auth_token_assignment","annotated_text":"AUTH_TOKEN={{AUTH_TOKEN:synthetic-auth-token-00000001}}","critical":true,"tags":["positive","auth_token","en","assignment"]}
+{"id":"auth_token_ru_context","annotated_text":"Токен авторизации: {{AUTH_TOKEN:ru-auth-token-2026-session-07}}.","tags":["positive","auth_token","ru","context"]}
+{"id":"auth_token_bearer","annotated_text":"Authorization: Bearer {{AUTH_TOKEN:bearer-synthetic-session-00042}}","tags":["positive","auth_token","en","bearer"]}
+{"id":"auth_token_quoted","annotated_text":"auth_token = \"{{AUTH_TOKEN:token.value-part_000009}}\"","tags":["positive","auth_token","en","quoted"]}
+{"id":"auth_token_multiline","annotated_text":"Заголовки запроса:\nX-Auth-Token: {{AUTH_TOKEN:header-token-synthetic-1031}}\nAccept: application/json","tags":["positive","auth_token","en","multiline"]}
+{"id":"auth_token_repeated","annotated_text":"Основной токен {{AUTH_TOKEN:session-token-alpha-001}}, резервный {{AUTH_TOKEN:session-token-beta-002}}.","tags":["positive","auth_token","ru","repeated"]}
+{"id":"auth_token_placeholder_negative","annotated_text":"AUTH_TOKEN=your-token","tags":["negative","auth_token","en","placeholder"]}
+{"id":"auth_token_explanation_negative","annotated_text":"Расскажи, как обычно передаётся auth token.","tags":["negative","auth_token","ru","explanatory"]}
+{"id":"secret_key_assignment","annotated_text":"SECRET_KEY={{SECRET_KEY:synthetic-secret-material-000001}}","critical":true,"tags":["positive","secret_key","en","assignment"]}
+{"id":"secret_key_ru_context","annotated_text":"Секретный ключ сервиса: {{SECRET_KEY:service-secret-ru-2026-0042}}.","tags":["positive","secret_key","ru","context"]}
+{"id":"secret_key_client_secret","annotated_text":"CLIENT_SECRET=\"{{SECRET_KEY:client-secret-synthetic-8128}}\"","tags":["positive","secret_key","en","client_secret"]}
+{"id":"secret_key_punctuation","annotated_text":"secret_key: {{SECRET_KEY:key.part/section+value=42}}","tags":["positive","secret_key","en","punctuation"]}
+{"id":"secret_key_multiline","annotated_text":"Настройки:\nsecret: {{SECRET_KEY:multiline-secret-synthetic-77}}\nрежим: закрытый","tags":["positive","secret_key","ru","multiline"]}
+{"id":"secret_key_long_context","prefix_repeat":{"text":"Общая справочная информация без реквизитов. ","count":90},"annotated_text":"SECRET_KEY={{SECRET_KEY:long-context-secret-000042}}","critical":true,"tags":["positive","secret_key","en","long_input","boundary"]}
+{"id":"secret_key_placeholder_negative","annotated_text":"SECRET_KEY=placeholder","tags":["negative","secret_key","en","placeholder"]}
+{"id":"secret_key_explanation_negative","annotated_text":"Переменная SECRET_KEY должна храниться в защищённом хранилище.","tags":["negative","secret_key","ru","explanatory"]}
+{"id":"contract_number_symbol_ru","annotated_text":"Договор № {{CONTRACT_NUMBER:AB-2026/0042}} вступает в силу завтра.","critical":true,"tags":["positive","contract_number","ru","symbol"]}
+{"id":"contract_number_digits_ru","annotated_text":"Номер договора: {{CONTRACT_NUMBER:12345678}}.","tags":["positive","contract_number","ru","digits"]}
+{"id":"contract_number_cyrillic_ru","annotated_text":"Контракт {{CONTRACT_NUMBER:77-И/2025}} зарегистрирован.","tags":["positive","contract_number","ru","cyrillic"]}
+{"id":"contract_number_en","annotated_text":"Contract number {{CONTRACT_NUMBER:CN-2026-0199}} was approved.","tags":["positive","contract_number","en","basic"]}
+{"id":"contract_number_repeated","annotated_text":"Договоры {{CONTRACT_NUMBER:AA-101/26}} и {{CONTRACT_NUMBER:BB-202/26}} связаны.","tags":["positive","contract_number","ru","repeated"]}
+{"id":"contract_number_pdf_copy","annotated_text":"Номер договора из PDF: {{CONTRACT_NUMBER:ДГ-2026\u00ad/117}}.","tags":["positive","contract_number","ru","pdf_copy","unicode"]}
+{"id":"contract_version_negative","annotated_text":"Версия приложения AB-2026/0042 используется в тестах.","tags":["negative","contract_number","ru","wrong_context"]}
+{"id":"contract_request_number_negative","annotated_text":"Номер заявки 12345678 принят в обработку.","tags":["negative","contract_number","ru","wrong_context"]}
+{"id":"contract_without_number_negative","annotated_text":"Обсуди условия договора и порядок оплаты.","tags":["negative","contract_number","ru","missing_value"]}
+{"id":"contract_random_code_negative","annotated_text":"Случайный код 77-И/2025 указан в таблице.","tags":["negative","contract_number","ru","wrong_context"]}
+{"id":"contract_inflected_ru","annotated_text":"По договору № {{CONTRACT_NUMBER:DL-2026/77}} услуги уже оказаны.","tags":["positive","contract_number","ru","inflection"]}
+{"id":"contract_agreement_ru","annotated_text":"Соглашение {{CONTRACT_NUMBER:СГ-88/2026}} подписано сторонами.","tags":["positive","contract_number","ru","agreement"]}
+{"id":"contract_agreement_en","annotated_text":"Agreement no. {{CONTRACT_NUMBER:AG-2026-0044}} was signed.","tags":["positive","contract_number","en","agreement"]}
+{"id":"contract_two_contexts_ru","annotated_text":"Договор № {{CONTRACT_NUMBER:AA-2026/11}}; контракт {{CONTRACT_NUMBER:BB-2026/12}} зарегистрирован.","tags":["positive","contract_number","ru","multiple_contexts"]}
+{"id":"contract_multiline_ru","annotated_text":"Номер договора:\n{{CONTRACT_NUMBER:ML-2026/0091}} указан в форме.","tags":["positive","contract_number","ru","multiline"]}
+{"id":"contract_document_version_negative","annotated_text":"Версия договора AB-2026/0042 используется в тестах.","tags":["negative","contract_number","ru","document_version"]}
+{"id":"contract_template_negative","annotated_text":"Шаблон договора DEMO-2026/01 опубликован для примера.","tags":["negative","contract_number","ru","template"]}
+{"id":"contract_date_negative","annotated_text":"Договор подписан 12.07.2026 сторонами.","tags":["negative","contract_number","ru","date"]}
+{"id":"contract_dotted_version_negative","annotated_text":"У договора версия 2.4.1 используется в тестах.","tags":["negative","contract_number","ru","version"]}
+{"id":"mixed_identity_and_contract","annotated_text":"Клиент {{PERSON:Олег Волков}}, login={{LOGIN:oleg.volkov}}, пароль={{PASSWORD:Mix3d-Value!}}, договор {{CONTRACT_NUMBER:OV-2026/81}}.","critical":true,"tags":["positive","mixed","ru","multiple_entities"]}
+{"id":"mixed_org_location_secrets","annotated_text":"Для {{ORGANIZATION:ООО Север}} в {{LOCATION:Туле}} заданы AUTH_TOKEN={{AUTH_TOKEN:mixed-auth-token-00073}} и SECRET_KEY={{SECRET_KEY:mixed-secret-key-00084}}.","critical":true,"tags":["positive","mixed","ru","multiple_entities"]}

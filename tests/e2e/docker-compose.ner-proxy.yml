@@ -1,0 +1,121 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock-upstream:
+    image: python:3.12-slim
+    command: ["python", "/workspace/tests/e2e/mock_openai_upstream.py"]
+    environment:
+      - PORT=8080
+      - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=${NER_PROXY_CANARIES}
+      - MOCK_ECHO_CHAT_CONTENT=true
+    volumes:
+      - ../..:/workspace:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  presidio-analyzer:
+    image: ${ANALYZER_IMAGE:-ru-llm-proxy-presidio-analyzer:latest}
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${NER_PROXY_ANALYZER_PORT:-15001}:5001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=2).read()
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  litellm-mask:
+    image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:${NER_PROXY_MASK_PORT:-14010}:4000"
+    environment:
+      - LITELLM_MASTER_KEY=sk-test-master
+      - LITELLM_SALT_KEY=sk-test-salt-for-ner-integration
+      - OPENAI_API_KEY=sk-test-upstream
+      - REDIS_URL=redis://redis:6379
+      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+      - PII_GUARDRAIL_MODE=mask
+      - PII_GUARDRAIL_FAILURE_MODE=fail_closed
+      - DICTIONARY_SUBSTITUTIONS_ENABLED=false
+      - REGULATED_TOPIC_POLICY_MODE=off
+      - PRE_EGRESS_POLICY_MODE=off
+      - FINAL_PAYLOAD_LEAK_CHECK_MODE=block
+      - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=${NER_PROXY_CANARIES}
+      - PYTHONPATH=/app
+    volumes:
+      - ./litellm-config.ner-proxy.yaml:/app/config.yaml:ro
+      - ../../litellm_guardrails:/app/litellm_guardrails:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+      presidio-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5).read()"
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+
+  litellm-block:
+    image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:${NER_PROXY_BLOCK_PORT:-14011}:4000"
+    environment:
+      - LITELLM_MASTER_KEY=sk-test-master
+      - LITELLM_SALT_KEY=sk-test-salt-for-ner-integration
+      - OPENAI_API_KEY=sk-test-upstream
+      - REDIS_URL=redis://redis:6379
+      - PRESIDIO_ANALYZER_URL=http://presidio-analyzer:5001
+      - PII_GUARDRAIL_MODE=block
+      - PII_GUARDRAIL_FAILURE_MODE=fail_closed
+      - DICTIONARY_SUBSTITUTIONS_ENABLED=false
+      - REGULATED_TOPIC_POLICY_MODE=off
+      - PRE_EGRESS_POLICY_MODE=off
+      - FINAL_PAYLOAD_LEAK_CHECK_MODE=block
+      - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=${NER_PROXY_CANARIES}
+      - PYTHONPATH=/app
+    volumes:
+      - ./litellm-config.ner-proxy.yaml:/app/config.yaml:ro
+      - ../../litellm_guardrails:/app/litellm_guardrails:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+      presidio-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5).read()"
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s

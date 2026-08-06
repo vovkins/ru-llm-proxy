@@ -1,0 +1,2 @@
+# Test-only dependencies for the lightweight Analyzer image.
+pytest>=8.0,<9.0

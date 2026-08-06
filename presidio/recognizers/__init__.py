@@ -23,9 +23,14 @@ from recognizers.infra_secrets import (
     InternalDomainRecognizer,
     InternalIpRecognizer,
     JwtRecognizer,
+    PrivateKeyRecognizer,
+)
+from recognizers.credential_rules import (
+    AuthTokenRecognizer,
+    CommandLineCredentialRecognizer,
     LoginRecognizer,
     PasswordRecognizer,
-    PrivateKeyRecognizer,
+    SecretKeyRecognizer,
 )
 
 ALL_RECOGNIZERS = [
@@ -50,6 +55,9 @@ ALL_RECOGNIZERS = [
     BearerTokenRecognizer,
     PrivateKeyRecognizer,
     ApiKeyRecognizer,
+    SecretKeyRecognizer,
+    AuthTokenRecognizer,
+    CommandLineCredentialRecognizer,
     LoginRecognizer,
     PasswordRecognizer,
 ]

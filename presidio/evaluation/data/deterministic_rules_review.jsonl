@@ -1,0 +1,75 @@
+{"id":"kv_password_bare","family":"kv","annotated_text":"password={{PASSWORD:Tr0ub4dor-Synthetic!}}","tags":["positive","password","bare"]}
+{"id":"kv_password_ru","family":"kv","annotated_text":"пароль: «{{PASSWORD:Синтетика-2026!}}»","tags":["positive","password","ru","quoted"]}
+{"id":"kv_password_with_spaces","family":"kv","annotated_text":"password = \"{{PASSWORD:correct synthetic horse 2026}}\"","tags":["positive","password","quoted","spaces"]}
+{"id":"kv_login","family":"kv","annotated_text":"login={{LOGIN:svc.billing}}","tags":["positive","login","bare"]}
+{"id":"kv_user_name","family":"kv","annotated_text":"user_name: {{LOGIN:build-reader}}","tags":["positive","login","snake_case"]}
+{"id":"kv_api_key","family":"kv","annotated_text":"api_key={{SECRET_KEY:syntheticApiKey_2026_abcdef}}","tags":["positive","secret_key","bare"]}
+{"id":"kv_client_secret_camel","family":"kv","annotated_text":"clientSecret = '{{SECRET_KEY:synthetic-client-secret-2026}}'","tags":["positive","secret_key","camel_case"]}
+{"id":"kv_access_token","family":"kv","annotated_text":"access_token: {{AUTH_TOKEN:synthetic-access-token-2026}}","tags":["positive","auth_token","bare"]}
+{"id":"kv_token_ru","family":"kv","annotated_text":"токен = \"{{AUTH_TOKEN:синтетический-токен-2026}}\"","tags":["positive","auth_token","ru"]}
+{"id":"kv_dot_key","family":"kv","annotated_text":"database.password={{PASSWORD:SyntheticDbPass-2026}}","tags":["positive","password","dot_key"]}
+{"id":"kv_json_password","family":"kv","annotated_text":"{\"password\": \"{{PASSWORD:JsonSynthetic-2026}}\"}","tags":["positive","password","json"]}
+{"id":"kv_multiple","family":"kv","annotated_text":"login={{LOGIN:svc.demo}}; password={{PASSWORD:Synthetic-Multi-2026}}; auth_token={{AUTH_TOKEN:synthetic-token-multi-2026}}","tags":["positive","multiple"]}
+{"id":"kv_placeholder_env","family":"kv","annotated_text":"password=${DB_PASSWORD}","tags":["negative","placeholder","environment"]}
+{"id":"kv_placeholder_angle","family":"kv","annotated_text":"api_key=<your-key-here>","tags":["negative","placeholder","angle"]}
+{"id":"kv_placeholder_your","family":"kv","annotated_text":"API_KEY=YOUR_API_KEY","tags":["negative","placeholder","your"]}
+{"id":"kv_placeholder_changeme","family":"kv","annotated_text":"password=changeme","tags":["negative","placeholder"]}
+{"id":"kv_placeholder_redacted","family":"kv","annotated_text":"password=[REDACTED:PASSWORD]","tags":["negative","placeholder","redacted"]}
+{"id":"kv_reference_code","family":"kv","annotated_text":"password=config.database_password","tags":["negative","code_reference"]}
+{"id":"kv_reference_os_environ","family":"kv","annotated_text":"auth_token=os.environ[TOKEN]","tags":["negative","code_reference"]}
+{"id":"kv_quoted_reference","family":"kv","annotated_text":"password=\"config.database_password\"","tags":["negative","code_reference","quoted","adversarial"]}
+{"id":"kv_stop_tokenizer","family":"kv","annotated_text":"tokenizer=glm_tokenizer_2026","tags":["negative","stop_word"]}
+{"id":"kv_stop_max_tokens","family":"kv","annotated_text":"max_tokens=16384","tags":["negative","stop_word"]}
+{"id":"kv_stop_user_agent","family":"kv","annotated_text":"user_agent=curl/8.7.1","tags":["negative","stop_word"]}
+{"id":"kv_stop_monkey","family":"kv","annotated_text":"monkey=synthetic-value-2026","tags":["negative","stop_word"]}
+{"id":"kv_user_sentence","family":"kv","annotated_text":"user: please restart the synthetic service","tags":["negative","natural_language"]}
+{"id":"kv_user_numeric_id","family":"kv","annotated_text":"user_id=123456789","tags":["negative","identifier","adversarial"]}
+{"id":"kv_boundary_punctuation","family":"kv","annotated_text":"Настройки: password={{PASSWORD:EdgeSynthetic-2026}}, затем timeout=30.","tags":["positive","password","boundary"]}
+{"id":"kv_boundary_newline","family":"kv","annotated_text":"password={{PASSWORD:LineSynthetic-2026}}\ntimeout=30","tags":["positive","password","boundary","newline"]}
+{"id":"cli_curl_user","family":"cli","annotated_text":"curl -u demo:{{PASSWORD:SyntheticCurlPass-2026}} https://example.invalid","tags":["positive","password","curl"]}
+{"id":"cli_curl_user_long","family":"cli","annotated_text":"curl --user 'demo:{{PASSWORD:SyntheticCurlLong-2026}}' https://example.invalid","tags":["positive","password","curl","quoted"]}
+{"id":"cli_curl_bearer","family":"cli","annotated_text":"curl --oauth2-bearer {{AUTH_TOKEN:synthetic-oauth-token-2026}} https://example.invalid","tags":["positive","auth_token","curl"]}
+{"id":"cli_wget_password","family":"cli","annotated_text":"wget --http-password={{PASSWORD:SyntheticWgetPass-2026}} https://example.invalid","tags":["positive","password","wget"]}
+{"id":"cli_mysql_attached","family":"cli","annotated_text":"mysql -p{{PASSWORD:SyntheticMysqlPass2026}} -h db.example.invalid","tags":["positive","password","mysql","attached"]}
+{"id":"cli_mysql_long","family":"cli","annotated_text":"mysql --password={{PASSWORD:SyntheticMysqlLong2026}} -h db.example.invalid","tags":["positive","password","mysql"]}
+{"id":"cli_httpie_auth","family":"cli","annotated_text":"http --auth demo:{{PASSWORD:SyntheticHttpiePass2026}} GET https://example.invalid","tags":["positive","password","httpie"]}
+{"id":"cli_generic_password","family":"cli","annotated_text":"synthetic-tool --password={{PASSWORD:SyntheticToolPass2026}} run","tags":["positive","password","generic_flag"]}
+{"id":"cli_redis_password","family":"cli","annotated_text":"redis-cli -a {{PASSWORD:SyntheticRedisPass2026}} ping","tags":["positive","password","redis","unsupported_source_command"]}
+{"id":"cli_psql_environment","family":"cli","annotated_text":"PGPASSWORD={{PASSWORD:SyntheticPostgresPass2026}} psql -h db.example.invalid","tags":["positive","password","postgres","unsupported_source_command"]}
+{"id":"cli_dsn","family":"cli","annotated_text":"psql '{{SECRET_KEY:postgresql://demo:SyntheticDsnPass2026@db.example.invalid/app}}'","tags":["positive","secret_key","dsn","unsupported_source_format"]}
+{"id":"cli_reference_pair","family":"cli","annotated_text":"curl -u $CURL_USER:$CURL_PASSWORD https://example.invalid","tags":["negative","code_reference","curl"]}
+{"id":"cli_reference_single","family":"cli","annotated_text":"curl --user ${CURL_CREDENTIALS} https://example.invalid","tags":["negative","code_reference","curl"]}
+{"id":"cli_wrong_command_short_flag","family":"cli","annotated_text":"python -pSyntheticNotAPassword script.py","tags":["negative","wrong_command"]}
+{"id":"cli_documented_placeholder","family":"cli","annotated_text":"mysql --password=<your-password> -h db.example.invalid","tags":["negative","placeholder"]}
+{"id":"opaque_random_secret","family":"opaque","annotated_text":"Значение {{SECRET_KEY:aB3dE5gH7jK9mN2pQ4sT6vW8}} передано отдельно.","tags":["positive","secret_key","high_entropy"]}
+{"id":"opaque_uuid","family":"opaque","annotated_text":"request_id=550e8400-e29b-41d4-a716-446655440000","tags":["negative","uuid","identifier"]}
+{"id":"opaque_sha256","family":"opaque","annotated_text":"sha256=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08","tags":["negative","hash","checksum"]}
+{"id":"opaque_git_commit","family":"opaque","annotated_text":"revision=52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4","tags":["negative","hash","revision"]}
+{"id":"opaque_image_digest","family":"opaque","annotated_text":"image=repo/demo@sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b","tags":["negative","hash","container"]}
+{"id":"opaque_base64_example","family":"opaque","annotated_text":"Документация декодирует c3ludGhldGljLWV4YW1wbGUtMjAyNg==.","tags":["negative","base64","documentation"]}
+{"id":"opaque_version","family":"opaque","annotated_text":"Используется версия v8.25.0 и Python 3.11.9.","tags":["negative","version"]}
+{"id":"opaque_repeated","family":"opaque","annotated_text":"Значение AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA является заполнителем.","tags":["negative","low_entropy","placeholder"]}
+{"id":"opaque_product_code","family":"opaque","annotated_text":"Артикул товара AB12-CD34-EF56-GH78-IJ90 указан в каталоге.","tags":["negative","business_identifier"]}
+{"id":"opaque_long_hex_id","family":"opaque","annotated_text":"Идентификатор сборки 0123456789abcdef0123456789abcdef не является секретом.","tags":["negative","identifier","hex"]}
+{"id":"gitleaks_openai","family":"gitleaks","annotated_text":"Ключ {{SECRET_KEY:sk-\u0041BCDEFGHIJKLMNOPQRSTT3BlbkFJabcdefghijklmnopqrst}} использован в синтетическом примере.","tags":["positive","secret_key","openai","synthetic"]}
+{"id":"gitleaks_aws","family":"gitleaks","annotated_text":"AWS_ACCESS_KEY_ID={{SECRET_KEY:AKIAA2B3C4D5E6F7G2H3}}","tags":["positive","secret_key","aws","synthetic"]}
+{"id":"gitleaks_github","family":"gitleaks","annotated_text":"token={{AUTH_TOKEN:ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ}}","tags":["positive","auth_token","github","synthetic"]}
+{"id":"gitleaks_gitlab","family":"gitleaks","annotated_text":"token={{AUTH_TOKEN:glpat-AbCdEfGhIjKlMnOpQrSt}}","tags":["positive","auth_token","gitlab","synthetic"]}
+{"id":"gitleaks_huggingface","family":"gitleaks","annotated_text":"HF_TOKEN={{AUTH_TOKEN:h\u0066_abcdefghijklmnopqrstuvwxyzabcdefgh}}","tags":["positive","auth_token","huggingface","synthetic"]}
+{"id":"gitleaks_yandex","family":"gitleaks","annotated_text":"yandex_api_key={{SECRET_KEY:AQVNabcdefghijklmnopqrstuvwxyzABCDEFGHIJK}}","tags":["positive","secret_key","yandex","synthetic"]}
+{"id":"gitleaks_slack_app","family":"gitleaks","annotated_text":"SLACK_TOKEN={{AUTH_TOKEN:xapp-1-ABCDEF123456-1234567890-abcdef123456}}","tags":["positive","auth_token","slack","synthetic"]}
+{"id":"gitleaks_false_public_key","family":"gitleaks","annotated_text":"flutterwave_public_key=FLWPUBK_TEST-1234567890abcdef1234567890abcdef-X","tags":["negative","public_key","adversarial"]}
+{"id":"gitleaks_generic_docs","family":"gitleaks","annotated_text":"В примере написано api_key=example_documentation_value_2026.","tags":["negative","documentation","placeholder"]}
+{"id":"contract_symbol","family":"contract","annotated_text":"Договор № {{CONTRACT_NUMBER:AB-2026/0042}} вступает в силу завтра.","tags":["positive","contract_number","ru","symbol"]}
+{"id":"contract_plain_digits","family":"contract","annotated_text":"Договор {{CONTRACT_NUMBER:12345678}} подписан сторонами.","tags":["positive","contract_number","ru","digits"]}
+{"id":"contract_cyrillic","family":"contract","annotated_text":"Контракт {{CONTRACT_NUMBER:77-И/2025}} зарегистрирован.","tags":["positive","contract_number","ru","cyrillic"]}
+{"id":"contract_agreement","family":"contract","annotated_text":"Соглашение № {{CONTRACT_NUMBER:AGR-2026-901}} одобрено.","tags":["positive","contract_number","ru"]}
+{"id":"contract_inflected_number","family":"contract","annotated_text":"Номер договора: {{CONTRACT_NUMBER:CN-2026-0199}}.","tags":["positive","contract_number","ru","inflected","adversarial"]}
+{"id":"contract_wrong_context","family":"contract","annotated_text":"Версия приложения AB-2026/0042 используется в тестах.","tags":["negative","wrong_context"]}
+{"id":"contract_request_number","family":"contract","annotated_text":"Номер заявки 12345678 принят в обработку.","tags":["negative","wrong_context"]}
+{"id":"contract_missing_value","family":"contract","annotated_text":"Обсуди условия договора и порядок оплаты.","tags":["negative","missing_value"]}
+{"id":"contract_short_value","family":"contract","annotated_text":"Договор № 12345 не входит в согласованный формат.","tags":["negative","short_value"]}
+{"id":"contract_word_prefix","family":"contract","annotated_text":"Договоренность AB-2026/0042 пока не достигнута.","tags":["negative","word_boundary"]}
+{"id":"stress_long_repetition","family":"all","annotated_text":"Начало журнала без секретов. ","suffix_repeat":{"text":"aaaaaaaaaaaaaaaa ","count":400},"tags":["negative","stress","long_input"]}
+{"id":"stress_many_brackets","family":"all","annotated_text":"Шаблон ${NOT_A_SECRET_2026} ","suffix_repeat":{"text":"${NOT_A_SECRET_2026} ","count":200},"tags":["negative","stress","placeholder"]}
+{"id":"stress_many_versions","family":"all","annotated_text":"Версии: ","suffix_repeat":{"text":"v1.2.3 build-2026-08-03 ","count":200},"tags":["negative","stress","version"]}

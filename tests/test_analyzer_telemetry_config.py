@@ -15,6 +15,15 @@ def test_analyzer_server_exposes_safe_request_telemetry():
     assert "ru_presidio_analyzer_entities_detected" in source
     assert "ru_presidio_analyzer_capacity_rejections" in source
     assert "ru_presidio_analyzer_failures" in source
+    assert "ru_presidio_analyzer_ner_failures" in source
+    assert "ru_presidio_analyzer_ner_inference" in source
+    assert "ru_presidio_analyzer_ner_inference_duration_seconds" in source
+    assert "ru_presidio_analyzer_ner_windows_processed" in source
+    assert "ru_presidio_analyzer_merge_decisions" in source
+    assert "presidio_ner_inference" in source
+    assert "presidio_ner_startup_begin" in source
+    assert "presidio_ner_startup_ready" in source
+    assert "presidio_ner_startup_failed" in source
     assert '@app.get("/metrics")' in source
     assert "generate_latest()" in source
 
@@ -25,6 +34,7 @@ def test_analyzer_server_exposes_safe_request_telemetry():
     assert 'entity.get("text")' not in telemetry_block
     assert 'entity.get("start")' not in telemetry_block
     assert 'entity.get("end")' not in telemetry_block
+    assert "failure_reason=type(e).__name__" not in source
 
 
 def test_static_tests_include_analyzer_telemetry_gate():
@@ -46,6 +56,12 @@ def test_docs_describe_analyzer_telemetry_contract():
         assert "presidio_analyzer_request" in text
         assert "ru_presidio_analyzer_requests_total" in text
         assert "ru_presidio_analyzer_latency_seconds" in text
+        assert "ru_presidio_analyzer_ner_failures_total" in text
+        assert "ru_presidio_analyzer_ner_inference_total" in text
+        assert "ru_presidio_analyzer_ner_inference_duration_seconds" in text
+        assert "ru_presidio_analyzer_ner_windows_processed" in text
+        assert "ru_presidio_analyzer_merge_decisions_total" in text
+        assert "presidio_ner_inference" in text
         assert "исходн" in text
         assert "значен" in text
 

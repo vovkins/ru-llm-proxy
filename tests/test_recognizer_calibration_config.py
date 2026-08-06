@@ -56,12 +56,14 @@ def test_static_suite_runs_recognizer_calibration_regression():
     assert "$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py" in makefile
     assert "presidio-analyzer-tests" in makefile
     assert "presidio/tests/test_analyzer_api_thresholds.py" in makefile
+    assert "presidio/tests/test_credential_rules.py" in makefile
+    assert "presidio/tests/test_result_merging.py" in makefile
     assert "make -n test-recognizer-api" in workflow
     assert "recognizer-api:" in workflow
     assert "run: make test-recognizer-api" in workflow
     assert "presidio-analyzer-tests:" in compose
     assert "target: analyzer-test" in compose
-    assert "FROM analyzer-runtime AS analyzer-test" in dockerfile
+    assert "FROM analyzer-build AS analyzer-test" in dockerfile
 
 
 def test_analyzer_api_threshold_tests_use_russian_nlp_engine():
@@ -323,6 +325,10 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
     infra_secrets = (
         ROOT / "presidio" / "recognizers" / "infra_secrets.py"
     ).read_text()
+    credential_rules = (
+        ROOT / "presidio" / "recognizers" / "credential_rules.py"
+    ).read_text()
+    recognizer_sources = infra_secrets + credential_rules
     readme = (ROOT / "README.md").read_text()
     architecture = (ROOT / "docs" / "architecture.md").read_text()
     examples = (ROOT / "docs" / "examples.md").read_text()
@@ -337,6 +343,9 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
         "BearerTokenRecognizer",
         "PrivateKeyRecognizer",
         "ApiKeyRecognizer",
+        "SecretKeyRecognizer",
+        "AuthTokenRecognizer",
+        "CommandLineCredentialRecognizer",
         "LoginRecognizer",
         "PasswordRecognizer",
     ):
@@ -351,10 +360,12 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
         "BEARER_TOKEN",
         "PRIVATE_KEY",
         "API_KEY",
+        "SECRET_KEY",
+        "AUTH_TOKEN",
         "LOGIN",
         "PASSWORD",
     ):
-        assert entity_type in infra_secrets
+        assert entity_type in recognizer_sources
         assert entity_type in architecture
         assert entity_type in examples
         assert entity_type in compliance
@@ -362,6 +373,9 @@ def test_infrastructure_secret_recognizers_are_wired_and_documented():
     assert "ipaddress.ip_address" in infra_secrets
     assert "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES" in infra_secrets
     assert "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS" in infra_secrets
+    assert "gitleaks.toml" not in credential_rules
+    assert "entropy" not in credential_rules.lower()
+    assert "APPROVED_REVIEW_RULE_IDS" in credential_rules
     assert "score_threshold=0.35" in readme
     assert "score_threshold=0.35" in architecture
     assert '"score_threshold": 0.35' in examples

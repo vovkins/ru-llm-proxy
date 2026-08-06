@@ -70,11 +70,11 @@ echo "📋 1. Health Checks"
 
 TOTAL=$((TOTAL + 1))
 health=$(curl -sf "$ANALYZER_URL/api/v1/health" 2>/dev/null || echo "")
-if echo "$health" | grep -q '"status":"ok"' && echo "$health" | grep -q '"ner":"loaded"'; then
-    echo "  ✅ Presidio Analyzer is healthy and DeepPavlov NER is loaded"
+if echo "$health" | grep -q '"status":"ok"' && echo "$health" | grep -q '"ner_state":"ready"' && echo "$health" | grep -q '"ner_warmed_up":true'; then
+    echo "  ✅ Presidio Analyzer is healthy and pinned Hugging Face NER is loaded"
     PASS=$((PASS + 1))
 else
-    echo "  ❌ Presidio Analyzer is NOT healthy or DeepPavlov NER is not loaded"
+    echo "  ❌ Presidio Analyzer is NOT healthy or pinned Hugging Face NER is not loaded"
     if [ -n "$health" ]; then
         echo "     Health response: $health"
     fi

@@ -17,7 +17,7 @@ def test_production_egress_guide_documents_boundaries_and_allowlist():
         "make test-egress-security",
         "Локальная bridge-сеть Docker Compose",
         "не доказывает запрет всех исходящих",
-        "DEEPPAVLOV_NER_MODEL_URL",
+        "presidio/model_manifest.json",
         "api.z.ai",
         "api.openai.com",
         "api.anthropic.com",

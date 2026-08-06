@@ -15,6 +15,12 @@ CANARIES = tuple(
     for token in re.split(r"[\n,]", os.getenv("FINAL_PAYLOAD_LEAK_CHECK_CANARIES", ""))
     if token.strip()
 )
+ECHO_CHAT_CONTENT = os.getenv("MOCK_ECHO_CHAT_CONTENT", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
 
 CAPTURE = {
     "analyzer_requests": 0,
@@ -25,6 +31,7 @@ CAPTURE = {
     "provider_saw_private_key_marker": False,
     "provider_saw_raw_phone": False,
     "provider_saw_phone_placeholder": False,
+    "provider_saw_pii_placeholder": False,
 }
 
 
@@ -47,6 +54,25 @@ def _text_contains(value, needle: str) -> bool:
 
 def _text_contains_canary(value) -> bool:
     return any(_text_contains(value, canary) for canary in CANARIES)
+
+
+def _text_matches(value, pattern: re.Pattern) -> bool:
+    return any(pattern.search(text) is not None for text in _iter_strings(value))
+
+
+def _chat_response_content(payload) -> str:
+    if not ECHO_CHAT_CONTENT:
+        return "ok"
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return "ok"
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+    return "ok"
 
 
 def _analyzer_entities(payload):
@@ -82,6 +108,10 @@ def _record_provider_payload(path, payload):
     CAPTURE["provider_saw_phone_placeholder"] = (
         CAPTURE["provider_saw_phone_placeholder"]
         or _text_contains(payload, PHONE_PLACEHOLDER)
+    )
+    CAPTURE["provider_saw_pii_placeholder"] = (
+        CAPTURE["provider_saw_pii_placeholder"]
+        or _text_matches(payload, PII_PLACEHOLDER_PATTERN)
     )
 
 
@@ -143,6 +173,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
+            response_content = _chat_response_content(payload)
             self._write_json(
                 200,
                 {
@@ -153,7 +184,10 @@ class Handler(BaseHTTPRequestHandler):
                     "choices": [
                         {
                             "index": 0,
-                            "message": {"role": "assistant", "content": "ok"},
+                            "message": {
+                                "role": "assistant",
+                                "content": response_content,
+                            },
                             "finish_reason": "stop",
                         }
                     ],

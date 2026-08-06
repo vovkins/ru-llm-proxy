@@ -1,0 +1,64 @@
+name: NER model integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ner-model-integration.yml"
+      - "Makefile"
+      - "presidio/**"
+      - "litellm_guardrails/**"
+      - "tests/e2e/docker-compose.ner-proxy.yml"
+      - "tests/e2e/litellm-config.ner-proxy.yaml"
+      - "tests/e2e/mock_openai_upstream.py"
+      - "tests/e2e/test_ner_proxy_flow.sh"
+      - "tests/test_ner_integration_config.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ner-model-integration.yml"
+      - "Makefile"
+      - "presidio/**"
+      - "litellm_guardrails/**"
+      - "tests/e2e/docker-compose.ner-proxy.yml"
+      - "tests/e2e/litellm-config.ner-proxy.yaml"
+      - "tests/e2e/mock_openai_upstream.py"
+      - "tests/e2e/test_ner_proxy_flow.sh"
+      - "tests/test_ner_integration_config.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ner-model-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-model-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build pinned Analyzer image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./presidio
+          file: ./presidio/Dockerfile
+          target: analyzer
+          load: true
+          tags: ru-llm-proxy-presidio-analyzer:latest
+          cache-from: type=gha,scope=presidio-analyzer
+          cache-to: type=gha,mode=max,scope=presidio-analyzer
+
+      - name: Run fixed model without network
+        run: make test-hf-model-run
+
+      - name: Run real Analyzer proxy flow
+        run: make test-ner-proxy

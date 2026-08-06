@@ -1,7 +1,15 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
+ANALYZER_URL ?= http://localhost:5001
+NER_EVALUATION_JSON ?= presidio/evaluation/reports/huggingface-candidate.json
+NER_EVALUATION_MD ?= docs/research/ner-migration-candidate.md
+NER_EVALUATION_RUNTIME_CONTAINER ?= presidio-analyzer
+NER_EVALUATION_MODEL_SHA256 ?= 6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3385d4fd31ef21a4
+NER_EVALUATION_SYSTEM ?= fef2 secret-detection BERT + current recognizers
+NER_EVALUATION_FLAGS ?=
+ANALYZER_IMAGE ?= ru-llm-proxy-presidio-analyzer:latest
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
 	-e PYTHONDONTWRITEBYTECODE=1 \
@@ -23,6 +31,11 @@ help:
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-recognizer-api — API-level Analyzer recognizer regression tests"
+	@echo "  make test-ner-evaluation — быстрые тесты корпуса и метрик NER"
+	@echo "  make test-hf-model — собрать Analyzer и проверить модель без сети"
+	@echo "  make test-ner-proxy — проверить mask/block через реальный Analyzer и mock-провайдер"
+	@echo "  make test-ner-integration — собрать модель и выполнить полный NER integration gate"
+	@echo "  make ner-evaluate — оценить запущенный Analyzer на обезличенном корпусе"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
@@ -79,8 +92,11 @@ test-static: test-routing-diagnostics
 	@echo "🧪 Static and lightweight regression tests"
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
 		tests/test_analyzer_capacity_config.py \
+		tests/test_analyzer_image_contract.py \
+		tests/test_ner_integration_config.py \
 		tests/test_analyzer_telemetry_config.py \
 		tests/test_model_profile_config.py \
+		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
 		tests/test_guardrail_dependency_config.py \
@@ -94,17 +110,56 @@ test-static: test-routing-diagnostics
 		tests/test_regulated_topic_policy_config.py \
 		tests/test_synthetic_pii_allowlist_config.py \
 		tests/test_dictionary_substitution_config.py \
-		presidio/tests/test_capacity.py
+		presidio/tests/test_capacity.py \
+		presidio/tests/test_evaluation.py \
+		presidio/tests/test_ner_text_processing.py
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"
-	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer \
+	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
 		$(PYTEST) presidio/tests
 
 test-recognizer-api:
-	@echo "🧪 Analyzer API recognizer threshold tests"
+	@echo "🧪 Analyzer credential and API recognizer tests"
 	docker compose run $(PYTEST_DOCKER_FLAGS) presidio-analyzer-tests \
-		$(PYTEST) presidio/tests/test_analyzer_api_thresholds.py
+		$(PYTEST) \
+		presidio/tests/test_result_merging.py \
+		presidio/tests/test_credential_rules.py \
+		presidio/tests/test_analyzer_api_thresholds.py
+
+test-ner-evaluation:
+	@echo "🧪 NER migration corpus and metrics tests"
+	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q presidio/tests/test_evaluation.py
+
+test-hf-model:
+	@echo "🧪 Pinned Hugging Face model smoke test without network"
+	docker compose build presidio-analyzer
+	@$(MAKE) test-hf-model-run
+
+test-hf-model-run:
+	@echo "🧪 Run pinned Hugging Face model smoke without network"
+	docker run --rm --network none $(ANALYZER_IMAGE) python verify_cpu_runtime.py
+	docker run --rm --network none $(ANALYZER_IMAGE) python real_model_smoke.py
+
+test-ner-proxy:
+	@echo "🧪 Real Analyzer proxy mask/block flow with mock provider"
+	bash tests/e2e/test_ner_proxy_flow.sh
+
+test-ner-integration:
+	@echo "🧪 Full pinned NER integration gate"
+	@$(MAKE) test-hf-model
+	@$(MAKE) test-ner-proxy
+
+ner-evaluate:
+	@echo "📊 NER evaluation via $(ANALYZER_URL)"
+	$(PYTHON_LOCAL) -m presidio.evaluation.run_baseline \
+		--analyzer-url "$(ANALYZER_URL)" \
+		--system "$(NER_EVALUATION_SYSTEM)" \
+		--runtime-container "$(NER_EVALUATION_RUNTIME_CONTAINER)" \
+		--model-artifact-sha256 "$(NER_EVALUATION_MODEL_SHA256)" \
+		--model-checksum-enforced \
+		--json-output "$(NER_EVALUATION_JSON)" \
+		--markdown-output "$(NER_EVALUATION_MD)" $(NER_EVALUATION_FLAGS)
 
 test-guardrail:
 	@echo "🧪 LiteLLM guardrail unit tests"
@@ -262,7 +317,7 @@ monitor-smoke:
 	@$(MAKE) health
 	@$(MAKE) guardrails-list
 	@analyzer_health=$$(curl -sf http://localhost:5001/api/v1/health); \
-		if printf "%s" "$$analyzer_health" | grep -q '"ner":"loaded"'; then echo "✅ DeepPavlov NER loaded"; else echo "❌ DeepPavlov NER is not loaded"; printf "%s\n" "$$analyzer_health"; exit 1; fi
+		if printf "%s" "$$analyzer_health" | grep -q '"ner_state":"ready"' && printf "%s" "$$analyzer_health" | grep -q '"ner_warmed_up":true'; then echo "✅ Pinned Hugging Face NER ready"; else echo "❌ Pinned Hugging Face NER is not ready"; printf "%s\n" "$$analyzer_health"; exit 1; fi
 	@tmp=$$(mktemp) && \
 		if ! curl -L -sf http://localhost:4000/metrics > "$$tmp"; then echo "❌ LiteLLM metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
 		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \

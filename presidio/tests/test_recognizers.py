@@ -5,11 +5,22 @@ import pytest
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
+from presidio.entity_types import DETERMINISTIC_ENTITY_TYPES
 from presidio.recognizers import ALL_RECOGNIZERS
 
 
 def _entity_texts(text, results, entity_type):
     return [text[result.start:result.end] for result in results if result.entity_type == entity_type]
+
+
+def test_registered_recognizers_match_public_entity_contract():
+    registered_entity_types = {
+        entity_type
+        for recognizer_cls in ALL_RECOGNIZERS
+        for entity_type in recognizer_cls().supported_entities
+    }
+
+    assert registered_entity_types == DETERMINISTIC_ENTITY_TYPES
 
 
 @pytest.fixture
@@ -306,10 +317,8 @@ class TestInfrastructureSecrets:
     def test_login_and_password_assignments_are_detected(self, analyzer):
         text = "login=svc-bot password=S3cure-Value42"
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
-        assert _entity_texts(text, results, "LOGIN") == ["login=svc-bot"]
-        assert _entity_texts(text, results, "PASSWORD") == [
-            "password=S3cure-Value42"
-        ]
+        assert _entity_texts(text, results, "LOGIN") == ["svc-bot"]
+        assert _entity_texts(text, results, "PASSWORD") == ["S3cure-Value42"]
 
     def test_incidental_secret_words_are_not_detected(self, analyzer):
         text = "Объясни, чем API key отличается от bearer token и password."

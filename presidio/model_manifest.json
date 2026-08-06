@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "model_id": "fef2/ner_rus_bert-secret_detection",
+  "revision": "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4",
+  "architecture": "BertForTokenClassification",
+  "license": "apache-2.0",
+  "base_model": "DeepPavlov/rubert-base-cased",
+  "files": [
+    {
+      "path": "config.json",
+      "size": 1419,
+      "sha256": "8d65f0020cf4229110c123670027e9b0fc2f25ecf4cab646eff499e622cb2f16"
+    },
+    {
+      "path": "model.safetensors",
+      "size": 709127044,
+      "sha256": "6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3385d4fd31ef21a4"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 125,
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 3573554,
+      "sha256": "aa68ce2535cea6f63667df615622150c10a72aae14e5ec44285edc4d1c88708a"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 395,
+      "sha256": "dcac182e3d7a17bbda2fac0f0dd8dc8d792a4eaefbd19510bfd39dfba05c541e"
+    },
+    {
+      "path": "vocab.txt",
+      "size": 1649718,
+      "sha256": "78106a3d3ae8600d1ba573b967b9bb731d2c2282957cbc6e26ab20935c3da02b"
+    }
+  ]
+}

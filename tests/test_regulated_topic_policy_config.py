@@ -32,6 +32,7 @@ def test_env_compose_setup_and_litellm_config_wire_regulated_topic_policy():
 
 def test_guardrail_contains_block_only_regulated_topic_policy_pack():
     guardrail = (ROOT / "litellm_guardrails" / "pii_guardrail.py").read_text()
+    metrics = (ROOT / "litellm_guardrails" / "metrics.py").read_text()
 
     for required in (
         "REGULATED_TOPIC_POLICY_MODES = {\"block\", \"off\"}",
@@ -43,12 +44,13 @@ def test_guardrail_contains_block_only_regulated_topic_policy_pack():
         "suspicious_activity_playbook",
         "compliance_bypass_procedure",
         "regulated_topic_policy_blocked",
-        "ru_regulated_topic_policy_blocked",
         "_classify_regulated_topic_policy_targets",
         "_raise_regulated_topic_policy_blocked",
         "_load_regulated_topic_policy_extra_rules",
     ):
         assert required in guardrail
+
+    assert "ru_regulated_topic_policy_blocked" in metrics
 
 
 def test_e2e_non_egress_smoke_covers_regulated_topic_blocks():

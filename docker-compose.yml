@@ -74,10 +74,6 @@ services:
       context: ./presidio
       dockerfile: Dockerfile
       target: analyzer
-      args:
-        DEEPPAVLOV_NER_MODEL_URL: ${DEEPPAVLOV_NER_MODEL_URL:-http://files.deeppavlov.ai/v1/ner/ner_rus_bert_torch_new.tar.gz}
-        DEEPPAVLOV_NER_MODEL_SHA256: ${DEEPPAVLOV_NER_MODEL_SHA256:-}
-        DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS: ${DEEPPAVLOV_NER_DOWNLOAD_TIMEOUT_SECONDS:-120}
     container_name: presidio-analyzer
     restart: unless-stopped
     ports:
@@ -90,9 +86,12 @@ services:
       - PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=${PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM:-true}
       - PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=${PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES:-internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local}
       - PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=${PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS:-false}
-      - DEEPPAVLOV_NER_REQUIRED=${DEEPPAVLOV_NER_REQUIRED:-true}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api/v1/health"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=5).read()
       interval: 30s
       timeout: 10s
       retries: 3

@@ -14,6 +14,7 @@ import pytest_asyncio
 import litellm_guardrails.pii_guardrail as pii_guardrail
 from litellm_guardrails.pii_guardrail import (
     AnalyzerOverloadedError,
+    AnalyzerUnavailableError,
     HTTPException,
     ProxyException,
     RuPIIGuardrail,
@@ -21,6 +22,24 @@ from litellm_guardrails.pii_guardrail import (
 
 
 PRE_EGRESS_BLOCK_EXCEPTION_TYPES = (HTTPException, ProxyException)
+NER_GUARDRAIL_CASES = (
+    pytest.param("PERSON", "Олег Волков", id="person"),
+    pytest.param("LOCATION", "Туле", id="location"),
+    pytest.param("ORGANIZATION", "ООО Север", id="organization"),
+    pytest.param("LOGIN", "oleg.volkov", id="login"),
+    pytest.param("PASSWORD", "Mix3d-Value!", id="password"),
+    pytest.param(
+        "AUTH_TOKEN",
+        "mixed-auth-token-00073",
+        id="auth-token",
+    ),
+    pytest.param(
+        "SECRET_KEY",
+        "mixed-secret-key-00084",
+        id="secret-key",
+    ),
+    pytest.param("CONTRACT_NUMBER", "OV-2026/81", id="contract-number"),
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -367,6 +386,78 @@ class TestAnalyzeText:
         assert exc_info.value.reason == "queue_timeout"
         mock_response.raise_for_status.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_raises_analyzer_unavailable_for_required_ner_503(self, guardrail):
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.json.return_value = {
+            "detail": {
+                "code": "required_ner_unavailable",
+                "phase": "inference",
+                "failure_class": "forward_pass_failed",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        client = AsyncMock()
+        client.post.return_value = mock_response
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError) as exc_info:
+                await guardrail._analyze_text("PASSWORD=raw-secret")
+
+        assert exc_info.value.phase == "inference"
+        assert exc_info.value.failure_class == "forward_pass_failed"
+        assert "raw-secret" not in str(exc_info.value)
+        mock_response.raise_for_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_analyzer_unavailable_normalizes_untrusted_categories(self, guardrail):
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.json.return_value = {
+            "detail": {
+                "code": "required_ner_unavailable",
+                "phase": "prompt-derived-phase",
+                "failure_class": "prompt-derived-class",
+            }
+        }
+        client = AsyncMock()
+        client.post.return_value = mock_response
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError) as exc_info:
+                await guardrail._analyze_text("Обычный текст")
+
+        assert exc_info.value.phase == "readiness"
+        assert exc_info.value.failure_class == "unexpected_failure"
+
+    @pytest.mark.asyncio
+    async def test_unknown_analyzer_503_is_always_unavailable(self, guardrail):
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.json.side_effect = ValueError("invalid intermediary response")
+        mock_response.raise_for_status = MagicMock()
+        client = AsyncMock()
+        client.post.return_value = mock_response
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError) as exc_info:
+                await guardrail._analyze_text("Обычный текст")
+
+        assert exc_info.value.phase == "readiness"
+        assert exc_info.value.failure_class == "unexpected_failure"
+        mock_response.raise_for_status.assert_not_called()
+
 
 # === dependency clients ===
 
@@ -675,6 +766,19 @@ class TestMaskText:
             "<INTERNAL_IP_1>": "10.24.3.7",
             "<BEARER_TOKEN_1>": bearer,
         }
+
+    @pytest.mark.parametrize("entity_type,value", NER_GUARDRAIL_CASES)
+    def test_masks_every_ner_entity_type(self, guardrail, entity_type, value):
+        text = f"Значение: {value}."
+
+        masked_text, mapping = guardrail._mask_text(
+            text,
+            [_entity(text, value, entity_type)],
+        )
+
+        placeholder = f"<{entity_type}_1>"
+        assert masked_text == f"Значение: {placeholder}."
+        assert mapping == {placeholder: value}
 
 
 # === _save_mapping / _load_mapping ===
@@ -1198,6 +1302,57 @@ class TestPreCallHook:
         guardrail._redis.setex.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("phase", "failure_class"),
+        [
+            ("inference", "forward_pass_failed"),
+            ("windowing", "window_boundary_unresolved"),
+        ],
+    )
+    async def test_required_ner_failure_fails_closed_even_in_fail_open_mode(
+        self,
+        caplog,
+        phase,
+        failure_class,
+    ):
+        guardrail = RuPIIGuardrail(failure_mode="fail_open")
+        guardrail._redis = _mock_redis()
+        secret = "+79031234567"
+        data = {
+            "messages": [
+                {"role": "user", "content": f"Мой телефон {secret}"},
+            ]
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            side_effect=AnalyzerUnavailableError(
+                phase=phase,
+                failure_class=failure_class,
+            ),
+        ):
+            with caplog.at_level(logging.INFO):
+                with pytest.raises(RuntimeError) as exc_info:
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=MagicMock(),
+                        cache=MagicMock(),
+                        data=data,
+                    )
+
+        assert "required analyzer unavailable" in str(exc_info.value)
+        assert data["messages"][0]["content"] == f"Мой телефон {secret}"
+        assert "metadata" not in data
+        guardrail._redis.setex.assert_not_called()
+
+        events = _json_log_events(caplog, "gateway_guardrail_audit")
+        assert len(events) == 1
+        assert events[0]["status"] == "blocked"
+        assert events[0]["policy_result"] == "analyzer_unavailable"
+        assert events[0]["error_code"] == "required_ner_unavailable"
+        assert secret not in "\n".join(record.getMessage() for record in caplog.records)
+
+    @pytest.mark.asyncio
     async def test_analyzer_overload_fails_closed_for_responses_input(self):
         guardrail = RuPIIGuardrail(failure_mode="fail_open")
         guardrail._redis = _mock_redis()
@@ -1299,6 +1454,36 @@ class TestPreCallHook:
             "<PERSON_1>": "Иван Иванов",
             "<PHONE_NUMBER_1>": "+79031234567",
         }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("entity_type,value", NER_GUARDRAIL_CASES)
+    async def test_masks_and_saves_every_ner_entity_type(
+        self,
+        guardrail,
+        entity_type,
+        value,
+    ):
+        text = f"Чувствительное значение: {value}"
+        save_mapping = AsyncMock()
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, value, entity_type)],
+        ):
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                data = {"messages": [{"role": "user", "content": text}]}
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        placeholder = f"<{entity_type}_1>"
+        assert result["messages"][0]["content"] == (
+            f"Чувствительное значение: {placeholder}"
+        )
+        assert save_mapping.call_args[0][1] == {placeholder: value}
 
     @pytest.mark.asyncio
     async def test_masks_pii_in_function_arguments(self, guardrail):
@@ -3642,6 +3827,36 @@ class TestPreCallHook:
         assert "abcdefghijklmnopqrstuvwxyz123456" not in serialized
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("entity_type,value", NER_GUARDRAIL_CASES)
+    async def test_block_mode_rejects_every_ner_entity_type_without_raw_value(
+        self,
+        entity_type,
+        value,
+    ):
+        guardrail = RuPIIGuardrail(pii_mode="block")
+        guardrail._redis = _mock_redis()
+        text = f"Чувствительное значение: {value}"
+        data = {"messages": [{"role": "user", "content": text}]}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            return_value=[_entity(text, value, entity_type)],
+        ):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        assert data["messages"][0]["content"] == text
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["details"]["entities"] == [entity_type]
+        assert value not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
     async def test_block_mode_rejects_pii_in_text_content_blocks_without_mutating(self):
         guardrail = RuPIIGuardrail(pii_mode="block")
         guardrail._redis = _mock_redis()
@@ -4238,6 +4453,38 @@ class TestPostCallHook:
         assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("entity_type,value", NER_GUARDRAIL_CASES)
+    async def test_restores_every_ner_entity_type(
+        self,
+        guardrail,
+        entity_type,
+        value,
+    ):
+        placeholder = f"<{entity_type}_1>"
+        guardrail._redis.get.return_value = json.dumps({placeholder: value})
+        response = litellm.ModelResponse(
+            id="test",
+            choices=[
+                litellm.Choices(
+                    index=0,
+                    message=litellm.Message(
+                        role="assistant",
+                        content=f"Подтверждено: {placeholder}",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-1"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.choices[0].message.content == f"Подтверждено: {value}"
+
+    @pytest.mark.asyncio
     async def test_restores_dictionary_substitution_response(self, guardrail):
         import litellm
 
@@ -4578,6 +4825,48 @@ class TestStreamingPostCallHook:
             for choice in chunk.choices
         ]
         assert all("<PHONE_NUMBER_1>" not in part for part in yielded_content_parts)
+        assert request_data["metadata"]["pii_streaming_restoration_done"] is True
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
+
+    @pytest.mark.asyncio
+    async def test_restores_contract_number_split_across_stream_chunks(
+        self,
+        guardrail,
+    ):
+        guardrail._redis.get.return_value = json.dumps(
+            {"<CONTRACT_NUMBER_1>": "OV-2026/81"}
+        )
+        chunks = [
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "Договор <CONTRACT_"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[
+                    litellm.StreamingChoices(
+                        index=0,
+                        delta={"content": "NUMBER_1> подтвержден"},
+                    )
+                ]
+            ),
+            litellm.ModelResponseStream(
+                choices=[litellm.StreamingChoices(index=0, finish_reason="stop")]
+            ),
+        ]
+
+        request_data = {"metadata": {"pii_request_id": "req-1"}}
+        result_stream = guardrail.async_post_call_streaming_iterator_hook(
+            user_api_key_dict=MagicMock(),
+            response=_stream_chunks(chunks),
+            request_data=request_data,
+        )
+        _yielded, content, _reasoning = await _collect_stream_text(result_stream)
+
+        assert content == "Договор OV-2026/81 подтвержден"
         assert request_data["metadata"]["pii_streaming_restoration_done"] is True
         guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
