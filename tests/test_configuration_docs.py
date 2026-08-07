@@ -31,6 +31,16 @@ EXPECTED_DOCUMENTED_ENV = {
     "REDIS_PORT",
     "REDIS_URL",
     "PROMETHEUS_MULTIPROC_DIR",
+    # Isolated corporate environment
+    "NGINX_HTTP_PORT",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "PIP_INDEX_URL",
+    "PIP_TRUSTED_HOST",
+    "PIP_PROXY",
+    "PYTORCH_INDEX_URL",
+    "NER_MODEL_PROXY",
     # Analyzer and recognizers
     "PRESIDIO_ANALYZER_URL",
     "PRESIDIO_ANALYZER_PORT",
@@ -122,6 +132,15 @@ QUICK_START_ENV = {
     "DISABLE_ADMIN_UI",
     "POSTGRES_PASSWORD",
     "LITELLM_DB_URL",
+    "NGINX_HTTP_PORT",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "PIP_INDEX_URL",
+    "PIP_TRUSTED_HOST",
+    "PIP_PROXY",
+    "PYTORCH_INDEX_URL",
+    "NER_MODEL_PROXY",
 }
 
 
@@ -140,6 +159,7 @@ def test_configuration_reference_documents_expected_env_vars():
         "## Примеры дополнительных провайдеров",
         "## Административный интерфейс LiteLLM и секреты",
         "## Запуск и хранилища LiteLLM",
+        "## Изолированная корпоративная среда",
         "## Сервис Presidio Analyzer",
         "## Калибровка распознавателей",
         "## Политики защитного слоя",
@@ -180,12 +200,17 @@ def test_docs_index_maps_reader_tasks_to_canonical_docs():
 
 def test_quick_start_env_example_stays_minimal_and_grouped():
     env_example = _read(".env.example")
+    env_names = {
+        line.split("=", maxsplit=1)[0]
+        for line in env_example.splitlines()
+        if line and not line.startswith("#") and "=" in line
+    }
 
     for name in QUICK_START_ENV:
-        assert f"{name}=" in env_example
+        assert name in env_names
 
     for name in EXPECTED_DOCUMENTED_ENV - QUICK_START_ENV:
-        assert f"{name}=" not in env_example, name
+        assert name not in env_names, name
 
     assert "Полный сгруппированный справочник: docs/configuration.md" in env_example
     assert "# === Пул GLM-провайдера по умолчанию ===" in env_example
@@ -225,7 +250,8 @@ def test_analyzer_pins_huggingface_model_and_transformers_runtime():
 
     assert "transformers==4.57.6" in requirements
     assert "torch==2.13.0+cpu" in cpu_requirements
-    assert "download.pytorch.org/whl/cpu" in cpu_requirements
+    assert "--index-url" not in cpu_requirements
+    assert "download.pytorch.org/whl/cpu" in dockerfile
     assert "torch>=" not in requirements
     assert "fef2/ner_rus_bert-secret_detection" in manifest
     assert "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4" in manifest

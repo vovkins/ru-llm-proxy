@@ -1,7 +1,24 @@
 FROM python:3.12-slim
 
+COPY certs/ /tmp/proxy-certs/
+RUN set -eu; \
+    if find /tmp/proxy-certs -maxdepth 1 -type f -name '*.crt' | grep -q .; then \
+        find /tmp/proxy-certs -maxdepth 1 -type f -name '*.crt' -exec cat {} \; \
+            >> /etc/ssl/certs/ca-certificates.crt; \
+    fi; \
+    rm -rf /tmp/proxy-certs
+
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+ARG PIP_INDEX_URL=""
+ARG PIP_TRUSTED_HOST=""
+ARG PIP_PROXY=""
+
 COPY tests/requirements-guardrails.txt /tmp/requirements-guardrails.txt
-RUN python -m pip install --no-cache-dir -r /tmp/requirements-guardrails.txt
+RUN set -eu; \
+    if [ -z "$PIP_INDEX_URL" ]; then unset PIP_INDEX_URL; fi; \
+    if [ -z "$PIP_TRUSTED_HOST" ]; then unset PIP_TRUSTED_HOST; fi; \
+    if [ -z "$PIP_PROXY" ]; then unset PIP_PROXY; fi; \
+    python -m pip install --no-cache-dir -r /tmp/requirements-guardrails.txt
 
 WORKDIR /workspace
 ENV PYTHONPATH=/workspace

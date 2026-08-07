@@ -18,6 +18,11 @@ env/
 .env.local
 .env.production
 
+# Corporate proxy certificates are local deployment material.
+certs/*.crt
+certs/*.pem
+certs/*.key
+
 # IDE
 .vscode/
 .idea/
@@ -48,6 +53,7 @@ presidio/evaluation/data/*
 !presidio/evaluation/data/ner_migration.jsonl
 !presidio/evaluation/data/deterministic_rules_review.jsonl
 pgdata/
+cache/
 
 # Testing
 .pytest_cache/

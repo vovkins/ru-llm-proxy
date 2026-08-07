@@ -3,8 +3,11 @@ name: NER model integration
 on:
   pull_request:
     paths:
+      - ".dockerignore"
       - ".github/workflows/ner-model-integration.yml"
       - "Makefile"
+      - "certs/**"
+      - "docker-compose.yml"
       - "presidio/**"
       - "litellm_guardrails/**"
       - "tests/e2e/docker-compose.ner-proxy.yml"
@@ -16,8 +19,11 @@ on:
     branches:
       - main
     paths:
+      - ".dockerignore"
       - ".github/workflows/ner-model-integration.yml"
       - "Makefile"
+      - "certs/**"
+      - "docker-compose.yml"
       - "presidio/**"
       - "litellm_guardrails/**"
       - "tests/e2e/docker-compose.ner-proxy.yml"
@@ -49,7 +55,7 @@ jobs:
       - name: Build pinned Analyzer image
         uses: docker/build-push-action@v7
         with:
-          context: ./presidio
+          context: .
           file: ./presidio/Dockerfile
           target: analyzer
           load: true
