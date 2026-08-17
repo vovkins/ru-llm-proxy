@@ -124,6 +124,134 @@ async def test_guardrail_masks_before_model_and_unmasks_after_model():
 
 
 @pytest.mark.asyncio
+async def test_guardrail_round_trip_preserves_extended_recognizer_values():
+    guardrail = RuPIIGuardrail()
+    redis_store = {}
+    redis = AsyncMock()
+
+    async def setex(key, ttl, value):
+        redis_store[key] = value
+
+    async def get(key):
+        return redis_store.get(key)
+
+    async def delete(key):
+        redis_store.pop(key, None)
+
+    redis.setex.side_effect = setex
+    redis.get.side_effect = get
+    redis.delete.side_effect = delete
+    guardrail._redis = redis
+
+    user_text = (
+        "Паспорт 45 12 №678901, СНИЛС 001-234-567 84, "
+        "пользователь ci_runner_12, хост app-prod-01, "
+        "госконтракт № 0173100004521000123"
+    )
+    data = {"messages": [{"role": "user", "content": user_text}]}
+    analyzer_results = [
+        _entity(user_text, "45 12 №678901", "RU_PASSPORT"),
+        _entity(user_text, "001-234-567 84", "RU_SNILS"),
+        _entity(user_text, "ci_runner_12", "LOGIN"),
+        _entity(user_text, "app-prod-01", "HOSTNAME"),
+        _entity(user_text, "0173100004521000123", "CONTRACT_NUMBER"),
+    ]
+
+    with patch.object(guardrail, "_analyze_text", return_value=analyzer_results):
+        masked_data = await guardrail.async_pre_call_hook(
+            user_api_key_dict=MagicMock(),
+            cache=MagicMock(),
+            data=data,
+        )
+
+    masked_prompt = masked_data["messages"][0]["content"]
+    for original in (
+        "45 12 №678901",
+        "001-234-567 84",
+        "ci_runner_12",
+        "app-prod-01",
+        "0173100004521000123",
+    ):
+        assert original not in masked_prompt
+    assert "Паспорт <RU_PASSPORT_1>" in masked_prompt
+    assert "СНИЛС <RU_SNILS_1>" in masked_prompt
+    assert "пользователь <LOGIN_1>" in masked_prompt
+    assert "хост <HOSTNAME_1>" in masked_prompt
+    assert "госконтракт № <CONTRACT_NUMBER_1>" in masked_prompt
+
+    response = litellm.ModelResponse(
+        id="extended-recognizer-flow",
+        choices=[
+            litellm.Choices(
+                index=0,
+                message=litellm.Message(
+                    role="assistant",
+                    content=(
+                        "<RU_PASSPORT_1>; <RU_SNILS_1>; <LOGIN_1>; "
+                        "<HOSTNAME_1>; <CONTRACT_NUMBER_1>"
+                    ),
+                ),
+                finish_reason="stop",
+            )
+        ],
+    )
+    await guardrail.async_post_call_success_hook(
+        data=masked_data,
+        user_api_key_dict=MagicMock(),
+        response=response,
+    )
+
+    restored = response.choices[0].message.content
+    for original in (
+        "45 12 №678901",
+        "001-234-567 84",
+        "ci_runner_12",
+        "app-prod-01",
+        "0173100004521000123",
+    ):
+        assert original in restored
+
+
+@pytest.mark.asyncio
+async def test_block_mode_rejects_extended_recognizer_values_before_provider():
+    guardrail = RuPIIGuardrail(pii_mode="block")
+    redis = AsyncMock()
+    guardrail._redis = redis
+    user_text = (
+        "Паспорт 45 12 №678901, пользователь ci_runner_12, "
+        "хост app-prod-01"
+    )
+    data = {"messages": [{"role": "user", "content": user_text}]}
+    analyzer_results = [
+        _entity(user_text, "45 12 №678901", "RU_PASSPORT"),
+        _entity(user_text, "ci_runner_12", "LOGIN"),
+        _entity(user_text, "app-prod-01", "HOSTNAME"),
+    ]
+
+    with patch.object(guardrail, "_analyze_text", return_value=analyzer_results):
+        with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+            await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+            )
+
+    assert data["messages"][0]["content"] == user_text
+    redis.setex.assert_not_called()
+    error_body = exc_info.value.response.json()
+    assert error_body["error"]["code"] == "pii_blocked"
+    assert set(error_body["error"]["details"]["entities"]) == {
+        "HOSTNAME",
+        "LOGIN",
+        "RU_PASSPORT",
+    }
+    serialized = json.dumps(error_body, ensure_ascii=False)
+    assert "45 12 №678901" not in serialized
+    assert "ci_runner_12" not in serialized
+    assert "app-prod-01" not in serialized
+
+
+@pytest.mark.asyncio
 async def test_guardrail_masks_before_model_and_unmasks_streaming_response():
     guardrail = RuPIIGuardrail()
     redis_store = {}

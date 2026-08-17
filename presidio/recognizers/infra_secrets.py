@@ -6,7 +6,12 @@ import json
 import os
 import re
 
-from presidio_analyzer import Pattern, PatternRecognizer
+from presidio_analyzer import (
+    EntityRecognizer,
+    Pattern,
+    PatternRecognizer,
+    RecognizerResult,
+)
 
 from recognizers.credential_rules import LoginRecognizer, PasswordRecognizer
 
@@ -127,7 +132,7 @@ def _decode_base64url_json(segment: str) -> dict | None:
 
 
 class InternalIpRecognizer(PatternRecognizer):
-    """Recognize private/internal IP addresses."""
+    """Recognize valid IP addresses, with an internal-only policy override."""
 
     PATTERNS = [
         Pattern(
@@ -188,9 +193,10 @@ class InternalIpRecognizer(PatternRecognizer):
 
         if _is_internal_ip(ip):
             return False
-        if _env_flag("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS"):
-            return not ip.is_global
-        return True
+        return not _env_flag(
+            "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
+            default=True,
+        )
 
 
 class InternalDomainRecognizer(PatternRecognizer):
@@ -236,29 +242,38 @@ class InternalDomainRecognizer(PatternRecognizer):
         )
 
 
-class HostnameRecognizer(PatternRecognizer):
+class HostnameRecognizer(EntityRecognizer):
     """Recognize context-bound single-label hostnames."""
 
-    PATTERNS = [
-        Pattern(
-            name="hostname_key_value",
-            regex=(
-                r"\b(?:host(?:name)?|server|node|service|endpoint|"
-                r"хост|сервер|узел|сервис|имя[ \t]+хоста)"
-                rf"\s*[:=]\s*[\"']?{_HOST_LABEL}[\"']?"
+    RULES = (
+        (
+            "hostname_key_value",
+            re.compile(
+                r"(?i)(?<![\w.-])(?:host(?:name)?|server|node|service|"
+                r"endpoint|хост|сервер|узел|сервис|имя[ \t]+хоста)"
+                rf"\s*[:=]\s*[\"']?(?P<value>{_HOST_LABEL})[\"']?"
+                r"(?![A-Za-z0-9-]|\.[A-Za-z0-9])"
             ),
-            score=0.65,
+            0.75,
         ),
-    ]
-
-    CONTEXT = [
-        "host",
-        "hostname",
-        "server",
-        "endpoint",
-        "хост",
-        "сервер",
-    ]
+        (
+            "hostname_context",
+            re.compile(
+                r"(?i)(?<![\w.-])(?:хост|сервер|узел|реплика)\s+"
+                rf"(?P<value>{_HOST_LABEL})(?![A-Za-z0-9-]|\.[A-Za-z0-9])"
+            ),
+            0.75,
+        ),
+        (
+            "hostname_ssh_target",
+            re.compile(
+                r"(?i)(?<![\w])ssh\s+(?:к\s+)?"
+                rf"(?:[A-Za-z][A-Za-z0-9._-]{{2,63}}@)?"
+                rf"(?P<value>{_HOST_LABEL})(?![A-Za-z0-9-]|\.[A-Za-z0-9])"
+            ),
+            0.85,
+        ),
+    )
 
     def __init__(
         self,
@@ -267,20 +282,50 @@ class HostnameRecognizer(PatternRecognizer):
         supported_entity: str = "HOSTNAME",
     ):
         super().__init__(
-            supported_entity=supported_entity,
-            patterns=self.PATTERNS,
-            context=self.CONTEXT,
+            supported_entities=[supported_entity],
             name=name,
             supported_language=supported_language,
+            version="2.0.0",
         )
 
-    def invalidate_result(self, pattern_text: str) -> bool:
-        """Reject common key-value words that are not hostnames."""
-        value = _extract_key_value_value(pattern_text).lower()
-        if value in _COMMON_NON_HOST_VALUES:
-            return True
-        return not (
-            value == "localhost"
+    def load(self) -> None:
+        """No external assets are required."""
+
+    def analyze(self, text, entities, nlp_artifacts=None):
+        """Return value-only hostname results from bounded contexts."""
+        entity_type = self.supported_entities[0]
+        if entities and entity_type not in entities:
+            return []
+
+        results = []
+        for rule_id, pattern, score in self.RULES:
+            for match in pattern.finditer(text):
+                start, end = match.span("value")
+                value = match.group("value")
+                if not self._accept_value(value):
+                    continue
+                results.append(
+                    RecognizerResult(
+                        entity_type=entity_type,
+                        start=start,
+                        end=end,
+                        score=score,
+                        recognition_metadata={
+                            RecognizerResult.RECOGNIZER_NAME_KEY: self.name,
+                            RecognizerResult.RECOGNIZER_IDENTIFIER_KEY: self.id,
+                            "deterministic_rule_id": rule_id,
+                        },
+                    )
+                )
+        return EntityRecognizer.remove_duplicates(results)
+
+    @staticmethod
+    def _accept_value(value: str) -> bool:
+        normalized = value.lower()
+        if normalized in _COMMON_NON_HOST_VALUES:
+            return False
+        return (
+            normalized == "localhost"
             or "-" in value
             or any(char.isdigit() for char in value)
         )

@@ -12,12 +12,17 @@ def _validate_snils(digits: str) -> bool:
     """Validate SNILS checksum."""
     if len(digits) != 11:
         return False
-    # SNILS cannot start with 001 or 000
-    if digits[:3] in ("000", "001"):
+
+    account_number = int(digits[:9])
+    if account_number == 0:
         return False
+    if account_number <= 1_001_998:
+        return True
 
     total = sum(int(digits[i]) * (9 - i) for i in range(9))
     check = total % 101
+    if check == 100:
+        check = 0
     # Control number is last 2 digits
     control = int(digits[9:11])
     return check == control

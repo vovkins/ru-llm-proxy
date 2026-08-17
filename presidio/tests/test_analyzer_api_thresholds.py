@@ -211,6 +211,23 @@ def test_api_uses_context_fallback_when_ner_misses_contract(monkeypatch):
     ]
 
 
+def test_api_detects_public_procurement_contract_number(monkeypatch):
+    text = "Госконтракт № 0173100004521000123."
+    value = "0173100004521000123"
+    monkeypatch.setattr(analyzer_server, "analyzer", _EmptyAnalyzer())
+    _stub_loaded_ner(monkeypatch)
+
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    assert _entity_texts(response.json()["entities"], "CONTRACT_NUMBER") == [
+        value
+    ]
+
+
 @pytest.mark.parametrize(
     "request_overrides",
     [
@@ -354,6 +371,73 @@ def test_production_analyzer_wiring_detects_registered_russian_recognizers(
     assert _entity_texts(entities, "BEARER_TOKEN") == []
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (
+            "Паспорт РФ 45 12 №678901, выдан ОВД района.",
+            {"RU_PASSPORT": ["45 12 №678901"]},
+        ),
+        (
+            "Загранпаспорт 75 1234567.",
+            {"RU_PASSPORT": ["75 1234567"]},
+        ),
+        (
+            "Военный билет АН 1234567.",
+            {"RU_PASSPORT": ["АН 1234567"]},
+        ),
+        (
+            "Свидетельство о рождении II-МЮ №456789.",
+            {"RU_PASSPORT": ["II-МЮ №456789"]},
+        ),
+        ("PGUSER=analytics", {"LOGIN": ["analytics"]}),
+        (
+            "Пользователь k8s-controller-us1 в кластере.",
+            {"LOGIN": ["k8s-controller-us1"]},
+        ),
+        (
+            "Хост k8s-controller-us1 в статусе NotReady.",
+            {"HOSTNAME": ["k8s-controller-us1"]},
+        ),
+        (
+            "ssh deploy@go-i-ml-01.",
+            {"LOGIN": ["deploy"], "HOSTNAME": ["go-i-ml-01"]},
+        ),
+        (
+            "Сервер backup.storage.local, IPv6 2001:db8::1.",
+            {
+                "INTERNAL_DOMAIN": ["backup.storage.local"],
+                "INTERNAL_IP": ["2001:db8::1"],
+            },
+        ),
+        (
+            "СНИЛС 001-234-567 84.",
+            {"RU_SNILS": ["001-234-567 84"]},
+        ),
+        (
+            "Госконтракт № 0173100004521000123.",
+            {"CONTRACT_NUMBER": ["0173100004521000123"]},
+        ),
+    ],
+)
+def test_production_analyzer_covers_extended_recognizer_corpus(
+    monkeypatch,
+    text,
+    expected,
+):
+    monkeypatch.delenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", raising=False)
+    _stub_loaded_ner(monkeypatch)
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": text, "language": "ru", "score_threshold": 0.35},
+    )
+
+    assert response.status_code == 200
+    entities = response.json()["entities"]
+    for entity_type, values in expected.items():
+        assert _entity_texts(entities, entity_type) == values
+
+
 class TestAnalyzerCounterpartyRequisiteThresholdPolicy:
     def test_detects_counterparty_and_bank_requisites_with_context(self, monkeypatch):
         analyzer = _build_analyzer(
@@ -487,7 +571,7 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
         assert _entity_texts(entities, "INTERNAL_DOMAIN") == [
             "api.payments.corp.local"
         ]
-        assert _entity_texts(entities, "HOSTNAME") == ["hostname=app-prod-01"]
+        assert _entity_texts(entities, "HOSTNAME") == ["app-prod-01"]
         assert _entity_texts(entities, "DB_URL") == [
             "postgresql://svc_user:S3curePass42@db.internal:5432/app"
         ]
@@ -510,7 +594,6 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
     @pytest.mark.parametrize(
         "text, entity_type",
         [
-            ("8.8.8.8", "INTERNAL_IP"),
             ("docs.github.com", "INTERNAL_DOMAIN"),
             ("app-prod-01", "HOSTNAME"),
             ("https://api.example.com/docs", "DB_URL"),
@@ -538,6 +621,24 @@ class TestAnalyzerInfrastructureSecretThresholdPolicy:
         entities = _api_entities(monkeypatch, analyzer, text)
 
         assert _entity_texts(entities, entity_type) == []
+
+    def test_public_ip_detection_is_enabled_by_default_and_can_be_disabled(
+        self,
+        monkeypatch,
+    ):
+        analyzer = _build_analyzer(InternalIpRecognizer())
+
+        monkeypatch.delenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", raising=False)
+        entities = _api_entities(monkeypatch, analyzer, "DNS 8.8.8.8")
+        assert _entity_texts(entities, "INTERNAL_IP") == ["8.8.8.8"]
+
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "false")
+        entities = _api_entities(
+            monkeypatch,
+            analyzer,
+            "Шлюз 10.0.0.1, DNS 8.8.8.8",
+        )
+        assert _entity_texts(entities, "INTERNAL_IP") == ["10.0.0.1"]
 
     def test_command_line_option_without_value_is_not_a_secret(self, monkeypatch):
         analyzer = _build_analyzer(CommandLineCredentialRecognizer())

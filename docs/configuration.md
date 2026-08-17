@@ -69,7 +69,7 @@
 | --- | --- | --- | --- |
 | `PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM` | `true` | `true`, `false` | При `true` 12-значный ИНН с корректной контрольной суммой проходит `score_threshold=0.35` даже без контекста; 10-значный ИНН всё равно требует контекст. При `false` любой ИНН без контекста не проходит порог. |
 | `PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES` | `internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local` | Список суффиксов через запятую или пробел | Какие доменные суффиксы распознаватель `INTERNAL_DOMAIN` считает внутренними. |
-| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `false` | `true`, `false` | При `true` `INTERNAL_IP` детектирует публичные IP-адреса наряду с приватными и внутренними диапазонами. |
+| `PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS` | `true` | `true`, `false` | При `true` `INTERNAL_IP` распознаёт все корректные IPv4- и IPv6-адреса. При `false` остаются только приватные и внутренние диапазоны. |
 
 ## Политики защитного слоя
 

@@ -248,9 +248,29 @@ class LoginRecognizer(_CapturedCredentialRecognizer):
     RULES = (
         _assignment_rule(
             "credential.kv.login",
-            rf"{_ENV_PREFIX}(?:LOGIN|USERNAME|USER_NAME)|"
-            rf"логин(?:\s+пользователя)?",
+            rf"{_ENV_PREFIX}(?:LOGIN|USERNAME|USER_NAME|USER)|PGUSER|"
+            rf"логин(?:\s+пользователя|\s+(?:в|для)\s+"
+            rf"[A-Za-zА-Яа-яЁё0-9._-]+)?",
             0.75,
+        ),
+        _CredentialRule(
+            "credential.context.technical-user",
+            re.compile(
+                r"(?i)(?<![\w])пользователь\s+"
+                r"(?P<value>[A-Za-z0-9](?:[A-Za-z0-9._-]{1,62}"
+                r"[A-Za-z0-9])?)(?![A-Za-z0-9._@-])"
+            ),
+            0.8,
+        ),
+        _CredentialRule(
+            "credential.context.ssh-user",
+            re.compile(
+                r"(?i)(?<![\w])ssh\s+(?:к\s+)?"
+                r"(?P<value>[A-Za-z][A-Za-z0-9._-]{2,63})@"
+                r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+                r"(?![A-Za-z0-9-]|\.[A-Za-z0-9])"
+            ),
+            0.85,
         ),
         _CredentialRule(
             "credential.context.login-email",
@@ -276,12 +296,19 @@ class LoginRecognizer(_CapturedCredentialRecognizer):
         )
 
     def _accept_value(self, value: str, rule_id: str) -> bool:
-        return (
+        accepted = (
             not _is_inert_credential_value(value)
             and 3 <= len(value) <= 64
             and not value.isdigit()
             and re.fullmatch(r"[A-Za-zА-Яа-яЁё0-9._@-]+", value) is not None
         )
+        if not accepted:
+            return False
+        if rule_id == "credential.context.technical-user":
+            return any(character.isdigit() for character in value) or any(
+                separator in value for separator in ("-", "_")
+            )
+        return True
 
 
 class PasswordRecognizer(_CapturedCredentialRecognizer):
