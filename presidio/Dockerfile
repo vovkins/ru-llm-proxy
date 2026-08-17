@@ -6,10 +6,12 @@ FROM python:3.11-slim AS python-base
 COPY certs/ /tmp/proxy-certs/
 RUN set -eu; \
     if find /tmp/proxy-certs -maxdepth 1 -type f -name '*.crt' | grep -q .; then \
-        find /tmp/proxy-certs -maxdepth 1 -type f -name '*.crt' -exec cat {} \; \
-            >> /etc/ssl/certs/ca-certificates.crt; \
+        python -c "from pathlib import Path; files = sorted(Path('/tmp/proxy-certs').glob('*.crt')); Path('/tmp/proxy-ca.pem').write_bytes(b''.join(path.read_bytes().rstrip(b'\\r\\n') + b'\\n' for path in files))"; \
+        python -c "import ssl; ssl.create_default_context(cafile='/tmp/proxy-ca.pem')"; \
+        cat /tmp/proxy-ca.pem >> /etc/ssl/certs/ca-certificates.crt; \
+        python -c "import ssl; ssl.create_default_context(cafile='/etc/ssl/certs/ca-certificates.crt')"; \
     fi; \
-    rm -rf /tmp/proxy-certs
+    rm -rf /tmp/proxy-certs /tmp/proxy-ca.pem
 
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \

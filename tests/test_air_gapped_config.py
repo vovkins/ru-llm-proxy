@@ -11,17 +11,55 @@ def _read(path: str) -> str:
 
 
 def test_proxy_ca_is_local_and_used_by_all_built_images():
+    dockerignore = _read(".dockerignore")
     gitignore = _read(".gitignore")
     analyzer = _read("presidio/Dockerfile")
     litellm = _read("litellm/Dockerfile")
     guardrail_tests = _read("tests/Dockerfile.guardrails")
 
+    ignore_patterns = {
+        line.strip()
+        for line in dockerignore.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert not any(pattern.startswith("certs/") for pattern in ignore_patterns)
     assert "certs/*.crt" in gitignore
     assert (ROOT / "certs" / "README.md").is_file()
     for dockerfile in (analyzer, litellm, guardrail_tests):
         assert "COPY certs/" in dockerfile
         assert "proxy-certs" in dockerfile
+        assert "/tmp/proxy-ca.pem" in dockerfile
         assert "SSL_VERIFY=False" not in dockerfile
+
+
+def test_litellm_validates_proxy_ca_and_configures_all_trust_bundles():
+    dockerfile = _read("litellm/Dockerfile")
+
+    assert "-exec awk 1 {} +" in dockerfile
+    assert "openssl crl2pkcs7" in dockerfile
+    assert "openssl pkcs7 -print_certs" in dockerfile
+    assert "SYSTEM_BUNDLE=/etc/ssl/certs/ca-certificates.crt" in dockerfile
+    assert "import certifi; print(certifi.where())" in dockerfile
+    assert 'if [ "$CERTIFI_BUNDLE" != "$SYSTEM_BUNDLE" ]' in dockerfile
+    for variable in (
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+    ):
+        assert f"{variable}=/etc/ssl/certs/ca-certificates.crt" in dockerfile
+
+
+def test_python_images_validate_proxy_ca_before_using_it():
+    for path in ("presidio/Dockerfile", "tests/Dockerfile.guardrails"):
+        dockerfile = _read(path)
+
+        assert "rstrip(b'\\\\r\\\\n') + b'\\\\n'" in dockerfile
+        assert "ssl.create_default_context(cafile='/tmp/proxy-ca.pem')" in dockerfile
+        assert (
+            "ssl.create_default_context(cafile='/etc/ssl/certs/ca-certificates.crt')"
+            in dockerfile
+        )
 
 
 def test_compose_routes_only_litellm_runtime_egress_through_proxy():
