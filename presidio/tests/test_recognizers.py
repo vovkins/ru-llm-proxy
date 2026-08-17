@@ -7,6 +7,7 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 from presidio.entity_types import DETERMINISTIC_ENTITY_TYPES
 from presidio.recognizers import ALL_RECOGNIZERS
+from presidio.recognizers.ru_snils import _validate_snils
 
 
 def _entity_texts(text, results, entity_type):
@@ -215,10 +216,56 @@ class TestInfrastructureSecrets:
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
         assert _entity_texts(text, results, "INTERNAL_IP") == ["10.24.3.7"]
 
-    def test_public_ipv4_is_not_detected_by_default(self, analyzer):
-        text = "Публичный DNS 8.8.8.8 указан как пример"
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            (
+                "Цепляйся по ssh к il-p-ml-01 (172.21.206.67).",
+                {"HOSTNAME": ["il-p-ml-01"], "INTERNAL_IP": ["172.21.206.67"]},
+            ),
+            (
+                "Хост k8s-controller-us1 в статусе NotReady.",
+                {"HOSTNAME": ["k8s-controller-us1"]},
+            ),
+            (
+                "Сервер backup.storage.local, IPv6 2001:db8::1.",
+                {
+                    "INTERNAL_DOMAIN": ["backup.storage.local"],
+                    "INTERNAL_IP": ["2001:db8::1"],
+                },
+            ),
+            (
+                "Реплика redis-cache-03 отвечает медленно.",
+                {"HOSTNAME": ["redis-cache-03"]},
+            ),
+            (
+                "Внешний IP 203.0.113.42 забанен фаерволом.",
+                {"INTERNAL_IP": ["203.0.113.42"]},
+            ),
+            (
+                "Шлюз 10.0.0.1, DNS 8.8.8.8.",
+                {"INTERNAL_IP": ["10.0.0.1", "8.8.8.8"]},
+            ),
+        ],
+    )
+    def test_contextual_hosts_and_all_valid_ips_are_detected_by_default(
+        self,
+        analyzer,
+        monkeypatch,
+        text,
+        expected,
+    ):
+        monkeypatch.delenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", raising=False)
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
-        assert _entity_texts(text, results, "INTERNAL_IP") == []
+
+        for entity_type, values in expected.items():
+            assert _entity_texts(text, results, entity_type) == values
+
+    def test_public_ipv4_detection_can_be_disabled(self, analyzer, monkeypatch):
+        monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "false")
+        text = "Шлюз 10.0.0.1, DNS 8.8.8.8"
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "INTERNAL_IP") == ["10.0.0.1"]
 
     def test_public_ipv4_detection_is_policy_controlled(self, analyzer, monkeypatch):
         monkeypatch.setenv("PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS", "true")
@@ -258,7 +305,7 @@ class TestInfrastructureSecrets:
     def test_context_bound_hostname_is_detected(self, analyzer):
         text = "hostname=app-prod-01 обрабатывает платежи"
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
-        assert _entity_texts(text, results, "HOSTNAME") == ["hostname=app-prod-01"]
+        assert _entity_texts(text, results, "HOSTNAME") == ["app-prod-01"]
 
     def test_bare_hostname_like_word_is_not_detected(self, analyzer):
         text = "app-prod-01 выглядит как имя, но контекста хоста нет"
@@ -320,6 +367,34 @@ class TestInfrastructureSecrets:
         assert _entity_texts(text, results, "LOGIN") == ["svc-bot"]
         assert _entity_texts(text, results, "PASSWORD") == ["S3cure-Value42"]
 
+    @pytest.mark.parametrize(
+        "text, expected_login",
+        [
+            ("Логин в панель: ci_runner_12", "ci_runner_12"),
+            ("PGUSER=analytics", "analytics"),
+            ("smtp_user=mailer_bot", "mailer_bot"),
+            (
+                "Пользователь k8s-controller-us1 в кластере",
+                "k8s-controller-us1",
+            ),
+        ],
+    )
+    def test_structured_and_contextual_logins_are_detected(
+        self,
+        analyzer,
+        text,
+        expected_login,
+    ):
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "LOGIN") == [expected_login]
+
+    def test_ssh_user_and_host_are_detected_as_separate_values(self, analyzer):
+        text = "ssh deploy@go-i-ml-01."
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+
+        assert _entity_texts(text, results, "LOGIN") == ["deploy"]
+        assert _entity_texts(text, results, "HOSTNAME") == ["go-i-ml-01"]
+
     def test_incidental_secret_words_are_not_detected(self, analyzer):
         text = "Объясни, чем API key отличается от bearer token и password."
         results = analyzer.analyze(text, language="ru", score_threshold=0.35)
@@ -342,6 +417,17 @@ class TestRuSnils:
         snils_results = [r for r in results if r.entity_type == "RU_SNILS"]
         assert len(snils_results) == 0
 
+    def test_snils_with_001_prefix_and_valid_checksum(self, analyzer):
+        text = "СНИЛС 001-234-567 84."
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_SNILS") == ["001-234-567 84"]
+
+    def test_snils_checksum_special_cases_and_zero_number(self):
+        assert _validate_snils("00101998900") is True
+        assert _validate_snils("00101999800") is True
+        assert _validate_snils("00101998901") is False
+        assert _validate_snils("00000000000") is False
+
 
 # === Passport ===
 
@@ -360,6 +446,43 @@ class TestRuPassport:
         results = analyzer.analyze("Паспорт: 00 00 123456", language="ru")
         passport_results = [r for r in results if r.entity_type == "RU_PASSPORT"]
         assert len(passport_results) == 0
+
+    @pytest.mark.parametrize(
+        "text, expected_document",
+        [
+            (
+                "Паспорт РФ 45 12 №678901, выдан ОВД района.",
+                "45 12 №678901",
+            ),
+            ("Загранпаспорт 75 1234567.", "75 1234567"),
+            ("Паспорт 40 05 №998877 приложен.", "40 05 №998877"),
+            ("Военный билет АН 1234567.", "АН 1234567"),
+            (
+                "Свидетельство о рождении II-МЮ №456789.",
+                "II-МЮ №456789",
+            ),
+        ],
+    )
+    def test_supported_identity_document_formats(
+        self,
+        analyzer,
+        text,
+        expected_document,
+    ):
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_PASSPORT") == [expected_document]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Версия сборки 75 1234567 опубликована.",
+            "Код подразделения АН 1234567 сохранен.",
+            "Шаблон II-МЮ №456789 приведен как пример.",
+        ],
+    )
+    def test_ambiguous_identity_document_shapes_require_context(self, analyzer, text):
+        results = analyzer.analyze(text, language="ru", score_threshold=0.35)
+        assert _entity_texts(text, results, "RU_PASSPORT") == []
 
 
 # === Bank Card ===

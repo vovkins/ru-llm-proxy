@@ -37,8 +37,8 @@ def test_infrastructure_secret_settings_are_exposed_to_analyzer_runtime():
     )
     assert f'ensure_key_exists "{domain_env}"' not in setup_script
 
-    assert f"`{public_ip_env}` | `false`" in configuration
-    assert f"{public_ip_env}=${{{public_ip_env}:-false}}" in compose
+    assert f"`{public_ip_env}` | `true`" in configuration
+    assert f"{public_ip_env}=${{{public_ip_env}:-true}}" in compose
     assert f'ensure_key_exists "{public_ip_env}"' not in setup_script
 
 

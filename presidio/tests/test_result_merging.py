@@ -126,6 +126,31 @@ def test_validated_structural_result_beats_overlapping_ner_result():
     assert [result.entity_type for result in outcome.results] == ["RU_INN"]
 
 
+def test_contextual_hostname_beats_overlapping_ner_login():
+    text = "Хост k8s-controller-us1 в статусе NotReady."
+    value = "k8s-controller-us1"
+    start = text.index(value)
+    hostname = _result(
+        "HOSTNAME",
+        start,
+        start + len(value),
+        0.75,
+        SOURCE_STRUCTURAL,
+    )
+    ner_login = _result(
+        "LOGIN",
+        start,
+        start + len(value),
+        0.99,
+        SOURCE_NER,
+    )
+
+    outcome = merge_results(text, [ner_login, hostname])
+
+    assert [result.entity_type for result in outcome.results] == ["HOSTNAME"]
+    assert outcome.decisions[0].reason == "overlap_preferred_source"
+
+
 def test_ner_conflict_uses_score_then_stable_boundaries():
     text = "Иван Петров"
     low = _result("ORGANIZATION", 0, len(text), 0.6, SOURCE_NER)

@@ -438,7 +438,6 @@ def test_key_value_rules_ignore_placeholders_and_code_references(recognizer, tex
     "recognizer, text",
     [
         (LoginRecognizer(), "USER_ID=12345"),
-        (LoginRecognizer(), "user=alice"),
         (PasswordRecognizer(), "Объясни слово password"),
         (SecretKeyRecognizer(), "aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW1xY"),
         (AuthTokenRecognizer(), "token bucket limits requests"),
@@ -450,6 +449,35 @@ def test_key_value_rules_ignore_placeholders_and_code_references(recognizer, tex
 )
 def test_native_rules_ignore_weak_context_and_standalone_entropy(recognizer, text):
     assert _results(recognizer, text) == []
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("user=alice", "alice"),
+        ("PGUSER=analytics", "analytics"),
+        ("smtp_user=mailer_bot", "mailer_bot"),
+        ("Логин в панель: ci_runner_12", "ci_runner_12"),
+        ("Пользователь k8s-controller-us1 в кластере", "k8s-controller-us1"),
+        ("ssh deploy@go-i-ml-01.", "deploy"),
+    ],
+)
+def test_login_rules_cover_structured_and_contextual_forms(text, expected):
+    results = _results(LoginRecognizer(), text)
+
+    assert [text[result.start : result.end] for result in results] == [expected]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Пользователь Ivan согласовал документ",
+        "Пользователь системы выполняет операцию",
+        "user story описывает новый сценарий",
+    ],
+)
+def test_contextual_login_rule_rejects_ordinary_prose(text):
+    assert _results(LoginRecognizer(), text) == []
 
 
 @pytest.mark.parametrize(
