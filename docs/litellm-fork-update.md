@@ -128,11 +128,18 @@ make monitor-smoke
 ```
 
 Проверки OAuth-пула с двумя реальными профилями выполняются отдельно по сценарию
-задачи #72. При регрессии верните предыдущий digest и пересоздайте только LiteLLM:
+задачи #72. При регрессии верните предыдущий digest в
+`docker-compose.openai-oauth.yml` и примените OAuth-режим повторно:
 
 ```bash
-docker compose pull litellm
-docker compose up -d --force-recreate --no-deps litellm
+.venv/bin/python scripts/apply_openai_oauth_profiles.py
+```
+
+Сценарий проверит конфиг и секреты, скачает образ и пересоздаст только LiteLLM.
+Для возврата к обычному GLM-режиму используйте базовый Compose без OAuth-файла:
+
+```bash
+docker compose up -d --force-recreate --no-deps --wait litellm
 ```
 
 Предыдущий образ не удаляйте до завершения принятого срока наблюдения. Когда

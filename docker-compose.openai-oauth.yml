@@ -1,0 +1,6 @@
+services:
+  litellm:
+    image: ghcr.io/vovkins/litellm@sha256:ac2e8159aaac7a8187f6d8bec1e6171fe62b96d3fbb685f4cadb8cadfb688657
+    volumes:
+      - ./config/generated/litellm-config.local.yaml:/app/config.yaml:ro
+      - ./secrets/openai-oauth:/run/secrets/openai-oauth

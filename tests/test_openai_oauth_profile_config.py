@@ -80,10 +80,13 @@ def test_configuration_reference_defines_local_profile_boundary():
         ".import.lock",
         "scripts/generate_openai_oauth_config.py",
         "scripts/validate_openai_oauth_setup.py",
+        "scripts/apply_openai_oauth_profiles.py",
+        "docker-compose.openai-oauth.yml",
         "config/generated/litellm-config.local.yaml",
         "модель × включённый профиль",
         "Код возврата `0` означает успех, `1` — запрет запуска",
         "относятся к одному `account_id`",
+        "--force-recreate --no-deps --pull never --wait litellm",
     ):
         assert expected in configuration
 
