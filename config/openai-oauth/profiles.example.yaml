@@ -1,0 +1,15 @@
+schema_version: 1
+
+# Общий набор моделей применяется ко всем включённым профилям.
+models:
+  - public_name: gpt-5.4
+    provider_model: chatgpt/gpt-5.4
+  - public_name: gpt-5.3-codex
+    provider_model: chatgpt/gpt-5.3-codex
+
+# Профили содержат только безопасные локальные идентификаторы.
+profiles:
+  - id: subscription-a
+    enabled: true
+  - id: subscription-b
+    enabled: true
