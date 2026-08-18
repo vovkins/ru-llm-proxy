@@ -1,9 +1,11 @@
 """Tests for safe conversion of an isolated Codex OAuth session."""
 
 import base64
+import concurrent.futures
 import json
 import os
 import stat
+import threading
 import time
 from pathlib import Path
 
@@ -274,6 +276,130 @@ def test_import_refuses_to_replace_existing_profile(import_files):
     assert destination.read_bytes() == original
 
 
+def test_explicit_replace_updates_same_account_atomically(import_files):
+    profiles_path, source, _, secrets_root, _ = import_files
+    arguments = {
+        "profile_id": "subscription-a",
+        "source": source,
+        "profiles_path": profiles_path,
+        "secrets_root": secrets_root,
+    }
+    destination = importer.import_codex_auth(**arguments)
+    replacement, _ = _codex_auth()
+    replacement["tokens"]["refresh_token"] = "replacement-refresh-secret"
+    _write_source(source, replacement)
+
+    updated_destination = importer.import_codex_auth(**arguments, replace=True)
+
+    assert updated_destination == destination
+    updated = json.loads(destination.read_text(encoding="utf-8"))
+    assert updated["refresh_token"] == "replacement-refresh-secret"
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+
+
+def test_replace_rejects_different_account_and_preserves_current_file(import_files):
+    profiles_path, source, _, secrets_root, _ = import_files
+    arguments = {
+        "profile_id": "subscription-a",
+        "source": source,
+        "profiles_path": profiles_path,
+        "secrets_root": secrets_root,
+    }
+    destination = importer.import_codex_auth(**arguments)
+    original = destination.read_bytes()
+    replacement, _ = _codex_auth(account_id="account-b")
+    _write_source(source, replacement)
+
+    with pytest.raises(importer.AuthImportError, match="different account"):
+        importer.import_codex_auth(**arguments, replace=True)
+
+    assert destination.read_bytes() == original
+
+
+def test_replace_requires_an_existing_profile(import_files):
+    profiles_path, source, _, secrets_root, _ = import_files
+
+    with pytest.raises(importer.AuthImportError, match="does not exist"):
+        importer.import_codex_auth(
+            profile_id="subscription-a",
+            source=source,
+            profiles_path=profiles_path,
+            secrets_root=secrets_root,
+            replace=True,
+        )
+
+
+def test_replace_rejects_active_auth_file_as_source(import_files):
+    profiles_path, source, _, secrets_root, _ = import_files
+    destination = importer.import_codex_auth(
+        profile_id="subscription-a",
+        source=source,
+        profiles_path=profiles_path,
+        secrets_root=secrets_root,
+    )
+
+    with pytest.raises(importer.AuthImportError, match="must not be the active"):
+        importer.import_codex_auth(
+            profile_id="subscription-a",
+            source=destination,
+            profiles_path=profiles_path,
+            secrets_root=secrets_root,
+            replace=True,
+        )
+
+
+def test_failed_replace_preserves_existing_auth_file(import_files, monkeypatch):
+    profiles_path, source, _, secrets_root, _ = import_files
+    arguments = {
+        "profile_id": "subscription-a",
+        "source": source,
+        "profiles_path": profiles_path,
+        "secrets_root": secrets_root,
+    }
+    destination = importer.import_codex_auth(**arguments)
+    original = destination.read_bytes()
+    replacement, _ = _codex_auth()
+    replacement["tokens"]["refresh_token"] = "replacement-refresh-secret"
+    _write_source(source, replacement)
+
+    def fail_replace(source_path, destination_path):
+        raise OSError("synthetic replace failure")
+
+    monkeypatch.setattr(importer.os, "replace", fail_replace)
+    with pytest.raises(importer.AuthImportError, match="cannot write"):
+        importer.import_codex_auth(**arguments, replace=True)
+
+    assert destination.read_bytes() == original
+    assert not list(destination.parent.glob(".auth.json.*"))
+
+
+def test_parallel_first_imports_produce_one_complete_auth_file(import_files):
+    profiles_path, source, _, secrets_root, _ = import_files
+    barrier = threading.Barrier(2)
+
+    def attempt_import():
+        barrier.wait(timeout=2)
+        try:
+            importer.import_codex_auth(
+                profile_id="subscription-a",
+                source=source,
+                profiles_path=profiles_path,
+                secrets_root=secrets_root,
+            )
+            return "created"
+        except importer.AuthImportError as exc:
+            assert "already exists" in str(exc)
+            return "exists"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: attempt_import(), range(2)))
+
+    assert sorted(results) == ["created", "exists"]
+    destination = secrets_root / "subscription-a" / "auth.json"
+    assert json.loads(destination.read_text(encoding="utf-8"))["account_id"] == "account-a"
+    assert not list(destination.parent.glob(".auth.json.*"))
+
+
 def test_failed_atomic_replace_leaves_no_partial_auth_file(import_files, monkeypatch):
     profiles_path, source, _, secrets_root, _ = import_files
 
@@ -314,3 +440,38 @@ def test_cli_output_does_not_disclose_tokens_or_account_id(import_files, capsys)
     assert exit_code == 0
     for secret in tokens.values():
         assert secret not in output
+
+
+def test_replace_cli_output_does_not_disclose_tokens_or_account_id(
+    import_files, capsys
+):
+    profiles_path, source, _, secrets_root, tokens = import_files
+    importer.import_codex_auth(
+        profile_id="subscription-a",
+        source=source,
+        profiles_path=profiles_path,
+        secrets_root=secrets_root,
+    )
+    replacement, replacement_tokens = _codex_auth()
+    replacement["tokens"]["refresh_token"] = "replacement-refresh-secret"
+    _write_source(source, replacement)
+
+    exit_code = importer.main(
+        [
+            "--profile-id",
+            "subscription-a",
+            "--source",
+            str(source),
+            "--profiles-file",
+            str(profiles_path),
+            "--secrets-dir",
+            str(secrets_root),
+            "--replace",
+        ]
+    )
+
+    output = "\n".join(capsys.readouterr())
+    assert exit_code == 0
+    for secret in {*tokens.values(), *replacement_tokens.values()}:
+        assert secret not in output
+    assert "replacement-refresh-secret" not in output

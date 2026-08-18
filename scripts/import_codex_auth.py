@@ -235,7 +235,39 @@ def _fsync_directory(path: Path) -> None:
         os.close(directory_fd)
 
 
-def _write_new_auth(destination: Path, auth_data: dict[str, Any]) -> None:
+def _same_file(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise AuthImportError("cannot compare source and destination files") from exc
+
+
+def _load_existing_account_id(path: Path) -> str:
+    try:
+        data = json.loads(_read_regular_text(path, "existing profile auth file"))
+    except json.JSONDecodeError as exc:
+        raise AuthImportError("existing profile auth file is not valid JSON") from exc
+    if not isinstance(data, dict):
+        raise AuthImportError("existing profile auth file must contain a JSON object")
+    account_id = data.get("account_id")
+    if (
+        not isinstance(account_id, str)
+        or not account_id
+        or account_id != account_id.strip()
+    ):
+        raise AuthImportError("existing profile auth file has an invalid account identifier")
+    return account_id
+
+
+def _write_auth(
+    destination: Path,
+    auth_data: dict[str, Any],
+    *,
+    replace: bool,
+    source: Path,
+) -> None:
     profile_dir = destination.parent
     _ensure_private_directory(profile_dir)
     lock_path = profile_dir / ".import.lock"
@@ -253,7 +285,16 @@ def _write_new_auth(destination: Path, auth_data: dict[str, Any]) -> None:
     try:
         os.fchmod(lock_fd, 0o600)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        if destination.exists() or destination.is_symlink():
+        destination_exists = destination.exists() or destination.is_symlink()
+        if replace:
+            if not destination_exists:
+                raise AuthImportError("profile auth file does not exist; omit --replace")
+            if _same_file(source, destination):
+                raise AuthImportError("source must not be the active profile auth file")
+            existing_account_id = _load_existing_account_id(destination)
+            if existing_account_id != auth_data["account_id"]:
+                raise AuthImportError("replacement belongs to a different account")
+        elif destination_exists:
             raise AuthImportError("profile auth file already exists")
 
         temp_fd, temp_name = tempfile.mkstemp(prefix=".auth.json.", dir=profile_dir)
@@ -265,7 +306,7 @@ def _write_new_auth(destination: Path, auth_data: dict[str, Any]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
 
-        if destination.exists() or destination.is_symlink():
+        if not replace and (destination.exists() or destination.is_symlink()):
             raise AuthImportError("profile auth file already exists")
         os.replace(temp_path, destination)
         temp_path = None
@@ -287,14 +328,17 @@ def import_codex_auth(
     source: Path,
     profiles_path: Path = DEFAULT_PROFILES_PATH,
     secrets_root: Path = DEFAULT_SECRETS_ROOT,
+    replace: bool = False,
 ) -> Path:
     """Validate and import one Codex session without modifying the source file."""
 
     _require_enabled_profile(profiles_path, profile_id)
-    auth_data = _load_codex_auth(source)
     _ensure_private_directory(secrets_root)
     destination = secrets_root / profile_id / "auth.json"
-    _write_new_auth(destination, auth_data)
+    if destination.exists() and _same_file(source, destination):
+        raise AuthImportError("source must not be the active profile auth file")
+    auth_data = _load_codex_auth(source)
+    _write_auth(destination, auth_data, replace=replace, source=source)
     return destination
 
 
@@ -304,6 +348,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--profile-id", required=True, help="Enabled profile id")
     parser.add_argument("--source", required=True, type=Path, help="Codex auth.json path")
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Atomically replace an existing session for the same account",
+    )
     parser.add_argument(
         "--profiles-file",
         type=Path,
@@ -328,12 +377,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             source=args.source,
             profiles_path=args.profiles_file,
             secrets_root=args.secrets_dir,
+            replace=args.replace,
         )
     except AuthImportError as exc:
         print(f"Import failed: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Imported OAuth profile '{args.profile_id}' into {destination}")
+    action = "Updated" if args.replace else "Imported"
+    print(f"{action} OAuth profile '{args.profile_id}' in {destination}")
     return 0
 
 

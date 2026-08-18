@@ -74,6 +74,9 @@ def test_configuration_reference_defines_local_profile_boundary():
         "models",
         "profiles",
         "config/openai-oauth/profiles.example.yaml",
+        "--replace",
+        "того же `account_id`",
+        ".import.lock",
     ):
         assert expected in configuration
 
