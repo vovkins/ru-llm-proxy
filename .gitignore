@@ -18,6 +18,7 @@ env/
 .env.local
 .env.production
 config/openai-oauth/profiles.local.yaml
+config/generated/litellm-config.local.yaml
 secrets/openai-oauth/
 
 # IDE

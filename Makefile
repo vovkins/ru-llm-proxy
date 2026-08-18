@@ -105,6 +105,7 @@ test-static: test-routing-diagnostics
 		tests/test_configuration_docs.py \
 		tests/test_openai_oauth_profile_config.py \
 		tests/test_import_codex_auth.py \
+		tests/test_generate_openai_oauth_config.py \
 		tests/test_compliance_gate_config.py \
 		tests/test_production_egress_controls_docs.py \
 		tests/test_admin_auth_rbac_docs.py \

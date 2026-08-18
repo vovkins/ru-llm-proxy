@@ -49,6 +49,7 @@ def _iter_mapping_keys(value):
 
 def test_local_profile_configuration_and_auth_files_are_ignored():
     assert _is_ignored("config/openai-oauth/profiles.local.yaml")
+    assert _is_ignored("config/generated/litellm-config.local.yaml")
     assert _is_ignored("secrets/openai-oauth/account-a/auth.json")
 
 
@@ -77,6 +78,9 @@ def test_configuration_reference_defines_local_profile_boundary():
         "--replace",
         "того же `account_id`",
         ".import.lock",
+        "scripts/generate_openai_oauth_config.py",
+        "config/generated/litellm-config.local.yaml",
+        "модель × включённый профиль",
     ):
         assert expected in configuration
 
