@@ -79,8 +79,11 @@ def test_configuration_reference_defines_local_profile_boundary():
         "того же `account_id`",
         ".import.lock",
         "scripts/generate_openai_oauth_config.py",
+        "scripts/validate_openai_oauth_setup.py",
         "config/generated/litellm-config.local.yaml",
         "модель × включённый профиль",
+        "Код возврата `0` означает успех, `1` — запрет запуска",
+        "относятся к одному `account_id`",
     ):
         assert expected in configuration
 
