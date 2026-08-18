@@ -137,6 +137,7 @@ def test_configuration_reference_documents_expected_env_vars():
 
     for heading in (
         "## Пул GLM-провайдеров по умолчанию",
+        "## Локальные профили OpenAI OAuth",
         "## Примеры дополнительных провайдеров",
         "## Административный интерфейс LiteLLM и секреты",
         "## Запуск и хранилища LiteLLM",
