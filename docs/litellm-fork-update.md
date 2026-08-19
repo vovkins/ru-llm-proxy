@@ -105,7 +105,7 @@ python -m pytest -q \
   tests/test_litellm/router_utils/pre_call_checks/test_openai_subscription_affinity_check.py \
   tests/test_litellm/router_utils/test_openai_subscription_affinity.py
 
-OPENAI_AFFINITY_REDIS_URL=redis://127.0.0.1:6379/15 python -m pytest -q \
+REDIS_HOST=127.0.0.1 REDIS_PORT=6379 python -m pytest -q \
   tests/test_litellm/router_utils/test_openai_subscription_affinity_redis.py
 
 git diff --name-only -z "${upstream_sha}...HEAD" -- '*.py' \
