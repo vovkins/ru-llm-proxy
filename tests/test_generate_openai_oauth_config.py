@@ -27,7 +27,12 @@ def _base_config() -> dict:
                 "model_info": {"id": "glm-primary", "access_groups": ["zai"]},
             }
         ],
-        "router_settings": {"routing_strategy": "simple-shuffle", "timeout": 60},
+        "router_settings": {
+            "routing_strategy": "simple-shuffle",
+            "optional_pre_call_checks": ["deployment_affinity"],
+            "deployment_affinity_ttl_seconds": 86400,
+            "timeout": 60,
+        },
         "guardrails": [{"guardrail_name": "ru-pii-mask-pre"}],
         "general_settings": {"master_key": "os.environ/LITELLM_MASTER_KEY"},
     }
@@ -81,8 +86,17 @@ def test_generation_preserves_base_config_and_builds_cartesian_product(tmp_path)
     generated = yaml.safe_load(output_path.read_text(encoding="utf-8"))
     assert generated["model_list"][: len(base["model_list"])] == base["model_list"]
     for key, value in base.items():
-        if key != "model_list":
+        if key not in {"model_list", "router_settings"}:
             assert generated[key] == value
+    assert generated["router_settings"] == {
+        "routing_strategy": "simple-shuffle",
+        "optional_pre_call_checks": ["openai_subscription_affinity"],
+        "deployment_affinity_ttl_seconds": 86400,
+        "timeout": 60,
+        "model_group_affinity_config": {
+            "glm-5.2": ["deployment_affinity"],
+        },
+    }
 
     oauth = generated["model_list"][len(base["model_list"]) :]
     assert summary.base_deployments == 1
@@ -147,10 +161,82 @@ def test_actual_project_inputs_generate_four_oauth_deployments(tmp_path):
     assert summary.base_deployments == 4
     assert summary.oauth_deployments == 4
     assert generated["model_list"][:4] == base["model_list"]
-    assert generated["router_settings"] == base["router_settings"]
+    assert generated["router_settings"]["optional_pre_call_checks"] == [
+        "openai_subscription_affinity"
+    ]
+    assert generated["router_settings"]["model_group_affinity_config"] == {
+        "glm-5.1": ["deployment_affinity"],
+        "glm-5.2": ["deployment_affinity"],
+    }
+    for key, value in base["router_settings"].items():
+        if key != "optional_pre_call_checks":
+            assert generated["router_settings"][key] == value
     assert generated["guardrails"] == base["guardrails"]
     assert generated["general_settings"] == base["general_settings"]
     assert generated["litellm_settings"] == base["litellm_settings"]
+
+
+def test_existing_group_affinity_and_optional_checks_are_preserved(tmp_path):
+    base = _base_config()
+    base["model_list"].append(
+        {
+            "model_name": "glm-5.1",
+            "litellm_params": {
+                "model": "openai/glm-5.1",
+                "api_key": "os.environ/ZAI_API_KEY_2",
+            },
+            "model_info": {"id": "glm-secondary"},
+        }
+    )
+    base["router_settings"]["optional_pre_call_checks"] = [
+        "prompt_caching",
+        "deployment_affinity",
+    ]
+    base["router_settings"]["model_group_affinity_config"] = {
+        "glm-5.2": ["session_affinity"],
+        "gpt-5.4": ["deployment_affinity", "encrypted_content_affinity"],
+        "gpt-5.3-codex": ["deployment_affinity"],
+    }
+
+    _, _, output_path, _ = _generate(tmp_path, base=base)
+    generated = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    router_settings = generated["router_settings"]
+
+    assert router_settings["optional_pre_call_checks"] == [
+        "prompt_caching",
+        "openai_subscription_affinity",
+    ]
+    assert router_settings["model_group_affinity_config"] == {
+        "glm-5.2": ["session_affinity", "deployment_affinity"],
+        "gpt-5.4": ["encrypted_content_affinity"],
+        "glm-5.1": ["deployment_affinity"],
+    }
+    assert "gpt-5.3-codex" not in router_settings["model_group_affinity_config"]
+
+
+@pytest.mark.parametrize(
+    ("router_settings", "message"),
+    [
+        (None, "must contain router_settings"),
+        ({"optional_pre_call_checks": "deployment_affinity"}, "must be a list"),
+        ({"model_group_affinity_config": []}, "must be a mapping"),
+        (
+            {"model_group_affinity_config": {"glm-5.2": "deployment_affinity"}},
+            "must map model names",
+        ),
+    ],
+)
+def test_invalid_router_affinity_configuration_is_rejected(
+    tmp_path, router_settings, message
+):
+    base = _base_config()
+    if router_settings is None:
+        del base["router_settings"]
+    else:
+        base["router_settings"] = router_settings
+
+    with pytest.raises(generator.ConfigGenerationError, match=message):
+        _generate(tmp_path, base=base)
 
 
 def test_generated_file_does_not_contain_profile_secrets_or_local_paths(tmp_path):

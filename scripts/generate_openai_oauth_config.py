@@ -28,6 +28,8 @@ PUBLIC_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 PROVIDER_MODEL_PATTERN = re.compile(r"^chatgpt/[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_BASE_CONFIG_BYTES = 2 * 1024 * 1024
 MAX_PROFILE_CONFIG_BYTES = 128 * 1024
+DEPLOYMENT_AFFINITY_CHECK = "deployment_affinity"
+OPENAI_SUBSCRIPTION_AFFINITY_CHECK = "openai_subscription_affinity"
 
 
 class ConfigGenerationError(Exception):
@@ -280,6 +282,67 @@ def _build_oauth_deployments(
     return generated
 
 
+def _configure_generated_affinity(
+    config: dict[str, Any],
+    base_model_names: set[str],
+    oauth_model_names: set[str],
+) -> None:
+    """Keep base-model affinity separate from the global OpenAI profile pin."""
+
+    router_settings = config.get("router_settings")
+    if not isinstance(router_settings, dict):
+        raise ConfigGenerationError("base LiteLLM config must contain router_settings")
+
+    optional_checks = router_settings.get("optional_pre_call_checks", [])
+    if not isinstance(optional_checks, list) or not all(
+        isinstance(check, str) for check in optional_checks
+    ):
+        raise ConfigGenerationError(
+            "router_settings.optional_pre_call_checks must be a list of strings"
+        )
+
+    global_deployment_affinity = DEPLOYMENT_AFFINITY_CHECK in optional_checks
+    generated_checks = [
+        check for check in optional_checks if check != DEPLOYMENT_AFFINITY_CHECK
+    ]
+    if OPENAI_SUBSCRIPTION_AFFINITY_CHECK not in generated_checks:
+        generated_checks.append(OPENAI_SUBSCRIPTION_AFFINITY_CHECK)
+    router_settings["optional_pre_call_checks"] = generated_checks
+
+    raw_group_config = router_settings.get("model_group_affinity_config", {})
+    if not isinstance(raw_group_config, dict):
+        raise ConfigGenerationError(
+            "router_settings.model_group_affinity_config must be a mapping"
+        )
+    for group, flags in raw_group_config.items():
+        if (
+            not isinstance(group, str)
+            or not isinstance(flags, list)
+            or not all(isinstance(flag, str) for flag in flags)
+        ):
+            raise ConfigGenerationError(
+                "router_settings.model_group_affinity_config must map model names to string lists"
+            )
+
+    for model_name in sorted(oauth_model_names):
+        flags = raw_group_config.get(model_name)
+        if flags is None:
+            continue
+        filtered_flags = [flag for flag in flags if flag != DEPLOYMENT_AFFINITY_CHECK]
+        if filtered_flags:
+            raw_group_config[model_name] = filtered_flags
+        else:
+            del raw_group_config[model_name]
+
+    if global_deployment_affinity:
+        for model_name in sorted(base_model_names):
+            flags = raw_group_config.setdefault(model_name, [])
+            if DEPLOYMENT_AFFINITY_CHECK not in flags:
+                flags.append(DEPLOYMENT_AFFINITY_CHECK)
+    if raw_group_config:
+        router_settings["model_group_affinity_config"] = raw_group_config
+
+
 def build_generated_config(base_data: Any, profile_data: Any) -> dict[str, Any]:
     """Validate both inputs and return a complete generated LiteLLM config."""
 
@@ -296,6 +359,7 @@ def build_generated_config(base_data: Any, profile_data: Any) -> dict[str, Any]:
     result = copy.deepcopy(base_config)
     generated = _build_oauth_deployments(models, enabled_profiles, base_ids)
     result["model_list"].extend(generated)
+    _configure_generated_affinity(result, base_model_names, oauth_model_names)
     return result
 
 

@@ -11,14 +11,14 @@ ChatGPT/Codex OAuth-профилей через серверный параме�
 | Исходный выпуск | `v1.97.0` |
 | Полный SHA исходного выпуска | `ef84494d52c6708e4e9f4a54ce551a265995ad8f` |
 | Ветка ответвления | `ru-llm-proxy/multi-oauth-v1.97.0` |
-| Версия образа | `ghcr.io/vovkins/litellm:1.97.0-multi-oauth.3` |
-| Ссылка для развёртывания | `ghcr.io/vovkins/litellm@sha256:ac2e8159aaac7a8187f6d8bec1e6171fe62b96d3fbb685f4cadb8cadfb688657` |
+| Версия образа | `ghcr.io/vovkins/litellm:1.97.0-multi-oauth.4` |
+| Ссылка для развёртывания | `ghcr.io/vovkins/litellm@sha256:eae6aac552894c52b4d88d5b832d788cc5221e40439445a373c0b2882519d43b` |
 
-Функциональные изменения находятся в коммитах `7eb8057161`, `271dc023c6`,
-`cabdc3c36b` и `599f36dc95`. Последний добавляет согласованное с импортёром
-атомарное чтение и обновление OAuth-файлов. Коммиты `9ae8528b79` и `672d970890`
-добавляют публикацию образа. Несвязанный коммит `69bf07a7c6` из исходного PR не
-переносится.
+Поддержку нескольких OAuth-файлов и публикацию образа добавляют коммиты
+`7eb8057161`, `271dc023c6`, `cabdc3c36b`, `9ae8528b79`, `672d970890` и
+`599f36dc95`. Общую для всех моделей привязку виртуального ключа к подписке
+добавляют `bbf974695e`, `c90ec7eb60`, `75531a45aa`, `2b70bf6715` и
+`038ad1a9ab`. Несвязанный коммит `69bf07a7c6` из исходного PR не переносится.
 
 ## Проверка официального выпуска
 
@@ -57,7 +57,7 @@ gh pr view 33680 --repo BerriAI/litellm
    git switch --create "ru-llm-proxy/multi-oauth-v${version}" "$upstream_sha"
    ```
 
-2. Перенесите только шесть зафиксированных коммитов:
+2. Перенесите только одиннадцать зафиксированных коммитов:
 
    ```bash
    git cherry-pick \
@@ -66,7 +66,12 @@ gh pr view 33680 --repo BerriAI/litellm
      cabdc3c36b24678aa43b89c9161ee5ff75cbe0f9 \
      9ae8528b790448b20905f1da33cc9b5752c3e1ec \
      672d9708904afc5262c3a5c24612e8e37992bc92 \
-     599f36dc95c3d5230ddd146b017566aa0ff6950b
+     599f36dc95c3d5230ddd146b017566aa0ff6950b \
+     bbf974695e5bb0902b27738d5d01dfe4e53f3792 \
+     c90ec7eb60575ed4fb5532d7df5e7e84e74b9292 \
+     75531a45aa91c647c4de532901ce8970e50bc626 \
+     2b70bf6715cebcefc184d0fd9ed229e332501a17 \
+     038ad1a9abc637fe8aff8ebc04d74343886b2a86
    ```
 
 3. Разрешайте конфликты по смыслу новой версии. Если часть функциональности уже
@@ -96,7 +101,12 @@ python -m pytest -q \
   tests/test_litellm/llms/chatgpt/test_chatgpt_authenticator.py \
   tests/test_litellm/llms/chatgpt/chat/test_chatgpt_chat_transformation.py \
   tests/test_litellm/llms/chatgpt/responses/test_chatgpt_responses_transformation.py \
-  tests/test_litellm/proxy/auth/test_auth_utils.py
+  tests/test_litellm/proxy/auth/test_auth_utils.py \
+  tests/test_litellm/router_utils/pre_call_checks/test_openai_subscription_affinity_check.py \
+  tests/test_litellm/router_utils/test_openai_subscription_affinity.py
+
+OPENAI_AFFINITY_REDIS_URL=redis://127.0.0.1:6379/15 python -m pytest -q \
+  tests/test_litellm/router_utils/test_openai_subscription_affinity_redis.py
 
 git diff --name-only -z "${upstream_sha}...HEAD" -- '*.py' \
   | xargs -0 python -m ruff check
@@ -148,17 +158,15 @@ docker compose up -d --force-recreate --no-deps --wait litellm
 
 ## Проверка регламента
 
-18 августа 2026 года последний стабильный выпуск `v1.97.0` всё ещё использовал
-один глобальный OAuth-файл, а BerriAI/litellm#33680 оставался открытым. Пробный
-перенос шести коммитов на чистый `v1.97.0` прошёл без конфликтов. Итоговое дерево
-`75c88a7f2711d70b3dd534fa194f70b9b2f8fc88` совпало с опубликованной версией;
-`git diff --check` и `actionlint` завершились успешно. Модульные проверки
-функциональности (316 тестов) и контейнерные проверки обеих архитектур выполнены
-при подготовке выпуска `1.97.0-multi-oauth.3`. Теги версии и коммита указывают
-на один манифест; его provenance проверен командой `gh attestation verify`.
+19 августа 2026 года исходной точкой ответвления оставался выпуск `v1.97.0`, а
+BerriAI/litellm#33680 оставался открытым. В выпуске
+`1.97.0-multi-oauth.4` проверены маршрутизация по подписке (89 тестов), работа с
+настоящим Redis (11 тестов) и контейнерные образы обеих архитектур. Теги версии и
+коммита указывают на один манифест; для него опубликована аттестация происхождения
+сборки.
 
 Исходные материалы:
 
 - [последний выпуск LiteLLM](https://github.com/BerriAI/litellm/releases/latest);
 - [PR с несколькими OAuth-профилями](https://github.com/BerriAI/litellm/pull/33680);
-- [успешная публикация образа](https://github.com/vovkins/litellm/actions/runs/32171858188).
+- [успешная публикация образа](https://github.com/vovkins/litellm/actions/runs/32243043415).

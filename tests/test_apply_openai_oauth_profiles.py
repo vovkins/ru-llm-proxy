@@ -17,7 +17,7 @@ from scripts import apply_openai_oauth_profiles as apply_script
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_OAUTH_IMAGE = (
     "ghcr.io/vovkins/litellm@"
-    "sha256:ac2e8159aaac7a8187f6d8bec1e6171fe62b96d3fbb685f4cadb8cadfb688657"
+    "sha256:eae6aac552894c52b4d88d5b832d788cc5221e40439445a373c0b2882519d43b"
 )
 PREVIOUS_OAUTH_IMAGE = (
     "ghcr.io/vovkins/litellm@"
