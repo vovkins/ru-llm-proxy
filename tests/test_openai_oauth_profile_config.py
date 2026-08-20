@@ -111,7 +111,7 @@ def test_profile_example_defines_unique_supported_models():
     assert len(provider_models) == len(set(provider_models))
     assert all(name and "/" not in name for name in public_names)
     assert all(model.startswith("chatgpt/") for model in provider_models)
-    assert {"gpt-5.4", "gpt-5.3-codex"} == set(public_names)
+    assert {"gpt-5.4"} == set(public_names)
 
 
 def test_profile_example_defines_two_unique_enabled_profiles():

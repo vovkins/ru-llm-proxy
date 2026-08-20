@@ -148,7 +148,7 @@ def test_generation_is_byte_deterministic_and_does_not_emit_yaml_aliases(tmp_pat
     assert stat.S_IMODE(output_path.stat().st_mode) == 0o644
 
 
-def test_actual_project_inputs_generate_four_oauth_deployments(tmp_path):
+def test_actual_project_inputs_generate_two_oauth_deployments(tmp_path):
     output_path = tmp_path / "litellm-config.local.yaml"
     summary = generator.generate_config(
         base_path=ROOT / "litellm-config.yaml",
@@ -159,7 +159,7 @@ def test_actual_project_inputs_generate_four_oauth_deployments(tmp_path):
     base = yaml.safe_load((ROOT / "litellm-config.yaml").read_text(encoding="utf-8"))
     generated = yaml.safe_load(output_path.read_text(encoding="utf-8"))
     assert summary.base_deployments == 4
-    assert summary.oauth_deployments == 4
+    assert summary.oauth_deployments == 2
     assert generated["model_list"][:4] == base["model_list"]
     assert generated["router_settings"]["optional_pre_call_checks"] == [
         "openai_subscription_affinity"

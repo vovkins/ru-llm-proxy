@@ -4,8 +4,6 @@ schema_version: 1
 models:
   - public_name: gpt-5.4
     provider_model: chatgpt/gpt-5.4
-  - public_name: gpt-5.3-codex
-    provider_model: chatgpt/gpt-5.3-codex
 
 # Профили содержат только безопасные локальные идентификаторы.
 profiles:
