@@ -13,6 +13,7 @@ services:
     environment:
       - PORT=8080
       - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=RU_PROXY_FINAL_CANARY
+      - MOCK_ECHO_RESPONSES_CONTENT=${MOCK_ECHO_RESPONSES_CONTENT:-false}
     volumes:
       - ../..:/workspace:ro
     healthcheck:
