@@ -2022,6 +2022,57 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return targets
 
+    @classmethod
+    def _is_responses_api_response(cls, response: Any) -> bool:
+        """Return whether a value follows the non-streaming Responses API shape."""
+        response_type = getattr(litellm, "ResponsesAPIResponse", None)
+        if isinstance(response_type, type) and isinstance(response, response_type):
+            return True
+        return (
+            isinstance(response, dict)
+            and response.get("object") == "response"
+            and isinstance(response.get("output"), list)
+        )
+
+    @classmethod
+    def _iter_responses_api_text_targets(
+        cls,
+        response: Any,
+    ) -> list[tuple[Any, str]]:
+        """Return mutable open-text fields from a Responses API response."""
+        output = cls._get_container_field(response, "output")
+        if not isinstance(output, list):
+            return []
+
+        targets: list[tuple[Any, str]] = []
+        for item in output:
+            for block_field in ("content", "summary"):
+                blocks = cls._get_container_field(item, block_field)
+                if not isinstance(blocks, list):
+                    continue
+                for block in blocks:
+                    for text_field in ("text", "refusal", "stdout", "stderr"):
+                        value = cls._get_container_field(block, text_field)
+                        if isinstance(value, str):
+                            targets.append((block, text_field))
+
+            for text_field in ("arguments", "input"):
+                value = cls._get_container_field(item, text_field)
+                if isinstance(value, str):
+                    targets.append((item, text_field))
+
+            item_output = cls._get_container_field(item, "output")
+            if isinstance(item_output, str):
+                targets.append((item, "output"))
+            elif isinstance(item_output, list):
+                for block in item_output:
+                    for text_field in ("text", "stdout", "stderr"):
+                        value = cls._get_container_field(block, text_field)
+                        if isinstance(value, str):
+                            targets.append((block, text_field))
+
+        return targets
+
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
         started_at = time.perf_counter()
@@ -3211,9 +3262,13 @@ class RuPIIGuardrail(CustomGuardrail):
         response: Any,
     ) -> None:
         """Unmask PII in response after receiving from LLM."""
+        response_supported = isinstance(
+            response,
+            litellm.ModelResponse,
+        ) or self._is_responses_api_response(response)
         if data.get("stream") is True and (
             self._streaming_restoration_done(data)
-            or not isinstance(response, litellm.ModelResponse)
+            or not response_supported
         ):
             PII_POST_CALLS.labels(result="skipped").inc()
             return
@@ -3240,42 +3295,46 @@ class RuPIIGuardrail(CustomGuardrail):
             )
             return
 
-        # Unmask in response
         restored_fields = 0
-        if isinstance(response, litellm.ModelResponse):
-            for choice in response.choices:
-                message = getattr(choice, "message", None)
-                for target, field in self._iter_response_text_targets(message):
-                    original_value = self._get_container_field(target, field)
-                    restored_value = self._replace_placeholders(
-                        original_value,
-                        mapping,
-                    )
-                    if restored_value != original_value:
-                        restored_fields += 1
-                        self._set_container_field(target, field, restored_value)
-        else:
-            PII_POST_CALLS.labels(result="unsupported_response").inc()
-            _safe_log(
-                logging.WARNING,
-                "pii_guardrail_unsupported_response",
-                request_id=request_id,
-                response_type=type(response).__name__,
-                mapping_size=len(mapping),
-            )
-            return
-
-        # Clean up Redis key
         try:
-            await self._delete_mapping(request_id)
-        except Exception as e:
-            PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
-            _safe_log(
-                logging.WARNING,
-                "pii_guardrail_cleanup_failed",
-                request_id=request_id,
-                error_type=type(e).__name__,
-            )
+            if isinstance(response, litellm.ModelResponse):
+                targets: list[tuple[Any, str]] = []
+                for choice in response.choices:
+                    message = getattr(choice, "message", None)
+                    targets.extend(self._iter_response_text_targets(message))
+            elif self._is_responses_api_response(response):
+                targets = self._iter_responses_api_text_targets(response)
+            else:
+                PII_POST_CALLS.labels(result="unsupported_response").inc()
+                _safe_log(
+                    logging.WARNING,
+                    "pii_guardrail_unsupported_response",
+                    request_id=request_id,
+                    response_type=type(response).__name__,
+                    mapping_size=len(mapping),
+                )
+                return
+
+            for target, field in targets:
+                original_value = self._get_container_field(target, field)
+                restored_value = self._replace_placeholders(
+                    original_value,
+                    mapping,
+                )
+                if restored_value != original_value:
+                    restored_fields += 1
+                    self._set_container_field(target, field, restored_value)
+        finally:
+            try:
+                await self._delete_mapping(request_id)
+            except Exception as e:
+                PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+                _safe_log(
+                    logging.WARNING,
+                    "pii_guardrail_cleanup_failed",
+                    request_id=request_id,
+                    error_type=type(e).__name__,
+                )
 
         PII_POST_CALLS.labels(
             result="restored" if restored_fields else "no_placeholders"

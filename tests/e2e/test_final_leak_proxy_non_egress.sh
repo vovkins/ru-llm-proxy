@@ -6,6 +6,7 @@ COMPOSE_FILE="$ROOT_DIR/tests/e2e/docker-compose.pre-egress-proxy.yml"
 PROJECT_NAME="${FINAL_LEAK_PROXY_PROJECT:-ru-llm-proxy-final-leak-$$}"
 PROXY_PORT="${FINAL_LEAK_PROXY_PORT:-${PRE_EGRESS_PROXY_PORT:-14001}}"
 export PRE_EGRESS_PROXY_PORT="$PROXY_PORT"
+export MOCK_ECHO_RESPONSES_CONTENT=true
 BASE_URL="http://localhost:${PROXY_PORT}"
 MASTER_KEY="sk-test-master"
 CANARY="RU_PROXY_FINAL_CANARY"
@@ -122,6 +123,27 @@ expect_provider_paths() {
     local expected="$2"
 
     expect_json_value "$file" provider_request_paths "$expected"
+}
+
+pii_mapping_count() {
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T redis \
+        redis-cli --raw EVAL "return #redis.call('keys', 'pii_mapping:*')" 0 \
+        | tr -d '\r'
+}
+
+expect_responses_output_text() {
+    local body_file="$1"
+    local expected="$2"
+    python3 - "$body_file" "$expected" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+actual = payload["output"][0]["content"][0]["text"]
+if actual != sys.argv[2]:
+    raise SystemExit(f"unexpected Responses output text: {actual!r}")
+PY
 }
 
 assert_litellm_logs_do_not_contain() {
@@ -463,6 +485,35 @@ expect_json_value "$masked_capture" provider_saw_phone_placeholder true
 if grep -Fq -- "$RAW_PHONE" "$masked_body"; then
     echo "Masked response leaked raw phone" >&2
     cat "$masked_body" >&2
+    exit 1
+fi
+assert_litellm_logs_do_not_contain "$RAW_PHONE"
+
+reset_capture
+responses_mapping_before="$(pii_mapping_count)"
+if [ "$responses_mapping_before" != "0" ]; then
+    echo "Expected no PII mappings before Responses test, got $responses_mapping_before" >&2
+    exit 1
+fi
+responses_masked_body="$tmp_dir/responses-masked.json"
+responses_masked_payload='{"model":"mock-chat","input":[{"role":"user","content":[{"type":"input_text","text":"Мой телефон +79031234567"}]}]}'
+responses_masked_status="$(post_json "/v1/responses" "$responses_masked_payload" "$responses_masked_body")"
+if [ "$responses_masked_status" != "200" ]; then
+    echo "Expected masked Responses PII prompt status 200, got $responses_masked_status" >&2
+    cat "$responses_masked_body" >&2
+    exit 1
+fi
+responses_masked_capture="$tmp_dir/responses-masked-capture.json"
+capture_counts "$responses_masked_capture"
+expect_json_value "$responses_masked_capture" analyzer_requests 1
+expect_json_value "$responses_masked_capture" provider_requests 1
+expect_provider_paths "$responses_masked_capture" '["/v1/responses"]'
+expect_json_value "$responses_masked_capture" provider_saw_raw_phone false
+expect_json_value "$responses_masked_capture" provider_saw_phone_placeholder true
+expect_responses_output_text "$responses_masked_body" "Мой телефон $RAW_PHONE"
+responses_mapping_after="$(pii_mapping_count)"
+if [ "$responses_mapping_after" != "$responses_mapping_before" ]; then
+    echo "Responses PII mapping was not cleaned: before=$responses_mapping_before after=$responses_mapping_after" >&2
     exit 1
 fi
 assert_litellm_logs_do_not_contain "$RAW_PHONE"

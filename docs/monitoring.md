@@ -242,6 +242,8 @@ Analyzer пишет `presidio_analyzer_request` с `outcome`, `latency_ms`,
 | `pre_egress_policy_blocked` | `INFO` | Блокировка конфигурации или журнала |
 | `final_payload_leak_check_blocked` | `INFO` | Блокировка итоговой нагрузки |
 | `pii_guardrail_restored`, `pii_guardrail_stream_restored` | `INFO` | Восстановление ответа |
+| `pii_guardrail_unsupported_response` | `WARNING` | Неизвестный непотоковый формат ответа; сопоставление удаляется без восстановления |
+| `pii_guardrail_cleanup_failed` | `WARNING` | Redis не удалил сопоставление; запись ограничена настроенным TTL |
 | `pii_guardrail_failed_open`, `pii_guardrail_failed_closed` | `ERROR` | Ошибка зависимости |
 | `pii_guardrail_analyzer_overloaded` | `ERROR` | Перегрузка Analyzer |
 | `presidio_analyzer_request`, `presidio_ner_inference` | `INFO` | Обработка в Analyzer |
