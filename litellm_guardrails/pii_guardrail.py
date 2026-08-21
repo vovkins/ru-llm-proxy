@@ -152,6 +152,8 @@ SYNTHETIC_PII_ALLOWLIST_SAFE_PATTERN_MARKERS = (
     "CANARY_",
 )
 SYNTHETIC_PII_ALLOWLIST_MAX_PATTERN_LENGTH = 256
+RESPONSES_OPAQUE_ENCRYPTED_ITEM_TYPES = frozenset({"reasoning", "compaction"})
+RESPONSES_OPAQUE_ENCRYPTED_FIELD = "encrypted_content"
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "tools",
     "tool_choice",
@@ -1869,6 +1871,19 @@ class RuPIIGuardrail(CustomGuardrail):
         return findings
 
     @classmethod
+    def _is_responses_opaque_encrypted_field(
+        cls,
+        container: Any,
+        field: str,
+    ) -> bool:
+        """Return whether a field is opaque Responses API provider state."""
+        return (
+            field == RESPONSES_OPAQUE_ENCRYPTED_FIELD
+            and cls._get_container_field(container, "type")
+            in RESPONSES_OPAQUE_ENCRYPTED_ITEM_TYPES
+        )
+
+    @classmethod
     def _iter_nested_string_values(cls, value: Any) -> list[str]:
         """Return string keys/values from provider-bound structured request fields."""
         if isinstance(value, str):
@@ -1882,6 +1897,8 @@ class RuPIIGuardrail(CustomGuardrail):
             texts = []
             for key, item in value.items():
                 if isinstance(key, str):
+                    if cls._is_responses_opaque_encrypted_field(value, key):
+                        continue
                     if key in {
                         PII_REQUEST_ID_METADATA_KEY,
                         PII_STREAMING_RESTORATION_DONE_METADATA_KEY,

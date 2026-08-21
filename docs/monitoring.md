@@ -248,7 +248,9 @@ Analyzer пишет `presidio_analyzer_request` с `outcome`, `latency_ms`,
 | `presidio_ner_startup_failed` | `CRITICAL` | Модель не готова |
 
 Во всех событиях запрещены исходный запрос, найденные значения, смещения,
-API-ключи и токены. `request_id` не используйте как метку Prometheus.
+API-ключи, токены и непрозрачное состояние Responses API из
+`reasoning/compaction.encrypted_content`. `request_id` не используйте как метку
+Prometheus.
 
 Аудит клиентских запросов и аудит административных действий ведутся отдельно.
 Для действий администраторов собирайте доступные LiteLLM audit logs, журналы
