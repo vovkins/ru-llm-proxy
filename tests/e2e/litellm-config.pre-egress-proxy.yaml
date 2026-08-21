@@ -16,6 +16,11 @@ guardrails:
       guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
       mode: "pre_call"
       default_on: true
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
+      default_on: true
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

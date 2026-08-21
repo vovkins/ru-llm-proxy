@@ -76,6 +76,17 @@ def _mock_redis(get_value=None):
     return redis
 
 
+def _responses_api_response(output):
+    return litellm.ResponsesAPIResponse(
+        id="resp-test",
+        created_at=1,
+        model="mock-chat",
+        object="response",
+        status="completed",
+        output=output,
+    )
+
+
 def _error_body_from_exception(error):
     if isinstance(error, HTTPException):
         detail = error.detail
@@ -2927,6 +2938,115 @@ class TestPreCallHook:
         assert canary not in json.dumps(error_body, ensure_ascii=False)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("item_type", ["reasoning", "compaction"])
+    async def test_responses_encrypted_content_is_opaque_to_guardrail(
+        self,
+        item_type,
+        caplog,
+    ):
+        canary = "RU_PROXY_ENCRYPTED_STATE_CANARY"
+        encrypted_content = f"opaque-prefix-{canary}-opaque-suffix"
+        pii_text = "Телефон клиента +79031234567"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        save_mapping = AsyncMock()
+        data = {
+            "model": "openai-responses-model",
+            "input": [
+                {
+                    "type": item_type,
+                    "id": f"{item_type}-1",
+                    "encrypted_content": encrypted_content,
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": pii_text}],
+                },
+            ],
+        }
+
+        caplog.set_level(logging.INFO)
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(
+                return_value=[_entity(pii_text, "+79031234567")],
+            ),
+        ) as analyze_text:
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        analyze_text.assert_awaited_once_with(pii_text)
+        assert result["input"][0]["encrypted_content"] == encrypted_content
+        assert result["input"][1]["content"][0]["text"] == (
+            "Телефон клиента <PHONE_NUMBER_1>"
+        )
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+        }
+        assert encrypted_content not in "\n".join(
+            record.getMessage() for record in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_encrypted_content_outside_known_responses_items_is_scanned(self):
+        canary = "RU_PROXY_UNTRUSTED_ENCRYPTED_FIELD_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "openai-responses-model",
+            "input": [
+                {
+                    "type": "custom_input",
+                    "encrypted_content": canary,
+                },
+                {"role": "user", "content": "Чистый запрос"},
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        analyze_text.assert_awaited_once_with("Чистый запрос")
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+
+    def test_response_encrypted_content_is_not_a_restoration_target(self):
+        encrypted_content = "opaque-response-state-<PHONE_NUMBER_1>"
+        message = {
+            "content": "Телефон <PHONE_NUMBER_1>",
+            "reasoning_content": "Проверяю <PHONE_NUMBER_1>",
+            "encrypted_content": encrypted_content,
+        }
+
+        targets = RuPIIGuardrail._iter_response_text_targets(message)
+
+        assert (message, "content") in targets
+        assert (message, "reasoning_content") in targets
+        assert (message, "encrypted_content") not in targets
+        assert message["encrypted_content"] == encrypted_content
+
+    @pytest.mark.asyncio
     async def test_final_payload_leak_check_blocks_extra_body_canary(self):
         canary = "RU_PROXY_EXTRA_BODY_CANARY"
         guardrail = RuPIIGuardrail(
@@ -4451,6 +4571,227 @@ class TestPostCallHook:
         assert "+79031234567" in response.choices[0].message.content
         assert "89031234567" in response.choices[0].message.content
         assert "<PHONE_NUMBER_1>" not in response.choices[0].message.content
+
+    @pytest.mark.asyncio
+    async def test_unmasks_responses_api_response_and_cleans_mapping(self, guardrail):
+        mapping = {
+            "<PHONE_NUMBER_1>": "+79031234567",
+            "<RU_INN_1>": "7707083893",
+        }
+        guardrail._redis.get.return_value = json.dumps(mapping)
+        encrypted_content = "opaque-<PHONE_NUMBER_1>"
+        response = _responses_api_response(
+            [
+                {
+                    "id": "msg-1",
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Телефон <PHONE_NUMBER_1>",
+                            "annotations": [],
+                        }
+                    ],
+                },
+                {
+                    "id": "call-1",
+                    "type": "function_call",
+                    "call_id": "fc-1",
+                    "name": "lookup_inn",
+                    "arguments": '{"inn":"<RU_INN_1>"}',
+                    "status": "completed",
+                },
+                {
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "summary": [
+                        {
+                            "type": "summary_text",
+                            "text": "Проверен <PHONE_NUMBER_1>",
+                        }
+                    ],
+                    "encrypted_content": encrypted_content,
+                    "status": "completed",
+                },
+                {
+                    "id": "compaction-1",
+                    "type": "compaction",
+                    "encrypted_content": encrypted_content,
+                },
+            ]
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-responses"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.output[0].content[0].text == "Телефон +79031234567"
+        assert response.output[1].arguments == '{"inn":"7707083893"}'
+        assert response.output[2].summary[0].text == "Проверен +79031234567"
+        assert response.output[2].encrypted_content == encrypted_content
+        assert response.output[3].encrypted_content == encrypted_content
+        guardrail._redis.delete.assert_awaited_once_with(
+            "pii_mapping:req-responses"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unmasks_responses_api_dictionary_shape(self, guardrail):
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": "+79031234567"}
+        )
+        response = {
+            "object": "response",
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Телефон <PHONE_NUMBER_1>",
+                        }
+                    ],
+                },
+                {
+                    "type": "custom_tool_call",
+                    "input": "Проверь <PHONE_NUMBER_1>",
+                },
+                {
+                    "type": "apply_patch_call_output",
+                    "output": "Обновлён <PHONE_NUMBER_1>",
+                },
+                {
+                    "type": "shell_call_output",
+                    "output": [
+                        {
+                            "stdout": "stdout <PHONE_NUMBER_1>",
+                            "stderr": "stderr <PHONE_NUMBER_1>",
+                        }
+                    ],
+                },
+            ],
+        }
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-dict"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response["output"][0]["content"][0]["text"] == (
+            "Телефон +79031234567"
+        )
+        assert response["output"][1]["input"] == "Проверь +79031234567"
+        assert response["output"][2]["output"] == "Обновлён +79031234567"
+        assert response["output"][3]["output"][0] == {
+            "stdout": "stdout +79031234567",
+            "stderr": "stderr +79031234567",
+        }
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-dict")
+
+    @pytest.mark.asyncio
+    async def test_responses_api_without_placeholders_still_cleans_mapping(
+        self,
+        guardrail,
+    ):
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": "+79031234567"}
+        )
+        response = _responses_api_response(
+            [
+                {
+                    "id": "msg-1",
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Готово",
+                            "annotations": [],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-clean"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.output[0].content[0].text == "Готово"
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-clean")
+
+    @pytest.mark.asyncio
+    async def test_unsupported_non_stream_response_still_cleans_mapping(
+        self,
+        guardrail,
+        caplog,
+    ):
+        raw_value = "+79031234567"
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": raw_value}
+        )
+
+        caplog.set_level(logging.WARNING)
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-unsupported"}},
+            user_api_key_dict=MagicMock(),
+            response=object(),
+        )
+
+        guardrail._redis.delete.assert_awaited_once_with(
+            "pii_mapping:req-unsupported"
+        )
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pii_guardrail_unsupported_response" in logs
+        assert raw_value not in logs
+
+    @pytest.mark.asyncio
+    async def test_mapping_delete_failure_is_logged_without_raw_values(
+        self,
+        guardrail,
+        caplog,
+    ):
+        raw_value = "+79031234567"
+        guardrail._redis.get.return_value = json.dumps(
+            {"<PHONE_NUMBER_1>": raw_value}
+        )
+        guardrail._redis.delete.side_effect = RuntimeError("redis unavailable")
+        response = _responses_api_response(
+            [
+                {
+                    "id": "msg-1",
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "Телефон <PHONE_NUMBER_1>",
+                            "annotations": [],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        caplog.set_level(logging.WARNING)
+        await guardrail.async_post_call_success_hook(
+            data={"metadata": {"pii_request_id": "req-delete-error"}},
+            user_api_key_dict=MagicMock(),
+            response=response,
+        )
+
+        assert response.output[0].content[0].text == f"Телефон {raw_value}"
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        assert "pii_guardrail_cleanup_failed" in logs
+        assert raw_value not in logs
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("entity_type,value", NER_GUARDRAIL_CASES)

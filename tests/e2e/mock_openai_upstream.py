@@ -20,6 +20,14 @@ ECHO_CHAT_CONTENT = os.getenv("MOCK_ECHO_CHAT_CONTENT", "false").lower() in {
     "true",
     "yes",
 }
+ECHO_RESPONSES_CONTENT = os.getenv(
+    "MOCK_ECHO_RESPONSES_CONTENT",
+    "false",
+).lower() in {
+    "1",
+    "true",
+    "yes",
+}
 PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
 
 CAPTURE = {
@@ -72,6 +80,33 @@ def _chat_response_content(payload) -> str:
         content = message.get("content")
         if isinstance(content, str):
             return content
+    return "ok"
+
+
+def _responses_response_content(payload) -> str:
+    if not ECHO_RESPONSES_CONTENT:
+        return "ok"
+
+    input_items = payload.get("input")
+    if isinstance(input_items, str):
+        return input_items
+    if not isinstance(input_items, list):
+        return "ok"
+
+    for item in reversed(input_items):
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            continue
+        for block in reversed(content):
+            if not isinstance(block, dict):
+                continue
+            text = block.get("text")
+            if isinstance(text, str):
+                return text
     return "ok"
 
 
@@ -202,6 +237,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
+            response_content = _responses_response_content(payload)
             self._write_json(
                 200,
                 {
@@ -219,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                             "content": [
                                 {
                                     "type": "output_text",
-                                    "text": "ok",
+                                    "text": response_content,
                                     "annotations": [],
                                 }
                             ],
