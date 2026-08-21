@@ -152,6 +152,8 @@ SYNTHETIC_PII_ALLOWLIST_SAFE_PATTERN_MARKERS = (
     "CANARY_",
 )
 SYNTHETIC_PII_ALLOWLIST_MAX_PATTERN_LENGTH = 256
+RESPONSES_OPAQUE_ENCRYPTED_ITEM_TYPES = frozenset({"reasoning", "compaction"})
+RESPONSES_OPAQUE_ENCRYPTED_FIELD = "encrypted_content"
 FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_FIELDS = (
     "tools",
     "tool_choice",
@@ -1880,8 +1882,14 @@ class RuPIIGuardrail(CustomGuardrail):
             return texts
         if isinstance(value, dict):
             texts = []
+            item_type = value.get("type")
             for key, item in value.items():
                 if isinstance(key, str):
+                    if (
+                        key == RESPONSES_OPAQUE_ENCRYPTED_FIELD
+                        and item_type in RESPONSES_OPAQUE_ENCRYPTED_ITEM_TYPES
+                    ):
+                        continue
                     if key in {
                         PII_REQUEST_ID_METADATA_KEY,
                         PII_STREAMING_RESTORATION_DONE_METADATA_KEY,

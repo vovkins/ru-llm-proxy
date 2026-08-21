@@ -31,7 +31,7 @@ make virtual-key-create KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
 | [ZCode](zcode.md) | OpenAI Chat Completions | Поддерживается |
 | [OpenCode](opencode.md) | OpenAI Chat Completions | Поддерживается |
 | [Kilo Code](kilo-code.md) | OpenAI Chat Completions | Поддерживается |
-| [Codex](codex.md) | OpenAI Responses API | Требует добавленной совместимой модели |
+| [Codex](codex.md) | OpenAI Responses API | Поддерживается в отдельном режиме ChatGPT OAuth |
 | [Claude Code](claude-code.md) | Anthropic Messages API | Базовый запрос проверен; полный шлюз не подтверждён |
 | [JWT/OIDC](jwt.md) | Входная аутентификация LiteLLM | Дополнительная корпоративная схема |
 
@@ -53,5 +53,5 @@ make guardrails-smoke
 - `LITELLM_MASTER_KEY` не используется в клиентских приложениях.
 - `ZAI_API_KEY`, `OPENAI_API_KEY` и `ANTHROPIC_API_KEY` не копируются на
   пользовательские машины в режиме, где провайдера оплачивает прокси.
-- Сквозная передача собственного ключа или подписки является отдельным режимом и
-  требует проверки на закреплённой версии LiteLLM.
+- ChatGPT OAuth работает только через серверные профили отдельного режима;
+  пользовательский `auth.json` клиенту прокси не требуется.

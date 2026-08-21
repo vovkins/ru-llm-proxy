@@ -10,6 +10,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_PATH = ROOT / "config" / "openai-oauth" / "profiles.example.yaml"
 PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+EXPECTED_DEFAULT_MODELS = {
+    "gpt-5.6-sol": "chatgpt/gpt-5.6-sol",
+    "gpt-5.6-terra": "chatgpt/gpt-5.6-terra",
+    "gpt-5.6-luna": "chatgpt/gpt-5.6-luna",
+}
+FORBIDDEN_DEFAULT_MODELS = {"gpt-5.4", "gpt-5.6", "gpt-5.3-codex"}
 FORBIDDEN_KEYS = {
     "access_token",
     "account_id",
@@ -111,7 +117,8 @@ def test_profile_example_defines_unique_supported_models():
     assert len(provider_models) == len(set(provider_models))
     assert all(name and "/" not in name for name in public_names)
     assert all(model.startswith("chatgpt/") for model in provider_models)
-    assert {"gpt-5.4"} == set(public_names)
+    assert dict(zip(public_names, provider_models)) == EXPECTED_DEFAULT_MODELS
+    assert FORBIDDEN_DEFAULT_MODELS.isdisjoint(public_names)
 
 
 def test_profile_example_defines_two_unique_enabled_profiles():

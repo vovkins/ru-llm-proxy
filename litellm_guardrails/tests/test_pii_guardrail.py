@@ -2927,6 +2927,110 @@ class TestPreCallHook:
         assert canary not in json.dumps(error_body, ensure_ascii=False)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("item_type", ["reasoning", "compaction"])
+    async def test_responses_encrypted_content_is_opaque_to_guardrail(
+        self,
+        item_type,
+    ):
+        canary = "RU_PROXY_ENCRYPTED_STATE_CANARY"
+        encrypted_content = f"opaque-prefix-{canary}-opaque-suffix"
+        pii_text = "Телефон клиента +79031234567"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        save_mapping = AsyncMock()
+        data = {
+            "model": "gpt-5.6-luna",
+            "input": [
+                {
+                    "type": item_type,
+                    "id": f"{item_type}-1",
+                    "encrypted_content": encrypted_content,
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": pii_text}],
+                },
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(
+                return_value=[_entity(pii_text, "+79031234567")],
+            ),
+        ) as analyze_text:
+            with patch.object(guardrail, "_save_mapping", save_mapping):
+                result = await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        analyze_text.assert_awaited_once_with(pii_text)
+        assert result["input"][0]["encrypted_content"] == encrypted_content
+        assert result["input"][1]["content"][0]["text"] == (
+            "Телефон клиента <PHONE_NUMBER_1>"
+        )
+        assert save_mapping.call_args[0][1] == {
+            "<PHONE_NUMBER_1>": "+79031234567",
+        }
+
+    @pytest.mark.asyncio
+    async def test_encrypted_content_outside_known_responses_items_is_scanned(self):
+        canary = "RU_PROXY_UNTRUSTED_ENCRYPTED_FIELD_CANARY"
+        guardrail = RuPIIGuardrail(
+            final_payload_leak_check_canaries=(canary,),
+        )
+        guardrail._redis = _mock_redis()
+        data = {
+            "model": "gpt-5.6-luna",
+            "input": [
+                {
+                    "type": "custom_input",
+                    "encrypted_content": canary,
+                },
+                {"role": "user", "content": "Чистый запрос"},
+            ],
+        }
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="responses",
+                )
+
+        analyze_text.assert_awaited_once_with("Чистый запрос")
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["configured_canary"]}
+
+    def test_response_encrypted_content_is_not_a_restoration_target(self):
+        encrypted_content = "opaque-response-state-<PHONE_NUMBER_1>"
+        message = {
+            "content": "Телефон <PHONE_NUMBER_1>",
+            "reasoning_content": "Проверяю <PHONE_NUMBER_1>",
+            "encrypted_content": encrypted_content,
+        }
+
+        targets = RuPIIGuardrail._iter_response_text_targets(message)
+
+        assert (message, "content") in targets
+        assert (message, "reasoning_content") in targets
+        assert (message, "encrypted_content") not in targets
+        assert message["encrypted_content"] == encrypted_content
+
+    @pytest.mark.asyncio
     async def test_final_payload_leak_check_blocks_extra_body_canary(self):
         canary = "RU_PROXY_EXTRA_BODY_CANARY"
         guardrail = RuPIIGuardrail(

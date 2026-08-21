@@ -148,7 +148,7 @@ def test_generation_is_byte_deterministic_and_does_not_emit_yaml_aliases(tmp_pat
     assert stat.S_IMODE(output_path.stat().st_mode) == 0o644
 
 
-def test_actual_project_inputs_generate_two_oauth_deployments(tmp_path):
+def test_actual_project_inputs_generate_six_oauth_deployments(tmp_path):
     output_path = tmp_path / "litellm-config.local.yaml"
     summary = generator.generate_config(
         base_path=ROOT / "litellm-config.yaml",
@@ -159,7 +159,7 @@ def test_actual_project_inputs_generate_two_oauth_deployments(tmp_path):
     base = yaml.safe_load((ROOT / "litellm-config.yaml").read_text(encoding="utf-8"))
     generated = yaml.safe_load(output_path.read_text(encoding="utf-8"))
     assert summary.base_deployments == 4
-    assert summary.oauth_deployments == 2
+    assert summary.oauth_deployments == 6
     assert generated["model_list"][:4] == base["model_list"]
     assert generated["router_settings"]["optional_pre_call_checks"] == [
         "openai_subscription_affinity"
@@ -174,6 +174,21 @@ def test_actual_project_inputs_generate_two_oauth_deployments(tmp_path):
     assert generated["guardrails"] == base["guardrails"]
     assert generated["general_settings"] == base["general_settings"]
     assert generated["litellm_settings"] == base["litellm_settings"]
+
+    oauth = generated["model_list"][4:]
+    assert {
+        (deployment["model_name"], deployment["model_info"]["openai_oauth_profile"])
+        for deployment in oauth
+    } == {
+        (model, profile)
+        for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
+        for profile in ("subscription-a", "subscription-b")
+    }
+    assert all(
+        deployment["litellm_params"]["model"]
+        == f"chatgpt/{deployment['model_name']}"
+        for deployment in oauth
+    )
 
 
 def test_existing_group_affinity_and_optional_checks_are_preserved(tmp_path):

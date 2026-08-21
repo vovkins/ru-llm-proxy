@@ -112,6 +112,25 @@ make monitor-smoke
 пользовательский ключ. Рост ошибок по одному провайдеру модели может законно
 привести к выбору другого; `model_info.id` должны оставаться стабильными.
 
+Для отдельного пула ChatGPT OAuth доступны метрики по каждому безопасному
+идентификатору подписки:
+
+| Метрика | Метки | Назначение |
+| --- | --- | --- |
+| `ru_llm_proxy_openai_subscription_available` | `profile` | Доступность подписки для новых запросов |
+| `ru_llm_proxy_openai_subscription_limit_used_ratio` | `profile`, `window` | Использованная доля известного лимита |
+| `ru_llm_proxy_openai_subscription_limit_remaining_ratio` | `profile`, `window` | Оставшаяся доля известного лимита |
+| `ru_llm_proxy_openai_subscription_limit_reset_timestamp_seconds` | `profile`, `window` | Время восстановления лимита |
+| `ru_llm_proxy_openai_subscription_limit_window_seconds` | `profile`, `window` | Длительность окна лимита |
+| `ru_llm_proxy_openai_subscription_last_observation_timestamp_seconds` | `profile`, `window` | Время последнего ответа с данными о лимите |
+| `ru_llm_proxy_openai_subscription_failovers_total` | `profile` | Переключения с исчерпанной или недоступной подписки |
+| `ru_llm_proxy_openai_subscription_auth_errors_total` | `profile` | Ошибки OAuth-авторизации |
+
+Данные о лимитах обновляются только по заголовкам ответа OpenAI. Отсутствие ряда
+означает, что провайдер не сообщил соответствующее значение, а не нулевое
+потребление. Метки не содержат адрес электронной почты, OAuth-токен или путь к
+`auth.json`.
+
 ### Защитный обработчик
 
 | Метрика | Метки | Назначение |
@@ -248,7 +267,8 @@ Analyzer пишет `presidio_analyzer_request` с `outcome`, `latency_ms`,
 | `presidio_ner_startup_failed` | `CRITICAL` | Модель не готова |
 
 Во всех событиях запрещены исходный запрос, найденные значения, смещения,
-API-ключи и токены. `request_id` не используйте как метку Prometheus.
+API-ключи, OAuth-токены и содержимое `encrypted_content`. `request_id` не
+используйте как метку Prometheus.
 
 Аудит клиентских запросов и аудит административных действий ведутся отдельно.
 Для действий администраторов собирайте доступные LiteLLM audit logs, журналы

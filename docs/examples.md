@@ -63,23 +63,29 @@ curl -sS "$API_URL/v1/chat/completions" \
 служебные метки, разорванные между фрагментами. Аргументы вызовов инструментов в
 потоковых дельтах пока не восстанавливаются.
 
-## Дополнительный пример OpenAI Responses API
+## ChatGPT OAuth и OpenAI Responses API
 
-Сначала добавьте совместимую модель из
-[`examples/litellm-config.optional-providers.yaml`](../examples/litellm-config.optional-providers.yaml).
+Сначала примените пул подписок по
+[инструкции настройки](configuration.md#локальные-профили-openai-oauth) и выдайте
+пользовательскому ключу доступ к нужным моделям. Для регулярных проверок
+используйте Luna:
 
 ```bash
 curl -s "$API_URL/v1/responses" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "openai-example-standard",
+    "model": "gpt-5.6-luna",
     "input": "Скажи короткое приветствие на русском",
+    "store": false,
     "max_output_tokens": 80
   }' | jq
 
-RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
+RESPONSES_MODEL=gpt-5.6-luna make client-auth-smoke
 ```
+
+Sol и Terra доступны под явными именами `gpt-5.6-sol` и `gpt-5.6-terra`.
+Общий алиас `gpt-5.6` в режим пула не входит.
 
 ## Дополнительный базовый пример Anthropic Messages API
 
@@ -353,6 +359,6 @@ curl -L -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 [clients/README.md](clients/README.md). Прямая ссылка на ZCode:
 [clients/zcode.md](clients/zcode.md).
 
-OpenAI и Anthropic не входят в активную конфигурацию. Используйте
-[`examples/litellm-config.optional-providers.yaml`](../examples/litellm-config.optional-providers.yaml)
-и проверяйте идентификаторы моделей на установленной версии LiteLLM.
+Пул ChatGPT OAuth включается отдельным файлом Compose. Обычные API-ключи OpenAI
+и Anthropic остаются примерами в
+[`examples/litellm-config.optional-providers.yaml`](../examples/litellm-config.optional-providers.yaml).

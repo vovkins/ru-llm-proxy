@@ -15,6 +15,8 @@ LiteLLM с назначенными моделями, бюджетами и ог
 - `glm-5.2` по умолчанию и дополнительное имя `glm-5.1`;
 - пул из двух подписок Z.AI Coding Plan с закреплением клиентского ключа за
   выбранным провайдером модели;
+- отдельный режим пула ChatGPT OAuth с несколькими подписками и моделями
+  `gpt-5.6-sol`, `gpt-5.6-terra` и `gpt-5.6-luna`;
 - распознаватели на регулярных выражениях, spaCy и специализированная BERT-модель;
 - маскирование, блокировка, восстановление ответа и временные сопоставления в Redis;
 - предварительная и финальная проверки полезной нагрузки до вызова провайдера;
@@ -132,7 +134,10 @@ curl http://localhost:4000/v1/chat/completions \
 | Ограничить исходящие соединения | [Сетевые ограничения](docs/egress-controls.md), [`deploy/kubernetes/egress`](deploy/kubernetes/egress) |
 | Проверить закрепление маршрута | [Маршрутизация](docs/routing.md) |
 
-OpenAI и Anthropic не входят в активную конфигурацию. Их примеры находятся в
+Базовый запуск использует GLM. Пул ChatGPT OAuth включается отдельно через
+[`docker-compose.openai-oauth.yml`](docker-compose.openai-oauth.yml) по
+[инструкции настройки](docs/configuration.md#локальные-профили-openai-oauth).
+Примеры обычных API-ключей OpenAI и Anthropic находятся в
 [`examples/litellm-config.optional-providers.yaml`](examples/litellm-config.optional-providers.yaml).
 Руководство по ZCode: [docs/clients/zcode.md](docs/clients/zcode.md).
 
