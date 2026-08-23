@@ -1,0 +1,29 @@
+services:
+  codex-lb:
+    # Official v1.24.0-beta.3 multi-arch image (linux/amd64 and linux/arm64).
+    image: ghcr.io/soju06/codex-lb:1.24.0-beta.3@sha256:d9df6fdef5d900bf96cd6e183b5d2d8abf9387f9cca642e317206ced5362c704
+    container_name: ru-llm-proxy-codex-lb
+    restart: unless-stopped
+    environment:
+      CODEX_LB_DATA_DIR: /var/lib/codex-lb
+      CODEX_LB_DATABASE_URL: "postgresql+asyncpg://${CODEX_LB_POSTGRES_USER:-codex_lb}:${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}@codex-lb-db:5432/${CODEX_LB_POSTGRES_DB:-codex_lb}"
+    volumes:
+      - codex-lb-data:/var/lib/codex-lb
+    depends_on:
+      codex-lb-db:
+        condition: service_started
+
+  codex-lb-db:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    container_name: ru-llm-proxy-codex-lb-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CODEX_LB_POSTGRES_USER:-codex_lb}
+      POSTGRES_PASSWORD: ${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${CODEX_LB_POSTGRES_DB:-codex_lb}
+    volumes:
+      - codex-lb-pgdata:/var/lib/postgresql/data
+
+volumes:
+  codex-lb-data:
+  codex-lb-pgdata:
