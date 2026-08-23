@@ -26,7 +26,10 @@ def test_codex_lb_is_an_optional_overlay_not_part_of_base_compose():
     overlay = _overlay()
 
     assert "codex-lb" not in base
-    assert set(overlay["services"]) == {"codex-lb", "codex-lb-db"}
+    assert set(overlay["services"]) == {"litellm", "codex-lb", "codex-lb-db"}
+    assert overlay["services"]["litellm"] == {
+        "networks": ["ru-llm-proxy", "codex-lb-proxy"]
+    }
 
 
 def test_codex_lb_images_are_versioned_and_digest_pinned():
@@ -44,7 +47,7 @@ def test_codex_lb_uses_a_dedicated_postgres_service_without_host_port():
     database = services["codex-lb-db"]
 
     assert app["depends_on"] == {
-        "codex-lb-db": {"condition": "service_started"}
+        "codex-lb-db": {"condition": "service_healthy"}
     }
     assert "@codex-lb-db:5432/" in app["environment"]["CODEX_LB_DATABASE_URL"]
     assert database["environment"] == {
@@ -83,4 +86,48 @@ def test_codex_lb_overlay_contains_no_literal_credentials():
     assert services["codex-lb-db"]["environment"]["POSTGRES_PASSWORD"].startswith(
         "${CODEX_LB_POSTGRES_PASSWORD:?"
     )
-    assert "ports" not in services["codex-lb"]
+
+
+def test_codex_lb_publishes_only_dashboard_api_and_metrics_ports():
+    services = _overlay()["services"]
+    app = services["codex-lb"]
+
+    assert app["ports"] == [
+        "${CODEX_LB_PORT:-2455}:2455",
+        "${CODEX_LB_METRICS_PORT:-9090}:9090",
+    ]
+    assert app["environment"]["CODEX_LB_METRICS_ENABLED"] == "true"
+    assert "1455" not in OVERLAY_PATH.read_text(encoding="utf-8")
+    assert "BIND_ADDRESS" not in OVERLAY_PATH.read_text(encoding="utf-8")
+
+
+def test_codex_lb_database_network_is_internal_and_proxy_network_isolated():
+    overlay = _overlay()
+    services = overlay["services"]
+
+    assert overlay["networks"] == {
+        "codex-lb-proxy": {"driver": "bridge"},
+        "codex-lb-database": {"driver": "bridge", "internal": True},
+    }
+    assert services["litellm"]["networks"] == [
+        "ru-llm-proxy",
+        "codex-lb-proxy",
+    ]
+    assert services["codex-lb"]["networks"] == [
+        "codex-lb-proxy",
+        "codex-lb-database",
+    ]
+    assert services["codex-lb-db"]["networks"] == ["codex-lb-database"]
+
+
+def test_codex_lb_and_postgres_have_readiness_checks():
+    services = _overlay()["services"]
+    app_health = services["codex-lb"]["healthcheck"]
+    database_health = services["codex-lb-db"]["healthcheck"]
+
+    assert app_health["test"][:3] == ["CMD", "python", "-c"]
+    assert "/health/ready" in app_health["test"][3]
+    assert app_health["start_period"] == "30s"
+    assert database_health["test"][0] == "CMD-SHELL"
+    assert "pg_isready" in database_health["test"][1]
+    assert database_health["start_period"] == "10s"
