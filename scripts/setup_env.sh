@@ -83,6 +83,7 @@ echo "Проверка локальных секретов..."
 master_key="sk-ru-$(random_urlsafe 48)"
 salt_key="$(random_urlsafe 48)"
 db_password="$(random_urlsafe 32)"
+codex_lb_db_password="$(random_urlsafe 32)"
 ui_password="$(random_urlsafe 32)"
 
 ensure_secret "LITELLM_MASTER_KEY" "$master_key" "sk-replace-with-generated-key" "***" || true
@@ -92,6 +93,9 @@ db_password_changed=0
 if ensure_secret "POSTGRES_PASSWORD" "$db_password" "***"; then
     db_password_changed=1
 fi
+
+ensure_secret "CODEX_LB_POSTGRES_PASSWORD" "$codex_lb_db_password" "***" || true
+ensure_key_exists "CODEX_LB_API_KEY" "***"
 
 ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" || true
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true

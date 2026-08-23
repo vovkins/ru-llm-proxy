@@ -14,8 +14,10 @@ services:
       - "${CODEX_LB_METRICS_PORT:-9090}:9090"
     environment:
       CODEX_LB_DATA_DIR: /var/lib/codex-lb
-      CODEX_LB_DATABASE_URL: "postgresql+asyncpg://${CODEX_LB_POSTGRES_USER:-codex_lb}:${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}@codex-lb-db:5432/${CODEX_LB_POSTGRES_DB:-codex_lb}"
+      CODEX_LB_DATABASE_URL: "postgresql+asyncpg://codex_lb:${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}@codex-lb-db:5432/codex_lb"
+      CODEX_LB_DASHBOARD_AUTH_MODE: standard
       CODEX_LB_METRICS_ENABLED: "true"
+      CODEX_LB_TELEMETRY_ENABLED: "false"
     volumes:
       - codex-lb-data:/var/lib/codex-lb
     depends_on:
@@ -40,15 +42,15 @@ services:
     container_name: ru-llm-proxy-codex-lb-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${CODEX_LB_POSTGRES_USER:-codex_lb}
+      POSTGRES_USER: codex_lb
       POSTGRES_PASSWORD: ${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}
-      POSTGRES_DB: ${CODEX_LB_POSTGRES_DB:-codex_lb}
+      POSTGRES_DB: codex_lb
     volumes:
       - codex-lb-pgdata:/var/lib/postgresql/data
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U ${CODEX_LB_POSTGRES_USER:-codex_lb} -d ${CODEX_LB_POSTGRES_DB:-codex_lb}
+        - pg_isready -U codex_lb -d codex_lb
       interval: 10s
       timeout: 5s
       retries: 5

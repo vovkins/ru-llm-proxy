@@ -1,5 +1,7 @@
 """Static contract for the optional codex-lb Compose overlay."""
 
+import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -51,11 +53,11 @@ def test_codex_lb_uses_a_dedicated_postgres_service_without_host_port():
     }
     assert "@codex-lb-db:5432/" in app["environment"]["CODEX_LB_DATABASE_URL"]
     assert database["environment"] == {
-        "POSTGRES_USER": "${CODEX_LB_POSTGRES_USER:-codex_lb}",
+        "POSTGRES_USER": "codex_lb",
         "POSTGRES_PASSWORD": (
             "${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}"
         ),
-        "POSTGRES_DB": "${CODEX_LB_POSTGRES_DB:-codex_lb}",
+        "POSTGRES_DB": "codex_lb",
     }
     assert "ports" not in database
 
@@ -97,6 +99,8 @@ def test_codex_lb_publishes_only_dashboard_api_and_metrics_ports():
         "${CODEX_LB_METRICS_PORT:-9090}:9090",
     ]
     assert app["environment"]["CODEX_LB_METRICS_ENABLED"] == "true"
+    assert app["environment"]["CODEX_LB_DASHBOARD_AUTH_MODE"] == "standard"
+    assert app["environment"]["CODEX_LB_TELEMETRY_ENABLED"] == "false"
     assert "1455" not in OVERLAY_PATH.read_text(encoding="utf-8")
     assert "BIND_ADDRESS" not in OVERLAY_PATH.read_text(encoding="utf-8")
 
@@ -131,3 +135,68 @@ def test_codex_lb_and_postgres_have_readiness_checks():
     assert database_health["test"][0] == "CMD-SHELL"
     assert "pg_isready" in database_health["test"][1]
     assert database_health["start_period"] == "10s"
+
+
+def test_codex_lb_operator_environment_is_minimal_and_documented():
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    configuration = (ROOT / "docs" / "configuration.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "# === Экспериментальный пул ChatGPT OAuth-подписок codex-lb ===" in (
+        env_example
+    )
+    assert "CODEX_LB_POSTGRES_PASSWORD=***" in env_example
+    assert "CODEX_LB_API_KEY=***" in env_example
+    assert "CODEX_LB_PORT=" not in env_example
+    assert "CODEX_LB_METRICS_PORT=" not in env_example
+
+    for name in (
+        "CODEX_LB_POSTGRES_PASSWORD",
+        "CODEX_LB_API_KEY",
+        "CODEX_LB_PORT",
+        "CODEX_LB_METRICS_PORT",
+        "CODEX_LB_DATA_DIR",
+        "CODEX_LB_DATABASE_URL",
+        "CODEX_LB_DASHBOARD_AUTH_MODE",
+        "CODEX_LB_METRICS_ENABLED",
+        "CODEX_LB_TELEMETRY_ENABLED",
+    ):
+        assert f"`{name}`" in configuration
+
+
+def test_setup_env_generates_codex_lb_db_password_but_not_service_key(tmp_path):
+    env_file = tmp_path / ".env"
+    example_file = tmp_path / ".env.example"
+    example_file.write_text(
+        "CODEX_LB_POSTGRES_PASSWORD=***\nCODEX_LB_API_KEY=***\n",
+        encoding="utf-8",
+    )
+
+    command = [
+        "bash",
+        str(ROOT / "scripts" / "setup_env.sh"),
+        str(env_file),
+        str(example_file),
+    ]
+    subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+    first_values = dict(
+        line.split("=", 1)
+        for line in env_file.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+
+    password = first_values["CODEX_LB_POSTGRES_PASSWORD"]
+    assert password != "***"
+    assert len(password) >= 40
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", password)
+    assert first_values["CODEX_LB_API_KEY"] == "***"
+
+    subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
+    second_values = dict(
+        line.split("=", 1)
+        for line in env_file.read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+    assert second_values["CODEX_LB_POSTGRES_PASSWORD"] == password
+    assert second_values["CODEX_LB_API_KEY"] == "***"
