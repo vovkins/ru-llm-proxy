@@ -13,6 +13,7 @@ fi
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
+RESPONSES_MODEL="${RESPONSES_MODEL:-}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-180}"
 SMOKE_RUN_ID="${SMOKE_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
@@ -157,6 +158,36 @@ run_chat_completion() {
     fi
 }
 
+run_responses() {
+    local label="$1"
+    local payload="$2"
+    local error_file
+    local curl_exit
+
+    HEADERS_FILE="$TMP_DIR/$label.headers"
+    BODY_FILE="$TMP_DIR/$label.body"
+    error_file="$TMP_DIR/$label.err"
+
+    set +e
+    HTTP_STATUS=$(
+        curl -sS \
+            --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+            --max-time "$CURL_MAX_TIME" \
+            -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
+            "$BASE_URL/v1/responses" \
+            -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$payload" 2>"$error_file"
+    )
+    curl_exit=$?
+    set -e
+    CURL_EXIT=$curl_exit
+
+    if [ -z "$HTTP_STATUS" ]; then
+        HTTP_STATUS="000"
+    fi
+}
+
 expect_http_success() {
     local label="$1"
 
@@ -209,6 +240,19 @@ expect_stream_events() {
     fi
 }
 
+expect_responses_restoration() {
+    local label="$1"
+
+    if jq -e --arg marker "$SMOKE_PII_MARKER" \
+        '[.. | strings | select(contains($marker))] | length > 0' \
+        "$BODY_FILE" >/dev/null &&
+        ! grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        pass "$label restored the synthetic email"
+    else
+        fail "$label did not restore the synthetic email"
+    fi
+}
+
 echo ""
 echo "🛡️  ru-llm-proxy — Guardrails Smoke"
 echo "==================================="
@@ -227,6 +271,23 @@ non_stream_payload='{"model":"'"$CHAT_MODEL"'","guardrails":["ru-pii-mask-pre","
 run_chat_completion "non-stream" "$non_stream_payload" "non-stream"
 if expect_http_success "non-streaming guardrails request"; then
     expect_guardrails_header "non-streaming guardrails request"
+fi
+
+if [ -n "$RESPONSES_MODEL" ]; then
+    responses_payload=$(jq -nc \
+        --arg model "$RESPONSES_MODEL" \
+        --arg marker "$SMOKE_PII_MARKER" \
+        '{
+            model: $model,
+            input: ("Return exactly this email and nothing else: " + $marker),
+            max_output_tokens: 40
+        }')
+    run_responses "responses" "$responses_payload"
+    if expect_http_success "Responses API guardrails request"; then
+        # Stock LiteLLM does not expose the applied-guardrails response header
+        # on /v1/responses. Restoration and Redis cleanup verify the hooks.
+        expect_responses_restoration "Responses API guardrails request"
+    fi
 fi
 
 stream_payload='{"model":"'"$CHAT_MODEL"'","stream":true,"guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, email '"$SMOKE_PII_MARKER"'"}],"max_tokens":40}'

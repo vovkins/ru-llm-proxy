@@ -37,6 +37,13 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("if expect_http_success", self.script)
         self.assertNotIn("|| true", self.script)
 
+    def test_script_can_explicitly_exercise_responses_api(self):
+        self.assertIn('RESPONSES_MODEL="${RESPONSES_MODEL:-}"', self.script)
+        self.assertIn('if [ -n "$RESPONSES_MODEL" ]; then', self.script)
+        self.assertIn('"$BASE_URL/v1/responses"', self.script)
+        self.assertIn("expect_responses_restoration", self.script)
+        self.assertIn("<EMAIL_ADDRESS_[0-9]+>", self.script)
+
     def test_script_uses_bounded_curl_timeouts(self):
         self.assertIn(
             'CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"',
