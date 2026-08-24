@@ -29,9 +29,21 @@ def test_codex_lb_is_an_optional_overlay_not_part_of_base_compose():
 
     assert "codex-lb" not in base
     assert set(overlay["services"]) == {"litellm", "codex-lb", "codex-lb-db"}
-    assert overlay["services"]["litellm"] == {
-        "networks": ["ru-llm-proxy", "codex-lb-proxy"]
+
+
+def test_codex_lb_overlay_connects_litellm_only_with_explicit_credentials():
+    litellm = _overlay()["services"]["litellm"]
+
+    assert litellm["volumes"] == [
+        "./litellm-config.codex-lb.yaml:/app/config.yaml:ro"
+    ]
+    assert litellm["environment"] == [
+        "CODEX_LB_API_KEY=${CODEX_LB_API_KEY:?Set CODEX_LB_API_KEY}"
+    ]
+    assert litellm["depends_on"] == {
+        "codex-lb": {"condition": "service_healthy"}
     }
+    assert litellm["networks"] == ["ru-llm-proxy", "codex-lb-proxy"]
 
 
 def test_codex_lb_images_are_versioned_and_digest_pinned():

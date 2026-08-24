@@ -1,5 +1,12 @@
 services:
   litellm:
+    volumes:
+      - ./litellm-config.codex-lb.yaml:/app/config.yaml:ro
+    environment:
+      - CODEX_LB_API_KEY=${CODEX_LB_API_KEY:?Set CODEX_LB_API_KEY}
+    depends_on:
+      codex-lb:
+        condition: service_healthy
     networks:
       - ru-llm-proxy
       - codex-lb-proxy

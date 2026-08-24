@@ -1,0 +1,145 @@
+model_list:
+  # Публичный GLM-профиль по умолчанию. Оба провайдера модели используют ключи
+  # Z.AI Coding Plan и доступны клиентам как одна группа моделей: glm-5.2.
+  - model_name: glm-5.2
+    litellm_params:
+      model: openai/glm-5.2
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: glm-5-2-zai-coding-primary
+      base_model: glm-5.2
+      access_groups: ["zai", "standard"]
+  - model_name: glm-5.2
+    litellm_params:
+      model: openai/glm-5.2
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY_2
+    model_info:
+      id: glm-5-2-zai-coding-secondary
+      base_model: glm-5.2
+      access_groups: ["zai", "standard"]
+
+  # Дополнительное публичное имя GLM для инсталляций, которым ещё нужна GLM-5.1.
+  - model_name: glm-5.1
+    litellm_params:
+      model: openai/glm-5.1
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY
+    model_info:
+      id: glm-5-1-zai-coding-primary
+      base_model: glm-5.1
+      access_groups: ["zai", "standard"]
+  - model_name: glm-5.1
+    litellm_params:
+      model: openai/glm-5.1
+      api_base: https://api.z.ai/api/coding/paas/v4
+      api_key: os.environ/ZAI_API_KEY_2
+    model_info:
+      id: glm-5-1-zai-coding-secondary
+      base_model: glm-5.1
+      access_groups: ["zai", "standard"]
+
+  # Технический маршрут для проверки интеграции. Публичные имена OpenAI-моделей
+  # будут согласованы отдельно после проверки каталога codex-lb.
+  - model_name: codex-lb-smoke
+    litellm_params:
+      model: openai/gpt-5.6-luna
+      api_base: http://codex-lb:2455/v1
+      api_key: os.environ/CODEX_LB_API_KEY
+    model_info:
+      id: openai-codex-lb-smoke
+      base_model: gpt-5.6-luna
+      access_groups: ["openai", "experimental"]
+
+router_settings:
+  redis_url: os.environ/REDIS_URL
+  routing_strategy: simple-shuffle
+  optional_pre_call_checks:
+    - deployment_affinity
+  deployment_affinity_ttl_seconds: 86400
+  num_retries: 3
+  timeout: 60
+
+guardrails:
+  - guardrail_name: "ru-pii-mask-pre"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "pre_call"
+      default_on: true
+    guardrail_info:
+      description: "До вызова поставщика модели применяет политики защиты и обрабатывает персональные данные, реквизиты, внутреннюю инфраструктуру и секреты. Возвращается через GET /guardrails/list для API-клиентов; интерфейс LiteLLM может показывать только имя guardrail."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "pre_call; маскирует русскоязычные персональные данные перед запросом к провайдеру."
+        - name: "entities"
+          type: "list[string]"
+          description: >-
+            Персональные данные, документы и реквизиты: PERSON, LOCATION,
+            ORGANIZATION, PHONE_NUMBER, EMAIL_ADDRESS, RU_INN, RU_KPP, RU_OGRN,
+            RU_OGRNIP, RU_BIK, RU_SETTLEMENT_ACCOUNT, RU_CORRESPONDENT_ACCOUNT,
+            RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, CONTRACT_NUMBER;
+            инфраструктура, секреты и учётные данные: INTERNAL_IP,
+            INTERNAL_DOMAIN, HOSTNAME, DB_URL, JWT, BEARER_TOKEN, PRIVATE_KEY,
+            API_KEY, SECRET_KEY, AUTH_TOKEN, LOGIN, PASSWORD.
+        - name: "mapping_store"
+          type: "string"
+          description: "Redis-ключ pii_mapping:<pii_request_id> с серверным идентификатором сопоставления и временем жизни из PII_MAPPING_TTL_SECONDS."
+        - name: "policy_mode"
+          type: "string"
+          description: "PII_GUARDRAIL_MODE: mask сохраняет обратимое маскирование, block отклоняет найденные персональные данные до вызова провайдера."
+        - name: "dictionary_substitutions"
+          type: "string"
+          description: "DICTIONARY_SUBSTITUTIONS_ENABLED: по умолчанию true; применяет обратимые точные замены бизнес-терминов из dictionary-substitutions.default.json или DICTIONARY_SUBSTITUTIONS_JSON до анализа Presidio."
+        - name: "synthetic_pii_allowlist_mode"
+          type: "string"
+          description: "SYNTHETIC_PII_ALLOWLIST_MODE: по умолчанию off; allow удаляет явно настроенные фрагменты синтетических тестовых персональных данных из результатов Presidio перед обработкой mask/block."
+        - name: "synthetic_pii_allowlist_rules"
+          type: "string"
+          description: "SYNTHETIC_PII_ALLOWLIST_JSON: дополнительные правила только для персональных данных с rule_id, entity_types, точными values и безопасными привязанными регулярными выражениями patterns. Совпадения логируются и считаются без исходных значений."
+        - name: "regulated_topic_policy_mode"
+          type: "string"
+          description: "REGULATED_TOPIC_POLICY_MODE: по умолчанию off; block отклоняет уверенно распознанные регулируемые темы AML/CFT, санкционных проверок, мониторинга транзакций, подозрительной активности и обхода комплаенс-процедур до анализа Presidio и вызова провайдера."
+        - name: "regulated_topic_policy_extra_rules"
+          type: "string"
+          description: "REGULATED_TOPIC_POLICY_EXTRA_RULES_JSON: дополнительные операторские правила блокировки на регулярных выражениях с ограниченными полями category, rule_id, action, pattern и flags."
+        - name: "pre_egress_policy_mode"
+          type: "string"
+          description: "PRE_EGRESS_POLICY_MODE: block отклоняет уверенно распознанные конфигурации и журналы до анализа Presidio и вызова провайдера; off отключает этот классификатор."
+        - name: "final_payload_leak_check_mode"
+          type: "string"
+          description: "FINAL_PAYLOAD_LEAK_CHECK_MODE: block отклоняет настроенные контрольные маркеры и уверенно распознанные признаки исходной утечки после изменения запроса и до вызова провайдера, включая контейнеры запроса messages/input/instructions/system, tools/tool_choice, устаревшие functions/function_call, prediction, response_format, text, extra_body, stop/stop_sequences, prompt_cache_key, safety_identifier, web_search_options, user и провайдерские `metadata`; off отключает финальную проверку."
+        - name: "request_fields"
+          type: "list[string]"
+          description: "Маскирует message.content, system и tool_result.content в Anthropic Messages, строковые/списочные текстовые элементы instructions/input в Responses API, аргументы вызовов инструментов, строковые/списочные output у результатов инструментов, текстовые блоки, tool_calls[].function.arguments и function_call.arguments."
+  - guardrail_name: "ru-pii-mask-post"
+    litellm_params:
+      guardrail: litellm_guardrails.pii_guardrail.RuPIIGuardrail
+      mode: "post_call"
+      default_on: true
+    guardrail_info:
+      description: "Восстанавливает плейсхолдеры текущего запроса в ответах модели. Возвращается через GET /guardrails/list для API-клиентов; интерфейс LiteLLM может показывать только имя guardrail."
+      params:
+        - name: "stage"
+          type: "string"
+          description: "post_call; восстанавливает плейсхолдеры текущего запроса в ответах модели."
+        - name: "response_fields"
+          type: "list[string]"
+          description: "Без потоковой передачи: content, reasoning_content, текстовые блоки ответа, tool_calls[].function.arguments и function_call.arguments. С потоковой передачей: delta.content и delta.reasoning_content."
+        - name: "streaming"
+          type: "string"
+          description: "async_post_call_streaming_iterator_hook восстанавливает плейсхолдеры на границах фрагментов потока и удаляет сопоставление Redis после завершения потока."
+        - name: "mapping_cleanup"
+          type: "string"
+          description: "Удаляет Redis pii_mapping:<pii_request_id> после успешного post_call или обработки потокового итератора."
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  callbacks:
+    - prometheus
+  require_auth_for_metrics_endpoint: false
+  drop_params: true
