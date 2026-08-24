@@ -14,6 +14,7 @@ fi
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
 RESPONSES_MODEL="${RESPONSES_MODEL:-}"
+PROTOCOL_SMOKE_ENABLED="${PROTOCOL_SMOKE_ENABLED:-false}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-180}"
 SMOKE_RUN_ID="${SMOKE_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
@@ -161,6 +162,7 @@ run_chat_completion() {
 run_responses() {
     local label="$1"
     local payload="$2"
+    local mode="${3:-non-stream}"
     local error_file
     local curl_exit
 
@@ -169,17 +171,32 @@ run_responses() {
     error_file="$TMP_DIR/$label.err"
 
     set +e
-    HTTP_STATUS=$(
-        curl -sS \
-            --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-            --max-time "$CURL_MAX_TIME" \
-            -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
-            "$BASE_URL/v1/responses" \
-            -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$payload" 2>"$error_file"
-    )
-    curl_exit=$?
+    if [ "$mode" = "stream" ]; then
+        HTTP_STATUS=$(
+            curl -sS --no-buffer \
+                --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+                --max-time "$CURL_MAX_TIME" \
+                -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
+                "$BASE_URL/v1/responses" \
+                -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+                -H "Accept: text/event-stream" \
+                -H "Content-Type: application/json" \
+                -d "$payload" 2>"$error_file"
+        )
+        curl_exit=$?
+    else
+        HTTP_STATUS=$(
+            curl -sS \
+                --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+                --max-time "$CURL_MAX_TIME" \
+                -D "$HEADERS_FILE" -o "$BODY_FILE" -w "%{http_code}" \
+                "$BASE_URL/v1/responses" \
+                -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$payload" 2>"$error_file"
+        )
+        curl_exit=$?
+    fi
     set -e
     CURL_EXIT=$curl_exit
 
@@ -253,6 +270,168 @@ expect_responses_restoration() {
     fi
 }
 
+expect_responses_stream_events() {
+    if grep -Eqi '^event:[[:space:]]*error|"type":[[:space:]]*"response\.(failed|error|incomplete)"' \
+        "$BODY_FILE"; then
+        fail "Responses API stream emitted an error event"
+    elif grep -q '^data:' "$BODY_FILE" &&
+        grep -q '"type":"response.completed"' "$BODY_FILE"; then
+        pass "Responses API stream emitted a completion event"
+    else
+        fail "Responses API stream did not complete"
+    fi
+}
+
+expect_chat_tool_restoration() {
+    local label="$1"
+
+    if jq -e --arg marker "$SMOKE_PII_MARKER" \
+        '.choices[0].message.tool_calls[0].function.arguments | fromjson | .email == $marker' \
+        "$BODY_FILE" >/dev/null &&
+        ! grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        pass "$label restored the tool argument"
+    else
+        fail "$label did not restore the tool argument"
+    fi
+}
+
+expect_responses_tool_restoration() {
+    local label="$1"
+
+    if jq -e --arg marker "$SMOKE_PII_MARKER" \
+        'first(.output[] | select(.type == "function_call")).arguments | fromjson | .email == $marker' \
+        "$BODY_FILE" >/dev/null &&
+        ! grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        pass "$label restored the tool argument"
+    else
+        fail "$label did not restore the tool argument"
+    fi
+}
+
+run_protocol_smoke() {
+    local cache_key="guardrails-protocol-cache"
+    local continuation_id
+    local payload
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" '{
+        model: $model,
+        stream: true,
+        input: "Return exactly: protocol stream ready",
+        max_output_tokens: 40
+    }')
+    run_responses "responses-stream" "$payload" "stream"
+    if expect_http_success "Responses API streaming request"; then
+        expect_responses_stream_events
+    fi
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
+        model: $model,
+        messages: [{
+            role: "user",
+            content: ("Call record_contact with this exact email: " + $marker)
+        }],
+        tools: [{
+            type: "function",
+            function: {
+                name: "record_contact",
+                description: "Store a synthetic contact",
+                parameters: {
+                    type: "object",
+                    properties: {email: {type: "string"}},
+                    required: ["email"],
+                    additionalProperties: false
+                }
+            }
+        }],
+        tool_choice: {type: "function", function: {name: "record_contact"}},
+        max_tokens: 96
+    }')
+    run_chat_completion "chat-tool" "$payload" "non-stream"
+    if expect_http_success "Chat Completions tool request"; then
+        expect_chat_tool_restoration "Chat Completions tool request"
+    fi
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
+        model: $model,
+        input: ("Call record_contact with this exact email: " + $marker),
+        tools: [{
+            type: "function",
+            name: "record_contact",
+            description: "Store a synthetic contact",
+            parameters: {
+                type: "object",
+                properties: {email: {type: "string"}},
+                required: ["email"],
+                additionalProperties: false
+            },
+            strict: true
+        }],
+        tool_choice: {type: "function", name: "record_contact"},
+        max_output_tokens: 96
+    }')
+    run_responses "responses-tool" "$payload"
+    if expect_http_success "Responses API tool request"; then
+        expect_responses_tool_restoration "Responses API tool request"
+    fi
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" '{
+        model: $model,
+        input: "Из двух вариантов я выбираю второй. Подтверди выбор одним словом.",
+        store: true,
+        max_output_tokens: 48
+    }')
+    run_responses "responses-continuation-first" "$payload"
+    if expect_http_success "Responses API first conversation turn"; then
+        continuation_id=$(jq -r '.id // empty' "$BODY_FILE")
+        if [ -n "$continuation_id" ]; then
+            pass "Responses API first conversation turn returned an id"
+        else
+            fail "Responses API first conversation turn did not return an id"
+        fi
+    fi
+
+    if [ -n "${continuation_id:-}" ]; then
+        payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg id "$continuation_id" '{
+            model: $model,
+            previous_response_id: $id,
+            input: "Какой вариант я выбрал? Ответь одним словом.",
+            store: true,
+            max_output_tokens: 48
+        }')
+        run_responses "responses-continuation-second" "$payload"
+        if expect_http_success "Responses API continued conversation"; then
+            if jq -r '[.output[]?.content[]?.text // empty] | join(" ")' "$BODY_FILE" |
+                grep -Eqi 'втор|second|2'; then
+                pass "Responses API preserved conversation context"
+            else
+                fail "Responses API did not preserve conversation context"
+            fi
+        fi
+    fi
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg key "$cache_key" '{
+        model: $model,
+        input: "Return exactly: cache first",
+        prompt_cache_key: $key,
+        max_output_tokens: 32
+    }')
+    run_responses "responses-cache-first" "$payload"
+    if expect_http_success "Responses API first prompt cache request"; then
+        :
+    fi
+
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg key "$cache_key" '{
+        model: $model,
+        input: "Return exactly: cache second",
+        prompt_cache_key: $key,
+        max_output_tokens: 32
+    }')
+    run_responses "responses-cache-second" "$payload"
+    if expect_http_success "Responses API repeated prompt cache request"; then
+        :
+    fi
+}
+
 echo ""
 echo "🛡️  ru-llm-proxy — Guardrails Smoke"
 echo "==================================="
@@ -287,6 +466,14 @@ if [ -n "$RESPONSES_MODEL" ]; then
         # Stock LiteLLM does not expose the applied-guardrails response header
         # on /v1/responses. Restoration and Redis cleanup verify the hooks.
         expect_responses_restoration "Responses API guardrails request"
+    fi
+fi
+
+if [ "$PROTOCOL_SMOKE_ENABLED" = "true" ]; then
+    if [ -z "$RESPONSES_MODEL" ]; then
+        fail "protocol smoke requires RESPONSES_MODEL"
+    else
+        run_protocol_smoke
     fi
 fi
 

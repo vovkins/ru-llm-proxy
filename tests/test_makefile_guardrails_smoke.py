@@ -44,6 +44,17 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("expect_responses_restoration", self.script)
         self.assertIn("<EMAIL_ADDRESS_[0-9]+>", self.script)
 
+    def test_script_has_optional_codex_lb_protocol_coverage(self):
+        self.assertIn(
+            'PROTOCOL_SMOKE_ENABLED="${PROTOCOL_SMOKE_ENABLED:-false}"',
+            self.script,
+        )
+        self.assertIn("expect_responses_stream_events", self.script)
+        self.assertIn("expect_chat_tool_restoration", self.script)
+        self.assertIn("expect_responses_tool_restoration", self.script)
+        self.assertIn("previous_response_id", self.script)
+        self.assertIn("prompt_cache_key", self.script)
+
     def test_script_uses_bounded_curl_timeouts(self):
         self.assertIn(
             'CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"',
