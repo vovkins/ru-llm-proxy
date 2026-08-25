@@ -130,6 +130,33 @@ def guardrail():
     return g
 
 
+# === Logging contract ===
+
+
+def test_guardrail_info_events_are_enabled_by_default(caplog):
+    pii_guardrail._safe_log(
+        logging.INFO,
+        "gateway_guardrail_audit",
+        request_id="test-request",
+        policy_result="clean",
+    )
+
+    assert pii_guardrail.logger.level == logging.INFO
+    assert any(
+        isinstance(handler, logging.StreamHandler)
+        and handler.level <= logging.INFO
+        and getattr(handler, "_ru_llm_proxy_guardrail_handler", False)
+        for handler in pii_guardrail.logger.handlers
+    )
+    assert _json_log_events(caplog, "gateway_guardrail_audit") == [
+        {
+            "event": "gateway_guardrail_audit",
+            "policy_result": "clean",
+            "request_id": "test-request",
+        }
+    ]
+
+
 # === _get_request_id ===
 
 

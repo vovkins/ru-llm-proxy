@@ -51,6 +51,18 @@ except ImportError:  # pragma: no cover - local lightweight test env without Fas
             self.detail = detail
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not any(
+    getattr(handler, "_ru_llm_proxy_guardrail_handler", False)
+    for handler in logger.handlers
+):
+    _guardrail_log_handler = logging.StreamHandler()
+    _guardrail_log_handler.setLevel(logging.INFO)
+    _guardrail_log_handler.setFormatter(logging.Formatter("%(message)s"))
+    _guardrail_log_handler._ru_llm_proxy_guardrail_handler = True
+    logger.addHandler(_guardrail_log_handler)
+
 
 class _StreamingPlaceholderReplacer:
     """Chunk-safe placeholder replacement for independently streamed text fields."""
