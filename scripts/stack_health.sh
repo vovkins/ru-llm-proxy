@@ -3,8 +3,14 @@ set -euo pipefail
 
 stack="${1:-}"
 env_file="${2:-.env}"
+wait_seconds="${3:-0}"
 core_stack="litellm-presidio"
 codex_lb_stack="litellm-presidio-codex-lb"
+
+if ! [[ "$wait_seconds" =~ ^[0-9]+$ ]]; then
+    printf '❌ Некорректное время ожидания: %s\n' "$wait_seconds" >&2
+    exit 2
+fi
 
 get_env_value() {
     local key="$1"
@@ -37,6 +43,19 @@ codex_lb_port="$(get_env_value CODEX_LB_PORT || true)"
 nginx_port="${nginx_port:-80}"
 litellm_port="${litellm_port:-4000}"
 codex_lb_port="${codex_lb_port:-2455}"
+
+if [ "$wait_seconds" -gt 0 ]; then
+    elapsed=0
+    while ! curl -fsS --max-time 2 \
+        "http://127.0.0.1:${litellm_port}/health/liveliness" \
+        >/dev/null 2>&1; do
+        if [ "$elapsed" -ge "$wait_seconds" ]; then
+            break
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+fi
 
 check_url() {
     local label="$1"

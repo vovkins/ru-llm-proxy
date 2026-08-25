@@ -83,3 +83,14 @@ def test_codex_lb_profile_contains_no_literal_oauth_or_service_credentials():
     assert config.count("os.environ/CODEX_LB_API_KEY") == len(
         PUBLIC_OPENAI_MODELS
     )
+
+
+def test_client_auth_smoke_accepts_codex_lb_as_an_openai_upstream():
+    smoke = (ROOT / "tests" / "e2e" / "test_client_auth.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "has_openai_upstream()" in smoke
+    assert "has_configured_secret OPENAI_API_KEY ||" in smoke
+    assert "has_configured_secret CODEX_LB_API_KEY" in smoke
+    assert "if has_openai_upstream; then" in smoke

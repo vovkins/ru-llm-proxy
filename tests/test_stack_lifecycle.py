@@ -59,6 +59,9 @@ def test_build_is_common_but_up_never_builds_implicitly():
         assert service in build_section
     assert "--no-build" in up_section
     assert " build" not in up_section
+    assert 'scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)"' in up_section
+    assert '"$(STACK_START_TIMEOUT)"' in up_section
+    assert "sleep 5" not in up_section
 
 
 def test_restart_recreates_selected_stack_and_rereads_env():
@@ -68,6 +71,7 @@ def test_restart_recreates_selected_stack_and_rereads_env():
 
     assert "--force-recreate" in section
     assert "--no-build" in section
+    assert '"$(STACK_START_TIMEOUT)"' in section
     assert "docker compose restart" not in section
 
 

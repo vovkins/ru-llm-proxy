@@ -25,6 +25,7 @@ PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 
 STACK_LITELLM_PRESIDIO := litellm-presidio
 STACK_CODEX_LB := litellm-presidio-codex-lb
+STACK_START_TIMEOUT ?= 180
 ENV_FILE ?= .env
 BUILD_ENV_FILE := $(shell if [ -f "$(ENV_FILE)" ]; then printf "%s" "$(ENV_FILE)"; else printf "%s" ".env.example"; fi)
 BASE_COMPOSE = docker compose --env-file $(ENV_FILE) -f docker-compose.yml
@@ -108,8 +109,7 @@ up: require-stack
 	$(COMPOSE) up -d --no-build
 	@echo ""
 	@echo "⏳ Ожидание запуска сервисов..."
-	@sleep 5
-	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
+	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
 
 # === Down ===
 down: require-stack
@@ -121,7 +121,7 @@ restart: require-stack
 	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
 	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
 	$(COMPOSE) up -d --no-build --force-recreate
-	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
+	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
 
 # === Logs ===
 logs: require-stack
