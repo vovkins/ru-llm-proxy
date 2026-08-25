@@ -212,3 +212,51 @@ def test_setup_env_generates_codex_lb_db_password_but_not_service_key(tmp_path):
     )
     assert second_values["CODEX_LB_POSTGRES_PASSWORD"] == password
     assert second_values["CODEX_LB_API_KEY"] == "***"
+
+
+def test_codex_lb_runbook_covers_the_operational_contract():
+    runbook = (ROOT / "docs" / "codex-lb.md").read_text(encoding="utf-8")
+
+    for required in (
+        "docker-compose.codex-lb.yml",
+        "API key authentication",
+        "codex-lb-db",
+        "codex-lb-data",
+        "CODEX_LB_TELEMETRY_ENABLED=false",
+        "chatgpt.com:443",
+        "auth.openai.com:443",
+        "Порт обратного вызова `1455`",
+        "gpt-5.6-luna",
+        "encrypted_content",
+    ):
+        assert required in runbook
+
+
+def test_primary_docs_link_to_codex_lb_runbook():
+    paths = (
+        "README.md",
+        "docs/README.md",
+        "docs/admin-access.md",
+        "docs/architecture.md",
+        "docs/clients/codex.md",
+        "docs/compliance.md",
+        "docs/configuration.md",
+        "docs/egress-controls.md",
+        "docs/examples.md",
+        "docs/monitoring.md",
+        "docs/routing.md",
+    )
+
+    for path in paths:
+        assert "codex-lb.md" in (ROOT / path).read_text(encoding="utf-8"), path
+
+
+def test_codex_lb_runbook_local_links_resolve():
+    runbook_path = ROOT / "docs" / "codex-lb.md"
+    runbook = runbook_path.read_text(encoding="utf-8")
+
+    for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", runbook):
+        if target.startswith(("http://", "https://", "#")):
+            continue
+        local_target = target.split("#", 1)[0]
+        assert (runbook_path.parent / local_target).exists(), target

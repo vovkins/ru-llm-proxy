@@ -353,6 +353,8 @@ curl -L -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 [clients/README.md](clients/README.md). Прямая ссылка на ZCode:
 [clients/zcode.md](clients/zcode.md).
 
-OpenAI и Anthropic не входят в активную конфигурацию. Используйте
+В обычной конфигурации OpenAI и Anthropic не активны. Используйте
 [`examples/litellm-config.optional-providers.yaml`](../examples/litellm-config.optional-providers.yaml)
-и проверяйте идентификаторы моделей на установленной версии LiteLLM.
+и проверяйте идентификаторы моделей на установленной версии LiteLLM. Профиль
+[`codex-lb`](codex-lb.md) добавляет отдельный проверенный путь к моделям OpenAI
+через ChatGPT OAuth-подписки.

@@ -13,7 +13,9 @@
 | PII Guardrail (`litellm_guardrails/pii_guardrail.py`) | Ранние политики, маскирование, блокировка и восстановление ответа |
 | Presidio Analyzer (`presidio-analyzer`) | Детерминированные распознаватели, spaCy и закреплённая BERT-модель |
 | Redis (`redis`) | Временные сопоставления служебных меток и привязка клиента к провайдеру модели |
-| PostgreSQL (`db`) | Состояние LiteLLM |
+| PostgreSQL LiteLLM (`db`) | Пользователи, ключи, бюджеты и состояние LiteLLM |
+| `codex-lb` (экспериментальный профиль) | Пул ChatGPT OAuth-подписок, квоты и выбор учётной записи по диалогу/кэшу |
+| PostgreSQL `codex-lb` (`codex-lb-db`) | Зашифрованные OAuth-данные, настройки, маршрутизация и журналы `codex-lb` |
 
 ## Компонентная схема
 
@@ -22,8 +24,10 @@
 ```mermaid
 flowchart LR
     client["Клиент<br/>OpenAI, Responses или<br/>Anthropic Messages API"]
-    admin["Администратор<br/>LiteLLM UI / Admin API"]
-    provider["Внешний провайдер модели"]
+    admin["Администратор LiteLLM"]
+    codex_admin["Администратор codex-lb"]
+    direct_provider["Z.AI или другой<br/>прямой провайдер"]
+    openai["OpenAI<br/>ChatGPT OAuth"]
 
     subgraph system["ru-llm-proxy"]
         subgraph proxy["Контейнер litellm"]
@@ -38,12 +42,15 @@ flowchart LR
         end
 
         redis[("Redis<br/>pii_mapping:*<br/>deployment_affinity")]
-        postgres[("PostgreSQL<br/>состояние LiteLLM")]
+        postgres[("PostgreSQL LiteLLM<br/>пользователи и ключи")]
+        codex["codex-lb<br/>пул OAuth-подписок"]
+        codex_postgres[("PostgreSQL codex-lb<br/>подписки и состояние")]
         telemetry["Метрики и<br/>безопасные журналы"]
     end
 
     client -->|"Запрос"| litellm
     admin -->|"Ключи, модели, доступ"| litellm
+    codex_admin -->|"Подписки, служебные ключи"| codex
     litellm -->|"pre_call"| pre
     pre -->|"POST /api/v1/analyze"| analyzer
     analyzer --> detectors
@@ -53,8 +60,13 @@ flowchart LR
     pre -->|"Подготовленный запрос"| litellm
     litellm -->|"Привязка маршрута"| redis
     litellm --> postgres
-    litellm -->|"Маскированный запрос"| provider
-    provider -->|"Ответ или поток"| litellm
+    litellm -->|"GLM и другие модели"| direct_provider
+    direct_provider -->|"Ответ или поток"| litellm
+    litellm -->|"Модели OpenAI<br/>в экспериментальном профиле"| codex
+    codex --> codex_postgres
+    codex -->|"Выбранная подписка"| openai
+    openai -->|"Ответ или поток"| codex
+    codex --> litellm
     litellm -->|"post_call / streaming hook"| post
     post -->|"Получить и удалить сопоставление"| redis
     post -->|"Восстановленный ответ"| litellm
@@ -63,6 +75,7 @@ flowchart LR
     pre -.-> telemetry
     post -.-> telemetry
     analyzer -.-> telemetry
+    codex -.-> telemetry
 ```
 
 ## Последовательность обработки
@@ -78,7 +91,9 @@ sequenceDiagram
     participant Pre as ru-pii-mask-pre
     participant Analyzer as Presidio Analyzer
     participant Redis as Redis
-    participant Provider as Провайдер модели
+    participant CodexLB as codex-lb
+    participant OpenAI as OpenAI
+    participant Provider as Прямой провайдер
     participant Post as ru-pii-mask-post
     participant Obs as Метрики и журналы
 
@@ -109,8 +124,16 @@ sequenceDiagram
                 Pre->>Redis: SETEX pii_mapping:{pii_request_id}
                 Pre-->>LiteLLM: Подготовленный запрос
                 LiteLLM->>Redis: Найти deployment_affinity
-                LiteLLM->>Provider: Маскированный запрос
-                Provider-->>LiteLLM: Ответ или поток
+                alt Модель OpenAI в профиле codex-lb
+                    LiteLLM->>CodexLB: Подготовленный запрос
+                    CodexLB->>CodexLB: Выбрать OAuth-подписку
+                    CodexLB->>OpenAI: Запрос выбранной подпиской
+                    OpenAI-->>CodexLB: Ответ или поток
+                    CodexLB-->>LiteLLM: Ответ или поток
+                else GLM или другой прямой провайдер
+                    LiteLLM->>Provider: Подготовленный запрос
+                    Provider-->>LiteLLM: Ответ или поток
+                end
                 LiteLLM->>Post: post_call / streaming hook
                 Post->>Redis: GET pii_mapping:{pii_request_id}
                 Post->>Post: Восстановить значения
@@ -329,11 +352,15 @@ NER запускается только если запрошенные `entitie
 - Привязка `deployment_affinity` содержит хэш клиентского ключа и постоянный
   `model_info.id`, но не исходный ключ.
 - PostgreSQL хранит состояние LiteLLM, но не сопоставления PII.
+- В экспериментальном профиле `codex-lb` хранит OAuth-состояние и маршрутизацию
+  в отдельном PostgreSQL. Ключ шифрования находится в отдельном постоянном томе;
+  база и том нужны для полного восстановления.
 - Метрики и структурированные журналы не содержат текст запроса, найденные
   значения или смещения.
 
 Подробности маршрутизации: [routing.md](routing.md). Границы административного
-доступа: [admin-access.md](admin-access.md).
+доступа: [admin-access.md](admin-access.md). Эксплуатация экспериментального
+профиля: [codex-lb.md](codex-lb.md).
 
 ## Сборка модели
 
@@ -358,7 +385,8 @@ SHA-256 разрешённых файлов. Независимая стадия
 LiteLLM использует не требующий ключа `GET /health/liveliness`; `/health` может
 обращаться к моделям. Analyzer через `GET /api/v1/health` сообщает состояние,
 ревизию и ёмкость NER. Метрики и действия при сбоях собраны в
-[monitoring.md](monitoring.md).
+[monitoring.md](monitoring.md). В экспериментальном профиле `codex-lb` использует
+`GET /health/ready`, а его PostgreSQL — `pg_isready`.
 
 ## Ограничения
 

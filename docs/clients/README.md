@@ -31,7 +31,7 @@ make virtual-key-create KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
 | [ZCode](zcode.md) | OpenAI Chat Completions | Поддерживается |
 | [OpenCode](opencode.md) | OpenAI Chat Completions | Поддерживается |
 | [Kilo Code](kilo-code.md) | OpenAI Chat Completions | Поддерживается |
-| [Codex](codex.md) | OpenAI Responses API | Требует добавленной совместимой модели |
+| [Codex](codex.md) | OpenAI Responses API | Базовый профиль требует добавленной модели; эксперимент `codex-lb` публикует проверенные имена OpenAI |
 | [Claude Code](claude-code.md) | Anthropic Messages API | Базовый запрос проверен; полный шлюз не подтверждён |
 | [JWT/OIDC](jwt.md) | Входная аутентификация LiteLLM | Дополнительная корпоративная схема |
 

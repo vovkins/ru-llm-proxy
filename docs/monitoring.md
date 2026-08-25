@@ -8,7 +8,8 @@
 
 Мониторинг должен отвечать на ключевые вопросы:
 
-- живы ли LiteLLM, Analyzer, Redis и PostgreSQL;
+- живы ли LiteLLM, Analyzer, Redis и PostgreSQL, а в экспериментальном профиле
+  также `codex-lb` и его отдельная база;
 - находится ли обязательная NER-модель в состоянии `ready`;
 - выполняются ли защитные политики и нет ли безопасных отказов;
 - не растут ли очередь и задержка Analyzer;
@@ -36,12 +37,18 @@
 make health
 ```
 
+Команда проверяет опубликованные API LiteLLM и Analyzer. Состояние Redis и баз
+смотрите через `docker compose ps`; для экспериментального профиля отдельно
+проверьте `curl -fsS http://localhost:2455/health/ready`.
+
 | Сервис | Проверка | Рабочее состояние |
 | --- | --- | --- |
 | LiteLLM | `GET /health/liveliness` | HTTP 200 без API-ключа и вызова модели |
 | Analyzer | `GET /api/v1/health` | `status=ok`, `ner_state=ready`, `ner_warmed_up=true` |
 | PostgreSQL | `pg_isready` | Принимает соединения |
 | Redis | `redis-cli ping` | `PONG` |
+| `codex-lb` | `GET /health/ready` | HTTP 200; база и обязательные компоненты готовы |
+| PostgreSQL `codex-lb` | `pg_isready -U codex_lb -d codex_lb` | Принимает соединения |
 
 `GET /health` LiteLLM может обращаться к моделям и не используется как проверка
 живости. Health Analyzer также возвращает ревизию NER и снимок `capacity`.
@@ -71,10 +78,12 @@ litellm_settings:
 Маршруты:
 
 - LiteLLM: `http://localhost:4000/metrics`;
-- Analyzer: `http://localhost:5001/metrics`.
+- Analyzer: `http://localhost:5001/metrics`;
+- `codex-lb`: `http://localhost:9090/metrics` в экспериментальном профиле.
 
-Они открыты без ключа LiteLLM API. В промышленной среде разрешайте доступ только
-Prometheus через сервисную сеть, firewall или сетевую политику.
+Эти маршруты открыты без клиентского или служебного ключа. В промышленной среде
+разрешайте доступ только Prometheus через сервисную сеть, межсетевой экран или
+сетевую политику.
 
 ```yaml
 scrape_configs:
@@ -84,7 +93,15 @@ scrape_configs:
   - job_name: presidio-analyzer
     static_configs:
       - targets: ["presidio-analyzer:5001"]
+  - job_name: codex-lb
+    static_configs:
+      - targets: ["codex-lb:9090"]
 ```
+
+Последнюю задачу сбора добавляйте только при включённом профиле `codex-lb`.
+Prometheus должен быть подключён к сети `codex-lb-proxy`; иначе используйте
+опубликованный порт `9090` на внутреннем адресе сервера. К сети базы
+`codex-lb-database` Prometheus не подключайте.
 
 Локальная проверка:
 
@@ -92,6 +109,9 @@ scrape_configs:
 make metrics
 make monitor-smoke
 ```
+
+Эти команды проверяют LiteLLM, защитный слой и Analyzer. Метрики `codex-lb`
+проверяйте отдельным запросом к `http://localhost:9090/metrics`.
 
 ### LiteLLM и маршрутизация
 
@@ -111,6 +131,25 @@ make monitor-smoke
 `x-litellm-model-id`. Для постоянной синтетической проверки используйте отдельный
 пользовательский ключ. Рост ошибок по одному провайдеру модели может законно
 привести к выбору другого; `model_info.id` должны оставаться стабильными.
+
+### codex-lb
+
+Штатные метрики `codex-lb` дополняют, но не заменяют метрики LiteLLM:
+
+| Метрика | Назначение |
+| --- | --- |
+| `codex_lb_requests_total` | HTTP-запросы по маршруту и статусу |
+| `codex_lb_request_duration_seconds_*` | Задержка API `codex-lb` |
+| `codex_lb_upstream_requests_total` | Результаты вызовов по внутреннему идентификатору подписки |
+| `codex_lb_upstream_request_duration_seconds_*` | Задержка OpenAI |
+| `codex_lb_active_connections` | Активные соединения |
+| `codex_lb_rate_limit_hits_total` | Ограничения частоты и квоты |
+| `codex_lb_circuit_breaker_state` | Состояние автоматического выключателя зависимостей |
+| `codex_lb_accounts_total` | Число подписок по состоянию |
+
+Набор метрик может меняться между выпусками, поэтому после обновления проверяйте
+живой `/metrics` и панели. Метка `account_id` является внутренним техническим
+идентификатором; не связывайте её с адресом электронной почты в Prometheus.
 
 ### Защитный обработчик
 
@@ -256,8 +295,9 @@ Prometheus.
 
 Аудит клиентских запросов и аудит административных действий ведутся отдельно.
 Для действий администраторов собирайте доступные LiteLLM audit logs, журналы
-SSO/обратного прокси для `/ui` и Admin API, а также историю GitOps. Границы и
-роли описаны в [admin-access.md](admin-access.md).
+SSO/обратного прокси для `/ui` и Admin API, штатные журналы административных
+действий `codex-lb`, а также историю GitOps. Границы и роли описаны в
+[admin-access.md](admin-access.md).
 
 ## Guardrails Monitor и проверка обработчиков
 
@@ -294,6 +334,8 @@ make guardrails-smoke
 Собирайте решения CNI, шлюза исходящего трафика или firewall для:
 
 - новых внешних FQDN из `litellm`;
+- обращений `codex-lb` к разрешённым конечным точкам OpenAI и неожиданных
+  направлений из этого контейнера;
 - попыток интернет-доступа из Analyzer, Redis или PostgreSQL;
 - изменения DNS-направлений после обновления LiteLLM или провайдера.
 
@@ -331,9 +373,14 @@ make update-litellm
 изменения `.env` или `litellm-config.yaml` — пересоздания соответствующего
 сервиса.
 
+`codex-lb` закреплён отдельно и не обновляется командой `make update-litellm`.
+Его обновление, резервное копирование и откат описаны в
+[codex-lb.md](codex-lb.md#обновление).
+
 ## Ссылки
 
 - [Prometheus в LiteLLM](https://docs.litellm.ai/docs/proxy/prometheus)
 - [Маршрутизация LiteLLM](https://docs.litellm.ai/docs/proxy/load_balancing)
 - [Защитные обработчики LiteLLM](https://docs.litellm.ai/docs/proxy/guardrails/custom_guardrail)
 - [Журналирование LiteLLM](https://docs.litellm.ai/docs/proxy/logging)
+- [Наблюдаемость codex-lb](https://soju06.github.io/codex-lb/deployment/kubernetes/#observability)
