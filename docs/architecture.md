@@ -9,6 +9,7 @@
 
 | Компонент | Ответственность |
 | --- | --- |
+| Nginx (`nginx`, корпоративный профиль) | Единый контейнер публикации LiteLLM на порту `80` и панели `codex-lb` на порту `2455` |
 | LiteLLM Proxy (`litellm`) | API-шлюз, проверка клиентских ключей, выбор провайдера модели, запуск защитных обработчиков |
 | PII Guardrail (`litellm_guardrails/pii_guardrail.py`) | Ранние политики, маскирование, блокировка и восстановление ответа |
 | Presidio Analyzer (`presidio-analyzer`) | Детерминированные распознаватели, spaCy и закреплённая BERT-модель |
@@ -19,7 +20,8 @@
 
 ## Компонентная схема
 
-Схема не включает внешний обратный прокси.
+Схема включает Nginx корпоративной ветки, но не показывает внешний слой
+завершения HTTPS, межсетевой экран и другие компоненты инфраструктуры предприятия.
 
 ```mermaid
 flowchart LR
@@ -30,6 +32,8 @@ flowchart LR
     openai["OpenAI<br/>ChatGPT OAuth"]
 
     subgraph system["ru-llm-proxy"]
+        nginx["Nginx<br/>единая точка публикации"]
+
         subgraph proxy["Контейнер litellm"]
             litellm["LiteLLM Proxy<br/>авторизация и маршрутизация"]
             pre["ru-pii-mask-pre<br/>pre_call"]
@@ -48,9 +52,11 @@ flowchart LR
         telemetry["Метрики и<br/>безопасные журналы"]
     end
 
-    client -->|"Запрос"| litellm
-    admin -->|"Ключи, модели, доступ"| litellm
-    codex_admin -->|"Подписки, служебные ключи"| codex
+    client -->|"Порт 80"| nginx
+    admin -->|"Порт 80"| nginx
+    codex_admin -->|"Порт 2455"| nginx
+    nginx -->|"Клиентские и административные запросы"| litellm
+    nginx -->|"Панель и API администрирования"| codex
     litellm -->|"pre_call"| pre
     pre -->|"POST /api/v1/analyze"| analyzer
     analyzer --> detectors
@@ -70,7 +76,8 @@ flowchart LR
     litellm -->|"post_call / streaming hook"| post
     post -->|"Получить и удалить сопоставление"| redis
     post -->|"Восстановленный ответ"| litellm
-    litellm --> client
+    litellm --> nginx
+    nginx --> client
     litellm -.-> telemetry
     pre -.-> telemetry
     post -.-> telemetry
@@ -81,7 +88,9 @@ flowchart LR
 ## Последовательность обработки
 
 Основная ветка показана для `PII_GUARDRAIL_MODE=mask`. В режиме `block` запрос
-завершается после обнаружения персональных данных.
+завершается после обнаружения персональных данных. В корпоративной ветке Nginx
+передаёт запрос в LiteLLM до первого шага диаграммы и возвращает итоговый ответ;
+на порядок защитных обработчиков он не влияет.
 
 ```mermaid
 sequenceDiagram

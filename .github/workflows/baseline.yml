@@ -34,6 +34,7 @@ jobs:
           bash -n tests/e2e/test_ner_proxy_flow.sh
           bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
           bash -n tests/e2e/test_final_leak_proxy_non_egress.sh
+          bash -n tests/test_litellm_ca_image.sh
 
       - name: Parse YAML configs
         run: |
@@ -48,6 +49,7 @@ jobs:
               "tests/e2e/docker-compose.pre-egress-proxy.yml",
               "tests/e2e/litellm-config.ner-proxy.yaml",
               "tests/e2e/docker-compose.ner-proxy.yml",
+              ".github/workflows/air-gapped-ca.yml",
               ".github/workflows/baseline.yml",
               ".github/workflows/ner-model-integration.yml",
           ):

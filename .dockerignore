@@ -1,0 +1,33 @@
+# Репозиторий используется как контекст сборки образов LiteLLM и Analyzer.
+# Локальное состояние и секреты не должны попадать в контекст Docker.
+
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+
+.env
+.env.*
+docker-compose.override.yml
+
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+cache/
+data/
+logs/
+models/
+pgdata/
+tmp/
+*.log
+
+docs/
+README.md
+
+# certs/ намеренно включен: Dockerfile копируют все подготовленные certs/*.crt.

@@ -1,4 +1,14 @@
 services:
+  nginx:
+    ports:
+      - "${CODEX_LB_PORT:-2455}:2455"
+    depends_on:
+      codex-lb:
+        condition: service_healthy
+    networks:
+      - ru-llm-proxy
+      - codex-lb-proxy
+
   litellm:
     volumes:
       - ./litellm-config.codex-lb.yaml:/app/config.yaml:ro
@@ -12,14 +22,21 @@ services:
       - codex-lb-proxy
 
   codex-lb:
-    # Official v1.24.0-beta.3 multi-arch image (linux/amd64 and linux/arm64).
-    image: ghcr.io/soju06/codex-lb:1.24.0-beta.3@sha256:d9df6fdef5d900bf96cd6e183b5d2d8abf9387f9cca642e317206ced5362c704
+    # Thin corporate-CA layer over the pinned official multi-arch image.
+    build:
+      context: .
+      dockerfile: codex-lb/Dockerfile
     container_name: ru-llm-proxy-codex-lb
     restart: unless-stopped
     ports:
-      - "${CODEX_LB_PORT:-2455}:2455"
       - "${CODEX_LB_METRICS_PORT:-9090}:9090"
     environment:
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
       CODEX_LB_DATA_DIR: /var/lib/codex-lb
       CODEX_LB_DATABASE_URL: "postgresql+asyncpg://codex_lb:${CODEX_LB_POSTGRES_PASSWORD:?Set CODEX_LB_POSTGRES_PASSWORD}@codex-lb-db:5432/codex_lb"
       CODEX_LB_DASHBOARD_AUTH_MODE: standard

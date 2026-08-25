@@ -92,6 +92,7 @@ test-static: test-routing-diagnostics
 	@echo "🧪 Static and lightweight regression tests"
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
 		tests/test_analyzer_capacity_config.py \
+		tests/test_air_gapped_config.py \
 		tests/test_analyzer_image_contract.py \
 		tests/test_ner_integration_config.py \
 		tests/test_analyzer_telemetry_config.py \
@@ -332,7 +333,7 @@ monitor-smoke:
 
 # === LiteLLM update ===
 update-litellm:
-	@echo "⬇️  Pulling latest LiteLLM image configured in docker-compose.yml"
-	docker compose pull litellm
+	@echo "⬇️  Rebuilding LiteLLM from the latest configured base image"
+	docker compose build --pull litellm
 	docker compose up -d --force-recreate --no-deps litellm
 	@echo "✅ LiteLLM image updated and proxy container recreated"

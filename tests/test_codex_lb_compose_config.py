@@ -24,11 +24,18 @@ def _overlay() -> dict:
 
 
 def test_codex_lb_is_an_optional_overlay_not_part_of_base_compose():
-    base = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    base = yaml.safe_load(
+        (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    )
     overlay = _overlay()
 
-    assert "codex-lb" not in base
-    assert set(overlay["services"]) == {"litellm", "codex-lb", "codex-lb-db"}
+    assert "codex-lb" not in base["services"]
+    assert set(overlay["services"]) == {
+        "nginx",
+        "litellm",
+        "codex-lb",
+        "codex-lb-db",
+    }
 
 
 def test_codex_lb_overlay_connects_litellm_only_with_explicit_credentials():
@@ -48,10 +55,15 @@ def test_codex_lb_overlay_connects_litellm_only_with_explicit_credentials():
 
 def test_codex_lb_images_are_versioned_and_digest_pinned():
     services = _overlay()["services"]
+    dockerfile = (ROOT / "codex-lb" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert services["codex-lb"]["image"] == CODEX_LB_IMAGE
+    assert services["codex-lb"]["build"] == {
+        "context": ".",
+        "dockerfile": "codex-lb/Dockerfile",
+    }
+    assert f"FROM {CODEX_LB_IMAGE}" in dockerfile
     assert services["codex-lb-db"]["image"] == POSTGRES_IMAGE
-    assert "build" not in services["codex-lb"]
+    assert "image" not in services["codex-lb"]
     assert "build" not in services["codex-lb-db"]
 
 
@@ -102,19 +114,58 @@ def test_codex_lb_overlay_contains_no_literal_credentials():
     )
 
 
-def test_codex_lb_publishes_only_dashboard_api_and_metrics_ports():
+def test_existing_nginx_publishes_dashboard_while_codex_lb_publishes_metrics():
     services = _overlay()["services"]
     app = services["codex-lb"]
+    nginx = services["nginx"]
 
-    assert app["ports"] == [
-        "${CODEX_LB_PORT:-2455}:2455",
-        "${CODEX_LB_METRICS_PORT:-9090}:9090",
-    ]
+    assert nginx["ports"] == ["${CODEX_LB_PORT:-2455}:2455"]
+    assert nginx["depends_on"] == {
+        "codex-lb": {"condition": "service_healthy"}
+    }
+    assert app["ports"] == ["${CODEX_LB_METRICS_PORT:-9090}:9090"]
     assert app["environment"]["CODEX_LB_METRICS_ENABLED"] == "true"
     assert app["environment"]["CODEX_LB_DASHBOARD_AUTH_MODE"] == "standard"
     assert app["environment"]["CODEX_LB_TELEMETRY_ENABLED"] == "false"
     assert "1455" not in OVERLAY_PATH.read_text(encoding="utf-8")
     assert "BIND_ADDRESS" not in OVERLAY_PATH.read_text(encoding="utf-8")
+
+
+def test_nginx_routes_codex_lb_dashboard_without_a_path_prefix():
+    nginx = (ROOT / "nginx" / "conf.d" / "default.conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "listen 80;" in nginx
+    assert "http://litellm:4000" in nginx
+    assert "listen 2455;" in nginx
+    assert "http://codex-lb:2455" in nginx
+    assert "proxy_set_header Upgrade" in nginx
+    assert "$connection_upgrade" in nginx
+    assert "location /codex-lb" not in nginx
+
+
+def test_codex_lb_uses_standard_corporate_proxy_environment():
+    environment = _overlay()["services"]["codex-lb"]["environment"]
+
+    assert environment["HTTP_PROXY"] == "${HTTP_PROXY:-}"
+    assert environment["HTTPS_PROXY"] == "${HTTPS_PROXY:-}"
+    assert environment["http_proxy"] == "${HTTP_PROXY:-}"
+    assert environment["https_proxy"] == "${HTTPS_PROXY:-}"
+    for name in ("NO_PROXY", "no_proxy"):
+        assert "codex-lb" in environment[name]
+        assert "codex-lb-db" in environment[name]
+
+
+def test_codex_lb_image_uses_the_same_corporate_ca_contract_as_litellm():
+    dockerfile = (ROOT / "codex-lb" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "USER root" in dockerfile
+    assert "COPY certs/" in dockerfile
+    assert "openssl crl2pkcs7" in dockerfile
+    assert "/opt/venv/bin/python -c 'import certifi" in dockerfile
+    assert "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" in dockerfile
+    assert dockerfile.rstrip().endswith("USER app")
 
 
 def test_codex_lb_database_network_is_internal_and_proxy_network_isolated():
@@ -126,6 +177,10 @@ def test_codex_lb_database_network_is_internal_and_proxy_network_isolated():
         "codex-lb-database": {"driver": "bridge", "internal": True},
     }
     assert services["litellm"]["networks"] == [
+        "ru-llm-proxy",
+        "codex-lb-proxy",
+    ]
+    assert services["nginx"]["networks"] == [
         "ru-llm-proxy",
         "codex-lb-proxy",
     ]

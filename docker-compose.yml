@@ -1,7 +1,30 @@
 services:
+  # === Единая точка входа изолированного окружения ===
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ru-llm-proxy-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health/liveliness"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ru-llm-proxy
+
   # === LiteLLM-прокси ===
   litellm:
-    image: docker.litellm.ai/berriai/litellm:main-stable
+    build:
+      context: .
+      dockerfile: litellm/Dockerfile
     container_name: ru-llm-proxy
     restart: unless-stopped
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -11,6 +34,14 @@ services:
       - ./litellm-config.yaml:/app/config.yaml:ro
       - ./litellm_guardrails:/app/litellm_guardrails:ro
     environment:
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+      - http_proxy=${HTTP_PROXY:-}
+      - https_proxy=${HTTPS_PROXY:-}
+      - no_proxy=${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+      - DISABLE_AIOHTTP_TRANSPORT=True
+      - AIOHTTP_TRUST_ENV=True
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - LITELLM_SALT_KEY=${LITELLM_SALT_KEY}
       - UI_USERNAME=${UI_USERNAME}
@@ -71,9 +102,21 @@ services:
   # === Presidio Analyzer ===
   presidio-analyzer:
     build:
-      context: ./presidio
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: presidio/Dockerfile
       target: analyzer
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        http_proxy: ${HTTP_PROXY:-}
+        https_proxy: ${HTTPS_PROXY:-}
+        no_proxy: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        PIP_PROXY: ${PIP_PROXY:-}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+        NER_MODEL_PROXY: ${NER_MODEL_PROXY:-}
     container_name: presidio-analyzer
     restart: unless-stopped
     ports:
@@ -138,6 +181,13 @@ services:
     build:
       context: .
       dockerfile: tests/Dockerfile.guardrails
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        PIP_PROXY: ${PIP_PROXY:-}
     profiles:
       - test
     working_dir: /workspace
@@ -154,9 +204,20 @@ services:
   # === Запуск регрессионных тестов распознавателей Analyzer API ===
   presidio-analyzer-tests:
     build:
-      context: ./presidio
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: presidio/Dockerfile
       target: analyzer-test
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        http_proxy: ${HTTP_PROXY:-}
+        https_proxy: ${HTTPS_PROXY:-}
+        no_proxy: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        PIP_PROXY: ${PIP_PROXY:-}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
     profiles:
       - test
     working_dir: /workspace
