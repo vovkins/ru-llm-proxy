@@ -1,5 +1,12 @@
 .PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack
 
+# Docker Desktop stores its credential helper outside the default non-interactive
+# PATH on macOS. Export it once for every recipe and recursive make invocation.
+DOCKER_DESKTOP_BIN := /Applications/Docker.app/Contents/Resources/bin
+ifneq ($(wildcard $(DOCKER_DESKTOP_BIN)/docker-credential-desktop),)
+export PATH := $(DOCKER_DESKTOP_BIN):$(PATH)
+endif
+
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
 ANALYZER_URL ?= http://localhost:5001

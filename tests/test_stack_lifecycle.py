@@ -30,6 +30,17 @@ def test_makefile_exposes_two_explicit_runtime_stacks():
     assert "health: require-stack" in MAKEFILE
 
 
+def test_makefile_exposes_docker_desktop_credential_helper_to_all_recipes():
+    assert (
+        "DOCKER_DESKTOP_BIN := /Applications/Docker.app/Contents/Resources/bin"
+        in MAKEFILE
+    )
+    assert (
+        "$(wildcard $(DOCKER_DESKTOP_BIN)/docker-credential-desktop)" in MAKEFILE
+    )
+    assert "export PATH := $(DOCKER_DESKTOP_BIN):$(PATH)" in MAKEFILE
+
+
 def test_build_is_common_but_up_never_builds_implicitly():
     build_section = MAKEFILE.split("# === Build ===", 1)[1].split(
         "# === Up ===", 1
