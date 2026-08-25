@@ -33,8 +33,8 @@ ZCode.
 ## Проверка
 
 ```bash
-CHAT_MODEL=glm-5.2 make client-auth-smoke
-CHAT_MODEL=glm-5.2 make guardrails-smoke
+CHAT_MODEL=glm-5.2 make client-auth-smoke STACK=litellm-presidio
+CHAT_MODEL=glm-5.2 make guardrails-smoke STACK=litellm-presidio
 ```
 
 Частые причины ошибок:

@@ -24,11 +24,10 @@
 
 ## Настройка
 
-1. Создайте `.env` и заполните секреты:
+1. Создайте `.env` и заполните ключи провайдера и сетевые настройки:
 
    ```bash
    cp .env.example .env
-   make setup
    ```
 
 2. Поместите корпоративную цепочку в один или несколько верхнеуровневых файлов
@@ -61,9 +60,16 @@
 
 ```bash
 make build
-make up
-make health
+make setup STACK=litellm-presidio-codex-lb
+make up STACK=litellm-presidio-codex-lb
+make health STACK=litellm-presidio-codex-lb
 ```
+
+Для ветки `air-gapped-environment` без `codex-lb` используйте
+`STACK=litellm-presidio`. Расширенный состав уже включает базовый: выполнять
+обе команды setup подряд не нужно. `make build` общий и готовит образы обоих
+составов; `setup` отвечает за секреты и первичную настройку, а `up` не выполняет
+сборку.
 
 Во время сборки:
 
@@ -96,8 +102,8 @@ curl -fsS http://localhost/v1/chat/completions \
 После запуска выполните проверки защитного слоя:
 
 ```bash
-make guardrails-smoke
-make routing-smoke
+make guardrails-smoke STACK=litellm-presidio-codex-lb
+make routing-smoke STACK=litellm-presidio-codex-lb
 ```
 
 В объединённом профиле тот же Nginx публикует административный интерфейс

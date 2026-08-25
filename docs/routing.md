@@ -81,7 +81,7 @@ model_list:
 ## Проверка
 
 ```bash
-make routing-smoke
+make routing-smoke STACK=litellm-presidio
 ```
 
 Команда выполняет два запроса одним ключом и сравнивает

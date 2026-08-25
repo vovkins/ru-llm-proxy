@@ -61,7 +61,7 @@ echo "====================================="
 echo ""
 
 if [ -z "$API_KEY" ]; then
-    echo "❌ RU_LLM_PROXY_TOKEN is required; use make test-e2e to create a short-lived virtual key"
+    echo "❌ RU_LLM_PROXY_TOKEN is required; use make test-e2e STACK=<состав> to create a short-lived virtual key"
     exit 1
 fi
 

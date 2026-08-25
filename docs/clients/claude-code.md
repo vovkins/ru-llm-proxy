@@ -65,7 +65,8 @@ Anthropic:
 ## Проверка
 
 ```bash
-MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
+MESSAGES_MODEL=<validated-messages-alias> \
+  make client-auth-smoke STACK=litellm-presidio
 ```
 
 Полный контракт также требует проверки `POST /v1/messages/count_tokens` и

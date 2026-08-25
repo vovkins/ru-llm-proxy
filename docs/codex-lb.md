@@ -34,33 +34,41 @@
 LiteLLM передаёт `codex-lb` уже подготовленный запрос. Непрозрачное состояние
 `reasoning/compaction.encrypted_content` не анализируется и не изменяется.
 
-## Запуск
+## Сборка и запуск
 
-Сначала подготовьте обычный `.env`:
+В проекте есть два явных состава:
 
-```bash
-make setup
-```
+| Значение `STACK` | Компоненты |
+| --- | --- |
+| `litellm-presidio` | Nginx, LiteLLM, Analyzer, Redis и PostgreSQL LiteLLM |
+| `litellm-presidio-codex-lb` | Базовый состав, `codex-lb` и его отдельный PostgreSQL |
 
-Проверьте, что заполнены два ключа Z.AI, а `CODEX_LB_POSTGRES_PASSWORD`
-сгенерирован. Первичное значение `CODEX_LB_API_KEY=***` будет заменено после
-настройки `codex-lb`.
+Расширенный состав уже включает базовый. Последовательно выполнять `setup` для
+обоих составов не нужно.
 
-```bash
-docker compose --env-file .env \
-  -f docker-compose.yml \
-  -f docker-compose.codex-lb.yml \
-  pull
+1. Создайте `.env` из `.env.example`, заполните два ключа Z.AI и сетевые
+   параметры сборки.
+2. Один раз соберите образы обоих составов:
 
-docker compose --env-file .env \
-  -f docker-compose.yml \
-  -f docker-compose.codex-lb.yml \
-  up -d --build
-```
+   ```bash
+   make build
+   ```
 
-Корпоративный состав включает семь рабочих контейнеров: Nginx, LiteLLM,
-Analyzer, Redis, PostgreSQL LiteLLM, `codex-lb` и отдельный PostgreSQL
-`codex-lb`.
+3. Выполните первичную настройку расширенного состава:
+
+   ```bash
+   make setup STACK=litellm-presidio-codex-lb
+   ```
+
+4. После завершения настройки запустите весь состав:
+
+   ```bash
+   make up STACK=litellm-presidio-codex-lb
+   ```
+
+`build` только загружает готовые образы и собирает прикладные и тестовые образы.
+`setup` создаёт секреты и выполняет первичную настройку. `up` не собирает образы
+и запускает только уже подготовленную систему.
 
 В `air-gapped-environment-codex-lb-integration` предварительно поместите
 корпоративные сертификаты в `certs/*.crt` и заполните `HTTP_PROXY`,
@@ -68,30 +76,31 @@ Analyzer, Redis, PostgreSQL LiteLLM, `codex-lb` и отдельный PostgreSQL
 
 ## Первичная настройка
 
+`make setup STACK=litellm-presidio-codex-lb` сначала запускает только Nginx,
+`codex-lb` и его базу. Затем команда ожидает действий администратора:
+
 1. Откройте `http://<адрес-сервера>:2455` из внутренней сети.
-   В корпоративной ветке этот адрес обслуживает общий Nginx и передаёт запросы
-   во внутренний контейнер `codex-lb`.
 2. Задайте сложный пароль администратора. При удалённом первом входе используйте
    одноразовый код начальной настройки из журнала `codex-lb`; не помещайте его в
    заявки или общий журнал команд.
 3. Добавьте OAuth-подписки штатными средствами интерфейса. Для импорта используйте
    отдельные сессии `auth.json`; после импорта не запускайте ту же сессию
    одновременно в локальном Codex.
-4. Создайте в разделе API Keys отдельный служебный ключ для LiteLLM. Полное
-   значение показывается только при создании.
-5. В Settings включите **API key authentication**. Без этого контейнерный запрос
-   LiteLLM считается не локальным и может получать `401`, даже если ключ уже
-   создан.
-6. Запишите служебный ключ в локальный `.env` как `CODEX_LB_API_KEY`. Клиентам
-   этот ключ не выдаётся.
-7. Пересоздайте только LiteLLM, чтобы он перечитал ключ:
+4. Вернитесь в терминал, нажмите Enter и введите пароль администратора в
+   защищённом приглашении.
 
-```bash
-docker compose --env-file .env \
-  -f docker-compose.yml \
-  -f docker-compose.codex-lb.yml \
-  up -d --force-recreate --no-deps litellm
-```
+После этого setup через штатный административный API:
+
+- проверяет наличие хотя бы одной подписки;
+- включает **API key authentication**;
+- создаёт, переиспользует или перевыпускает ключ
+  `ru-llm-proxy-litellm`;
+- проверяет ключ и непустой каталог запросом `GET /v1/models`;
+- атомарно сохраняет `CODEX_LB_API_KEY` в `.env` с правами `0600`.
+
+Пароль и полное значение ключа не передаются в аргументах процессов и не
+печатаются. Клиентам служебный ключ не выдаётся. Повторный `setup` сохраняет
+действующий ключ; после потери базы перевыпускает его для новой установки.
 
 Порт обратного вызова `1455` на хост не публикуется. Используйте доступные в
 интерфейсе способы импорта, код устройства или ручную передачу адреса обратного
@@ -100,13 +109,8 @@ docker compose --env-file .env \
 ## Проверка
 
 ```bash
-docker compose --env-file .env \
-  -f docker-compose.yml \
-  -f docker-compose.codex-lb.yml \
-  ps
-
+make health STACK=litellm-presidio-codex-lb
 curl -fsS http://localhost:2455/health/ready
-make health
 ```
 
 Через пользовательский ключ LiteLLM проверьте каталог и лёгкую модель:
@@ -116,7 +120,8 @@ curl -fsS http://localhost:4000/v1/models \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN"
 
 CHAT_MODEL=gpt-5.6-luna RESPONSES_MODEL=gpt-5.6-luna \
-  PROTOCOL_SMOKE_ENABLED=true make guardrails-smoke
+  PROTOCOL_SMOKE_ENABLED=true \
+  make guardrails-smoke STACK=litellm-presidio-codex-lb
 ```
 
 Проверенная конфигурация публикует `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`,
@@ -130,8 +135,10 @@ CHAT_MODEL=gpt-5.6-luna RESPONSES_MODEL=gpt-5.6-luna \
   `codex-lb`; перезапуск LiteLLM для этого не требуется.
 - Управляйте пользовательскими ключами, бюджетами и доступными публичными
   моделями в LiteLLM. Не выдавайте пользователям служебный ключ `codex-lb`.
-- Для ротации служебного ключа сначала создайте новый ключ, обновите `.env` и
-  пересоздайте LiteLLM, проверьте запрос, затем отзовите старый ключ.
+- Для штатной ротации служебного ключа удалите его значение из `.env` и повторите
+  `make setup STACK=litellm-presidio-codex-lb`. Команда перевыпустит именованный
+  ключ. Затем выполните `make restart STACK=litellm-presidio-codex-lb`, чтобы
+  LiteLLM перечитал `.env`.
 - TOTP не обязателен в этом профиле, но может быть включён администратором
   штатными средствами `codex-lb`.
 

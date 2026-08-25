@@ -9,7 +9,11 @@ class RoutingSmokeMakefileTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         makefile = Path("Makefile").read_text(encoding="utf-8")
-        match = re.search(r"^routing-smoke:\n(?P<body>(?:\t.*\n)+)", makefile, re.MULTILINE)
+        match = re.search(
+            r"^routing-smoke:[^\n]*\n(?P<body>(?:\t.*\n)+)",
+            makefile,
+            re.MULTILINE,
+        )
         if match is None:
             raise AssertionError("routing-smoke target not found")
         cls.recipe = match.group("body")

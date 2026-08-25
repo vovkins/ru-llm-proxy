@@ -13,7 +13,7 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         cls.monitoring = Path("docs/monitoring.md").read_text(encoding="utf-8")
         cls.architecture = Path("docs/architecture.md").read_text(encoding="utf-8")
         match = re.search(
-            r"^guardrails-smoke:\n(?P<body>(?:\t.*\n)+)",
+            r"^guardrails-smoke:[^\n]*\n(?P<body>(?:\t.*\n)+)",
             cls.makefile,
             re.MULTILINE,
         )
@@ -108,21 +108,21 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("make guardrails-smoke", self.readme)
 
     def test_docs_capture_local_smoke_and_update_checklist(self):
-        self.assertIn("локальном Docker Compose", self.readme)
+        self.assertIn("запущенного состава", self.readme)
         self.assertIn("принадлежащих проверке Redis-сопоставлений", self.monitoring)
         self.assertIn("docker compose exec -T redis", self.monitoring)
         self.assertIn("CURL_CONNECT_TIMEOUT", self.monitoring)
         checklist = self.monitoring.split("Минимальный проверочный список обновления:", 1)[1]
         checklist = checklist.split("## Ссылки", 1)[0]
         self.assertIn("локальном окружении Docker Compose", checklist)
-        self.assertIn("`make guardrails-smoke`", checklist)
+        self.assertIn("`make guardrails-smoke STACK=litellm-presidio`", checklist)
         self.assertLess(
-            checklist.index("`make guardrails-list`"),
-            checklist.index("`make guardrails-smoke`"),
+            checklist.index("`make guardrails-list STACK=litellm-presidio`"),
+            checklist.index("`make guardrails-smoke STACK=litellm-presidio`"),
         )
         self.assertLess(
-            checklist.index("`make guardrails-smoke`"),
-            checklist.index("`make routing-smoke`"),
+            checklist.index("`make guardrails-smoke STACK=litellm-presidio`"),
+            checklist.index("`make routing-smoke STACK=litellm-presidio`"),
         )
 
 

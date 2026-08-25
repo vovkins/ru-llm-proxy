@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack
 
 PYTEST = python -m pytest -p no:cacheprovider -v
 PYTHON_LOCAL ?= $(shell if [ -x .venv/bin/python ]; then printf ".venv/bin/python"; else printf "python3"; fi)
@@ -16,16 +16,35 @@ PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-v .:/workspace:ro \
 	-w /workspace
 
+STACK_LITELLM_PRESIDIO := litellm-presidio
+STACK_CODEX_LB := litellm-presidio-codex-lb
+ENV_FILE ?= .env
+BUILD_ENV_FILE := $(shell if [ -f "$(ENV_FILE)" ]; then printf "%s" "$(ENV_FILE)"; else printf "%s" ".env.example"; fi)
+BASE_COMPOSE = docker compose --env-file $(ENV_FILE) -f docker-compose.yml
+CODEX_LB_COMPOSE = $(BASE_COMPOSE) -f docker-compose.codex-lb.yml
+COMPOSE = $(if $(filter $(STACK_CODEX_LB),$(STACK)),$(CODEX_LB_COMPOSE),$(BASE_COMPOSE))
+BUILD_COMPOSE = CODEX_LB_POSTGRES_PASSWORD=build-only CODEX_LB_API_KEY=build-only docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml -f docker-compose.codex-lb.yml --profile test
+CLEAN_CODEX_LB_COMPOSE = docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml -f docker-compose.codex-lb.yml
+
 # Default target
 help:
 	@echo "ru-llm-proxy — команды:"
 	@echo ""
-	@echo "  make setup    — первичная настройка (.env, генерация ключей)"
-	@echo "  make build    — собрать Docker-образы"
-	@echo "  make up       — запустить все сервисы"
-	@echo "  make down     — остановить все сервисы"
-	@echo "  make restart  — рестарт LiteLLM (применить новый конфиг)"
-	@echo "  make logs     — логи всех сервисов"
+	@echo "Составы для setup/up/down/restart/logs/health/clean и проверок стенда:"
+	@echo "  STACK=$(STACK_LITELLM_PRESIDIO)"
+	@echo "  STACK=$(STACK_CODEX_LB)"
+	@echo ""
+	@echo "Жизненный цикл:"
+	@echo "  make build                         — собрать и загрузить образы обоих составов"
+	@echo "  make setup STACK=<состав>          — выполнить первичную настройку выбранного состава"
+	@echo "  make up STACK=<состав>             — запустить уже собранный и настроенный состав"
+	@echo "  make down STACK=<состав>           — остановить выбранный состав"
+	@echo "  make restart STACK=<состав>        — пересоздать контейнеры и перечитать .env"
+	@echo "  make logs STACK=<состав>           — показать журналы выбранного состава"
+	@echo "  make health STACK=<состав>         — проверить выбранный состав"
+	@echo "  make clean STACK=<состав|all>      — удалить данные и локальные образы проекта"
+	@echo ""
+	@echo "Проверки:"
 	@echo "  make test     — быстрый локальный suite: test-unit + test-static"
 	@echo "  make test-unit — unit-тесты recognizers/NER, guardrail и flow"
 	@echo "  make test-static — lightweight static/asyncio regression tests без Docker"
@@ -35,7 +54,7 @@ help:
 	@echo "  make test-hf-model — собрать Analyzer и проверить модель без сети"
 	@echo "  make test-ner-proxy — проверить mask/block через реальный Analyzer и mock-провайдер"
 	@echo "  make test-ner-integration — собрать модель и выполнить полный NER integration gate"
-	@echo "  make ner-evaluate — оценить запущенный Analyzer на обезличенном корпусе"
+	@echo "  make ner-evaluate STACK=<состав> — оценить запущенный Analyzer на обезличенном корпусе"
 	@echo "  make test-guardrail — unit-тесты LiteLLM guardrail"
 	@echo "  make test-flow — deterministic guardrail-flow без внешнего LLM"
 	@echo "  make test-routing-diagnostics — static tests для routing-smoke и guardrails-smoke Makefile targets"
@@ -43,47 +62,63 @@ help:
 	@echo "  make test-final-leak-proxy — Docker smoke: final leak-check не доходит до mock provider"
 	@echo "  make test-egress-security — Docker egress-security gate: mock provider capture/no-egress"
 	@echo "  make test-observability-gates — lightweight observability/audit gate checks"
-	@echo "  make test-e2e — live smoke test (нужны сервисы и LLM provider key)"
-	@echo "  make virtual-key-create — DevOps/CI helper: создать LiteLLM virtual key"
-	@echo "  make client-auth-smoke — проверить client auth и /v1 протоколы"
-	@echo "  REQUIRE_ALL_PROTOCOLS=1 make client-auth-smoke — строгий smoke всех /v1 протоколов"
-	@echo "  make guardrails-list — список guardrails, зарегистрированных в LiteLLM"
-	@echo "  make guardrails-smoke — live smoke guardrails для non-streaming и streaming"
-	@echo "  make routing-smoke — проверить sticky deployment affinity для одного ключа"
-	@echo "  make metrics  — показать начало LiteLLM /metrics"
-	@echo "  make monitor-smoke — проверить health, guardrails list и /metrics"
-	@echo "  make update-litellm — подтянуть новый LiteLLM image и пересоздать proxy"
-	@echo "  make health   — проверить статус всех сервисов"
-	@echo "  make clean    — удалить volumes и образы"
+	@echo "  make test-e2e STACK=<состав> — live smoke test (нужны сервисы и ключ провайдера)"
+	@echo "  make virtual-key-create STACK=<состав> — создать пользовательский ключ LiteLLM"
+	@echo "  make client-auth-smoke STACK=<состав> — проверить авторизацию и /v1 протоколы"
+	@echo "  make guardrails-list STACK=<состав> — список защитных слоёв LiteLLM"
+	@echo "  make guardrails-smoke STACK=<состав> — проверить обычные и потоковые ответы"
+	@echo "  make routing-smoke STACK=<состав> — проверить закрепление маршрута"
+	@echo "  make metrics STACK=<состав> — показать начало LiteLLM /metrics"
+	@echo "  make monitor-smoke STACK=<состав> — проверить health, защитные слои и метрики"
+	@echo "  make update-litellm STACK=<состав> — обновить образ LiteLLM и пересоздать proxy"
+
+require-stack:
+	@case "$(STACK)" in \
+		"$(STACK_LITELLM_PRESIDIO)"|"$(STACK_CODEX_LB)") ;; \
+		*) echo "❌ Укажите STACK=$(STACK_LITELLM_PRESIDIO) или STACK=$(STACK_CODEX_LB)"; exit 2 ;; \
+	esac
 
 # === Setup ===
-setup:
-	bash scripts/setup_env.sh
+setup: require-stack
+	bash scripts/setup_env.sh "$(ENV_FILE)" .env.example "$(STACK)"
+	@if [ "$(STACK)" = "$(STACK_CODEX_LB)" ]; then \
+		bash scripts/setup_codex_lb.sh "$(ENV_FILE)"; \
+	else \
+		echo "✅ Базовый состав настроен. Следующий шаг: make up STACK=$(STACK_LITELLM_PRESIDIO)"; \
+	fi
 
 # === Build ===
 build:
-	docker compose build --no-cache
+	@echo "⬇️  Загрузка готовых образов обоих составов"
+	$(BUILD_COMPOSE) pull nginx redis db codex-lb-db
+	@echo "🔨 Сборка прикладных и тестовых образов обоих составов"
+	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer codex-lb guardrail-tests presidio-analyzer-tests
 
 # === Up ===
-up:
-	docker compose up -d
+up: require-stack
+	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
+	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
+	$(COMPOSE) up -d --no-build
 	@echo ""
 	@echo "⏳ Ожидание запуска сервисов..."
 	@sleep 5
-	@$(MAKE) health
+	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
 
 # === Down ===
-down:
-	docker compose down
+down: require-stack
+	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
+	$(COMPOSE) down
 
-# === Restart (apply new config without rebuild) ===
-restart:
-	docker compose restart litellm
-	@echo "✅ LiteLLM перезапущен с новым конфигом"
+# === Restart (recreate containers and reread configuration) ===
+restart: require-stack
+	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
+	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
+	$(COMPOSE) up -d --no-build --force-recreate
+	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
 
 # === Logs ===
-logs:
-	docker compose logs -f --tail=50
+logs: require-stack
+	$(COMPOSE) logs -f --tail=50
 
 # === Test ===
 test: test-unit test-static
@@ -99,6 +134,7 @@ test-static: test-routing-diagnostics
 		tests/test_model_profile_config.py \
 		tests/test_codex_lb_compose_config.py \
 		tests/test_codex_lb_litellm_config.py \
+		tests/test_stack_lifecycle.py \
 		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
@@ -153,7 +189,7 @@ test-ner-integration:
 	@$(MAKE) test-hf-model
 	@$(MAKE) test-ner-proxy
 
-ner-evaluate:
+ner-evaluate: require-stack
 	@echo "📊 NER evaluation via $(ANALYZER_URL)"
 	$(PYTHON_LOCAL) -m presidio.evaluation.run_baseline \
 		--analyzer-url "$(ANALYZER_URL)" \
@@ -197,20 +233,23 @@ test-routing-diagnostics:
 	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
-health:
-	@echo "=== Статус сервисов ==="
-	@echo ""
-	@echo -n "LiteLLM Proxy:    "; curl -sf http://localhost:4000/health/liveliness > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
-	@echo -n "Presidio Analyzer: "; curl -sf http://localhost:5001/api/v1/health > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
-	@echo -n "PostgreSQL:       "; docker compose exec -T db pg_isready -U litellm > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
-	@echo -n "Redis:            "; docker compose exec -T redis redis-cli ping > /dev/null 2>&1 && echo "✅ OK" || echo "❌ DOWN"
-	@echo ""
+health: require-stack
+	bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)"
 
 # === Clean ===
 clean:
+	@case "$(STACK)" in \
+		"$(STACK_LITELLM_PRESIDIO)"|"$(STACK_CODEX_LB)"|all) ;; \
+		*) echo "❌ Укажите STACK=$(STACK_LITELLM_PRESIDIO), STACK=$(STACK_CODEX_LB) или STACK=all"; exit 2 ;; \
+	esac
+	@if [ "$(STACK)" != "all" ]; then bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"; fi
 	@echo "⚠️  Это удалит все данные (БД, Redis, Docker-образы)"
 	@read -p "Продолжить? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
-	docker compose down -v --rmi local
+	@if [ "$(STACK)" = "all" ] || [ "$(STACK)" = "$(STACK_CODEX_LB)" ]; then \
+		$(CLEAN_CODEX_LB_COMPOSE) down -v --rmi local --remove-orphans; \
+	else \
+		$(BASE_COMPOSE) down -v --rmi local --remove-orphans; \
+	fi
 	@echo "✅ Очищено"
 
 # === Unit tests (all) ===
@@ -222,7 +261,7 @@ test-unit:
 	@echo "✅ Unit suite completed"
 
 # === Live smoke test (requires running services) ===
-test-e2e:
+test-e2e: require-stack
 	@echo "🧪 Live smoke test (требуются запущенные сервисы и LLM provider key)"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@RU_LLM_PROXY_TOKEN=$$(bash scripts/create_virtual_key.sh \
@@ -234,7 +273,7 @@ test-e2e:
 		bash tests/e2e/test_e2e.sh
 
 # === Client access ===
-virtual-key-create:
+virtual-key-create: require-stack
 	@KEY_ALIAS="$(KEY_ALIAS)" \
 		MODELS="$(MODELS)" \
 		DURATION="$(DURATION)" \
@@ -247,22 +286,22 @@ virtual-key-create:
 		METADATA_JSON='$(METADATA_JSON)' \
 		bash scripts/create_virtual_key.sh
 
-client-auth-smoke:
+client-auth-smoke: require-stack
 	@bash tests/e2e/test_client_auth.sh
 
 # === Guardrails diagnostics ===
-guardrails-list:
+guardrails-list: require-stack
 	@echo "🛡️  LiteLLM registered guardrails"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
 		response=$$(curl -sS -H "Authorization: Bearer $$LITELLM_MASTER_KEY" http://localhost:4000/guardrails/list); \
 		if command -v jq >/dev/null 2>&1; then printf "%s\n" "$$response" | jq .; else printf "%s\n" "$$response"; fi
 
-guardrails-smoke:
+guardrails-smoke: require-stack
 	@bash tests/e2e/test_guardrails_smoke.sh
 
 # === Routing diagnostics ===
-routing-smoke:
+routing-smoke: require-stack
 	@echo "🧭 LiteLLM sticky routing smoke"
 	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
 	@eval "$$(grep -E '^(LITELLM_MASTER_KEY|LITELLM_ROUTING_TEST_KEY)=' .env | sed 's/^/export /')" && \
@@ -308,17 +347,17 @@ routing-smoke:
 		if [ "$$first_model" = "$$second_model" ]; then echo "✅ Same key stayed on one deployment"; else echo "❌ Deployment changed for the same key"; exit 1; fi
 
 # === Monitoring diagnostics ===
-metrics:
+metrics: require-stack
 	@echo "📈 LiteLLM /metrics"
 	@tmp=$$(mktemp) && \
 		curl -L -sf http://localhost:4000/metrics > "$$tmp" && \
 		sed -n '1,120p' "$$tmp"; \
 		status=$$?; rm -f "$$tmp"; exit $$status
 
-monitor-smoke:
+monitor-smoke: require-stack
 	@echo "📈 Monitoring smoke check"
-	@$(MAKE) health
-	@$(MAKE) guardrails-list
+	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
+	@$(MAKE) guardrails-list STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
 	@analyzer_health=$$(curl -sf http://localhost:5001/api/v1/health); \
 		if printf "%s" "$$analyzer_health" | grep -q '"ner_state":"ready"' && printf "%s" "$$analyzer_health" | grep -q '"ner_warmed_up":true'; then echo "✅ Pinned Hugging Face NER ready"; else echo "❌ Pinned Hugging Face NER is not ready"; printf "%s\n" "$$analyzer_health"; exit 1; fi
 	@tmp=$$(mktemp) && \
@@ -332,8 +371,8 @@ monitor-smoke:
 		rm -f "$$tmp"
 
 # === LiteLLM update ===
-update-litellm:
+update-litellm: require-stack
 	@echo "⬇️  Rebuilding LiteLLM from the latest configured base image"
-	docker compose build --pull litellm
-	docker compose up -d --force-recreate --no-deps litellm
+	$(COMPOSE) build --pull litellm
+	$(COMPOSE) up -d --force-recreate --no-deps litellm
 	@echo "✅ LiteLLM image updated and proxy container recreated"

@@ -245,6 +245,7 @@ def test_setup_env_generates_codex_lb_db_password_but_not_service_key(tmp_path):
         str(ROOT / "scripts" / "setup_env.sh"),
         str(env_file),
         str(example_file),
+        "litellm-presidio-codex-lb",
     ]
     subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True)
     first_values = dict(
@@ -267,6 +268,20 @@ def test_setup_env_generates_codex_lb_db_password_but_not_service_key(tmp_path):
     )
     assert second_values["CODEX_LB_POSTGRES_PASSWORD"] == password
     assert second_values["CODEX_LB_API_KEY"] == "***"
+
+
+def test_nginx_has_an_upstream_independent_bootstrap_healthcheck():
+    base = yaml.safe_load(
+        (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    )
+    nginx = base["services"]["nginx"]
+    config = (ROOT / "nginx" / "conf.d" / "default.conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "depends_on" not in nginx
+    assert nginx["healthcheck"]["test"][-1].endswith("/nginx-health")
+    assert "location = /nginx-health" in config
 
 
 def test_codex_lb_runbook_covers_the_operational_contract():
