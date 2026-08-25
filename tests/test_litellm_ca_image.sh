@@ -8,6 +8,7 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d)"
+chmod 755 "${TEMP_DIR}"
 CONTEXT_DIR="${TEMP_DIR}/context"
 IMAGE_NO_CA="ru-llm-proxy-litellm-ca-test:no-ca"
 IMAGE_VALID_CA="ru-llm-proxy-litellm-ca-test:valid-ca"
@@ -57,6 +58,7 @@ for index in 1 2; do
         -subj "/CN=ru-llm-proxy-test-ca-${index}" \
         -keyout "${TEMP_DIR}/ca-${index}.key" \
         -out "${TEMP_DIR}/ca-${index}.crt" >/dev/null 2>&1
+    chmod 644 "${TEMP_DIR}/ca-${index}.crt"
     cp "${TEMP_DIR}/ca-${index}.crt" "${CONTEXT_DIR}/certs/ca-${index}.crt"
 done
 
