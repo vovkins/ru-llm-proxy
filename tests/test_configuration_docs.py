@@ -31,6 +31,16 @@ EXPECTED_DOCUMENTED_ENV = {
     "REDIS_PORT",
     "REDIS_URL",
     "PROMETHEUS_MULTIPROC_DIR",
+    # Optional codex-lb integration
+    "CODEX_LB_POSTGRES_PASSWORD",
+    "CODEX_LB_API_KEY",
+    "CODEX_LB_PORT",
+    "CODEX_LB_METRICS_PORT",
+    "CODEX_LB_DATA_DIR",
+    "CODEX_LB_DATABASE_URL",
+    "CODEX_LB_DASHBOARD_AUTH_MODE",
+    "CODEX_LB_METRICS_ENABLED",
+    "CODEX_LB_TELEMETRY_ENABLED",
     # Analyzer and recognizers
     "PRESIDIO_ANALYZER_URL",
     "PRESIDIO_ANALYZER_PORT",
@@ -122,6 +132,8 @@ QUICK_START_ENV = {
     "DISABLE_ADMIN_UI",
     "POSTGRES_PASSWORD",
     "LITELLM_DB_URL",
+    "CODEX_LB_POSTGRES_PASSWORD",
+    "CODEX_LB_API_KEY",
 }
 
 
@@ -140,6 +152,7 @@ def test_configuration_reference_documents_expected_env_vars():
         "## Примеры дополнительных провайдеров",
         "## Административный интерфейс LiteLLM и секреты",
         "## Запуск и хранилища LiteLLM",
+        "## Экспериментальный пул ChatGPT OAuth-подписок codex-lb",
         "## Сервис Presidio Analyzer",
         "## Калибровка распознавателей",
         "## Политики защитного слоя",
@@ -191,6 +204,9 @@ def test_quick_start_env_example_stays_minimal_and_grouped():
     assert "# === Пул GLM-провайдера по умолчанию ===" in env_example
     assert "# === Административный доступ LiteLLM и секреты ===" in env_example
     assert "# === Постоянное состояние LiteLLM ===" in env_example
+    assert "# === Экспериментальный пул ChatGPT OAuth-подписок codex-lb ===" in (
+        env_example
+    )
 
 
 def test_primary_docs_link_to_configuration_reference():

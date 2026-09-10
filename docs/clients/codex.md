@@ -20,7 +20,7 @@ Codex. В обычном режиме они остаются на сервер�
 
 ```toml
 model_provider = "ru_llm_proxy"
-model = "openai-example-standard"
+model = "gpt-5.6-luna"
 
 [model_providers.ru_llm_proxy]
 name = "ru-llm-proxy"
@@ -29,8 +29,12 @@ env_key = "RU_LLM_PROXY_TOKEN"
 wire_api = "responses"
 ```
 
-Активная конфигурация не содержит OpenAI-модель. Добавьте проверенный алиас из
-[`examples/litellm-config.optional-providers.yaml`](../../examples/litellm-config.optional-providers.yaml).
+Обычный GLM-профиль не содержит OpenAI-модель. Для него добавьте проверенное имя
+из
+[`examples/litellm-config.optional-providers.yaml`](../../examples/litellm-config.optional-providers.yaml)
+и замените `model` в примере. Экспериментальный профиль `codex-lb` уже публикует
+`gpt-5.6-luna` и другие проверенные имена; порядок запуска приведён в
+[`docs/codex-lb.md`](../codex-lb.md).
 
 Для Codex App, который не наследует окружение оболочки, сохраните токен в
 `~/.codex/.env` и перезапустите приложение:
@@ -41,16 +45,16 @@ RU_LLM_PROXY_TOKEN=sk-...
 
 ## Подписка ChatGPT
 
-Сквозная передача локальной подписки не является готовым промышленным режимом.
-Авторизация подписки использует провайдерский `Authorization`, который обычный
-маршрут LiteLLM не обязан пересылать. Не копируйте общий `~/.codex/auth.json` на
-прокси. Перед использованием нужен отдельный сквозной маршрут или доказанная
-проверка закреплённой версии LiteLLM.
+В экспериментальном профиле локальный Codex не передаёт собственную подписку.
+Администратор отдельно импортирует OAuth-сессии в `codex-lb`, а пользователь
+получает только ключ LiteLLM. Не копируйте пользовательский `auth.json` в
+клиентскую конфигурацию прокси и не используйте одну импортированную сессию
+одновременно в локальном Codex.
 
 ## Проверка
 
 ```bash
-RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
+RESPONSES_MODEL=gpt-5.6-luna make client-auth-smoke
 ```
 
 ## Ссылки
