@@ -127,6 +127,12 @@ def test_existing_nginx_publishes_dashboard_while_codex_lb_publishes_metrics():
     assert app["environment"]["CODEX_LB_METRICS_ENABLED"] == "true"
     assert app["environment"]["CODEX_LB_DASHBOARD_AUTH_MODE"] == "standard"
     assert app["environment"]["CODEX_LB_TELEMETRY_ENABLED"] == "false"
+    assert app["environment"]["CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED"] == (
+        "${CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED:-true}"
+    )
+    assert app["environment"]["CODEX_LB_UPSTREAM_STREAM_TRANSPORT"] == (
+        "${CODEX_LB_UPSTREAM_STREAM_TRANSPORT:-auto}"
+    )
     assert "1455" not in OVERLAY_PATH.read_text(encoding="utf-8")
     assert "BIND_ADDRESS" not in OVERLAY_PATH.read_text(encoding="utf-8")
 
@@ -215,6 +221,8 @@ def test_codex_lb_operator_environment_is_minimal_and_documented():
     )
     assert "CODEX_LB_POSTGRES_PASSWORD=***" in env_example
     assert "CODEX_LB_API_KEY=***" in env_example
+    assert "CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=true" in env_example
+    assert "CODEX_LB_UPSTREAM_STREAM_TRANSPORT=auto" in env_example
     assert "CODEX_LB_PORT=" not in env_example
     assert "CODEX_LB_METRICS_PORT=" not in env_example
 
@@ -228,6 +236,8 @@ def test_codex_lb_operator_environment_is_minimal_and_documented():
         "CODEX_LB_DASHBOARD_AUTH_MODE",
         "CODEX_LB_METRICS_ENABLED",
         "CODEX_LB_TELEMETRY_ENABLED",
+        "CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED",
+        "CODEX_LB_UPSTREAM_STREAM_TRANSPORT",
     ):
         assert f"`{name}`" in configuration
 
@@ -293,6 +303,8 @@ def test_codex_lb_runbook_covers_the_operational_contract():
         "codex-lb-db",
         "codex-lb-data",
         "CODEX_LB_TELEMETRY_ENABLED=false",
+        "CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=false",
+        "CODEX_LB_UPSTREAM_STREAM_TRANSPORT=http",
         "chatgpt.com:443",
         "auth.openai.com:443",
         "Порт обратного вызова `1455`",

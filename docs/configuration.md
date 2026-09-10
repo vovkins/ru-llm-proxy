@@ -70,6 +70,8 @@
 | `CODEX_LB_DASHBOARD_AUTH_MODE` | `standard` | `standard` в этом профиле | Включает штатную парольную защиту административного интерфейса. TOTP остаётся необязательной настройкой администратора. |
 | `CODEX_LB_METRICS_ENABLED` | `true` | `true` в этом профиле | Включает штатный сервер метрик на внутреннем порту `9090`. |
 | `CODEX_LB_TELEMETRY_ENABLED` | `false` | `false` в этом профиле | Запрещает внешнюю телеметрию `codex-lb` с первого запуска. |
+| `CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED` | `true` | `true`, `false` | Разрешает `codex-lb` преобразовывать входящие HTTP-запросы Responses API в сеанс с постоянным соединением до ChatGPT. Установите `false`, если корпоративный прокси не пропускает WebSocket. Между LiteLLM и `codex-lb` по-прежнему используется HTTP. |
+| `CODEX_LB_UPSTREAM_STREAM_TRANSPORT` | `auto` | `auto`, `http`, `websocket` | Выбирает транспорт от `codex-lb` до ChatGPT. Значение `http` принудительно использует HTTP/SSE и подходит для прокси без WebSocket; `auto` сохраняет штатный выбор платформы. |
 
 ## Изолированная корпоративная среда
 

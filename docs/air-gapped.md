@@ -41,6 +41,10 @@
    HTTPS_PROXY=http://proxy.corp.example:3128
    NO_PROXY=localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db
 
+   # Используйте эти значения, если корпоративный прокси не поддерживает WebSocket.
+   CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=false
+   CODEX_LB_UPSTREAM_STREAM_TRANSPORT=http
+
    PIP_INDEX_URL=https://pypi.corp.example/simple
    PIP_TRUSTED_HOST=
    PIP_PROXY=
@@ -51,6 +55,11 @@
    Добавьте в `NO_PROXY` внутренние домены и подсети стенда. Не удаляйте имена
    сервисов проекта: иначе обращения к Analyzer, Redis и PostgreSQL уйдут во
    внешний прокси.
+
+   LiteLLM всегда обращается к `codex-lb` по HTTP. Две настройки выше управляют
+   только участком `codex-lb` -> ChatGPT: они отключают преобразование HTTP-
+   запросов в WebSocket-сеанс и сохраняют потоковые ответы через HTTP/SSE.
+   Оставьте штатные `true` и `auto`, если WebSocket разрешён.
 
    `PIP_TRUSTED_HOST` отключает проверку TLS для указанного узла. Оставляйте его
    пустым, если внутреннее зеркало использует сертификат из согласованной

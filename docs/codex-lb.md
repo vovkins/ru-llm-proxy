@@ -206,6 +206,19 @@ Compose публикует HTTP без TLS:
 переподписывает TLS, производный образ добавляет `certs/*.crt` в системное
 хранилище и `certifi`; проверка TLS при этом остаётся включённой.
 
+LiteLLM обращается к `codex-lb` по OpenAI-совместимому HTTP API; потоковые
+ответы передаются через SSE. WebSocket может использоваться только дальше, на
+участке от `codex-lb` до ChatGPT. Если корпоративный прокси его не поддерживает,
+задайте в `.env`:
+
+```dotenv
+CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=false
+CODEX_LB_UPSTREAM_STREAM_TRANSPORT=http
+```
+
+При такой настройке потоковая передача сохраняется через HTTP/SSE. Выбор
+подписки, квоты и привязка диалога продолжают работать в `codex-lb`.
+
 Во время работы `codex-lb` обращается к `chatgpt.com:443` и
 `auth.openai.com:443`. Телеметрия отключена через
 `CODEX_LB_TELEMETRY_ENABLED=false`. Дополнительные проверки новых выпусков могут
@@ -220,6 +233,7 @@ Compose публикует HTTP без TLS:
 | `/v1/models` возвращает `401` | Создан ли служебный ключ, включена ли **API key authentication**, совпадает ли `CODEX_LB_API_KEY`, пересоздан ли LiteLLM |
 | Нет доступных моделей | Состояние OAuth-подписок и живой каталог `codex-lb` |
 | Запросы OpenAI не проходят | Внутренний адрес `http://codex-lb:2455/v1`, служебный ключ, квоты и журналы выбранной подписки |
+| OpenAI отвечает `405 Method Not Allowed` после выбора подписки | Поддержку WebSocket корпоративным прокси; при её отсутствии задайте `CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=false` и `CODEX_LB_UPSTREAM_STREAM_TRANSPORT=http`, затем пересоздайте `codex-lb` |
 | Ошибка проверки TLS в `codex-lb` | Корпоративная цепочка `certs/*.crt`, полная пересборка образа и доступность корпоративного прокси |
 | Панель на `2455` недоступна | Состояние общего Nginx, его сеть `codex-lb-proxy` и готовность `codex-lb` |
 | GLM не работает | Ключи Z.AI и прямой маршрут LiteLLM; `codex-lb` в нём не участвует |
