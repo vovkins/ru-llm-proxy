@@ -41,7 +41,7 @@ Kilo Code подключается как клиент, совместимый �
 ## Проверка
 
 ```bash
-make client-auth-smoke
+make client-auth-smoke STACK=litellm-presidio
 ```
 
 ## Ссылки

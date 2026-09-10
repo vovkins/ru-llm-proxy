@@ -34,7 +34,7 @@ OpenCode использует пользовательского провайд�
 OpenCode вызывает `POST /v1/chat/completions`:
 
 ```bash
-make client-auth-smoke
+make client-auth-smoke STACK=litellm-presidio
 ```
 
 ## Ссылки

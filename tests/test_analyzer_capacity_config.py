@@ -11,7 +11,7 @@ def test_analyzer_dockerfile_uses_uvicorn_worker_setting():
     dockerfile = (ROOT / "presidio" / "Dockerfile").read_text()
 
     assert "PRESIDIO_ANALYZER_WORKERS" in dockerfile
-    assert "COPY capacity.py" in dockerfile
+    assert "COPY presidio/capacity.py" in dockerfile
     assert 'CMD ["sh", "-c", "exec uvicorn analyzer_server:app' in dockerfile
     assert "--workers" in dockerfile
     assert '\\"$PRESIDIO_ANALYZER_WORKERS\\"' in dockerfile

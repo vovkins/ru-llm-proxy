@@ -1,3 +1,4 @@
 # CPU-only PyTorch for the Analyzer production and test images.
---index-url https://download.pytorch.org/whl/cpu
+# The image selects the public CPU index or an approved internal mirror through
+# PYTORCH_INDEX_URL.
 torch==2.13.0+cpu

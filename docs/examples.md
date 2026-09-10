@@ -15,7 +15,8 @@ export RU_LLM_PROXY_TOKEN="sk-..."
 Создать ключ для локальной проверки можно командой:
 
 ```bash
-make virtual-key-create KEY_ALIAS=local-examples MODELS=standard,zai DURATION=30d
+make virtual-key-create STACK=litellm-presidio \
+  KEY_ALIAS=local-examples MODELS=standard,zai DURATION=30d
 ```
 
 `LITELLM_MASTER_KEY` оставляйте только администраторам.
@@ -78,7 +79,8 @@ curl -s "$API_URL/v1/responses" \
     "max_output_tokens": 80
   }' | jq
 
-RESPONSES_MODEL=<validated-responses-alias> make client-auth-smoke
+RESPONSES_MODEL=<validated-responses-alias> \
+  make client-auth-smoke STACK=litellm-presidio
 ```
 
 ## Дополнительный базовый пример Anthropic Messages API
@@ -96,7 +98,8 @@ curl -s "$API_URL/v1/messages" \
     "messages": [{"role":"user","content":"Скажи короткое приветствие"}]
   }' | jq
 
-MESSAGES_MODEL=<validated-messages-alias> make client-auth-smoke
+MESSAGES_MODEL=<validated-messages-alias> \
+  make client-auth-smoke STACK=litellm-presidio
 ```
 
 Полный контракт шлюза для Claude Code строже этого примера: он включает
@@ -296,7 +299,7 @@ LiteLLM может вложить тело в `detail.error`,
 После изменения режима пересоздайте сервис:
 
 ```bash
-docker compose up -d --force-recreate --no-deps litellm
+make restart STACK=litellm-presidio
 make test-pre-egress-proxy
 ```
 
@@ -330,7 +333,7 @@ make test-final-leak-proxy
 ## Маршрутизация
 
 ```bash
-make routing-smoke
+make routing-smoke STACK=litellm-presidio
 ```
 
 Команда отправляет два запроса одним ключом и сравнивает
@@ -340,7 +343,7 @@ make routing-smoke
 
 ```bash
 make guardrails-list
-make guardrails-smoke
+make guardrails-smoke STACK=litellm-presidio
 curl -L -s "$API_URL/metrics" | grep -E '^(litellm_|ru_)' | head
 ```
 

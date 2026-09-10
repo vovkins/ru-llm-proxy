@@ -4,6 +4,17 @@ set -euo pipefail
 
 ENV_FILE="${1:-.env}"
 EXAMPLE_FILE="${2:-.env.example}"
+STACK="${3:-}"
+CORE_STACK="litellm-presidio"
+CODEX_LB_STACK="litellm-presidio-codex-lb"
+
+case "$STACK" in
+    "$CORE_STACK"|"$CODEX_LB_STACK") ;;
+    *)
+        echo "Неизвестный состав: ${STACK:-<не указан>}" >&2
+        exit 2
+        ;;
+esac
 
 random_urlsafe() {
     local bytes="${1:-48}"
@@ -78,6 +89,8 @@ if [ ! -f "$ENV_FILE" ]; then
     cp "$EXAMPLE_FILE" "$ENV_FILE"
 fi
 
+chmod 600 "$ENV_FILE"
+
 echo "Проверка локальных секретов..."
 
 master_key="sk-ru-$(random_urlsafe 48)"
@@ -94,8 +107,10 @@ if ensure_secret "POSTGRES_PASSWORD" "$db_password" "***"; then
     db_password_changed=1
 fi
 
-ensure_secret "CODEX_LB_POSTGRES_PASSWORD" "$codex_lb_db_password" "***" || true
-ensure_key_exists "CODEX_LB_API_KEY" "***"
+if [ "$STACK" = "$CODEX_LB_STACK" ]; then
+    ensure_secret "CODEX_LB_POSTGRES_PASSWORD" "$codex_lb_db_password" "***" || true
+    ensure_key_exists "CODEX_LB_API_KEY" "***"
+fi
 
 ensure_secret "UI_USERNAME" "admin" "replace-with-generated-ui-username" "***" || true
 ensure_secret "UI_PASSWORD" "$ui_password" "replace-with-generated-ui-password" "***" || true
@@ -117,3 +132,7 @@ echo ""
 echo "LiteLLM Admin UI будет доступен по адресу /ui."
 echo "Логин и пароль сохранены в ${ENV_FILE}: UI_USERNAME и UI_PASSWORD."
 echo "Расширенные переменные окружения и production defaults описаны в docs/configuration.md."
+
+if [ "$STACK" = "$CODEX_LB_STACK" ]; then
+    echo "Настройка codex-lb продолжится через его штатный административный API."
+fi

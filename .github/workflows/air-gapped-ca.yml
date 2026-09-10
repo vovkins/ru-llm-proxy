@@ -1,0 +1,26 @@
+name: Air-gapped CA integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/air-gapped-ca.yml"
+      - "certs/**"
+      - "litellm/Dockerfile"
+      - "codex-lb/Dockerfile"
+      - "presidio/Dockerfile"
+      - "tests/Dockerfile.guardrails"
+      - "tests/test_air_gapped_config.py"
+      - "tests/test_litellm_ca_image.sh"
+  workflow_dispatch:
+
+jobs:
+  proxy-ca-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Validate custom CA in proxy images
+        run: bash tests/test_litellm_ca_image.sh

@@ -56,7 +56,7 @@ LiteLLM с назначенными моделями, бюджетами и ог
 ```bash
 git clone https://github.com/vovkins/ru-llm-proxy.git
 cd ru-llm-proxy
-make setup
+make setup STACK=litellm-presidio
 ```
 
 Укажите ключи в созданном `.env`:
@@ -68,8 +68,8 @@ ZAI_API_KEY_2=your-second-zai-key
 
 ```bash
 make build
-make up
-make health
+make up STACK=litellm-presidio
+make health STACK=litellm-presidio
 ```
 
 Первая сборка скачивает `ru_core_news_sm` и закреплённую ревизию
@@ -87,7 +87,8 @@ make health
 локальной командой:
 
 ```bash
-make virtual-key-create KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
+make virtual-key-create STACK=litellm-presidio \
+  KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
 ```
 
 ```bash
@@ -148,15 +149,16 @@ Compose-файл.
 
 | Команда | Назначение |
 | --- | --- |
-| `make setup` | Создать `.env` и локальные секреты. |
-| `make build` | Собрать образы. |
-| `make up` / `make down` | Запустить или остановить проект. |
-| `make health` | Проверить состояние сервисов. |
+| `make build` | Собрать и загрузить образы обоих составов. |
+| `make setup STACK=litellm-presidio` | Настроить базовый состав. |
+| `make setup STACK=litellm-presidio-codex-lb` | Настроить расширенный состав и служебный ключ `codex-lb`. |
+| `make up STACK=<состав>` / `make down STACK=<состав>` | Запустить или остановить явно выбранный состав. |
+| `make health STACK=<состав>` | Проверить все компоненты выбранного состава. |
 | `make test` | Быстрый локальный набор: `test-unit` и `test-static`. |
 | `make test-static` | Лёгкие статические и asyncio-регрессионные тесты на хосте через `PYTHON_LOCAL`. |
 | `make test-recognizer-api` | Проверить Analyzer API и пороги распознавателей в Docker. |
-| `make guardrails-smoke` | Проверить обычные и потоковые защитные слои в локальном Docker Compose. |
-| `make test-e2e` | Выполнить запрос к реальному провайдеру. |
+| `make guardrails-smoke STACK=<состав>` | Проверить обычные и потоковые защитные слои запущенного состава. |
+| `make test-e2e STACK=<состав>` | Выполнить запрос к реальному провайдеру. |
 
 Полный список: `make help`. Полный порядок проверки перед выпуском версии:
 [docs/compliance.md](docs/compliance.md).

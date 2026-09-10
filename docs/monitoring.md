@@ -34,12 +34,14 @@
 ## Состояние сервисов
 
 ```bash
-make health
+make health STACK=litellm-presidio
 ```
 
 Команда проверяет опубликованные API LiteLLM и Analyzer. Состояние Redis и баз
 смотрите через `docker compose ps`; для экспериментального профиля отдельно
-проверьте `curl -fsS http://localhost:2455/health/ready`.
+проверьте `curl -fsS http://localhost:2455/health/ready`. В корпоративной ветке
+этот запрос проходит через общий Nginx и одновременно проверяет его маршрут к
+`codex-lb`.
 
 | Сервис | Проверка | Рабочее состояние |
 | --- | --- | --- |
@@ -106,8 +108,8 @@ Prometheus должен быть подключён к сети `codex-lb-proxy`
 Локальная проверка:
 
 ```bash
-make metrics
-make monitor-smoke
+make metrics STACK=litellm-presidio
+make monitor-smoke STACK=litellm-presidio
 ```
 
 Эти команды проверяют LiteLLM, защитный слой и Analyzer. Метрики `codex-lb`
@@ -311,7 +313,7 @@ SSO/обратного прокси для `/ui` и Admin API, штатные ж
 
 ```bash
 make guardrails-list
-make guardrails-smoke
+make guardrails-smoke STACK=litellm-presidio
 ```
 
 `guardrails-smoke` предназначен для локального Docker Compose. Он проверяет
@@ -349,7 +351,7 @@ LiteLLM запускается из готового образа, поэтом�
 нужно:
 
 ```bash
-make update-litellm
+make update-litellm STACK=litellm-presidio
 ```
 
 В промышленной среде после стендовой проверки фиксируйте тег или digest образа.
@@ -360,13 +362,13 @@ make update-litellm
 
 1. Зафиксировать текущий digest: `docker compose images litellm`.
 2. Сделать резервную копию PostgreSQL.
-3. Выполнить `make update-litellm`.
-4. Проверить `make health`.
-5. Проверить `make guardrails-list`.
-6. Проверить `make guardrails-smoke` в локальном окружении Docker Compose.
+3. Выполнить `make update-litellm STACK=litellm-presidio`.
+4. Проверить `make health STACK=litellm-presidio`.
+5. Проверить `make guardrails-list STACK=litellm-presidio`.
+6. Проверить `make guardrails-smoke STACK=litellm-presidio` в локальном окружении Docker Compose.
 7. Проверить `make test-final-leak-proxy`.
-8. Проверить `make routing-smoke`.
-9. Выполнить `make monitor-smoke` и запрос с PII.
+8. Проверить `make routing-smoke STACK=litellm-presidio`.
+9. Выполнить `make monitor-smoke STACK=litellm-presidio` и запрос с PII.
 10. Если есть регрессия, вернуть прежний тег или digest и пересоздать `litellm`.
 
 Изменения `presidio/Dockerfile` или зависимостей Analyzer требуют `make build`;

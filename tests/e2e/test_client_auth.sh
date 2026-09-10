@@ -74,6 +74,10 @@ has_configured_secret() {
     [ -n "$value" ] && [ "$value" != "***" ]
 }
 
+has_openai_upstream() {
+    has_configured_secret OPENAI_API_KEY || has_configured_secret CODEX_LB_API_KEY
+}
+
 http_post() {
     local endpoint="$1"
     local token="$2"
@@ -236,7 +240,7 @@ else
     missing_provider_key "/v1/chat/completions allowed-call" "ZAI_API_KEY and ZAI_API_KEY_2"
 fi
 
-if has_configured_secret OPENAI_API_KEY; then
+if has_openai_upstream; then
     if [ -n "$RESPONSES_MODEL" ]; then
         responses_payload='{"model":"'"$RESPONSES_MODEL"'","input":"Reply with ok.","max_output_tokens":16}'
         responses_result=$(http_post "/v1/responses" "$standard_key" "$responses_payload")
@@ -247,7 +251,7 @@ if has_configured_secret OPENAI_API_KEY; then
         missing_smoke_model "/v1/responses" "RESPONSES_MODEL"
     fi
 else
-    missing_provider_key "/v1/responses" "OPENAI_API_KEY"
+    missing_provider_key "/v1/responses" "OPENAI_API_KEY or CODEX_LB_API_KEY"
 fi
 
 if has_configured_secret ANTHROPIC_API_KEY; then

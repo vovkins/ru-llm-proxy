@@ -54,7 +54,8 @@ RU_LLM_PROXY_TOKEN=sk-...
 ## Проверка
 
 ```bash
-RESPONSES_MODEL=gpt-5.6-luna make client-auth-smoke
+RESPONSES_MODEL=gpt-5.6-luna \
+  make client-auth-smoke STACK=litellm-presidio-codex-lb
 ```
 
 ## Ссылки

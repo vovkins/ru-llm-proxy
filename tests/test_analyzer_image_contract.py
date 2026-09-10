@@ -49,7 +49,7 @@ def test_test_dependencies_are_not_installed_in_production_runtime():
     assert "pytest" not in runtime_requirements.lower()
     assert "pytest>=8.0,<9.0" in test_requirements
     assert "FROM analyzer-build AS analyzer-test" in dockerfile
-    assert "COPY requirements-analyzer-test.txt ./" in dockerfile
+    assert "COPY presidio/requirements-analyzer-test.txt ./" in dockerfile
     assert "python -m pip install -r requirements-analyzer-test.txt" in dockerfile
 
 
@@ -58,7 +58,7 @@ def test_test_image_does_not_include_the_large_ner_artifact():
     test_stage = dockerfile.split(
         "FROM analyzer-build AS analyzer-test",
         maxsplit=1,
-    )[1].split("FROM python:3.11-slim AS analyzer", maxsplit=1)[0]
+    )[1].split("FROM python-base AS analyzer", maxsplit=1)[0]
 
     assert "download_hf_model.py" not in test_stage
     assert "model-download" not in test_stage
@@ -69,9 +69,9 @@ def test_production_image_uses_verified_local_only_model():
     dockerfile = _read(PRESIDIO / "Dockerfile")
     recognizer = _read(PRESIDIO / "ner" / "huggingface_recognizer.py")
 
-    assert "FROM python:3.11-slim AS model-download" in dockerfile
-    assert "FROM python:3.11-slim AS analyzer" in dockerfile
-    assert "RUN python download_hf_model.py" in dockerfile
+    assert "FROM python-base AS model-download" in dockerfile
+    assert "FROM python-base AS analyzer" in dockerfile
+    assert "python download_hf_model.py" in dockerfile
     assert "COPY --from=model-download" in dockerfile
     assert "COPY --from=analyzer-build /usr/local /usr/local" in dockerfile
     assert "HF_HUB_OFFLINE=1" in dockerfile
@@ -86,14 +86,16 @@ def test_production_image_enforces_cpu_only_runtime():
     dockerfile = _read(PRESIDIO / "Dockerfile")
     verifier = _read(PRESIDIO / "verify_cpu_runtime.py")
 
-    assert "--index-url https://download.pytorch.org/whl/cpu" in cpu_requirements
+    assert "--index-url" not in cpu_requirements
     assert "torch==2.13.0+cpu" in cpu_requirements
     assert "torch>=" not in runtime_requirements
     assert "torch<" not in runtime_requirements
-    assert "COPY requirements-analyzer-cpu.txt ./" in dockerfile
+    assert 'ARG PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"' in dockerfile
+    assert 'PIP_INDEX_URL="$PYTORCH_INDEX_URL"' in dockerfile
+    assert "COPY presidio/requirements-analyzer-cpu.txt ./" in dockerfile
     assert "python -m pip install -r requirements-analyzer-cpu.txt" in dockerfile
     assert "apt-get install -y --no-install-recommends libgomp1" in dockerfile
-    assert "COPY verify_cpu_runtime.py ." in dockerfile
+    assert "COPY presidio/verify_cpu_runtime.py ." in dockerfile
     assert "RUN python verify_cpu_runtime.py" in dockerfile
     assert 'EXPECTED_TORCH_VERSION = "2.13.0+cpu"' in verifier
     assert 'FORBIDDEN_EXECUTABLES = ("curl", "gcc", "g++")' in verifier

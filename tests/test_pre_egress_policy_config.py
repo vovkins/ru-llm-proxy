@@ -51,7 +51,7 @@ def test_docs_distinguish_pre_egress_policy_from_pii_modes():
     assert "detail.error" in docs["docs/examples.md"]
     assert "provider_specific_fields.error" in docs["docs/examples.md"]
     assert "error.param.pre_egress_policy" in docs["docs/examples.md"]
-    assert "force-recreate --no-deps litellm" in docs["docs/examples.md"]
+    assert "make restart STACK=litellm-presidio" in docs["docs/examples.md"]
 
 
 def test_static_suite_runs_pre_egress_policy_config_regression():

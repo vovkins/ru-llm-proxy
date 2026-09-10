@@ -17,7 +17,8 @@
 локальной настройки и автоматизации доступна команда:
 
 ```bash
-make virtual-key-create KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
+make virtual-key-create STACK=litellm-presidio \
+  KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
 ```
 
 Права, бюджеты, сроки и ротация описаны в
@@ -38,8 +39,8 @@ make virtual-key-create KEY_ALIAS=local-client MODELS=standard,zai DURATION=30d
 ## Проверка
 
 ```bash
-make client-auth-smoke
-make guardrails-smoke
+make client-auth-smoke STACK=litellm-presidio
+make guardrails-smoke STACK=litellm-presidio
 ```
 
 `client-auth-smoke` проверяет доступные в текущей установке протоколы.
