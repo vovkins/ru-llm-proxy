@@ -1,5 +1,5 @@
 # Специализированный образ для корпоративного прокси, переподписывающего TLS.
-FROM ghcr.io/soju06/codex-lb:1.24.0-beta.3@sha256:d9df6fdef5d900bf96cd6e183b5d2d8abf9387f9cca642e317206ced5362c704
+FROM ghcr.io/soju06/codex-lb:1.24.0@sha256:ba5598aaa70f7acf74a958139037604621ec2582a7fb5fe1e870f08bece807d6
 
 USER root
 
