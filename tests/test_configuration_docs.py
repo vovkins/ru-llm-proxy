@@ -175,7 +175,7 @@ def test_configuration_reference_documents_expected_env_vars():
         "## Примеры дополнительных провайдеров",
         "## Административный интерфейс LiteLLM и секреты",
         "## Запуск и хранилища LiteLLM",
-        "## Экспериментальный пул ChatGPT OAuth-подписок codex-lb",
+        "## Пул ChatGPT OAuth-подписок codex-lb",
         "## Изолированная корпоративная среда",
         "## Сервис Presidio Analyzer",
         "## Калибровка распознавателей",
@@ -233,7 +233,7 @@ def test_quick_start_env_example_stays_minimal_and_grouped():
     assert "# === Пул GLM-провайдера по умолчанию ===" in env_example
     assert "# === Административный доступ LiteLLM и секреты ===" in env_example
     assert "# === Постоянное состояние LiteLLM ===" in env_example
-    assert "# === Экспериментальный пул ChatGPT OAuth-подписок codex-lb ===" in (
+    assert "# === Пул ChatGPT OAuth-подписок codex-lb ===" in (
         env_example
     )
 

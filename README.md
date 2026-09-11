@@ -77,9 +77,9 @@ make health STACK=litellm-presidio
 работы Analyzer читает модель из образа и не обращается к Hugging Face. Образ
 использует процессорную сборку PyTorch; выполнение на видеокарте не поддерживается.
 
-Экспериментальный профиль этой ветки добавляет пул ChatGPT OAuth-подписок через
-штатный `codex-lb`, не меняя обычный запуск с GLM. Его отдельный порядок запуска
-и администрирования описан в [руководстве по `codex-lb`](docs/codex-lb.md).
+Расширенный состав добавляет пул ChatGPT OAuth-подписок через штатный
+`codex-lb`, не меняя обычный запуск с GLM. Его порядок запуска и
+администрирования описан в [руководстве по `codex-lb`](docs/codex-lb.md).
 
 ## Первый запрос
 
@@ -133,7 +133,7 @@ curl http://localhost:4000/v1/chat/completions \
 | Выдать ключи и разграничить доступ | [Администрирование](docs/admin-access.md) |
 | Подключить ZCode, Codex, Claude Code, Kilo Code или OpenCode | [Клиенты](docs/clients/README.md) |
 | Настроить метрики, журналы и оповещения | [Мониторинг](docs/monitoring.md) |
-| Запустить экспериментальный пул ChatGPT-подписок | [Интеграция codex-lb](docs/codex-lb.md) |
+| Запустить пул ChatGPT-подписок | [Интеграция codex-lb](docs/codex-lb.md) |
 | Подготовить подтверждения для проверки | [Соответствие требованиям](docs/compliance.md) |
 | Ограничить исходящие соединения | [Сетевые ограничения](docs/egress-controls.md), [`deploy/kubernetes/egress`](deploy/kubernetes/egress) |
 | Проверить закрепление маршрута | [Маршрутизация](docs/routing.md) |
@@ -141,7 +141,7 @@ curl http://localhost:4000/v1/chat/completions \
 В обычной конфигурации OpenAI и Anthropic не активны. Пример прямого подключения
 находится в
 [`examples/litellm-config.optional-providers.yaml`](examples/litellm-config.optional-providers.yaml),
-а экспериментальный профиль `codex-lb` добавляет модели OpenAI через отдельный
+а расширенный состав с `codex-lb` добавляет модели OpenAI через отдельный
 Compose-файл.
 Руководство по ZCode: [docs/clients/zcode.md](docs/clients/zcode.md).
 

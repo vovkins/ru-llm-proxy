@@ -112,7 +112,7 @@ def test_build_context_and_internal_package_sources_are_consistent():
     assert "PYTORCH_INDEX_URL" in compose
 
 
-def test_air_gapped_variables_and_branch_boundary_are_documented():
+def test_air_gapped_variables_and_main_support_are_documented():
     env_example = _read(".env.example")
     configuration = _read("docs/configuration.md")
     guide = _read("docs/air-gapped.md")
@@ -132,5 +132,5 @@ def test_air_gapped_variables_and_branch_boundary_are_documented():
         assert f"{variable}=" in env_example
         assert f"`{variable}`" in configuration
 
-    assert "не предназначены для слияния в `main`" in guide
+    assert "запуск текущего `main`" in guide
     assert "Analyzer использует только модель внутри образа" in guide
