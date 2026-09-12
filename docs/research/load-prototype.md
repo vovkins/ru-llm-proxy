@@ -61,6 +61,8 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 | `LOAD_LITELLM_REPLICAS` | `1` | Число экземпляров LiteLLM в испытательном контуре |
 | `LOAD_ANALYZER_CPUS`, `LOAD_ANALYZER_MEMORY` | `4`, `4g` | Ограничения одного экземпляра Analyzer |
 | `LOAD_LITELLM_CPUS`, `LOAD_LITELLM_MEMORY` | `2`, `2g` | Ограничения одного экземпляра LiteLLM |
+| `LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Пул HTTP-соединений к Analyzer на экземпляр LiteLLM |
+| `LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Пул Redis-соединений защитного слоя на экземпляр LiteLLM |
 | `LOAD_KEEP_STACK` | `false` | Оставить испытательный Compose-проект после запуска |
 | `LOAD_RESULTS_DIR` | Временный каталог | Каталог отчётов на рабочей станции |
 
@@ -71,6 +73,13 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 распределяет внутренняя испытательная точка балансировки. Проверяйте несколько
 процессов только с учётом линейного роста памяти модели, описанного в
 [профиле Analyzer](analyzer-load-profile.md).
+
+Пулы `LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` и
+`LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS` задаются на каждый процесс LiteLLM.
+Увеличивайте их только вместе с числом экземпляров Analyzer и ожидаемой
+параллельностью, затем проверяйте отсутствие скрытого ожидания в клиентских
+пулах и отказов Redis. Проверенный стресс-профиль и границы его применимости
+зафиксированы в [матрице масштабирования](scaling-matrix.md).
 
 Режим `LOAD_CONTOUR=mock-direct` направляет генератор сразу к имитации провайдера.
 Он создаёт только локальные фиктивные ключи и предназначен для проверки, что

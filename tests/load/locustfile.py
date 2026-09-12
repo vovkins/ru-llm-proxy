@@ -127,6 +127,9 @@ def initialize_reporter(environment, **_kwargs) -> None:
                     "LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS", "10"
                 )
             ),
+            "guardrail_redis_max_connections": int(
+                os.getenv("LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS", "20")
+            ),
             "analyzer_cpus": os.getenv("LOAD_ANALYZER_CPUS", "4.0"),
             "analyzer_memory": os.getenv("LOAD_ANALYZER_MEMORY", "4g"),
             "litellm_cpus": os.getenv("LOAD_LITELLM_CPUS", "2.0"),

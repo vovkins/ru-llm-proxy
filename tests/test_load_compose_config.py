@@ -101,6 +101,9 @@ def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     assert generator["environment"]["LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS"] == (
         "${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}"
     )
+    assert generator["environment"]["LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS"] == (
+        "${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}"
+    )
 
 
 def test_load_proxy_uses_project_guardrails_with_safe_failure_defaults():
@@ -145,6 +148,11 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert 'compose_run_args=(--no-TTY --no-deps)' in script
     assert 'if [ -z "$container_ids" ]' in script
     assert 'LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-0}' in script
+    assert (
+        "LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS="
+        "${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}"
+    ) in script
+    assert "export LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS" in script
     assert "LOAD_ALLOW_LARGE_CONCURRENT" in (
         ROOT / "tests" / "load" / "load_support.py"
     ).read_text(encoding="utf-8")
