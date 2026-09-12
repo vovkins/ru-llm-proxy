@@ -61,6 +61,14 @@ def test_load_contour_cannot_send_requests_to_a_real_provider():
     assert config["model_list"][0]["model_name"] == "mock-chat"
 
 
+def test_load_balancers_expire_idle_upstreams_before_uvicorn():
+    for name in ("analyzer.conf", "litellm.conf"):
+        config = (ROOT / "tests" / "load" / "nginx" / name).read_text(
+            encoding="utf-8"
+        )
+        assert "keepalive_timeout 4s;" in config
+
+
 def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     services = _compose()["services"]
     for name in ("load-key-manager", "load-generator"):
@@ -86,6 +94,12 @@ def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     )
     assert generator["environment"]["LOAD_ANALYZER_BACKEND"] == (
         "${LOAD_ANALYZER_BACKEND:-real}"
+    )
+    assert generator["environment"]["LOAD_ANALYZER_QUEUE_LIMIT"] == (
+        "${LOAD_ANALYZER_QUEUE_LIMIT:-8}"
+    )
+    assert generator["environment"]["LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS"] == (
+        "${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}"
     )
 
 

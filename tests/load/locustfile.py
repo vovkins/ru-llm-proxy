@@ -110,6 +110,23 @@ def initialize_reporter(environment, **_kwargs) -> None:
             "analyzer_backend": ANALYZER_BACKEND,
             "analyzer_replicas": ANALYZER_REPLICAS,
             "litellm_replicas": LITELLM_REPLICAS,
+            "analyzer_concurrency_limit": int(
+                os.getenv("LOAD_ANALYZER_CONCURRENCY_LIMIT", "1")
+            ),
+            "analyzer_queue_limit": int(
+                os.getenv("LOAD_ANALYZER_QUEUE_LIMIT", "8")
+            ),
+            "analyzer_queue_timeout_seconds": float(
+                os.getenv("LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS", "1")
+            ),
+            "guardrail_analyzer_max_connections": int(
+                os.getenv("LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS", "20")
+            ),
+            "guardrail_analyzer_max_keepalive_connections": int(
+                os.getenv(
+                    "LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS", "10"
+                )
+            ),
             "analyzer_cpus": os.getenv("LOAD_ANALYZER_CPUS", "4.0"),
             "analyzer_memory": os.getenv("LOAD_ANALYZER_MEMORY", "4g"),
             "litellm_cpus": os.getenv("LOAD_LITELLM_CPUS", "2.0"),
