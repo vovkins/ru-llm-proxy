@@ -186,6 +186,7 @@ def test_scaling_matrix_is_explicit_and_uses_unique_synthetic_input():
     assert "LOAD_ALLOW_SCALING_MATRIX=true" in script
     assert "LOAD_INPUT_VARIATION=unique" in script
     assert "LOAD_ANALYZER_MATRIX:-1 2 4" in script
+    assert "LOAD_ANALYZER_MATRIX_LITELLM_REPLICAS:-2" in script
     assert "LOAD_LITELLM_MATRIX:-1 2 4" in script
     assert "LOAD_ANALYZER_URL=\"$analyzer_url\"" in script
     assert '1 "$replicas" mock' in script

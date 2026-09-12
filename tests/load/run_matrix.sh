@@ -6,6 +6,7 @@ MATRIX=${1:-help}
 MATRIX_RESULTS_DIR=${LOAD_MATRIX_RESULTS_DIR:-$(mktemp -d /tmp/ru-llm-proxy-matrix-XXXXXX)}
 MATRIX_RUN_TIME=${LOAD_MATRIX_RUN_TIME:-5m}
 MATRIX_USERS=${LOAD_MATRIX_USERS:-400}
+ANALYZER_MATRIX_LITELLM_REPLICAS=${LOAD_ANALYZER_MATRIX_LITELLM_REPLICAS:-2}
 
 usage() {
     cat <<'EOF'
@@ -15,6 +16,7 @@ Modes:
   calibration  Check one Locust node and mock-provider without LiteLLM/Analyzer
   baseline     Run the progressive 1 Analyzer / 1 LiteLLM baseline
   analyzer     Compare Analyzer replicas from LOAD_ANALYZER_MATRIX (default: 1 2 4)
+               with LOAD_ANALYZER_MATRIX_LITELLM_REPLICAS LiteLLM replicas (default: 2)
   litellm      Compare LiteLLM replicas from LOAD_LITELLM_MATRIX (default: 1 2 4)
   combined     Run LOAD_COMBINED_MATRIX pairs (default: 2:1 4:1 4:2)
 
@@ -78,7 +80,8 @@ case "$MATRIX" in
         ;;
     analyzer)
         for replicas in ${LOAD_ANALYZER_MATRIX:-1 2 4}; do
-            run_case "analyzer-$replicas" steady mock "$replicas" 1
+            run_case "analyzer-$replicas" steady mock "$replicas" \
+                "$ANALYZER_MATRIX_LITELLM_REPLICAS"
         done
         ;;
     litellm)
