@@ -2,6 +2,8 @@
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -117,11 +119,110 @@ def test_report_schema_never_contains_generated_request_data():
     assert report["schema_version"] == 1
     assert report["parameters"]["sizes"] == [1_000, 8_000]
     assert report["parameters"]["generator_unit"] == "whitespace_token"
+    assert report["parameters"]["concurrency"] == 1
+    assert report["parameters"]["load_shape"] == "sequential"
+    assert report["parameters"]["unique_requests"] is False
     assert report["environment"] == {"cpu_profile": "local"}
     assert report["summary"]["generated_count"] == 2
     assert sorted(report["summary"]["by_requested_token_count"]) == ["1000", "8000"]
     assert benchmark.SYNTHETIC_PII_TOKEN not in serialized
     assert "request_value" not in serialized
+
+
+def test_unique_request_suffix_copies_generated_payload_and_bypasses_cache_key():
+    source = [{"role": "user", "content": "synthetic payload"}]
+
+    first = benchmark._with_unique_request_suffix(source, 0)
+    second = benchmark._with_unique_request_suffix(source, 1)
+
+    assert first != second
+    assert first[0]["content"].endswith("load-sample-000001")
+    assert second[0]["content"].endswith("load-sample-000002")
+    assert source == [{"role": "user", "content": "synthetic payload"}]
+
+
+def test_burst_load_series_honors_concurrency_limit():
+    lock = threading.Lock()
+    active = 0
+    observed_peak = 0
+
+    def measure():
+        nonlocal active, observed_peak
+        with lock:
+            active += 1
+            observed_peak = max(observed_peak, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return {
+            "status": "success",
+            "total_seconds": 0.02,
+            "ttft_seconds": None,
+        }
+
+    results = benchmark.run_load_series(
+        measure,
+        repetitions=4,
+        concurrency=2,
+        request_rate=None,
+    )
+
+    assert [result["request_index"] for result in results] == [1, 2, 3, 4]
+    assert observed_peak == 2
+    assert benchmark._max_observed_concurrency(results) == 2
+    assert all(result["completed_offset_seconds"] > 0 for result in results)
+
+
+def test_constant_rate_load_series_records_schedule_and_client_delay():
+    results = benchmark.run_load_series(
+        lambda: {
+            "status": "success",
+            "total_seconds": 0.0,
+            "ttft_seconds": None,
+        },
+        repetitions=3,
+        concurrency=3,
+        request_rate=20.0,
+    )
+
+    assert [result["scheduled_offset_seconds"] for result in results] == [
+        0.0,
+        0.05,
+        0.1,
+    ]
+    assert all(result["client_start_delay_seconds"] >= 0 for result in results)
+    assert results[-1]["started_offset_seconds"] >= 0.09
+
+
+def test_summary_reports_throughput_and_observed_concurrency():
+    summary = benchmark._summarize_measurements(
+        [
+            {
+                "status": "success",
+                "total_seconds": 1.0,
+                "ttft_seconds": None,
+                "client_start_delay_seconds": 0.0,
+                "started_offset_seconds": 0.0,
+                "completed_offset_seconds": 1.0,
+            },
+            {
+                "status": "http_error",
+                "http_status": 503,
+                "failure_reason": "queue_timeout",
+                "total_seconds": 1.0,
+                "ttft_seconds": None,
+                "client_start_delay_seconds": 0.0,
+                "started_offset_seconds": 0.0,
+                "completed_offset_seconds": 1.0,
+            },
+        ]
+    )
+
+    assert summary["completed_rps"] == 2.0
+    assert summary["successful_rps"] == 1.0
+    assert summary["max_observed_concurrency"] == 2
+    assert summary["http_status_counts"] == {"503": 1}
+    assert summary["failure_reason_counts"] == {"queue_timeout": 1}
 
 
 def test_real_provider_layer_requires_explicit_confirmation():
@@ -180,6 +281,52 @@ def test_http_error_fields_keep_only_safe_identifiers():
     assert benchmark._safe_error_fields_from_payload(response.json()) == {
         "error_type": "guardrail_error",
         "error_code": "500",
+    }
+
+
+def test_overload_report_keeps_only_bounded_reason_and_retry_after():
+    response = MagicMock(status_code=503)
+    response.headers = {"retry-after": "2"}
+    response.json.return_value = {
+        "detail": {
+            "code": "analyzer_overloaded",
+            "reason": "queue_timeout",
+            "message": "raw request must not be copied",
+        }
+    }
+
+    assert benchmark._safe_http_error_fields(response) == {
+        "error_code": "analyzer_overloaded",
+        "failure_reason": "queue_timeout",
+    }
+    assert benchmark._safe_retry_after_seconds(response) == 2
+
+    response.headers = {"retry-after": "unsafe-value"}
+    assert benchmark._safe_retry_after_seconds(response) is None
+
+
+def test_overload_report_finds_reason_in_litellm_proxy_shape():
+    payload = {
+        "error": {
+            "message": "must not be copied",
+            "type": "analyzer_overloaded",
+            "param": {
+                "analyzer_overload": {
+                    "code": "analyzer_overloaded",
+                    "details": {
+                        "reason": "queue_full",
+                        "retry_after_seconds": 2,
+                    },
+                }
+            },
+            "code": "503",
+        }
+    }
+
+    assert benchmark._safe_error_fields_from_payload(payload) == {
+        "error_type": "analyzer_overloaded",
+        "error_code": "503",
+        "failure_reason": "queue_full",
     }
 
 

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import itertools
 import json
 import math
 import os
@@ -17,7 +19,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 DEFAULT_SIZES = (1_000, 8_000, 50_000)
@@ -29,6 +31,7 @@ SAFE_ENTITY_TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 SAFE_METADATA_KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 SAFE_CONTAINER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 SAFE_ERROR_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+SAFE_FAILURE_REASONS = frozenset({"queue_full", "queue_timeout"})
 SENSITIVE_METADATA_KEY = re.compile(
     r"(?:auth|credential|key|password|secret|token)",
     re.IGNORECASE,
@@ -407,9 +410,32 @@ def _summarize_measurements(results: list[dict[str, Any]]) -> dict[str, Any]:
         if result.get("ttft_seconds") is not None
     ]
     status_counts = Counter(str(result.get("status") or "unknown") for result in results)
+    http_status_counts = Counter(
+        str(result["http_status"])
+        for result in results
+        if result.get("http_status") is not None
+    )
+    failure_reason_counts = Counter(
+        str(result["failure_reason"])
+        for result in results
+        if result.get("failure_reason") in SAFE_FAILURE_REASONS
+    )
+    completed_offsets = [
+        float(result["completed_offset_seconds"])
+        for result in results
+        if result.get("completed_offset_seconds") is not None
+    ]
+    client_start_delay_values = [
+        float(result["client_start_delay_seconds"])
+        for result in results
+        if result.get("client_start_delay_seconds") is not None
+    ]
+    workload_seconds = max(completed_offsets, default=0.0)
+    completed_count = len(completed_offsets)
+    success_count = sum(result.get("status") == "success" for result in results)
     return {
         "measurement_count": len(results),
-        "success_count": sum(result.get("status") == "success" for result in results),
+        "success_count": success_count,
         "failure_count": sum(
             result.get("status") in {"http_error", "client_error"}
             for result in results
@@ -418,6 +444,8 @@ def _summarize_measurements(results: list[dict[str, Any]]) -> dict[str, Any]:
             result.get("status") == "generated" for result in results
         ),
         "status_counts": dict(sorted(status_counts.items())),
+        "http_status_counts": dict(sorted(http_status_counts.items())),
+        "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
         "latency_seconds": {
             "mean": round(statistics.fmean(durations), 6) if durations else None,
             "p50": percentile(durations, 0.50),
@@ -429,6 +457,23 @@ def _summarize_measurements(results: list[dict[str, Any]]) -> dict[str, Any]:
             "p95": percentile(ttft_values, 0.95),
             "p99": percentile(ttft_values, 0.99),
         },
+        "client_start_delay_seconds": {
+            "p50": percentile(client_start_delay_values, 0.50),
+            "p95": percentile(client_start_delay_values, 0.95),
+            "p99": percentile(client_start_delay_values, 0.99),
+        },
+        "workload_seconds": round(workload_seconds, 6),
+        "completed_rps": (
+            round(completed_count / workload_seconds, 6)
+            if workload_seconds > 0
+            else None
+        ),
+        "successful_rps": (
+            round(success_count / workload_seconds, 6)
+            if workload_seconds > 0
+            else None
+        ),
+        "max_observed_concurrency": _max_observed_concurrency(results),
     }
 
 
@@ -441,11 +486,85 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     totals = _summarize_measurements(results)
     totals.pop("latency_seconds")
     totals.pop("ttft_seconds")
+    totals.pop("client_start_delay_seconds")
+    totals.pop("workload_seconds")
+    totals.pop("completed_rps")
+    totals.pop("successful_rps")
+    totals.pop("max_observed_concurrency")
     totals["by_requested_token_count"] = {
         str(size): _summarize_measurements(grouped[size])
         for size in sorted(grouped)
     }
     return totals
+
+
+def _max_observed_concurrency(results: list[dict[str, Any]]) -> int:
+    """Return the peak number of overlapping client-side requests."""
+    events: list[tuple[float, int]] = []
+    for result in results:
+        started = result.get("started_offset_seconds")
+        completed = result.get("completed_offset_seconds")
+        if started is None or completed is None:
+            continue
+        events.append((float(started), 1))
+        events.append((float(completed), -1))
+
+    active = 0
+    peak = 0
+    for _offset, delta in sorted(events, key=lambda item: (item[0], -item[1])):
+        active += delta
+        peak = max(peak, active)
+    return peak
+
+
+def run_load_series(
+    measure: Callable[[], dict[str, Any]],
+    *,
+    repetitions: int,
+    concurrency: int,
+    request_rate: float | None,
+) -> list[dict[str, Any]]:
+    """Run one bounded burst or constant-rate client workload."""
+    workload_started = time.perf_counter()
+    first_wave = min(repetitions, concurrency)
+    start_barrier = (
+        threading.Barrier(first_wave)
+        if request_rate is None and first_wave > 1
+        else None
+    )
+
+    def run_one(request_index: int) -> dict[str, Any]:
+        scheduled_offset = (
+            request_index / request_rate if request_rate is not None else 0.0
+        )
+        if start_barrier is not None and request_index < first_wave:
+            start_barrier.wait(timeout=30)
+        if request_rate is not None:
+            remaining = workload_started + scheduled_offset - time.perf_counter()
+            if remaining > 0:
+                time.sleep(remaining)
+
+        started_at = time.perf_counter()
+        result = measure()
+        completed_at = time.perf_counter()
+        return {
+            "request_index": request_index + 1,
+            "scheduled_offset_seconds": round(scheduled_offset, 6),
+            "client_start_delay_seconds": round(
+                max(0.0, started_at - workload_started - scheduled_offset),
+                6,
+            ),
+            "started_offset_seconds": round(started_at - workload_started, 6),
+            "completed_offset_seconds": round(completed_at - workload_started, 6),
+            **result,
+        }
+
+    results: list[dict[str, Any]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = [executor.submit(run_one, index) for index in range(repetitions)]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+    return sorted(results, key=lambda result: result["request_index"])
 
 
 def _safe_entity_counts(payload: object) -> dict[str, int]:
@@ -480,7 +599,57 @@ def _safe_error_fields_from_payload(payload: object) -> dict[str, str]:
                     and SAFE_ERROR_IDENTIFIER.fullmatch(normalized)
                 ):
                     fields.setdefault(report_key, normalized)
+        reason = section.get("reason")
+        if isinstance(reason, str) and reason in SAFE_FAILURE_REASONS:
+            fields.setdefault("failure_reason", reason)
+    overload_reason = _safe_nested_overload_reason(payload)
+    if overload_reason is not None:
+        fields.setdefault("failure_reason", overload_reason)
     return fields
+
+
+def _safe_nested_overload_reason(payload: object) -> str | None:
+    """Find one bounded overload reason in a shallow structured error."""
+    pending: list[tuple[object, int]] = [(payload, 0)]
+    visited = 0
+    while pending and visited < 100:
+        value, depth = pending.pop()
+        visited += 1
+        if isinstance(value, dict):
+            if value.get("code") == "analyzer_overloaded":
+                reason = value.get("reason")
+                if isinstance(reason, str) and reason in SAFE_FAILURE_REASONS:
+                    return reason
+                details = value.get("details")
+                if isinstance(details, dict):
+                    reason = details.get("reason")
+                    if isinstance(reason, str) and reason in SAFE_FAILURE_REASONS:
+                        return reason
+            if depth < 6:
+                pending.extend(
+                    (child, depth + 1)
+                    for child in value.values()
+                    if isinstance(child, (dict, list))
+                )
+        elif isinstance(value, list) and depth < 6:
+            pending.extend(
+                (child, depth + 1)
+                for child in value
+                if isinstance(child, (dict, list))
+            )
+    return None
+
+
+def _safe_retry_after_seconds(response: Any) -> int | None:
+    """Read a bounded delta-seconds Retry-After value."""
+    raw_value = response.headers.get("retry-after")
+    if raw_value is None or not str(raw_value).isascii():
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None
+    return value if 0 <= value <= 86_400 else None
 
 
 def _safe_http_error_fields(response: Any) -> dict[str, str]:
@@ -507,6 +676,20 @@ def _analyzer_text(request_value: Any) -> str:
     raise ValueError("unsupported generated Analyzer payload")
 
 
+def _with_unique_request_suffix(request_value: Any, request_index: int) -> Any:
+    """Return a generated payload copy with one deterministic cache-busting field."""
+    suffix = f"\nload-sample-{request_index + 1:06d}"
+    if isinstance(request_value, str):
+        return request_value + suffix
+    if isinstance(request_value, list):
+        copied = [dict(item) if isinstance(item, dict) else item for item in request_value]
+        for item in reversed(copied):
+            if isinstance(item, dict) and isinstance(item.get("content"), str):
+                item["content"] += suffix
+                return copied
+    raise ValueError("unsupported generated payload for unique requests")
+
+
 def _analyzer_measurement(client, url: str, text: str) -> dict[str, Any]:
     started_at = time.perf_counter()
     try:
@@ -526,6 +709,7 @@ def _analyzer_measurement(client, url: str, text: str) -> dict[str, Any]:
             "response_byte_count": len(response.content),
             "entity_counts": entity_counts,
             "detected_entity_count": sum(entity_counts.values()),
+            "retry_after_seconds": _safe_retry_after_seconds(response),
         }
         result.update(_safe_http_error_fields(response))
         return result
@@ -593,6 +777,7 @@ def _proxy_measurement(
                 "total_seconds": round(duration, 6),
                 "ttft_seconds": None,
                 "response_byte_count": len(response.content),
+                "retry_after_seconds": _safe_retry_after_seconds(response),
             }
             result.update(_safe_http_error_fields(response))
             return result
@@ -628,6 +813,7 @@ def _proxy_measurement(
                     else None
                 ),
                 "response_byte_count": response_bytes,
+                "retry_after_seconds": _safe_retry_after_seconds(response),
             }
             result.update(stream_error_fields)
             return result
@@ -648,6 +834,7 @@ def build_report(
     args: argparse.Namespace,
     measurements: list[dict[str, Any]],
     metadata: dict[str, str],
+    workloads: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the stable content-free report document."""
     report = {
@@ -663,6 +850,16 @@ def build_report(
             "sizes": list(args.sizes),
             "repetitions": args.repetitions,
             "warmup_runs": args.warmup_runs,
+            "concurrency": args.concurrency,
+            "request_rate": args.request_rate,
+            "unique_requests": args.unique_requests,
+            "load_shape": (
+                "constant_rate"
+                if args.request_rate is not None
+                else "burst"
+                if args.concurrency > 1
+                else "sequential"
+            ),
             "timeout_seconds": args.timeout,
             "canaries_enabled": not args.no_canaries,
             "generator_unit": "whitespace_token",
@@ -678,6 +875,7 @@ def build_report(
         },
         "environment": metadata,
         "measurements": measurements,
+        "workloads": workloads or [],
         "summary": summarize(measurements),
     }
     serialized = json.dumps(report, ensure_ascii=False)
@@ -705,6 +903,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sizes", type=parse_sizes, default=DEFAULT_SIZES)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--warmup-runs", type=int, default=0)
+    parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument(
+        "--request-rate",
+        type=float,
+        default=None,
+        help="Optional constant request start rate per second; omission creates a burst",
+    )
+    parser.add_argument(
+        "--unique-requests",
+        action="store_true",
+        help="Append a safe synthetic suffix to each repetition to bypass analysis cache",
+    )
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--stream", action="store_true")
     parser.add_argument("--no-canaries", action="store_true")
@@ -731,7 +941,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if args.repetitions < 1 or args.warmup_runs < 0:
+    if args.repetitions < 1 or args.warmup_runs < 0 or args.concurrency < 1:
         raise ValueError("repetitions must be positive and warmup-runs non-negative")
     if (
         args.timeout <= 0
@@ -741,6 +951,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError(
             "timeout, window-stride and repeated-field-tokens must be positive"
         )
+    if args.request_rate is not None and args.request_rate <= 0:
+        raise ValueError("request-rate must be positive when supplied")
     if args.resource_sample_interval <= 0:
         raise ValueError("resource-sample-interval must be positive")
     args.docker_containers = parse_container_names(args.docker_containers)
@@ -764,6 +976,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         repeated_field_tokens=args.repeated_field_tokens,
     )
     measurements: list[dict[str, Any]] = []
+    workloads: list[dict[str, Any]] = []
 
     if args.dry_run:
         for payload in payloads:
@@ -776,7 +989,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "ttft_seconds": None,
                 }
             )
-        return build_report(args, measurements, metadata)
+        return build_report(args, measurements, metadata, workloads)
 
     try:
         import httpx
@@ -808,38 +1021,59 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         request_value=payload["request_value"],
                         stream=args.stream,
                     )
-            for repetition in range(1, args.repetitions + 1):
-                with DockerResourceSampler(
-                    args.docker_containers,
-                    args.resource_sample_interval,
-                ) as resource_sampler:
-                    if args.layer == "analyzer":
-                        result = _analyzer_measurement(
-                            client,
-                            args.url,
-                            _analyzer_text(payload["request_value"]),
-                        )
-                    else:
-                        result = _proxy_measurement(
-                            client,
-                            url=args.url,
-                            api=args.api,
-                            model=args.model,
-                            api_key=api_key,
-                            request_value=payload["request_value"],
-                            stream=args.stream,
-                        )
-                if args.docker_containers:
-                    result["resources"] = resource_sampler.report()
-                measurements.append(
-                    {
-                        **_discard_request_value(payload),
-                        "repetition": repetition,
-                        **result,
-                    }
+            request_indexes = itertools.count()
+
+            def measure() -> dict[str, Any]:
+                request_value = payload["request_value"]
+                if args.unique_requests:
+                    request_value = _with_unique_request_suffix(
+                        request_value,
+                        next(request_indexes),
+                    )
+                if args.layer == "analyzer":
+                    return _analyzer_measurement(
+                        client,
+                        args.url,
+                        _analyzer_text(request_value),
+                    )
+                return _proxy_measurement(
+                    client,
+                    url=args.url,
+                    api=args.api,
+                    model=args.model,
+                    api_key=api_key,
+                    request_value=request_value,
+                    stream=args.stream,
                 )
 
-    return build_report(args, measurements, metadata)
+            with DockerResourceSampler(
+                args.docker_containers,
+                args.resource_sample_interval,
+            ) as resource_sampler:
+                workload_results = run_load_series(
+                    measure,
+                    repetitions=args.repetitions,
+                    concurrency=args.concurrency,
+                    request_rate=args.request_rate,
+                )
+
+            measurements.extend(
+                {
+                    **_discard_request_value(payload),
+                    "repetition": result["request_index"],
+                    **result,
+                }
+                for result in workload_results
+            )
+            workload = {
+                "requested_token_count": payload["requested_token_count"],
+                "summary": _summarize_measurements(workload_results),
+            }
+            if args.docker_containers:
+                workload["resources"] = resource_sampler.report()
+            workloads.append(workload)
+
+    return build_report(args, measurements, metadata, workloads)
 
 
 def main(argv: list[str] | None = None) -> int:

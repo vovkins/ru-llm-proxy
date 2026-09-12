@@ -40,12 +40,14 @@ try:
     from prometheus_client import (
         CONTENT_TYPE_LATEST,
         Counter,
+        Gauge,
         Histogram,
         generate_latest,
     )
 except Exception:  # pragma: no cover - dependency is present in the Docker image.
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
     Counter = None
+    Gauge = None
     Histogram = None
     generate_latest = None
 
@@ -60,6 +62,9 @@ class _NoopMetric:
         return None
 
     def observe(self, amount: float):
+        return None
+
+    def set_function(self, callback):
         return None
 
 
@@ -88,7 +93,25 @@ ANALYZER_LATENCY = _build_metric(
     "ru_presidio_analyzer_latency_seconds",
     "Presidio Analyzer request latency by safe outcome.",
     ["outcome"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2.5,
+        5,
+        10,
+        30,
+        60,
+        120,
+        300,
+        600,
+        1200,
+    ),
 )
 ANALYZER_ENTITIES_DETECTED = _build_metric(
     Counter,
@@ -101,6 +124,16 @@ ANALYZER_CAPACITY_REJECTIONS = _build_metric(
     "ru_presidio_analyzer_capacity_rejections",
     "Presidio Analyzer capacity rejections by bounded reason.",
     ["reason"],
+)
+ANALYZER_CAPACITY_ACTIVE = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_capacity_active",
+    "Currently active Analyzer requests in this process.",
+)
+ANALYZER_CAPACITY_WAITING = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_capacity_waiting",
+    "Currently queued Analyzer requests in this process.",
 )
 ANALYZER_FAILURES = _build_metric(
     Counter,
@@ -125,7 +158,25 @@ ANALYZER_NER_INFERENCE_LATENCY = _build_metric(
     "ru_presidio_analyzer_ner_inference_duration_seconds",
     "Required NER inference duration by bounded outcome.",
     ["outcome"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2.5,
+        5,
+        10,
+        30,
+        60,
+        120,
+        300,
+        600,
+        1200,
+    ),
 )
 ANALYZER_NER_WINDOWS = _build_metric(
     Histogram,
@@ -153,7 +204,26 @@ ANALYZER_PHASE_LATENCY = _build_metric(
     "ru_presidio_analyzer_phase_duration_seconds",
     "Analyzer computation phase duration by bounded phase and outcome.",
     ["phase", "outcome"],
-    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+    buckets=(
+        0.001,
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2.5,
+        5,
+        10,
+        30,
+        60,
+        120,
+        300,
+        600,
+        1200,
+    ),
 )
 ANALYZER_INPUT_CHARACTERS = _build_metric(
     Histogram,
@@ -329,6 +399,12 @@ for recognizer_cls in ALL_RECOGNIZERS:
 # Initialize the one fixed Hugging Face NER backend.
 ner_recognizer = HuggingFaceNERRecognizer()
 capacity_limiter = build_limiter_from_env()
+ANALYZER_CAPACITY_ACTIVE.set_function(
+    lambda: capacity_limiter.snapshot()["active"]
+)
+ANALYZER_CAPACITY_WAITING.set_function(
+    lambda: capacity_limiter.snapshot()["waiting"]
+)
 
 
 class AnalyzeRequest(BaseModel):
@@ -487,7 +563,9 @@ async def _analyze_with_capacity(request: AnalyzeRequest) -> AnalyzeResponse:
                 "code": "analyzer_overloaded",
                 "reason": e.reason,
                 "message": str(e),
+                "retry_after_seconds": e.retry_after_seconds,
             },
+            headers={"Retry-After": str(e.retry_after_seconds)},
         ) from e
 
     queue_wait_seconds = time.perf_counter() - queue_started_at

@@ -225,6 +225,118 @@ post_json() {
         "$BASE_URL$path"
 }
 
+post_json_with_headers() {
+    local path="$1"
+    local payload="$2"
+    local body_file="$3"
+    local headers_file="$4"
+
+    curl -sS \
+        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+        --max-time "$CURL_MAX_TIME" \
+        -D "$headers_file" \
+        -o "$body_file" \
+        -w "%{http_code}" \
+        -H "Authorization: Bearer $MASTER_KEY" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$BASE_URL$path"
+}
+
+set_analyzer_overload() {
+    local reason="$1"
+    local retry_after="$2"
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T mock-upstream \
+        python - "$reason" "$retry_after" <<'PY' >/dev/null
+import json
+import sys
+import urllib.request
+
+payload = json.dumps(
+    {"reason": sys.argv[1], "retry_after_seconds": int(sys.argv[2])}
+).encode("utf-8")
+request = urllib.request.Request(
+    "http://127.0.0.1:8080/analyzer/overload",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5):
+    pass
+PY
+}
+
+recover_analyzer() {
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T mock-upstream \
+        python - <<'PY' >/dev/null
+import urllib.request
+
+request = urllib.request.Request(
+    "http://127.0.0.1:8080/analyzer/recover",
+    data=b"{}",
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5):
+    pass
+PY
+}
+
+assert_analyzer_overload_response() {
+    local body_file="$1"
+    local headers_file="$2"
+    local expected_reason="$3"
+    local expected_retry_after="$4"
+
+    python3 - "$body_file" "$headers_file" "$expected_reason" "$expected_retry_after" <<'PY'
+import json
+import sys
+
+body_path, headers_path, expected_reason, expected_retry_after = sys.argv[1:]
+with open(body_path, encoding="utf-8") as stream:
+    body = json.load(stream)
+with open(headers_path, encoding="iso-8859-1") as stream:
+    headers = stream.read().lower()
+
+def find_overload(value):
+    if isinstance(value, dict):
+        if value.get("code") == "analyzer_overloaded":
+            return value
+        for child in value.values():
+            found = find_overload(child)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = find_overload(child)
+            if found is not None:
+                return found
+    return None
+
+error = find_overload(body)
+if error is None:
+    raise SystemExit(f"structured analyzer_overloaded error is missing: {body!r}")
+details = error.get("details")
+if not isinstance(details, dict) or details.get("reason") != expected_reason:
+    raise SystemExit(f"unexpected overload details: {body!r}")
+if details.get("retry_after_seconds") != int(expected_retry_after):
+    raise SystemExit(f"unexpected retry delay in body: {body!r}")
+if f"retry-after: {expected_retry_after}\n" not in headers:
+    raise SystemExit(f"Retry-After header is missing: {headers!r}")
+PY
+}
+
+expect_no_pii_mappings() {
+    local keys
+    keys="$(
+        docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T redis \
+            redis-cli --raw --scan --pattern 'pii_mapping:*'
+    )"
+    if [ -n "$keys" ]; then
+        echo "Unexpected pii_mapping keys after Analyzer overload: $keys" >&2
+        exit 1
+    fi
+}
+
 expect_no_provider_posts() {
     local file="$1"
 
@@ -330,6 +442,35 @@ run_regulated_topic_blocked_case() {
     assert_litellm_logs_do_not_contain "$forbidden"
 }
 
+run_analyzer_overload_case() {
+    local reason="$1"
+    local retry_after="$2"
+    local probe="$3"
+    local body_file="$tmp_dir/overload-${reason}.json"
+    local headers_file="$tmp_dir/overload-${reason}.headers"
+    local capture_file="$tmp_dir/overload-${reason}-capture.json"
+    local status
+
+    reset_capture
+    set_analyzer_overload "$reason" "$retry_after"
+    status="$(post_json_with_headers \
+        "/v1/chat/completions" \
+        "{\"model\":\"mock-chat\",\"messages\":[{\"role\":\"user\",\"content\":\"$probe\"}]}" \
+        "$body_file" \
+        "$headers_file")"
+    if [ "$status" != "503" ]; then
+        echo "Expected Analyzer overload status 503, got $status" >&2
+        cat "$body_file" >&2
+        exit 1
+    fi
+    assert_analyzer_overload_response \
+        "$body_file" "$headers_file" "$reason" "$retry_after"
+    capture_counts "$capture_file"
+    expect_json_value "$capture_file" analyzer_requests 1
+    expect_no_provider_posts "$capture_file"
+    expect_no_pii_mappings
+}
+
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d
 
 wait_for_http "$BASE_URL/health/liveliness" "LiteLLM proxy"
@@ -406,5 +547,15 @@ run_regulated_topic_blocked_case \
     "sanctions_screening" \
     "sanctions_watchlist_matching" \
     "watchlist matching logic"
+
+run_analyzer_overload_case "queue_full" 2 "Capacity probe alpha."
+run_analyzer_overload_case "queue_timeout" 3 "Capacity probe beta."
+
+recover_analyzer
+run_clean_case \
+    "clean-after-overload" \
+    "/v1/chat/completions" \
+    '{"model":"mock-chat","messages":[{"role":"user","content":"Capacity recovery probe."}]}' \
+    '["/v1/chat/completions"]'
 
 echo "pre-egress proxy non-egress smoke passed"

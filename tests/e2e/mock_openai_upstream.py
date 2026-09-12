@@ -42,6 +42,10 @@ CAPTURE = {
     "provider_saw_phone_placeholder": False,
     "provider_saw_pii_placeholder": False,
 }
+ANALYZER_OVERLOAD = {
+    "reason": None,
+    "retry_after_seconds": 1,
+}
 
 
 def _iter_strings(value):
@@ -167,11 +171,13 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
-    def _write_json(self, status, payload):
+    def _write_json(self, status, payload, headers=None):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, str(value))
         self.end_headers()
         self.wfile.write(body)
 
@@ -209,6 +215,32 @@ class Handler(BaseHTTPRequestHandler):
         self._write_json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/analyzer/overload":
+            payload = self._read_json()
+            reason = payload.get("reason")
+            retry_after_seconds = payload.get("retry_after_seconds", 1)
+            if reason not in {"queue_full", "queue_timeout"}:
+                self._write_json(400, {"error": "invalid overload reason"})
+                return
+            if (
+                isinstance(retry_after_seconds, bool)
+                or not isinstance(retry_after_seconds, int)
+                or not 1 <= retry_after_seconds <= 3600
+            ):
+                self._write_json(400, {"error": "invalid retry delay"})
+                return
+            ANALYZER_OVERLOAD.update(
+                reason=reason,
+                retry_after_seconds=retry_after_seconds,
+            )
+            self._write_json(200, dict(ANALYZER_OVERLOAD))
+            return
+
+        if self.path == "/analyzer/recover":
+            ANALYZER_OVERLOAD.update(reason=None, retry_after_seconds=1)
+            self._write_json(200, dict(ANALYZER_OVERLOAD))
+            return
+
         if self.path == "/capture/reset":
             for key, value in CAPTURE.items():
                 if type(value) is int:
@@ -226,6 +258,22 @@ class Handler(BaseHTTPRequestHandler):
             CAPTURE["analyzer_saw_canary"] = (
                 CAPTURE["analyzer_saw_canary"] or _text_contains_canary(payload)
             )
+            if ANALYZER_OVERLOAD["reason"] is not None:
+                reason = ANALYZER_OVERLOAD["reason"]
+                retry_after_seconds = ANALYZER_OVERLOAD["retry_after_seconds"]
+                self._write_json(
+                    503,
+                    {
+                        "detail": {
+                            "code": "analyzer_overloaded",
+                            "reason": reason,
+                            "message": "Presidio Analyzer capacity is exhausted.",
+                            "retry_after_seconds": retry_after_seconds,
+                        }
+                    },
+                    headers={"Retry-After": retry_after_seconds},
+                )
+                return
             self._write_json(200, {"entities": _analyzer_entities(payload)})
             return
 

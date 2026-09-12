@@ -220,6 +220,9 @@ PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 ANALYZER_UNAVAILABLE_MESSAGE = "PII guardrail required analyzer unavailable"
+ANALYZER_OVERLOAD_REASONS = frozenset({"queue_full", "queue_timeout"})
+DEFAULT_ANALYZER_RETRY_AFTER_SECONDS = 1
+MAX_ANALYZER_RETRY_AFTER_SECONDS = 3_600
 ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int]]] = ContextVar(
@@ -451,9 +454,19 @@ REGULATED_TOPIC_POLICY_DEFAULT_RULES = (
 class AnalyzerOverloadedError(RuntimeError):
     """Raised when the Presidio Analyzer rejects work due to capacity policy."""
 
-    def __init__(self, reason: str = "unknown"):
-        super().__init__(f"Presidio Analyzer overloaded: {reason}")
-        self.reason = reason
+    def __init__(
+        self,
+        reason: str = "unknown",
+        retry_after_seconds: int = DEFAULT_ANALYZER_RETRY_AFTER_SECONDS,
+    ):
+        normalized_reason = (
+            reason if reason in ANALYZER_OVERLOAD_REASONS else "unknown"
+        )
+        super().__init__(f"Presidio Analyzer overloaded: {normalized_reason}")
+        self.reason = normalized_reason
+        self.retry_after_seconds = _normalize_analyzer_retry_after(
+            retry_after_seconds
+        )
 
 
 class AnalyzerUnavailableError(RuntimeError):
@@ -467,6 +480,19 @@ class AnalyzerUnavailableError(RuntimeError):
             if failure_class in ANALYZER_FAILURE_CLASSES
             else "unexpected_failure"
         )
+
+
+def _normalize_analyzer_retry_after(value: object) -> int:
+    """Return bounded Retry-After delta seconds from an internal response."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return DEFAULT_ANALYZER_RETRY_AFTER_SECONDS
+    try:
+        seconds = int(value)
+    except ValueError:
+        return DEFAULT_ANALYZER_RETRY_AFTER_SECONDS
+    if not 1 <= seconds <= MAX_ANALYZER_RETRY_AFTER_SECONDS:
+        return DEFAULT_ANALYZER_RETRY_AFTER_SECONDS
+    return seconds
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -1329,8 +1355,32 @@ class RuPIIGuardrail(CustomGuardrail):
             "pii_guardrail_analyzer_overloaded",
             failure_mode="fail_closed",
             reason=error.reason,
+            retry_after_seconds=error.retry_after_seconds,
         )
-        raise RuntimeError(ANALYZER_OVERLOADED_MESSAGE) from error
+        structured_error = {
+            "message": ANALYZER_OVERLOADED_MESSAGE,
+            "type": "analyzer_overloaded",
+            "code": "analyzer_overloaded",
+            "details": {
+                "reason": error.reason,
+                "retry_after_seconds": error.retry_after_seconds,
+            },
+        }
+        exc = ProxyException(
+            message=ANALYZER_OVERLOADED_MESSAGE,
+            type="analyzer_overloaded",
+            param={
+                "analyzer_overload": {
+                    "code": structured_error["code"],
+                    "details": structured_error["details"],
+                }
+            },
+            code=503,
+            headers={"Retry-After": str(error.retry_after_seconds)},
+            provider_specific_fields={"error": structured_error},
+        )
+        exc.status_code = 503
+        raise exc from error
 
     def _raise_analyzer_unavailable(self, error: AnalyzerUnavailableError) -> None:
         """Fail closed when the required NER backend cannot protect requests."""
@@ -2640,8 +2690,22 @@ class RuPIIGuardrail(CustomGuardrail):
                 if isinstance(detail, dict) and (
                     detail.get("code") == "analyzer_overloaded"
                 ):
+                    retry_after = detail.get(
+                        "retry_after_seconds",
+                        DEFAULT_ANALYZER_RETRY_AFTER_SECONDS,
+                    )
+                    response_headers = getattr(response, "headers", None)
+                    if hasattr(response_headers, "get"):
+                        header_value = response_headers.get("Retry-After")
+                        if isinstance(header_value, (int, str)) and not isinstance(
+                            header_value, bool
+                        ):
+                            retry_after = header_value
                     raise AnalyzerOverloadedError(
-                        reason=str(detail.get("reason") or "unknown")
+                        reason=str(detail.get("reason") or "unknown"),
+                        retry_after_seconds=_normalize_analyzer_retry_after(
+                            retry_after
+                        ),
                     )
                 if isinstance(detail, dict) and (
                     detail.get("code") == "required_ner_unavailable"

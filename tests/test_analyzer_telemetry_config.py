@@ -14,6 +14,8 @@ def test_analyzer_server_exposes_safe_request_telemetry():
     assert "ru_presidio_analyzer_latency_seconds" in source
     assert "ru_presidio_analyzer_entities_detected" in source
     assert "ru_presidio_analyzer_capacity_rejections" in source
+    assert "ru_presidio_analyzer_capacity_active" in source
+    assert "ru_presidio_analyzer_capacity_waiting" in source
     assert "ru_presidio_analyzer_failures" in source
     assert "ru_presidio_analyzer_ner_failures" in source
     assert "ru_presidio_analyzer_ner_inference" in source
@@ -26,6 +28,7 @@ def test_analyzer_server_exposes_safe_request_telemetry():
     assert "ru_presidio_analyzer_text_chunks" in source
     assert "ru_presidio_analyzer_text_chunk_characters" in source
     assert "ru_presidio_analyzer_merge_decisions" in source
+    assert "1200," in source
     assert "presidio_ner_inference" in source
     assert "presidio_analyzer_phase" in source
     assert "presidio_ner_startup_begin" in source
@@ -70,6 +73,8 @@ def test_docs_describe_analyzer_telemetry_contract():
         assert "ru_presidio_analyzer_ner_input_tokens" in text
         assert "ru_presidio_analyzer_ner_windows_processed" in text
         assert "ru_presidio_analyzer_queue_wait_seconds" in text
+        assert "ru_presidio_analyzer_capacity_active" in text
+        assert "ru_presidio_analyzer_capacity_waiting" in text
         assert "ru_presidio_analyzer_phase_duration_seconds" in text
         assert "ru_presidio_analyzer_input_characters" in text
         assert "ru_presidio_analyzer_text_chunks" in text

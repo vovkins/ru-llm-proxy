@@ -201,6 +201,8 @@ LiteLLM создаёт отдельные экземпляры защитног�
 | `ru_presidio_analyzer_latency_seconds_*` | `outcome` | Полная задержка внутри Analyzer |
 | `ru_presidio_analyzer_entities_detected_total` | `entity_type` | Найденные сущности |
 | `ru_presidio_analyzer_capacity_rejections_total` | `reason` | Переполнение очереди и таймаут |
+| `ru_presidio_analyzer_capacity_active` | нет | Число активных анализов в процессе |
+| `ru_presidio_analyzer_capacity_waiting` | нет | Число запросов в локальной очереди процесса |
 | `ru_presidio_analyzer_failures_total` | `reason` | Ограниченные причины ошибок |
 | `ru_presidio_analyzer_ner_failures_total` | `phase`, `failure_class` | Отказы обязательной NER |
 | `ru_presidio_analyzer_ner_inference_total` | `outcome` | Итог попыток NER |
@@ -218,6 +220,18 @@ LiteLLM создаёт отдельные экземпляры защитног�
 LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в Analyzer вместе
 с ожиданием его локальной очереди. Метки имеют ограниченный набор значений и не
 содержат исходные данные.
+
+Метрики `capacity_active` и `capacity_waiting` относятся к одному процессу.
+Базовый профиль использует один процесс uvicorn в контейнере. При нескольких
+процессах стандартный реестр Prometheus не складывает их значения; для
+масштабирования используйте отдельные экземпляры Analyzer и суммируйте серии на
+стороне Prometheus. Обоснование приведено в
+[нагрузочном профиле Analyzer](research/analyzer-load-profile.md).
+
+При `queue_full` или `queue_timeout` Analyzer и защитный слой возвращают HTTP
+503 с заголовком `Retry-After`. Такой запрос остановлен до вызова провайдера.
+Клиент может выполнить до трёх повторов, соблюдая указанную задержку, добавляя
+случайное отклонение и экспоненциально увеличивая последующие интервалы.
 
 `window_boundary_unresolved` в `ru_presidio_analyzer_ner_failures_total`
 означает безопасный отказ одного запроса после повторной проверки границы;
@@ -260,6 +274,8 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 increase(ru_pii_guardrail_fail_open_total[5m]) > 0
 increase(ru_pii_guardrail_fail_closed_total[5m]) > 0
 increase(ru_pii_guardrail_fail_closed_total{operation="analyzer_overloaded"}[5m]) > 0
+max_over_time(ru_presidio_analyzer_capacity_waiting[5m]) > 0
+sum(rate(ru_presidio_analyzer_capacity_rejections_total[5m])) > 0
 sum(rate(ru_pii_guardrail_pre_calls_total{result="error"}[5m])) > 0
 sum(rate(ru_presidio_analyzer_requests_total{outcome=~"overload|timeout_or_cancelled|analyzer_error"}[5m])) > 0
 increase(ru_presidio_analyzer_ner_failures_total[5m]) > 0

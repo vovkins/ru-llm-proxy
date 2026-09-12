@@ -612,8 +612,10 @@ class TestAnalyzeText:
                 "code": "analyzer_overloaded",
                 "reason": "queue_timeout",
                 "message": "Timed out waiting for Presidio Analyzer capacity.",
+                "retry_after_seconds": 7,
             }
         }
+        mock_response.headers = {"Retry-After": "7"}
         mock_response.raise_for_status = MagicMock()
 
         mock_instance = AsyncMock()
@@ -626,6 +628,7 @@ class TestAnalyzeText:
                 await guardrail._analyze_text("Мой телефон +79031234567")
 
         assert exc_info.value.reason == "queue_timeout"
+        assert exc_info.value.retry_after_seconds == 7
         mock_response.raise_for_status.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2013,14 +2016,20 @@ class TestPreCallHook:
             "_analyze_text",
             side_effect=AnalyzerOverloadedError(reason="queue_full"),
         ):
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(ProxyException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
                     data=data,
                 )
 
-        assert "analyzer overloaded" in str(exc_info.value)
+        assert "analyzer overloaded" in exc_info.value.message.lower()
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
+        assert _error_body_from_exception(exc_info.value)["error"]["details"] == {
+            "reason": "queue_full",
+            "retry_after_seconds": 1,
+        }
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
 
@@ -2088,9 +2097,12 @@ class TestPreCallHook:
         with patch.object(
             guardrail,
             "_analyze_text",
-            side_effect=AnalyzerOverloadedError(reason="queue_timeout"),
+            side_effect=AnalyzerOverloadedError(
+                reason="queue_timeout",
+                retry_after_seconds=3,
+            ),
         ):
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(ProxyException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -2098,7 +2110,9 @@ class TestPreCallHook:
                     call_type="responses",
                 )
 
-        assert "analyzer overloaded" in str(exc_info.value)
+        assert "analyzer overloaded" in exc_info.value.message.lower()
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "3"}
         assert data["instructions"] == "Не раскрывай телефон +79031234567"
         assert data["input"] == "Расскажи joke"
         assert "metadata" not in data
@@ -2120,14 +2134,16 @@ class TestPreCallHook:
             "_analyze_text",
             side_effect=AnalyzerOverloadedError(reason="queue_timeout"),
         ):
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(ProxyException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
                     data=data,
                 )
 
-        assert "analyzer overloaded" in str(exc_info.value)
+        assert "analyzer overloaded" in exc_info.value.message.lower()
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
         assert data["messages"][0]["content"] == "Мой телефон +79031234567"
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()

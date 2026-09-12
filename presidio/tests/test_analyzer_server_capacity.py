@@ -122,6 +122,8 @@ async def _analyze_rejects_concurrent_request_when_queue_is_full(monkeypatch):
         assert exc_info.value.status_code == 503
         assert exc_info.value.detail["code"] == "analyzer_overloaded"
         assert exc_info.value.detail["reason"] == "queue_full"
+        assert exc_info.value.detail["retry_after_seconds"] == 1
+        assert exc_info.value.headers == {"Retry-After": "1"}
 
         response = await first
         assert response.entities == []
@@ -434,6 +436,8 @@ async def _metrics_endpoint_exposes_analyzer_metrics(monkeypatch):
     assert "ru_presidio_analyzer_ner_windows_processed_bucket" in body
     assert "ru_presidio_analyzer_ner_input_tokens_bucket" in body
     assert "ru_presidio_analyzer_queue_wait_seconds_bucket" in body
+    assert "ru_presidio_analyzer_capacity_active" in body
+    assert "ru_presidio_analyzer_capacity_waiting" in body
     assert "ru_presidio_analyzer_phase_duration_seconds_bucket" in body
     assert "ru_presidio_analyzer_input_characters_bucket" in body
     assert "ru_presidio_analyzer_text_chunks_bucket" in body
