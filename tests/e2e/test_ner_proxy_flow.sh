@@ -266,9 +266,10 @@ curl -fsS "http://127.0.0.1:${BLOCK_PORT}/metrics/" >"$block_metrics"
 expect_metric_at_least "$mask_metrics" ru_pii_guardrail_pre_calls_total 2 result masked
 expect_metric_at_least "$mask_metrics" ru_pii_guardrail_post_calls_total 2 result restored
 expect_metric_at_least "$mask_metrics" ru_pii_guardrail_analyzer_latency_seconds_count 2
+expect_metric_at_least "$mask_metrics" ru_pii_guardrail_analysis_cache_requests_total 2 result miss
 expect_metric_at_least "$block_metrics" ru_pii_guardrail_pre_calls_total 1 result blocked
 expect_metric_at_least "$block_metrics" ru_pii_guardrail_blocked_total 1 entity_type PERSON
-expect_metric_at_least "$block_metrics" ru_pii_guardrail_analyzer_latency_seconds_count 1
+expect_metric_at_least "$block_metrics" ru_pii_guardrail_analysis_cache_requests_total 1 result hit
 
 proxy_logs="$tmp_dir/proxy-logs.txt"
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs \

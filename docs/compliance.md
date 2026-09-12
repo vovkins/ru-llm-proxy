@@ -119,8 +119,13 @@ Admin API закрываются SSO, VPN, mTLS, частной сетью ил�
 `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`,
 а для блокировок — `block_reason`, `error_code` и ограниченные правила.
 
-Реализованная в #31 телеметрия Analyzer пишет `presidio_analyzer_request` и
-метрики:
+Событие `gateway_guardrail_request_shape` фиксирует форму и размер нагрузки до
+Analyzer. По серверному `request_id` оно сопоставляется с каждым безопасным
+событием `presidio_analyzer_request`, `presidio_analyzer_phase` и
+`presidio_ner_inference`; отдельные текстовые поля различаются по
+`text_field_index`.
+
+Телеметрия Analyzer, реализованная в #31 и дополненная в #55, включает метрики:
 
 - `ru_presidio_analyzer_requests_total`;
 - `ru_presidio_analyzer_latency_seconds_*`;
@@ -130,12 +135,26 @@ Admin API закрываются SSO, VPN, mTLS, частной сетью ил�
 - `ru_presidio_analyzer_ner_failures_total`;
 - `ru_presidio_analyzer_ner_inference_total`;
 - `ru_presidio_analyzer_ner_inference_duration_seconds_*`;
+- `ru_presidio_analyzer_ner_input_tokens_*`;
 - `ru_presidio_analyzer_ner_windows_processed_*`;
-- `ru_presidio_analyzer_merge_decisions_total`.
+- `ru_presidio_analyzer_queue_wait_seconds_*`;
+- `ru_presidio_analyzer_phase_duration_seconds_*`;
+- `ru_presidio_analyzer_input_characters_*`;
+- `ru_presidio_analyzer_text_chunks_*`;
+- `ru_presidio_analyzer_text_chunk_characters_*`;
+- `ru_presidio_analyzer_merge_decisions_total`;
+- `ru_pii_guardrail_analysis_cache_requests_total`;
+- `ru_pii_guardrail_analysis_cache_latency_seconds_*`.
 
-События `presidio_ner_startup_*` и `presidio_ner_inference` содержат только
-ограниченные эксплуатационные поля. Аудит и телеметрия не включают исходный
-текст, значения сущностей, смещения, ключи или содержимое Redis.
+Все события содержат только ограниченные эксплуатационные поля. Аудит и
+телеметрия не включают исходный текст, значения сущностей, смещения, ключи или
+содержимое Redis. `request_id` используется только в журналах и не становится
+меткой Prometheus.
+
+Кэш неизменившихся полей разделён по хешу виртуального ключа. Его HMAC включает
+точный текст и отпечаток Analyzer, но в Redis сохраняются только длина поля,
+координаты, типы и оценки сущностей. Нездоровый Analyzer всегда приводит к
+безопасному отказу и не обходится прежней записью.
 
 ## Подтверждения для ручной проверки
 

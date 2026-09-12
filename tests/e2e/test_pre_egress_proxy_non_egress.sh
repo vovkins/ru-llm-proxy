@@ -350,7 +350,7 @@ run_clean_case \
 run_clean_case \
     "clean-responses" \
     "/v1/responses" \
-    '{"model":"mock-chat","input":[{"role":"user","content":[{"type":"input_text","text":"Summarize the deployment plan."}]}]}' \
+    '{"model":"mock-chat","input":[{"role":"user","content":[{"type":"input_text","text":"Summarize the release plan."}]}]}' \
     '["/v1/responses"]'
 
 run_clean_case \

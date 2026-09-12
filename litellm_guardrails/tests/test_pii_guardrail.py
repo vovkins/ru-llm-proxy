@@ -73,7 +73,44 @@ def _mock_redis(get_value=None):
     redis.setex = AsyncMock()
     redis.get = AsyncMock(return_value=get_value)
     redis.delete = AsyncMock()
+    redis.zadd = AsyncMock()
+    redis.expire = AsyncMock()
+    redis.zcard = AsyncMock(return_value=0)
+    redis.zpopmin = AsyncMock(return_value=[])
     return redis
+
+
+class _MemoryRedis:
+    """Minimal async Redis substitute for analysis-cache flow tests."""
+
+    def __init__(self):
+        self.values = {}
+        self.index = {}
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def setex(self, key, _ttl, value):
+        self.values[key] = value
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.values.pop(key, None)
+
+    async def zadd(self, _key, values):
+        self.index.update(values)
+
+    async def expire(self, _key, _ttl):
+        return True
+
+    async def zcard(self, _key):
+        return len(self.index)
+
+    async def zpopmin(self, _key, count):
+        ordered = sorted(self.index.items(), key=lambda item: item[1])[:count]
+        for key, _score in ordered:
+            self.index.pop(key, None)
+        return ordered
 
 
 def _responses_api_response(output):
@@ -155,6 +192,119 @@ def test_guardrail_info_events_are_enabled_by_default(caplog):
             "request_id": "test-request",
         }
     ]
+
+
+def test_request_shape_fields_describe_chat_history_without_content(guardrail):
+    data = {
+        "messages": [
+            {"role": "system", "content": "Кратко отвечай"},
+            {"role": "user", "content": "Первый вопрос"},
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Первый ответ"}],
+            },
+        ],
+        "tools": [{"type": "function", "function": {"name": "lookup"}}],
+        "stream": True,
+    }
+    targets = guardrail._iter_request_text_targets(data)
+
+    fields = guardrail._request_shape_fields(data, targets)
+
+    assert fields == {
+        "request_format": "messages",
+        "stream": True,
+        "message_count": 3,
+        "input_item_count": 0,
+        "tool_definition_count": 1,
+        "text_target_count": 3,
+        "analyzer_candidate_count": 3,
+        "text_character_count": 39,
+        "largest_text_target_character_count": 14,
+        "previous_response_id_present": False,
+        "prompt_cache_key_present": False,
+        "opaque_encrypted_item_count": 0,
+    }
+
+
+def test_request_shape_fields_describe_responses_continuation(guardrail):
+    data = {
+        "model": "gpt-test",
+        "previous_response_id": "resp-sensitive-id",
+        "prompt_cache_key": "cache-sensitive-key",
+        "stream": True,
+        "input": [
+            {
+                "type": "reasoning",
+                "encrypted_content": "opaque-sensitive-state",
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Новый вопрос"}],
+            },
+            {
+                "type": "function_call",
+                "name": "lookup",
+                "arguments": '{"query":"без секрета"}',
+            },
+        ],
+    }
+    targets = guardrail._iter_request_text_targets(data)
+
+    fields = guardrail._request_shape_fields(data, targets)
+
+    assert fields["request_format"] == "responses"
+    assert fields["message_count"] == 0
+    assert fields["input_item_count"] == 3
+    assert fields["text_target_count"] == 2
+    assert fields["analyzer_candidate_count"] == 2
+    assert fields["previous_response_id_present"] is True
+    assert fields["prompt_cache_key_present"] is True
+    assert fields["opaque_encrypted_item_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_request_shape_event_is_safe_and_precedes_analyzer(caplog, guardrail):
+    prompt_marker = "RAW_PROMPT_MARKER_7f9d"
+    response_id_marker = "RESP_ID_MARKER_2a31"
+    cache_key_marker = "CACHE_KEY_MARKER_61bf"
+    encrypted_marker = "ENCRYPTED_MARKER_984c"
+    data = {
+        "model": "gpt-test",
+        "previous_response_id": response_id_marker,
+        "prompt_cache_key": cache_key_marker,
+        "input": [
+            {"type": "reasoning", "encrypted_content": encrypted_marker},
+            {"role": "user", "content": prompt_marker},
+        ],
+    }
+
+    async def analyze_after_shape_event(text):
+        assert text == prompt_marker
+        assert len(_json_log_events(caplog, "gateway_guardrail_request_shape")) == 1
+        return []
+
+    caplog.set_level(logging.INFO)
+    with patch.object(guardrail, "_analyze_text", side_effect=analyze_after_shape_event):
+        await guardrail.async_pre_call_hook(
+            user_api_key_dict=MagicMock(),
+            cache=MagicMock(),
+            data=data,
+            call_type="responses",
+        )
+
+    events = _json_log_events(caplog, "gateway_guardrail_request_shape")
+    assert len(events) == 1
+    event = events[0]
+    assert event["request_format"] == "responses"
+    assert event["call_type"] == "responses"
+    assert event["text_character_count"] == len(prompt_marker)
+    assert event["opaque_encrypted_item_count"] == 1
+    serialized_event = json.dumps(event, ensure_ascii=False)
+    assert prompt_marker not in serialized_event
+    assert response_id_marker not in serialized_event
+    assert cache_key_marker not in serialized_event
+    assert encrypted_marker not in serialized_event
 
 
 # === _get_request_id ===
@@ -400,6 +550,60 @@ class TestAnalyzeText:
         assert result == []
 
     @pytest.mark.asyncio
+    async def test_sends_server_correlation_headers_to_analyzer(self, guardrail):
+        client = AsyncMock()
+        client.post.return_value = self._mock_analyzer_response()
+        request_id = str(uuid.uuid4())
+        context_token = pii_guardrail._ANALYZER_CALL_CONTEXT.set((request_id, 2))
+
+        try:
+            with patch(
+                "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+                return_value=client,
+            ):
+                await guardrail._analyze_text("Обычный текст")
+        finally:
+            pii_guardrail._ANALYZER_CALL_CONTEXT.reset(context_token)
+
+        assert client.post.await_args.kwargs["headers"] == {
+            pii_guardrail.ANALYZER_REQUEST_ID_HEADER: request_id,
+            pii_guardrail.ANALYZER_TEXT_FIELD_INDEX_HEADER: "2",
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_call_indexes_analyzer_calls_without_leaking_context(
+        self,
+        guardrail,
+    ):
+        observed_contexts = []
+
+        async def capture_context(_text):
+            observed_contexts.append(pii_guardrail._ANALYZER_CALL_CONTEXT.get())
+            return []
+
+        data = {
+            "model": "mock-chat",
+            "messages": [
+                {"role": "system", "content": "Кратко отвечай."},
+                {"role": "user", "content": "Обычный вопрос."},
+            ],
+        }
+        with patch.object(guardrail, "_analyze_text", side_effect=capture_context):
+            await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(),
+                cache=MagicMock(),
+                data=data,
+                call_type="completion",
+            )
+
+        assert len(observed_contexts) == 2
+        request_ids = {context[0] for context in observed_contexts}
+        assert len(request_ids) == 1
+        uuid.UUID(request_ids.pop())
+        assert [context[1] for context in observed_contexts] == [1, 2]
+        assert pii_guardrail._ANALYZER_CALL_CONTEXT.get() is None
+
+    @pytest.mark.asyncio
     async def test_raises_analyzer_overloaded_for_capacity_503(self, guardrail):
         mock_response = MagicMock()
         mock_response.status_code = 503
@@ -495,6 +699,487 @@ class TestAnalyzeText:
         assert exc_info.value.phase == "readiness"
         assert exc_info.value.failure_class == "unexpected_failure"
         mock_response.raise_for_status.assert_not_called()
+
+
+# === analysis cache ===
+
+
+class TestAnalysisCache:
+    SIGNATURE = "a" * 64
+
+    @staticmethod
+    def _enable(guardrail):
+        guardrail._analysis_cache_secret = b"unit-test-cache-secret"
+
+    @classmethod
+    def _context(cls, *, model="mock-chat", scope="hashed-virtual-key"):
+        return {
+            "analyzer_signature": cls.SIGNATURE,
+            "model": model,
+            "scope": scope,
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_analyzer_signature_requires_ready_health(self, guardrail):
+        healthy = MagicMock()
+        healthy.status_code = 200
+        healthy.json.return_value = {
+            "status": "ok",
+            "ner_state": "ready",
+            "analysis_signature": self.SIGNATURE,
+        }
+        client = AsyncMock()
+        client.get.return_value = healthy
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            signature = await guardrail._get_analyzer_signature()
+
+        assert signature == self.SIGNATURE
+        client.get.assert_awaited_once_with(
+            f"{pii_guardrail.PRESIDIO_ANALYZER_URL}/api/v1/health"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_analyzer_signature_rejects_unhealthy_ner(self, guardrail):
+        unhealthy = MagicMock()
+        unhealthy.status_code = 503
+        unhealthy.json.return_value = {
+            "status": "unhealthy",
+            "ner_state": "failed",
+            "ner_failure_phase": "inference",
+            "ner_failure_class": "forward_pass_failed",
+            "analysis_signature": self.SIGNATURE,
+        }
+        client = AsyncMock()
+        client.get.return_value = unhealthy
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError) as exc_info:
+                await guardrail._get_analyzer_signature()
+
+        assert exc_info.value.phase == "inference"
+        assert exc_info.value.failure_class == "forward_pass_failed"
+
+    def test_cache_key_is_opaque_and_covers_exact_contract(self, guardrail, monkeypatch):
+        self._enable(guardrail)
+        source = "Секретный телефон +79031234567"
+        baseline = guardrail._analysis_cache_key(source, self._context())
+
+        assert baseline.startswith(pii_guardrail.ANALYSIS_CACHE_KEY_PREFIX)
+        assert source not in baseline
+        assert "+79031234567" not in baseline
+        assert baseline != guardrail._analysis_cache_key(
+            f"{source}.",
+            self._context(),
+        )
+        assert baseline != guardrail._analysis_cache_key(
+            source,
+            self._context(model="other-model"),
+        )
+        assert baseline != guardrail._analysis_cache_key(
+            source,
+            self._context(scope="another-hashed-key"),
+        )
+        changed_signature = {**self._context(), "analyzer_signature": "b" * 64}
+        assert baseline != guardrail._analysis_cache_key(source, changed_signature)
+
+        monkeypatch.setattr(
+            pii_guardrail,
+            "ANALYSIS_CACHE_SCORE_THRESHOLD",
+            0.5,
+        )
+        assert baseline != guardrail._analysis_cache_key(source, self._context())
+
+    def test_cache_entry_contains_coordinates_but_not_source_value(self, guardrail):
+        source = "Телефон +79031234567"
+        serialized = guardrail._serialize_analysis_cache_entry(
+            source,
+            [_entity(source, "+79031234567")],
+        )
+
+        assert serialized is not None
+        assert source not in serialized
+        assert "+79031234567" not in serialized
+        assert '"text"' not in serialized
+        assert guardrail._deserialize_analysis_cache_entry(
+            serialized,
+            len(source),
+        ) == [
+            {
+                "end": len(source),
+                "entity_type": "PHONE_NUMBER",
+                "score": 1.0,
+                "start": source.index("+79031234567"),
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        "serialized",
+        [
+            "not-json",
+            json.dumps({"schema": 1, "text_length": 5, "entities": "bad"}),
+            json.dumps(
+                {
+                    "schema": 1,
+                    "text_length": 5,
+                    "entities": [
+                        {
+                            "entity_type": "PHONE_NUMBER",
+                            "start": 0,
+                            "end": 9,
+                            "score": 1.0,
+                        }
+                    ],
+                }
+            ),
+        ],
+    )
+    def test_corrupt_cache_entry_is_rejected(self, guardrail, serialized):
+        assert guardrail._deserialize_analysis_cache_entry(serialized, 5) is None
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_analyzer(self, guardrail):
+        self._enable(guardrail)
+        source = "Телефон +79031234567"
+        context = self._context()
+        serialized = guardrail._serialize_analysis_cache_entry(
+            source,
+            [_entity(source, "+79031234567")],
+        )
+        guardrail._redis.get.return_value = serialized
+
+        with patch.object(guardrail, "_analyze_text", new_callable=AsyncMock) as analyze:
+            entities = await guardrail._analyze_text_with_cache(
+                source,
+                context,
+                str(uuid.uuid4()),
+                1,
+            )
+
+        assert entities[0]["entity_type"] == "PHONE_NUMBER"
+        analyze.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_saves_only_safe_entity_fields(self, guardrail):
+        self._enable(guardrail)
+        source = "Телефон +79031234567"
+        entities = [_entity(source, "+79031234567")]
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=entities),
+        ) as analyze:
+            result = await guardrail._analyze_text_with_cache(
+                source,
+                self._context(),
+                str(uuid.uuid4()),
+                1,
+            )
+
+        assert result == entities
+        analyze.assert_awaited_once_with(source)
+        cache_key, ttl, serialized = guardrail._redis.setex.await_args.args
+        assert cache_key.startswith(pii_guardrail.ANALYSIS_CACHE_KEY_PREFIX)
+        assert ttl == guardrail.mapping_ttl_seconds
+        assert source not in cache_key
+        assert source not in serialized
+        assert "+79031234567" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_cached_entities_still_create_request_scoped_mapping(
+        self,
+        guardrail,
+    ):
+        self._enable(guardrail)
+        redis = _MemoryRedis()
+        guardrail._redis = redis
+        auth = MagicMock()
+        auth.token = "hashed-virtual-key"
+        source = "Телефон +79031234567"
+
+        async def detect_phone(text):
+            return [_entity(text, "+79031234567")]
+
+        with (
+            patch.object(
+                guardrail,
+                "_get_analyzer_signature",
+                AsyncMock(return_value=self.SIGNATURE),
+            ),
+            patch.object(
+                guardrail,
+                "_analyze_text",
+                side_effect=detect_phone,
+            ) as analyze,
+        ):
+            requests = []
+            for _ in range(2):
+                data = {
+                    "model": "mock-chat",
+                    "messages": [{"role": "user", "content": source}],
+                }
+                requests.append(
+                    await guardrail.async_pre_call_hook(
+                        user_api_key_dict=auth,
+                        cache=MagicMock(),
+                        data=data,
+                        call_type="completion",
+                    )
+                )
+
+        assert analyze.await_count == 1
+        for request in requests:
+            assert request["messages"][0]["content"] == "Телефон <PHONE_NUMBER_1>"
+            mapping_key = f"pii_mapping:{request['metadata']['pii_request_id']}"
+            assert "+79031234567" in redis.values[mapping_key]
+
+        cache_values = [
+            value
+            for key, value in redis.values.items()
+            if key.startswith(pii_guardrail.ANALYSIS_CACHE_KEY_PREFIX)
+        ]
+        assert len(cache_values) == 1
+        assert "+79031234567" not in cache_values[0]
+
+    @pytest.mark.asyncio
+    async def test_cache_read_failure_falls_back_to_analyzer(self, guardrail):
+        self._enable(guardrail)
+        guardrail._redis.get.side_effect = RuntimeError("redis unavailable")
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze:
+            result = await guardrail._analyze_text_with_cache(
+                "Обычный текст",
+                self._context(),
+                str(uuid.uuid4()),
+                1,
+            )
+
+        assert result == []
+        analyze.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_logs_do_not_include_source_or_hmac(
+        self,
+        guardrail,
+        caplog,
+    ):
+        self._enable(guardrail)
+        source = "SECRET_KEY=never-log-this-value"
+
+        with (
+            patch.object(
+                guardrail,
+                "_analyze_text",
+                AsyncMock(return_value=[]),
+            ),
+            caplog.at_level(logging.INFO),
+        ):
+            await guardrail._analyze_text_with_cache(
+                source,
+                self._context(),
+                str(uuid.uuid4()),
+                1,
+            )
+
+        cache_key = guardrail._analysis_cache_key(source, self._context())
+        assert source not in caplog.text
+        assert "never-log-this-value" not in caplog.text
+        assert cache_key not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_analyzer_failure_is_not_cached(self, guardrail):
+        self._enable(guardrail)
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(side_effect=RuntimeError("analyzer failed")),
+        ):
+            with pytest.raises(RuntimeError, match="analyzer failed"):
+                await guardrail._analyze_text_with_cache(
+                    "Обычный текст",
+                    self._context(),
+                    str(uuid.uuid4()),
+                    1,
+                )
+
+        guardrail._redis.setex.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cache_write_failure_does_not_discard_analyzer_result(
+        self,
+        guardrail,
+    ):
+        self._enable(guardrail)
+        guardrail._redis.setex.side_effect = RuntimeError("redis unavailable")
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ):
+            result = await guardrail._analyze_text_with_cache(
+                "Обычный текст",
+                self._context(),
+                str(uuid.uuid4()),
+                1,
+            )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_cache_evicts_oldest_entries_above_global_limit(
+        self,
+        guardrail,
+        monkeypatch,
+    ):
+        self._enable(guardrail)
+        redis = _MemoryRedis()
+        guardrail._redis = redis
+        monkeypatch.setattr(pii_guardrail, "ANALYSIS_CACHE_MAX_ENTRIES", 1)
+
+        first_key = guardrail._analysis_cache_key("Первый", self._context())
+        second_key = guardrail._analysis_cache_key("Второй", self._context())
+        await guardrail._save_analysis_cache(first_key, "Первый", [])
+        await asyncio.sleep(0.001)
+        await guardrail._save_analysis_cache(second_key, "Второй", [])
+
+        assert first_key not in redis.values
+        assert second_key in redis.values
+        assert list(redis.index) == [second_key]
+
+    @pytest.mark.asyncio
+    async def test_identical_parallel_misses_share_one_analyzer_call(self, guardrail):
+        self._enable(guardrail)
+        redis = _MemoryRedis()
+        guardrail._redis = redis
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_analysis(_text):
+            started.set()
+            await release.wait()
+            return []
+
+        request_id = str(uuid.uuid4())
+        with patch.object(guardrail, "_analyze_text", side_effect=delayed_analysis) as analyze:
+            first = asyncio.create_task(
+                guardrail._analyze_text_with_cache(
+                    "Повторяемый текст",
+                    self._context(),
+                    request_id,
+                    1,
+                )
+            )
+            await started.wait()
+            second = asyncio.create_task(
+                guardrail._analyze_text_with_cache(
+                    "Повторяемый текст",
+                    self._context(),
+                    request_id,
+                    2,
+                )
+            )
+            await asyncio.sleep(0)
+            release.set()
+            assert await asyncio.gather(first, second) == [[], []]
+
+        assert analyze.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_growing_history_analyzes_only_new_text_field(self, guardrail):
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        auth = MagicMock()
+        auth.token = "hashed-virtual-key"
+        signature = AsyncMock(return_value=self.SIGNATURE)
+        analyze = AsyncMock(return_value=[])
+        first = {
+            "model": "mock-chat",
+            "messages": [
+                {"role": "system", "content": "Системная инструкция"},
+                {"role": "user", "content": "Первый вопрос"},
+            ],
+        }
+        second = {
+            "model": "mock-chat",
+            "previous_response_id": "resp-1",
+            "messages": [
+                {"role": "system", "content": "Системная инструкция"},
+                {"role": "user", "content": "Первый вопрос"},
+                {"role": "user", "content": "Новый вопрос"},
+            ],
+        }
+
+        with (
+            patch.object(guardrail, "_get_analyzer_signature", signature),
+            patch.object(guardrail, "_analyze_text", analyze),
+        ):
+            await guardrail.async_pre_call_hook(
+                user_api_key_dict=auth,
+                cache=MagicMock(),
+                data=first,
+                call_type="completion",
+            )
+            await guardrail.async_pre_call_hook(
+                user_api_key_dict=auth,
+                cache=MagicMock(),
+                data=second,
+                call_type="completion",
+            )
+
+        assert signature.await_count == 2
+        assert analyze.await_count == 3
+        assert [call.args[0] for call in analyze.await_args_list] == [
+            "Системная инструкция",
+            "Первый вопрос",
+            "Новый вопрос",
+        ]
+        assert second["previous_response_id"] == "resp-1"
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_analyzer_blocks_before_existing_cache_is_used(
+        self,
+        guardrail,
+    ):
+        self._enable(guardrail)
+        auth = MagicMock()
+        auth.token = "hashed-virtual-key"
+        data = {
+            "model": "mock-chat",
+            "messages": [{"role": "user", "content": "Обычный текст"}],
+        }
+
+        with patch.object(
+            guardrail,
+            "_get_analyzer_signature",
+            AsyncMock(
+                side_effect=AnalyzerUnavailableError(
+                    phase="inference",
+                    failure_class="forward_pass_failed",
+                )
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="required analyzer unavailable"):
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=auth,
+                    cache=MagicMock(),
+                    data=data,
+                    call_type="completion",
+                )
+
+        guardrail._redis.get.assert_not_awaited()
 
 
 # === dependency clients ===

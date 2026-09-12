@@ -1,13 +1,17 @@
 """Custom LiteLLM guardrail for Russian PII masking via Presidio."""
 
 import asyncio
+import hashlib
+import hmac
 import inspect
-import os
-import uuid
 import json
 import logging
+import math
+import os
 import re
 import time
+import uuid
+from contextvars import ContextVar
 from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
@@ -27,6 +31,8 @@ from litellm_guardrails.metrics import (
     DICTIONARY_SUBSTITUTION_MAPPING_SIZE,
     DICTIONARY_SUBSTITUTIONS_APPLIED,
     FINAL_PAYLOAD_LEAK_CHECK_BLOCKED,
+    PII_ANALYSIS_CACHE_LATENCY,
+    PII_ANALYSIS_CACHE_REQUESTS,
     PII_ANALYZER_LATENCY,
     PII_BLOCKED_ENTITIES,
     PII_ENTITIES_DETECTED,
@@ -190,6 +196,16 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
     "system",
 )
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
+ANALYSIS_CACHE_SCHEMA_VERSION = 1
+ANALYSIS_CACHE_KEY_PREFIX = "pii_analysis_cache:v1:"
+ANALYSIS_CACHE_INDEX_KEY = "pii_analysis_cache_index:v1"
+ANALYSIS_CACHE_MAX_ENTRIES = 10_000
+ANALYSIS_CACHE_MAX_VALUE_BYTES = 64 * 1024
+ANALYSIS_CACHE_MAX_ENTITIES = 2_000
+ANALYSIS_CACHE_SCORE_THRESHOLD = 0.35
+ANALYSIS_CACHE_SIGNATURE_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+ANALYSIS_CACHE_ENTITY_TYPE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+LITELLM_SALT_KEY = os.getenv("LITELLM_SALT_KEY", "")
 PII_BLOCKED_MESSAGE = "Request contains personal data and was blocked by PII policy."
 PRE_EGRESS_POLICY_BLOCKED_MESSAGE = (
     "Request contains configuration or log data and was blocked by pre-egress policy."
@@ -204,6 +220,12 @@ PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 ANALYZER_UNAVAILABLE_MESSAGE = "PII guardrail required analyzer unavailable"
+ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
+ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
+_ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int]]] = ContextVar(
+    "ru_llm_proxy_analyzer_call_context",
+    default=None,
+)
 ANALYZER_FAILURE_PHASES = frozenset(
     {
         "artifact_verification",
@@ -541,6 +563,7 @@ FINAL_PAYLOAD_LEAK_CHECK_CANARIES = tuple(
 )
 _REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
+_ANALYSIS_CACHE_INFLIGHT_BY_LOOP = WeakKeyDictionary()
 
 
 def _unique_clients(clients: list[Any]) -> list[Any]:
@@ -595,6 +618,16 @@ def _get_shared_analyzer_http_client() -> httpx.AsyncClient:
         )
         _ANALYZER_HTTP_CLIENTS_BY_LOOP[loop] = client
     return client
+
+
+def _get_analysis_cache_inflight() -> dict[str, asyncio.Task]:
+    """Return in-flight field analyses shared by guardrails in one event loop."""
+    loop = asyncio.get_running_loop()
+    tasks = _ANALYSIS_CACHE_INFLIGHT_BY_LOOP.get(loop)
+    if tasks is None:
+        tasks = {}
+        _ANALYSIS_CACHE_INFLIGHT_BY_LOOP[loop] = tasks
+    return tasks
 
 
 async def _maybe_await(value: Any) -> None:
@@ -657,6 +690,7 @@ async def close_guardrail_dependency_clients() -> None:
     analyzer_clients = _unique_clients(list(_ANALYZER_HTTP_CLIENTS_BY_LOOP.values()))
     _REDIS_CLIENTS_BY_LOOP.clear()
     _ANALYZER_HTTP_CLIENTS_BY_LOOP.clear()
+    _ANALYSIS_CACHE_INFLIGHT_BY_LOOP.clear()
 
     for client in analyzer_clients:
         await _close_client(client, operation="analyzer_http_client")
@@ -712,6 +746,9 @@ class RuPIIGuardrail(CustomGuardrail):
         **kwargs,
     ):
         self._redis = None
+        self._analysis_cache_secret = (
+            LITELLM_SALT_KEY.encode("utf-8") if LITELLM_SALT_KEY else None
+        )
         self.failure_mode = self._normalize_failure_mode(
             failure_mode or PII_GUARDRAIL_FAILURE_MODE
         )
@@ -1444,6 +1481,97 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return targets
 
+    @classmethod
+    def _request_shape_fields(
+        cls,
+        data: dict,
+        request_targets: list[tuple[dict, str]],
+    ) -> dict[str, Any]:
+        """Return bounded request-shape metadata without request content."""
+        messages = data.get("messages")
+        input_value = data.get("input")
+        if "input" in data or "previous_response_id" in data:
+            request_format = "responses"
+        elif isinstance(messages, list):
+            request_format = "messages"
+        else:
+            request_format = "unknown"
+
+        text_target_count = 0
+        non_empty_target_count = 0
+        text_character_count = 0
+        largest_text_target_character_count = 0
+        for target, field in request_targets:
+            text = target.get(field)
+            if not isinstance(text, str):
+                continue
+            text_target_count += 1
+            text_character_count += len(text)
+            largest_text_target_character_count = max(
+                largest_text_target_character_count,
+                len(text),
+            )
+            if text and not text.isspace():
+                non_empty_target_count += 1
+
+        opaque_encrypted_item_count = 0
+        if isinstance(input_value, list):
+            opaque_encrypted_item_count = sum(
+                1
+                for item in input_value
+                if isinstance(item, dict)
+                and item.get("type") in RESPONSES_OPAQUE_ENCRYPTED_ITEM_TYPES
+                and isinstance(item.get(RESPONSES_OPAQUE_ENCRYPTED_FIELD), str)
+            )
+
+        tools = data.get("tools")
+        return {
+            "request_format": request_format,
+            "stream": data.get("stream") is True,
+            "message_count": len(messages) if isinstance(messages, list) else 0,
+            "input_item_count": (
+                len(input_value)
+                if isinstance(input_value, list)
+                else 1
+                if isinstance(input_value, str)
+                else 0
+            ),
+            "tool_definition_count": len(tools) if isinstance(tools, list) else 0,
+            "text_target_count": text_target_count,
+            "analyzer_candidate_count": non_empty_target_count,
+            "text_character_count": text_character_count,
+            "largest_text_target_character_count": (
+                largest_text_target_character_count
+            ),
+            "previous_response_id_present": bool(data.get("previous_response_id")),
+            "prompt_cache_key_present": bool(data.get("prompt_cache_key")),
+            "opaque_encrypted_item_count": opaque_encrypted_item_count,
+        }
+
+    def _log_gateway_request_shape(
+        self,
+        *,
+        request_id: str,
+        data: dict,
+        request_targets: list[tuple[dict, str]],
+        started_at: float,
+        call_type: Optional[str] = None,
+    ) -> None:
+        """Emit request dimensions before any Analyzer call."""
+        fields = self._request_shape_fields(data, request_targets)
+        _safe_log(
+            logging.INFO,
+            "gateway_guardrail_request_shape",
+            request_id=request_id,
+            guardrail_name=str(
+                getattr(self, "guardrail_name", None) or "unknown"
+            ),
+            guardrail_mode="pre_call",
+            call_type=str(call_type or "unknown"),
+            shape_collection_latency_ms=_latency_ms(started_at),
+            **fields,
+        )
+
     @staticmethod
     def _add_policy_finding(
         findings: list[dict[str, str]],
@@ -2085,14 +2213,420 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return targets
 
+    @staticmethod
+    def _analysis_cache_scope(user_api_key_dict: UserAPIKeyAuth) -> Optional[str]:
+        """Return the stable hashed virtual-key identity supplied by LiteLLM."""
+        token = getattr(user_api_key_dict, "token", None)
+        if not isinstance(token, str) or not token or len(token) > 4096:
+            return None
+        return token
+
+    async def _get_analyzer_signature(self) -> str:
+        """Require a healthy Analyzer and return its behavior signature."""
+        started_at = time.perf_counter()
+        try:
+            client = _get_shared_analyzer_http_client()
+            response = await client.get(f"{PRESIDIO_ANALYZER_URL}/api/v1/health")
+            try:
+                payload = response.json()
+            except (TypeError, ValueError):
+                payload = {}
+
+            if not isinstance(payload, dict):
+                payload = {}
+            if response.status_code != 200:
+                raise AnalyzerUnavailableError(
+                    phase=str(payload.get("ner_failure_phase") or "readiness"),
+                    failure_class=str(
+                        payload.get("ner_failure_class") or "not_ready"
+                    ),
+                )
+
+            signature = payload.get("analysis_signature")
+            if (
+                payload.get("status") != "ok"
+                or payload.get("ner_state") != "ready"
+                or not isinstance(signature, str)
+                or not ANALYSIS_CACHE_SIGNATURE_PATTERN.fullmatch(signature)
+            ):
+                raise AnalyzerUnavailableError(
+                    phase="readiness",
+                    failure_class="unexpected_failure",
+                )
+            return signature
+        except AnalyzerUnavailableError:
+            raise
+        except Exception as exc:
+            raise AnalyzerUnavailableError(
+                phase="readiness",
+                failure_class="unexpected_failure",
+            ) from exc
+        finally:
+            PII_ANALYSIS_CACHE_LATENCY.labels(operation="health").observe(
+                time.perf_counter() - started_at
+            )
+
+    async def _prepare_analysis_cache_context(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,
+        data: dict,
+    ) -> Optional[dict[str, str]]:
+        """Build a request-level cache context without retaining raw prompts."""
+        if self._analysis_cache_secret is None:
+            return None
+        scope = self._analysis_cache_scope(user_api_key_dict)
+        model = data.get("model")
+        if (
+            scope is None
+            or not isinstance(model, str)
+            or not model
+            or len(model) > 256
+        ):
+            return None
+        return {
+            "analyzer_signature": await self._get_analyzer_signature(),
+            "model": model,
+            "scope": scope,
+        }
+
+    def _analysis_cache_key(self, text: str, context: dict[str, str]) -> str:
+        """Return an opaque per-key HMAC for one exact Analyzer input."""
+        if self._analysis_cache_secret is None:
+            raise RuntimeError("analysis cache secret is unavailable")
+        contract = {
+            "analyzer_signature": context["analyzer_signature"],
+            "entities": None,
+            "language": "ru",
+            "model": context["model"],
+            "schema": ANALYSIS_CACHE_SCHEMA_VERSION,
+            "scope": context["scope"],
+            "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
+        }
+        serialized_contract = json.dumps(
+            contract,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        digest = hmac.new(
+            self._analysis_cache_secret,
+            serialized_contract + b"\0" + text.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{ANALYSIS_CACHE_KEY_PREFIX}{digest}"
+
+    @classmethod
+    def _serialize_analysis_cache_entry(
+        cls,
+        text: str,
+        entities: list[dict],
+    ) -> Optional[str]:
+        """Serialize entity coordinates without retaining source values."""
+        if len(entities) > ANALYSIS_CACHE_MAX_ENTITIES:
+            return None
+
+        safe_entities = []
+        for entity in entities:
+            if not isinstance(entity, dict):
+                return None
+            try:
+                start = int(entity["start"])
+                end = int(entity["end"])
+                score = float(entity["score"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return None
+            entity_type = cls._normalize_entity_type(
+                str(entity.get("entity_type") or "PII")
+            )
+            if (
+                start < 0
+                or end > len(text)
+                or start >= end
+                or not math.isfinite(score)
+                or not 0 <= score <= 1
+                or not ANALYSIS_CACHE_ENTITY_TYPE_PATTERN.fullmatch(entity_type)
+            ):
+                return None
+            safe_entities.append(
+                {
+                    "end": end,
+                    "entity_type": entity_type,
+                    "score": score,
+                    "start": start,
+                }
+            )
+
+        serialized = json.dumps(
+            {
+                "entities": safe_entities,
+                "schema": ANALYSIS_CACHE_SCHEMA_VERSION,
+                "text_length": len(text),
+            },
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        if len(serialized.encode("utf-8")) > ANALYSIS_CACHE_MAX_VALUE_BYTES:
+            return None
+        return serialized
+
+    @staticmethod
+    def _deserialize_analysis_cache_entry(
+        serialized: str,
+        text_length: int,
+    ) -> Optional[list[dict]]:
+        """Validate a cached result completely before using any entity."""
+        if len(serialized.encode("utf-8")) > ANALYSIS_CACHE_MAX_VALUE_BYTES:
+            return None
+        try:
+            payload = json.loads(serialized)
+        except (TypeError, ValueError):
+            return None
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"entities", "schema", "text_length"}
+            or payload.get("schema") != ANALYSIS_CACHE_SCHEMA_VERSION
+            or payload.get("text_length") != text_length
+        ):
+            return None
+
+        entities = payload.get("entities")
+        if not isinstance(entities, list) or len(entities) > ANALYSIS_CACHE_MAX_ENTITIES:
+            return None
+        validated = []
+        for entity in entities:
+            if not isinstance(entity, dict) or set(entity) != {
+                "end",
+                "entity_type",
+                "score",
+                "start",
+            }:
+                return None
+            start = entity.get("start")
+            end = entity.get("end")
+            score = entity.get("score")
+            entity_type = entity.get("entity_type")
+            if (
+                not isinstance(start, int)
+                or isinstance(start, bool)
+                or not isinstance(end, int)
+                or isinstance(end, bool)
+                or not isinstance(score, (int, float))
+                or isinstance(score, bool)
+                or not isinstance(entity_type, str)
+                or start < 0
+                or end > text_length
+                or start >= end
+                or not math.isfinite(float(score))
+                or not 0 <= float(score) <= 1
+                or not ANALYSIS_CACHE_ENTITY_TYPE_PATTERN.fullmatch(entity_type)
+            ):
+                return None
+            validated.append(
+                {
+                    "end": end,
+                    "entity_type": entity_type,
+                    "score": float(score),
+                    "start": start,
+                }
+            )
+        return validated
+
+    @staticmethod
+    def _log_analysis_cache_result(
+        request_id: str,
+        text_field_index: int,
+        result: str,
+        error: Optional[Exception] = None,
+    ) -> None:
+        """Emit one content-free cache event with bounded fields."""
+        fields: dict[str, Any] = {
+            "request_id": request_id,
+            "result": result,
+            "text_field_index": text_field_index,
+        }
+        if error is not None:
+            fields["error_type"] = type(error).__name__
+        _safe_log(
+            logging.WARNING if error is not None else logging.INFO,
+            "pii_analysis_cache",
+            **fields,
+        )
+
+    async def _load_analysis_cache(
+        self,
+        cache_key: str,
+        text_length: int,
+    ) -> tuple[Optional[list[dict]], str, Optional[Exception]]:
+        """Load and validate one cached analysis, treating failures as misses."""
+        started_at = time.perf_counter()
+        try:
+            redis = await self._get_redis()
+            serialized = await redis.get(cache_key)
+            if serialized is None:
+                return None, "miss", None
+            if not isinstance(serialized, str):
+                return None, "error", TypeError("cache value is not text")
+            entities = self._deserialize_analysis_cache_entry(
+                serialized,
+                text_length,
+            )
+            if entities is None:
+                try:
+                    await redis.delete(cache_key)
+                except Exception:
+                    pass
+                return None, "error", ValueError("cache value is invalid")
+            return entities, "hit", None
+        except Exception as exc:
+            return None, "error", exc
+        finally:
+            PII_ANALYSIS_CACHE_LATENCY.labels(operation="load").observe(
+                time.perf_counter() - started_at
+            )
+
+    async def _save_analysis_cache(
+        self,
+        cache_key: str,
+        text: str,
+        entities: list[dict],
+    ) -> Optional[Exception]:
+        """Save one bounded result and approximately cap the global entry count."""
+        serialized = self._serialize_analysis_cache_entry(text, entities)
+        if serialized is None:
+            return ValueError("analysis result exceeds cache contract")
+
+        started_at = time.perf_counter()
+        try:
+            redis = await self._get_redis()
+            await redis.setex(cache_key, self.mapping_ttl_seconds, serialized)
+            await redis.zadd(ANALYSIS_CACHE_INDEX_KEY, {cache_key: time.time()})
+            await redis.expire(
+                ANALYSIS_CACHE_INDEX_KEY,
+                self.mapping_ttl_seconds * 2,
+            )
+            entry_count = await redis.zcard(ANALYSIS_CACHE_INDEX_KEY)
+            if isinstance(entry_count, int) and entry_count > ANALYSIS_CACHE_MAX_ENTRIES:
+                evicted = await redis.zpopmin(
+                    ANALYSIS_CACHE_INDEX_KEY,
+                    entry_count - ANALYSIS_CACHE_MAX_ENTRIES,
+                )
+                evicted_keys = [
+                    item[0]
+                    for item in evicted
+                    if isinstance(item, (list, tuple))
+                    and item
+                    and isinstance(item[0], str)
+                ]
+                if evicted_keys:
+                    await redis.delete(*evicted_keys)
+        except Exception as exc:
+            return exc
+        finally:
+            PII_ANALYSIS_CACHE_LATENCY.labels(operation="save").observe(
+                time.perf_counter() - started_at
+            )
+        return None
+
+    async def _analyze_and_cache(
+        self,
+        text: str,
+        cache_key: str,
+        request_id: str,
+        text_field_index: int,
+    ) -> list[dict]:
+        """Run Analyzer once and save only a successful safe result."""
+        entities = await self._analyze_text(text)
+        save_error = await self._save_analysis_cache(cache_key, text, entities)
+        if save_error is not None:
+            PII_ANALYSIS_CACHE_REQUESTS.labels(result="error").inc()
+            self._log_analysis_cache_result(
+                request_id,
+                text_field_index,
+                "write_error",
+                save_error,
+            )
+        return entities
+
+    async def _analyze_text_with_cache(
+        self,
+        text: str,
+        cache_context: Optional[dict[str, str]],
+        request_id: str,
+        text_field_index: int,
+    ) -> list[dict]:
+        """Reuse exact per-key results and coalesce identical local misses."""
+        if cache_context is None:
+            PII_ANALYSIS_CACHE_REQUESTS.labels(result="bypass").inc()
+            self._log_analysis_cache_result(
+                request_id,
+                text_field_index,
+                "bypass",
+            )
+            return await self._analyze_text(text)
+
+        cache_key = self._analysis_cache_key(text, cache_context)
+        cached, cache_result, cache_error = await self._load_analysis_cache(
+            cache_key,
+            len(text),
+        )
+        PII_ANALYSIS_CACHE_REQUESTS.labels(result=cache_result).inc()
+        self._log_analysis_cache_result(
+            request_id,
+            text_field_index,
+            cache_result,
+            cache_error,
+        )
+        if cached is not None:
+            return cached
+
+        inflight = _get_analysis_cache_inflight()
+        task = inflight.get(cache_key)
+        if task is not None:
+            PII_ANALYSIS_CACHE_REQUESTS.labels(result="coalesced").inc()
+            self._log_analysis_cache_result(
+                request_id,
+                text_field_index,
+                "coalesced",
+            )
+            return list(await asyncio.shield(task))
+
+        task = asyncio.create_task(
+            self._analyze_and_cache(
+                text,
+                cache_key,
+                request_id,
+                text_field_index,
+            )
+        )
+        inflight[cache_key] = task
+
+        def remove_finished(finished: asyncio.Task) -> None:
+            if inflight.get(cache_key) is finished:
+                inflight.pop(cache_key, None)
+            if not finished.cancelled():
+                finished.exception()
+
+        task.add_done_callback(remove_finished)
+        return list(await asyncio.shield(task))
+
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
         started_at = time.perf_counter()
         try:
             client = _get_shared_analyzer_http_client()
+            headers = {}
+            analyzer_call_context = _ANALYZER_CALL_CONTEXT.get()
+            if analyzer_call_context is not None:
+                request_id, text_field_index = analyzer_call_context
+                headers = {
+                    ANALYZER_REQUEST_ID_HEADER: request_id,
+                    ANALYZER_TEXT_FIELD_INDEX_HEADER: str(text_field_index),
+                }
             response = await client.post(
                 f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
                 json={"text": text, "language": "ru", "score_threshold": 0.35},
+                headers=headers,
             )
             if response.status_code == 503:
                 try:
@@ -2894,6 +3428,13 @@ class RuPIIGuardrail(CustomGuardrail):
         self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
         request_id = self._get_request_id(data)
+        self._log_gateway_request_shape(
+            request_id=request_id,
+            data=data,
+            request_targets=request_targets,
+            started_at=started_at,
+            call_type=call_type,
+        )
         if not request_targets:
             self._run_final_payload_leak_check(
                 data,
@@ -2945,6 +3486,9 @@ class RuPIIGuardrail(CustomGuardrail):
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
+        analyzer_call_index = 0
+        analysis_cache_context: Optional[dict[str, str]] = None
+        analysis_cache_context_prepared = False
 
         for target, field in request_targets:
             content = target[field]
@@ -2962,7 +3506,27 @@ class RuPIIGuardrail(CustomGuardrail):
                 if dictionary_result.mapping:
                     dictionary_mapping.update(dictionary_result.mapping)
 
-                entities = await self._analyze_text(provider_content)
+                analyzer_call_index += 1
+                analyzer_context_token = _ANALYZER_CALL_CONTEXT.set(
+                    (request_id, analyzer_call_index)
+                )
+                try:
+                    if not analysis_cache_context_prepared:
+                        analysis_cache_context = (
+                            await self._prepare_analysis_cache_context(
+                                user_api_key_dict,
+                                data,
+                            )
+                        )
+                        analysis_cache_context_prepared = True
+                    entities = await self._analyze_text_with_cache(
+                        provider_content,
+                        analysis_cache_context,
+                        request_id,
+                        analyzer_call_index,
+                    )
+                finally:
+                    _ANALYZER_CALL_CONTEXT.reset(analyzer_context_token)
                 if not entities:
                     if provider_content != content:
                         pending_updates.append((target, field, content, provider_content))

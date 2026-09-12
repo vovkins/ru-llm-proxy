@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import unicodedata
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from presidio.ner.huggingface_recognizer import (
     HuggingFaceNERRecognizer,
     NERConfigurationError,
     NERInferenceTelemetry,
+    NERInferenceCancelled,
     NERProcessingError,
     NERUnavailableError,
     NERWindowBoundaryError,
@@ -108,17 +110,25 @@ class GlobalLabelModel(FakeModel):
 
     def __call__(self, **kwargs):
         self.call_count += 1
-        input_ids = kwargs["input_ids"][0].tolist()
-        self.input_lengths.append(len(input_ids))
-        label_ids = [
-            self.labels_by_token.get(token_id - 1000, 0)
-            if token_id >= 1000
-            else 0
-            for token_id in input_ids
-        ]
-        logits = torch.full((1, len(label_ids), len(EXPECTED_ID2LABEL)), -10.0)
-        for index, label_id in enumerate(label_ids):
-            logits[0, index, label_id] = 10.0
+        input_batches = kwargs["input_ids"].tolist()
+        self.input_lengths.append(len(input_batches[0]))
+        logits = torch.full(
+            (
+                len(input_batches),
+                len(input_batches[0]),
+                len(EXPECTED_ID2LABEL),
+            ),
+            -10.0,
+        )
+        for batch_index, input_ids in enumerate(input_batches):
+            label_ids = [
+                self.labels_by_token.get(token_id - 1000, 0)
+                if token_id >= 1000
+                else 0
+                for token_id in input_ids
+            ]
+            for index, label_id in enumerate(label_ids):
+                logits[batch_index, index, label_id] = 10.0
         return SimpleNamespace(logits=logits)
 
 
@@ -138,6 +148,56 @@ def _recognizer_for(labels, token_offsets):
     tokenizer = FakeTokenizer(token_offsets)
     model = FakeModel([0, *labels, 0])
     return HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model), tokenizer, model
+
+
+def test_window_batching_uses_one_forward_pass_for_multiple_windows():
+    token_count = MAX_CONTENT_TOKENS * 2
+    text = "x" * token_count
+    offsets = [(index, index + 1) for index in range(token_count)]
+    tokenizer = FakeTokenizer(offsets)
+    model = GlobalLabelModel()
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        inference_batch_size=4,
+    )
+    telemetry = []
+
+    assert recognizer.analyze(text, telemetry_callback=telemetry.append) == []
+
+    assert model.call_count == 1
+    assert model.input_lengths == [MAX_CONTENT_TOKENS + 2]
+    assert telemetry[0].windows_processed == 3
+    assert telemetry[0].input_tokens == token_count
+
+
+def test_cancellation_between_batches_does_not_poison_backend():
+    token_count = MAX_CONTENT_TOKENS * 2
+    text = "x" * token_count
+    offsets = [(index, index + 1) for index in range(token_count)]
+    cancellation_event = threading.Event()
+    tokenizer = FakeTokenizer(offsets)
+
+    class CancelAfterFirstBatch(GlobalLabelModel):
+        def __call__(self, **kwargs):
+            result = super().__call__(**kwargs)
+            cancellation_event.set()
+            return result
+
+    model = CancelAfterFirstBatch()
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        inference_batch_size=1,
+    )
+
+    with pytest.raises(NERInferenceCancelled):
+        recognizer.analyze(text, cancellation_event=cancellation_event)
+
+    assert model.call_count == 1
+    assert recognizer.is_ready() is True
+    assert recognizer.failure_phase() is None
+    assert recognizer.failure_class() is None
 
 
 def _manifest():
@@ -264,6 +324,7 @@ def test_successful_analysis_emits_bounded_inference_telemetry():
     assert events[0].outcome == "success"
     assert events[0].duration_seconds >= 0
     assert events[0].windows_processed == 1
+    assert events[0].input_tokens == 1
     assert events[0].failure_phase is None
     assert events[0].failure_class is None
 
@@ -275,6 +336,8 @@ def test_invalid_inference_telemetry_is_rejected():
         NERInferenceTelemetry("success", -0.1, 1)
     with pytest.raises(ValueError, match="window"):
         NERInferenceTelemetry("success", 0.1, -1)
+    with pytest.raises(ValueError, match="input-token"):
+        NERInferenceTelemetry("success", 0.1, 1, input_tokens=-1)
 
 
 def test_repeated_values_keep_tokenizer_offsets():
@@ -301,14 +364,14 @@ def test_score_threshold_uses_unrounded_span_minimum(monkeypatch):
     monkeypatch.setattr(
         recognizer,
         "_predict_window_entities",
-        lambda _text: ([below], 1),
+        lambda _text, **_kwargs: ([below], 1),
     )
     assert recognizer.analyze("secret", score_threshold=0.35) == []
 
     monkeypatch.setattr(
         recognizer,
         "_predict_window_entities",
-        lambda _text: ([at_threshold], 1),
+        lambda _text, **_kwargs: ([at_threshold], 1),
     )
     assert len(recognizer.analyze("secret", score_threshold=0.35)) == 1
 
@@ -338,7 +401,7 @@ def test_requested_entities_and_score_threshold_are_applied_together(monkeypatch
     monkeypatch.setattr(
         recognizer,
         "_predict_window_entities",
-        lambda _text: (predictions, 1),
+        lambda _text, **_kwargs: (predictions, 1),
     )
 
     assert recognizer.analyze(
@@ -365,6 +428,7 @@ def test_irrelevant_requested_entities_skip_model():
     assert len(events) == 1
     assert events[0].outcome == "skipped"
     assert events[0].windows_processed == 0
+    assert events[0].input_tokens == 0
 
 
 def test_long_input_is_processed_in_overlapping_windows():
@@ -378,8 +442,8 @@ def test_long_input_is_processed_in_overlapping_windows():
     assert [(result.entity_type, result.start, result.end) for result in results] == [
         ("PERSON", token_count - 1, token_count)
     ]
-    assert model.call_count == 2
-    assert model.input_lengths == [MAX_CONTENT_TOKENS + 2, 65 + 2]
+    assert model.call_count == 1
+    assert model.input_lengths == [MAX_CONTENT_TOKENS + 2]
     assert [len(ids) for ids in tokenizer.prepared_input_ids] == [
         MAX_CONTENT_TOKENS,
         65,
@@ -397,7 +461,7 @@ def test_sensitive_value_at_end_of_third_window_is_not_lost():
     assert [(result.entity_type, result.start, result.end) for result in results] == [
         ("SECRET_KEY", token_count - 1, token_count)
     ]
-    assert model.call_count == 3
+    assert model.call_count == 1
 
 
 def test_entity_crossing_window_boundary_is_emitted_once():
@@ -430,12 +494,13 @@ def test_shifted_window_recovers_entity_longer_than_overlap():
     assert [(result.entity_type, result.start, result.end) for result in results] == [
         ("PERSON", 300, 451)
     ]
-    assert model.call_count == 3
-    assert model.input_lengths == [386, 182, 386]
+    assert model.call_count == 2
+    assert model.input_lengths == [386, 386]
     assert [len(ids) for ids in tokenizer.prepared_input_ids] == [384, 180, 384]
     assert len(events) == 1
     assert events[0].outcome == "success"
     assert events[0].windows_processed == 3
+    assert events[0].input_tokens == token_count
     assert recognizer.is_ready() is True
 
 
@@ -470,7 +535,7 @@ def test_unresolved_boundary_is_request_scoped_and_next_request_succeeds():
     tokenizer.offsets = _character_offsets(2)
     model.labels_by_token = {}
     assert recognizer.analyze("ok") == []
-    assert model.call_count == 4
+    assert model.call_count == 3
     assert recognizer.is_ready() is True
 
 
@@ -479,7 +544,11 @@ def test_recovery_forward_failure_marks_backend_failed():
     labels = {300: 1, **{index: 2 for index in range(301, 451)}}
     tokenizer = FakeTokenizer(_character_offsets(token_count))
     model = FailOnCallModel(fail_on_call=3, labels_by_token=labels)
-    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        inference_batch_size=1,
+    )
 
     with pytest.raises(NERProcessingError) as exc_info:
         recognizer.analyze("x" * token_count)
@@ -532,7 +601,7 @@ def test_input_processing_failure_does_not_poison_backend(
     recognizer, _, _ = _recognizer_for([0], [(0, 2)])
     original_predict = recognizer._predict_window_entities
 
-    def fail_request(_text):
+    def fail_request(_text, **_kwargs):
         raise NERProcessingError(
             phase=phase,
             failure_class=failure_class,
@@ -563,7 +632,7 @@ def test_offset_mapping_failure_does_not_poison_backend(monkeypatch):
     monkeypatch.setattr(
         recognizer,
         "_predict_window_entities",
-        lambda _text: ([outside_text], 1),
+        lambda _text, **_kwargs: ([outside_text], 1),
     )
 
     with pytest.raises(NERProcessingError) as exc_info:
@@ -684,7 +753,11 @@ def test_pdf_soft_hyphen_and_emoji_keep_original_contract_span():
 def test_inference_failure_is_not_suppressed():
     tokenizer = FakeTokenizer([(0, 4)])
     model = FakeModel([0, 1, 0], error=RuntimeError("inference failed"))
-    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        inference_batch_size=1,
+    )
 
     with pytest.raises(NERProcessingError) as exc_info:
         recognizer.analyze("Иван")
@@ -709,7 +782,11 @@ def test_inference_failure_reports_completed_windows():
     token_count = MAX_CONTENT_TOKENS + 1
     tokenizer = FakeTokenizer(_character_offsets(token_count))
     model = FailOnCallModel(fail_on_call=2)
-    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        inference_batch_size=1,
+    )
     events = []
 
     with pytest.raises(NERProcessingError) as exc_info:

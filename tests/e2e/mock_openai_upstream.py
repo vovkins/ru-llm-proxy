@@ -29,6 +29,7 @@ ECHO_RESPONSES_CONTENT = os.getenv(
     "yes",
 }
 PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
+ANALYZER_SIGNATURE = "0" * 64
 
 CAPTURE = {
     "analyzer_requests": 0,
@@ -174,9 +175,33 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _write_sse(self, events):
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.send_header("cache-control", "no-cache")
+        self.send_header("connection", "close")
+        self.end_headers()
+        for event_name, payload in events:
+            if event_name:
+                self.wfile.write(f"event: {event_name}\n".encode("utf-8"))
+            data = payload if isinstance(payload, str) else json.dumps(payload)
+            self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
+            self.wfile.flush()
+        self.close_connection = True
+
     def do_GET(self):
         if self.path == "/health":
             self._write_json(200, {"status": "ok"})
+            return
+        if self.path == "/api/v1/health":
+            self._write_json(
+                200,
+                {
+                    "status": "ok",
+                    "ner_state": "ready",
+                    "analysis_signature": ANALYZER_SIGNATURE,
+                },
+            )
             return
         if self.path == "/capture":
             self._write_json(200, dict(CAPTURE))
@@ -209,6 +234,49 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
             response_content = _chat_response_content(payload)
+            if payload.get("stream") is True:
+                created = int(time.time())
+                self._write_sse(
+                    [
+                        (
+                            "",
+                            {
+                                "id": "chatcmpl-mock",
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": "mock-chat",
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {
+                                            "role": "assistant",
+                                            "content": response_content,
+                                        },
+                                        "finish_reason": None,
+                                    }
+                                ],
+                            },
+                        ),
+                        (
+                            "",
+                            {
+                                "id": "chatcmpl-mock",
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": "mock-chat",
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {},
+                                        "finish_reason": "stop",
+                                    }
+                                ],
+                            },
+                        ),
+                        ("", "[DONE]"),
+                    ]
+                )
+                return
             self._write_json(
                 200,
                 {
@@ -238,35 +306,62 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
             response_content = _responses_response_content(payload)
+            response = {
+                "id": "resp_mock",
+                "object": "response",
+                "created_at": int(time.time()),
+                "status": "completed",
+                "model": "mock-chat",
+                "output": [
+                    {
+                        "id": "msg_mock",
+                        "type": "message",
+                        "status": "completed",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": response_content,
+                                "annotations": [],
+                            }
+                        ],
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "total_tokens": 2,
+                },
+            }
+            if payload.get("stream") is True:
+                self._write_sse(
+                    [
+                        (
+                            "response.output_text.delta",
+                            {
+                                "type": "response.output_text.delta",
+                                "sequence_number": 0,
+                                "item_id": "msg_mock",
+                                "output_index": 0,
+                                "content_index": 0,
+                                "delta": response_content,
+                                "logprobs": [],
+                            },
+                        ),
+                        (
+                            "response.completed",
+                            {
+                                "type": "response.completed",
+                                "sequence_number": 1,
+                                "response": response,
+                            },
+                        ),
+                    ]
+                )
+                return
             self._write_json(
                 200,
-                {
-                    "id": "resp_mock",
-                    "object": "response",
-                    "created_at": int(time.time()),
-                    "status": "completed",
-                    "model": "mock-chat",
-                    "output": [
-                        {
-                            "id": "msg_mock",
-                            "type": "message",
-                            "status": "completed",
-                            "role": "assistant",
-                            "content": [
-                                {
-                                    "type": "output_text",
-                                    "text": response_content,
-                                    "annotations": [],
-                                }
-                            ],
-                        }
-                    ],
-                    "usage": {
-                        "input_tokens": 1,
-                        "output_tokens": 1,
-                        "total_tokens": 2,
-                    },
-                },
+                response,
             )
             return
 

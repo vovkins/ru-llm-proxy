@@ -79,6 +79,19 @@ PII_ANALYZER_LATENCY = _build_metric(
     "Latency of Presidio Analyzer calls made by the PII guardrail.",
     buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
 )
+PII_ANALYSIS_CACHE_REQUESTS = _build_metric(
+    Counter,
+    "ru_pii_guardrail_analysis_cache_requests",
+    "PII analysis cache operations by bounded result.",
+    ["result"],
+)
+PII_ANALYSIS_CACHE_LATENCY = _build_metric(
+    Histogram,
+    "ru_pii_guardrail_analysis_cache_latency_seconds",
+    "Latency of PII analysis cache operations.",
+    ["operation"],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+)
 PII_REDIS_LATENCY = _build_metric(
     Histogram,
     "ru_pii_guardrail_redis_latency_seconds",
@@ -140,6 +153,8 @@ __all__ = [
     "DICTIONARY_SUBSTITUTION_MAPPING_SIZE",
     "DICTIONARY_SUBSTITUTIONS_APPLIED",
     "FINAL_PAYLOAD_LEAK_CHECK_BLOCKED",
+    "PII_ANALYSIS_CACHE_LATENCY",
+    "PII_ANALYSIS_CACHE_REQUESTS",
     "PII_ANALYZER_LATENCY",
     "PII_BLOCKED_ENTITIES",
     "PII_ENTITIES_DETECTED",

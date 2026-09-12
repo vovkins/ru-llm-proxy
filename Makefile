@@ -138,6 +138,7 @@ test-static: test-routing-diagnostics
 		tests/test_analyzer_image_contract.py \
 		tests/test_ner_integration_config.py \
 		tests/test_analyzer_telemetry_config.py \
+		tests/test_long_context_benchmark.py \
 		tests/test_model_profile_config.py \
 		tests/test_codex_lb_compose_config.py \
 		tests/test_codex_lb_litellm_config.py \
@@ -158,7 +159,8 @@ test-static: test-routing-diagnostics
 		tests/test_dictionary_substitution_config.py \
 		presidio/tests/test_capacity.py \
 		presidio/tests/test_evaluation.py \
-		presidio/tests/test_ner_text_processing.py
+		presidio/tests/test_ner_text_processing.py \
+		presidio/tests/test_text_chunking.py
 
 test-recognizers:
 	@echo "🧪 Recognizer + NER unit tests"

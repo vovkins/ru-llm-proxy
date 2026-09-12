@@ -138,13 +138,11 @@ def contract_context_evidence(text: str) -> tuple[tuple[int, int], ...]:
         if end - start < 3:
             continue
 
-        sentence_start = start
-        while sentence_start > 0 and not _is_sentence_boundary(
-            text,
-            sentence_start - 1,
-        ):
-            sentence_start -= 1
-        context_start = max(sentence_start, start - 96)
+        context_start = max(0, start - 96)
+        for index in range(start - 1, context_start - 1, -1):
+            if _is_sentence_boundary(text, index):
+                context_start = index + 1
+                break
         context = text[context_start:start]
         has_contract_context = _CONTRACT_CONTEXT_RE.search(context) is not None
         has_disqualifier = _CONTRACT_DISQUALIFIER_RE.search(context) is not None
