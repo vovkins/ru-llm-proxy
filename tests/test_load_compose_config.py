@@ -94,6 +94,8 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert "LOAD_EXTERNAL_KEY_FILE" in script
     assert "compose_scaffold_created=true" in script
     assert "LOAD_VALIDATE_MAPPING=false" in script
+    assert 'LOAD_REPORT_NODE=${LOAD_REPORT_NODE:-local}' in script
+    assert '-e LOAD_REPORT_NODE="$LOAD_REPORT_NODE"' in script
     assert '"${COMPOSE[@]}" --profile load down -v --remove-orphans' in script
     assert "/Applications/Docker.app/Contents/Resources/bin" in script
     assert 'export PATH="$DOCKER_DESKTOP_BIN:$PATH"' in script
