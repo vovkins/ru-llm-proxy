@@ -46,6 +46,10 @@
 [происхождения и обновления модели](research/ner-model-provenance.md); подробная
 матрица проверок находится в
 [ner-migration-test-coverage.md](research/ner-migration-test-coverage.md).
+Ручная проверка производительности длинного контекста описана в
+[long-context-benchmark.md](research/long-context-benchmark.md), а измеренный
+исходный уровень — в
+[long-context-baseline.md](research/long-context-baseline.md).
 
 ## Правила поддержки
 

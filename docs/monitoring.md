@@ -165,6 +165,8 @@ make monitor-smoke STACK=litellm-presidio
 | `ru_pii_guardrail_fail_open_total` | `operation` | Небезопасное продолжение после ошибки |
 | `ru_pii_guardrail_fail_closed_total` | `operation` | Остановленные после ошибки запросы |
 | `ru_pii_guardrail_analyzer_latency_seconds_*` | нет | HTTP-задержка Analyzer |
+| `ru_pii_guardrail_analysis_cache_requests_total` | `result` | Попадания, промахи, обходы, ошибки и объединённые запросы |
+| `ru_pii_guardrail_analysis_cache_latency_seconds_*` | `operation` | Время health, чтения и записи кэша анализа |
 | `ru_pii_guardrail_redis_latency_seconds_*` | `operation` | Задержка Redis |
 | `ru_pii_guardrail_mapping_size_*` | нет | Размер PII-сопоставления |
 | `ru_dictionary_substitution_applied_total` | `rule_id` | Словарные подстановки |
@@ -185,6 +187,12 @@ LiteLLM создаёт отдельные экземпляры защитног�
 трафика означает неисправность регистрации метрик; проверьте журналы запуска на
 `Prometheus metric registration conflict`.
 
+Для растущей истории сравнивайте `result="hit"` и `result="miss"` у
+`ru_pii_guardrail_analysis_cache_requests_total`. `bypass` означает отсутствие
+пригодного хеша виртуального ключа или соли, `coalesced` — объединение
+одновременных одинаковых промахов, `error` — отказ чтения или записи с переходом
+к обычному анализу. Метрики не содержат HMAC, текст или пользовательские метки.
+
 ### Presidio Analyzer
 
 | Метрика | Метки | Назначение |
@@ -197,7 +205,13 @@ LiteLLM создаёт отдельные экземпляры защитног�
 | `ru_presidio_analyzer_ner_failures_total` | `phase`, `failure_class` | Отказы обязательной NER |
 | `ru_presidio_analyzer_ner_inference_total` | `outcome` | Итог попыток NER |
 | `ru_presidio_analyzer_ner_inference_duration_seconds_*` | `outcome` | Время NER без очереди |
+| `ru_presidio_analyzer_ner_input_tokens_*` | `outcome` | Фактическое число входных токенов NER |
 | `ru_presidio_analyzer_ner_windows_processed_*` | `outcome` | Полностью обработанные окна |
+| `ru_presidio_analyzer_queue_wait_seconds_*` | `outcome` | Ожидание локальной очереди Analyzer |
+| `ru_presidio_analyzer_phase_duration_seconds_*` | `phase`, `outcome` | Время Presidio, NER и объединения результатов |
+| `ru_presidio_analyzer_input_characters_*` | нет | Размер отдельного текстового поля в символах |
+| `ru_presidio_analyzer_text_chunks_*` | нет | Число наружных фрагментов одного поля |
+| `ru_presidio_analyzer_text_chunk_characters_*` | нет | Размер обработанного наружного фрагмента |
 | `ru_presidio_analyzer_merge_decisions_total` | `reason`, `winner_source`, `loser_source` | Разрешение пересечений детекторов |
 
 `ru_pii_guardrail_analyzer_latency_seconds_*` измеряет весь HTTP-вызов из
@@ -210,6 +224,9 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 проверка состояния NER остаётся `ready`. `forward_pass_failed`, ошибки загрузки и
 прогрева означают отказ обязательной модели и переводят Analyzer в `unhealthy`.
 Дополнительные окна входят в `ru_presidio_analyzer_ner_windows_processed_*`.
+Рост `ru_presidio_analyzer_text_chunks_*` показывает большие единичные поля, а
+не число сообщений клиента. Событие `presidio_analyzer_request` содержит
+безопасное поле `text_chunk_count`; текст и координаты в него не входят.
 
 ## Политики в мониторинге
 
@@ -263,20 +280,36 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 
 ## Структурированные журналы
 
-Основной контракт решения на уровне шлюза — `gateway_guardrail_audit`. Он
-содержит `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`,
+Перед анализом шлюз пишет `gateway_guardrail_request_shape`. Событие содержит
+только форму запроса: `call_type`, вид нагрузки, признак потоковой передачи,
+количество сообщений, элементов `input`, определений инструментов и текстовых
+полей, суммарный и максимальный размер текста в символах. Признаки
+`previous_response_id`, `prompt_cache_key` и количество элементов с непрозрачным
+`encrypted_content` записываются без их значений. По `request_id` это событие
+сопоставляется с итоговым `gateway_guardrail_audit` и позволяет отделить время
+защитной обработки от проблем следующего компонента.
+
+Основной итоговый контракт решения на уровне шлюза — `gateway_guardrail_audit`.
+Он содержит `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`,
 `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`,
 а при ошибке — `block_reason`, `error_code` и ограниченные правила/категории.
 
-Analyzer пишет `presidio_analyzer_request` с `outcome`, `latency_ms`,
-`entity_count`, `entity_counts`, `language`, `score_threshold`, `ner` и
-`capacity`. Жизненный цикл модели отражают `presidio_ner_startup_begin`,
-`presidio_ner_startup_ready`, `presidio_ner_startup_failed`; каждая попытка NER
-пишет `presidio_ner_inference` с `outcome`, `duration_ms` и `windows_processed`.
+Каждое обращение к Analyzer получает тот же серверный `request_id` и порядковый
+`text_field_index`. Analyzer проверяет формат этих заголовков и не принимает в
+журнал произвольные значения клиента. `presidio_analyzer_request` содержит
+также `outcome`, полную задержку, ожидание очереди, размер поля, агрегаты
+сущностей и состояние ограничителя нагрузки. `presidio_analyzer_phase`
+разделяет время Presidio (spaCy и зарегистрированные правила), NER и
+объединения результатов.
+`presidio_ner_inference` добавляет фактическое число токенов и BERT-окон.
+Жизненный цикл модели отражают `presidio_ner_startup_begin`,
+`presidio_ner_startup_ready` и `presidio_ner_startup_failed`.
 
 | Событие | Уровень | Назначение |
 | --- | --- | --- |
+| `gateway_guardrail_request_shape` | `INFO` | Безопасные размеры и форма запроса до обращения к Analyzer |
 | `gateway_guardrail_audit` | `INFO` | Одно безопасное решение до вызова модели |
+| `pii_analysis_cache` | `INFO`/`WARNING` | Попадание, промах, обход, объединение или ошибка кэша без текста и HMAC |
 | `pii_guardrail_masked`, `pii_guardrail_blocked` | `INFO` | Маскирование или блокировка PII |
 | `dictionary_substitution_applied` | `INFO` | Словарная замена |
 | `synthetic_pii_allowlist_applied` | `INFO` | Исключение синтетического значения |
@@ -288,7 +321,7 @@ Analyzer пишет `presidio_analyzer_request` с `outcome`, `latency_ms`,
 | `pii_guardrail_cleanup_failed` | `WARNING` | Redis не удалил сопоставление; запись ограничена настроенным TTL |
 | `pii_guardrail_failed_open`, `pii_guardrail_failed_closed` | `ERROR` | Ошибка зависимости |
 | `pii_guardrail_analyzer_overloaded` | `ERROR` | Перегрузка Analyzer |
-| `presidio_analyzer_request`, `presidio_ner_inference` | `INFO` | Обработка в Analyzer |
+| `presidio_analyzer_request`, `presidio_analyzer_phase`, `presidio_ner_inference` | `INFO` | Обработка и этапы Analyzer |
 | `presidio_ner_startup_failed` | `CRITICAL` | Модель не готова |
 
 Во всех событиях запрещены исходный запрос, найденные значения, смещения,

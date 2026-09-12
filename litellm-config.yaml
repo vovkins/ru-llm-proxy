@@ -73,7 +73,7 @@ guardrails:
             API_KEY, SECRET_KEY, AUTH_TOKEN, LOGIN, PASSWORD.
         - name: "mapping_store"
           type: "string"
-          description: "Redis-ключ pii_mapping:<pii_request_id> с серверным идентификатором сопоставления и временем жизни из PII_MAPPING_TTL_SECONDS."
+          description: "Redis хранит временное сопоставление pii_mapping:<pii_request_id> и HMAC-кэш координат сущностей с общим временем жизни PII_MAPPING_TTL_SECONDS; исходный текст в кэш анализа не записывается."
         - name: "policy_mode"
           type: "string"
           description: "PII_GUARDRAIL_MODE: mask сохраняет обратимое маскирование, block отклоняет найденные персональные данные до вызова провайдера."

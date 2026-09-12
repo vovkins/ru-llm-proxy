@@ -80,6 +80,10 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=5):
     pass
 PY
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T redis \
+        redis-cli --raw EVAL \
+        "local keys=redis.call('keys', ARGV[1]); for _,key in ipairs(keys) do redis.call('del', key) end; return #keys" \
+        0 'pii_analysis_cache:v1:*' >/dev/null
 }
 
 post_json() {

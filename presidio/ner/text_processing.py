@@ -98,8 +98,13 @@ def _preferred_window_end(
             paragraph_ends.append(end_token)
             continue
         if separator and separator.isspace():
-            preceding = text[:previous_end].rstrip()
-            if preceding and preceding[-1] in SENTENCE_ENDINGS:
+            preceding_index = previous_end - 1
+            while preceding_index >= 0 and text[preceding_index].isspace():
+                preceding_index -= 1
+            if (
+                preceding_index >= 0
+                and text[preceding_index] in SENTENCE_ENDINGS
+            ):
                 sentence_ends.append(end_token)
 
     if paragraph_ends:

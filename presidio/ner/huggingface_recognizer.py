@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,7 @@ MODEL_ARCHITECTURE = "BertForTokenClassification"
 MAX_CONTENT_TOKENS = 384
 WINDOW_OVERLAP_TOKENS = 64
 WINDOW_BOUNDARY_SEARCH_TOKENS = 64
+DEFAULT_INFERENCE_BATCH_SIZE = 4
 
 EXPECTED_ID2LABEL = {
     0: "O",
@@ -87,6 +89,10 @@ class NERWindowBoundaryError(RuntimeError):
             f"NER produced only truncated {first_type} window predictions"
         )
         self.unresolved_clusters = unresolved_clusters
+
+
+class NERInferenceCancelled(RuntimeError):
+    """Raised when an in-flight request stops between bounded model batches."""
 
 
 class NERBackendError(RuntimeError):
@@ -179,6 +185,7 @@ class NERInferenceTelemetry:
     outcome: str
     duration_seconds: float
     windows_processed: int
+    input_tokens: int = 0
     failure_phase: str | None = None
     failure_class: str | None = None
 
@@ -189,6 +196,8 @@ class NERInferenceTelemetry:
             raise ValueError("NER inference duration must not be negative")
         if self.windows_processed < 0:
             raise ValueError("NER processed-window count must not be negative")
+        if self.input_tokens < 0:
+            raise ValueError("NER input-token count must not be negative")
         if (
             self.failure_phase is not None
             and self.failure_phase not in NER_FAILURE_PHASES
@@ -239,6 +248,20 @@ class UnresolvedWindowEntityCluster:
 
     entity_type: str
     predictions: tuple[WindowEntityPrediction, ...]
+
+
+@dataclass(frozen=True)
+class NERWindowAnalysis:
+    """Window predictions plus bounded workload dimensions."""
+
+    predictions: list[WindowEntityPrediction]
+    windows_processed: int
+    input_tokens: int
+
+    def __iter__(self):
+        # Preserve the historical two-value private helper contract in tests.
+        yield self.predictions
+        yield self.windows_processed
 
 
 def _normalize_requested_entities(
@@ -425,13 +448,17 @@ class HuggingFaceNERRecognizer:
         model_directory: Path = MODEL_DIRECTORY,
         tokenizer: Any | None = None,
         model: Any | None = None,
+        inference_batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE,
     ):
         if (tokenizer is None) != (model is None):
             raise ValueError("tokenizer and model must be supplied together")
+        if inference_batch_size < 1:
+            raise ValueError("inference_batch_size must be positive")
         self.model_directory = Path(model_directory)
         self._tokenizer = tokenizer
         self._model = model
         self._manifest: ModelManifest | None = None
+        self._inference_batch_size = inference_batch_size
         self._warmed_up = False
         self._state = NER_STATE_NOT_LOADED
         self._failure_phase: str | None = None
@@ -676,6 +703,7 @@ class HuggingFaceNERRecognizer:
         score_threshold: float = 0.35,
         entities: Optional[list[str]] = None,
         telemetry_callback: Callable[[NERInferenceTelemetry], None] | None = None,
+        cancellation_event: threading.Event | None = None,
     ) -> list[RecognizerResult]:
         started_at = time.perf_counter()
         if not should_run_ner(entities, score_threshold):
@@ -688,11 +716,14 @@ class HuggingFaceNERRecognizer:
             return []
 
         try:
-            results, windows_processed = self._analyze_required(
+            results, windows_processed, input_tokens = self._analyze_required(
                 text,
                 score_threshold=score_threshold,
                 entities=entities,
+                cancellation_event=cancellation_event,
             )
+        except NERInferenceCancelled:
+            raise
         except NERBackendError as error:
             self._emit_inference_telemetry(
                 telemetry_callback,
@@ -703,6 +734,7 @@ class HuggingFaceNERRecognizer:
                 ),
                 started_at=started_at,
                 windows_processed=error.windows_processed,
+                input_tokens=0,
                 failure_phase=error.phase,
                 failure_class=error.failure_class,
             )
@@ -713,6 +745,7 @@ class HuggingFaceNERRecognizer:
                 outcome="failure",
                 started_at=started_at,
                 windows_processed=0,
+                input_tokens=0,
                 failure_phase=self.failure_phase() or "readiness",
                 failure_class=self.failure_class() or "unexpected_failure",
             )
@@ -723,6 +756,7 @@ class HuggingFaceNERRecognizer:
             outcome="success",
             started_at=started_at,
             windows_processed=windows_processed,
+            input_tokens=input_tokens,
         )
         return results
 
@@ -733,6 +767,7 @@ class HuggingFaceNERRecognizer:
         outcome: str,
         started_at: float,
         windows_processed: int,
+        input_tokens: int = 0,
         failure_phase: str | None = None,
         failure_class: str | None = None,
     ) -> None:
@@ -742,6 +777,7 @@ class HuggingFaceNERRecognizer:
             outcome=outcome,
             duration_seconds=max(0.0, time.perf_counter() - started_at),
             windows_processed=max(0, windows_processed),
+            input_tokens=max(0, input_tokens),
             failure_phase=failure_phase,
             failure_class=failure_class,
         )
@@ -759,7 +795,9 @@ class HuggingFaceNERRecognizer:
         *,
         score_threshold: float,
         entities: Optional[list[str]],
-    ) -> tuple[list[RecognizerResult], int]:
+        cancellation_event: threading.Event | None,
+    ) -> tuple[list[RecognizerResult], int, int]:
+        _raise_if_cancelled(cancellation_event)
         if self._state == NER_STATE_FAILED:
             self.require_ready()
         if not self.is_ready():
@@ -775,9 +813,14 @@ class HuggingFaceNERRecognizer:
             )
             raise error from exc
         try:
-            window_predictions, windows_processed = self._predict_window_entities(
-                normalized.text
+            window_analysis = self._predict_window_entities(
+                normalized.text,
+                cancellation_event=cancellation_event,
             )
+            window_predictions, windows_processed = window_analysis
+            input_tokens = getattr(window_analysis, "input_tokens", 0)
+        except NERInferenceCancelled:
+            raise
         except NERBackendError as error:
             self._mark_failed_if_service_wide(error)
             raise
@@ -807,8 +850,11 @@ class HuggingFaceNERRecognizer:
                     self._recover_window_boundaries(
                         normalized.text,
                         unresolved.unresolved_clusters,
+                        cancellation_event=cancellation_event,
                     )
                 )
+            except NERInferenceCancelled:
+                raise
             except NERBackendError as error:
                 combined_error = NERProcessingError(
                     phase=error.phase,
@@ -895,7 +941,7 @@ class HuggingFaceNERRecognizer:
                 failure_class=error.failure_class,
                 windows_processed=windows_processed,
             ) from None
-        return results, windows_processed
+        return results, windows_processed, input_tokens
 
     def _tokenize_content(
         self,
@@ -929,9 +975,22 @@ class HuggingFaceNERRecognizer:
     def _predict_window_entities(
         self,
         normalized_text: str,
-    ) -> tuple[list[WindowEntityPrediction], int]:
+        *,
+        cancellation_event: threading.Event | None = None,
+    ) -> NERWindowAnalysis:
+        _raise_if_cancelled(cancellation_event)
         input_ids, offsets, windows = self._prepare_window_input(normalized_text)
-        return self._predict_windows(input_ids, offsets, windows)
+        predictions, windows_processed = self._predict_windows(
+            input_ids,
+            offsets,
+            windows,
+            cancellation_event=cancellation_event,
+        )
+        return NERWindowAnalysis(
+            predictions=predictions,
+            windows_processed=windows_processed,
+            input_tokens=len(input_ids),
+        )
 
     def _prepare_window_input(
         self,
@@ -966,15 +1025,27 @@ class HuggingFaceNERRecognizer:
         input_ids: list[int],
         offsets: list[tuple[int, int]],
         windows: tuple[TokenWindow, ...],
+        *,
+        cancellation_event: threading.Event | None = None,
     ) -> tuple[list[WindowEntityPrediction], int]:
         predictions: list[WindowEntityPrediction] = []
         windows_processed = 0
         token_count = len(input_ids)
-        for window in windows:
+        for batch_start in range(0, len(windows), self._inference_batch_size):
+            _raise_if_cancelled(cancellation_event)
+            batch = windows[
+                batch_start : batch_start + self._inference_batch_size
+            ]
             try:
-                token_predictions = self._infer_window(
-                    input_ids[window.start_token : window.end_token],
-                    offsets[window.start_token : window.end_token],
+                batch_predictions = self._infer_window_batch(
+                    [
+                        input_ids[window.start_token : window.end_token]
+                        for window in batch
+                    ],
+                    [
+                        offsets[window.start_token : window.end_token]
+                        for window in batch
+                    ],
                 )
             except Exception as exc:
                 raise NERProcessingError(
@@ -982,36 +1053,42 @@ class HuggingFaceNERRecognizer:
                     failure_class="forward_pass_failed",
                     windows_processed=windows_processed,
                 ) from exc
-            first_start = offsets[window.start_token][0]
-            last_end = offsets[window.end_token - 1][1]
-            try:
-                decoded_entities = decode_bio_predictions(token_predictions)
-            except Exception as exc:
-                raise NERProcessingError(
-                    phase="decoding",
-                    failure_class="bio_decoding_failed",
-                    windows_processed=windows_processed,
-                ) from exc
-            windows_processed += 1
-            for entity in decoded_entities:
-                predictions.append(
-                    WindowEntityPrediction(
-                        entity=entity,
-                        window_index=window.index,
-                        touches_left_boundary=(
-                            window.start_token > 0 and entity.start <= first_start
-                        ),
-                        touches_right_boundary=(
-                            window.end_token < token_count and entity.end >= last_end
-                        ),
+            for window, token_predictions in zip(batch, batch_predictions):
+                first_start = offsets[window.start_token][0]
+                last_end = offsets[window.end_token - 1][1]
+                try:
+                    decoded_entities = decode_bio_predictions(token_predictions)
+                except Exception as exc:
+                    raise NERProcessingError(
+                        phase="decoding",
+                        failure_class="bio_decoding_failed",
+                        windows_processed=windows_processed,
+                    ) from exc
+                windows_processed += 1
+                for entity in decoded_entities:
+                    predictions.append(
+                        WindowEntityPrediction(
+                            entity=entity,
+                            window_index=window.index,
+                            touches_left_boundary=(
+                                window.start_token > 0
+                                and entity.start <= first_start
+                            ),
+                            touches_right_boundary=(
+                                window.end_token < token_count
+                                and entity.end >= last_end
+                            ),
+                        )
                     )
-                )
+            _raise_if_cancelled(cancellation_event)
         return predictions, windows_processed
 
     def _recover_window_boundaries(
         self,
         normalized_text: str,
         unresolved_clusters: tuple[UnresolvedWindowEntityCluster, ...],
+        *,
+        cancellation_event: threading.Event | None = None,
     ) -> tuple[list[WindowEntityPrediction], int]:
         input_ids, offsets, original_windows = self._prepare_window_input(
             normalized_text
@@ -1061,78 +1138,134 @@ class HuggingFaceNERRecognizer:
         )
         if not recovery_windows:
             return [], 0
-        return self._predict_windows(input_ids, offsets, recovery_windows)
+        return self._predict_windows(
+            input_ids,
+            offsets,
+            recovery_windows,
+            cancellation_event=cancellation_event,
+        )
 
     def _infer_window(
         self,
         input_ids: list[int],
         offsets: list[tuple[int, int]],
     ) -> list[TokenPrediction]:
+        return self._infer_window_batch([input_ids], [offsets])[0]
+
+    def _infer_window_batch(
+        self,
+        input_id_batches: list[list[int]],
+        offset_batches: list[list[tuple[int, int]]],
+    ) -> list[list[TokenPrediction]]:
+        """Run one padded BERT forward pass for one or more token windows."""
         import torch
 
-        prepared_ids = self._tokenizer.build_inputs_with_special_tokens(input_ids)
-        if (
-            not isinstance(prepared_ids, list)
-            or len(prepared_ids) != len(input_ids) + 2
-            or prepared_ids[1:-1] != input_ids
-        ):
-            raise NERConfigurationError(
-                "NER tokenizer does not implement the expected BERT special tokens"
+        if not input_id_batches or len(input_id_batches) != len(offset_batches):
+            raise NERConfigurationError("NER batch input is empty or inconsistent")
+        prepared_batches: list[list[int]] = []
+        token_type_batches: list[list[int]] = []
+        special_token_batches: list[list[int]] = []
+        window_offset_batches: list[list[tuple[int, int]]] = []
+        for input_ids, offsets in zip(input_id_batches, offset_batches):
+            if len(input_ids) != len(offsets):
+                raise NERConfigurationError("NER ids and offsets do not match")
+            prepared_ids = self._tokenizer.build_inputs_with_special_tokens(
+                input_ids
             )
-        token_type_ids = self._tokenizer.create_token_type_ids_from_sequences(
-            input_ids
-        )
-        if (
-            not isinstance(token_type_ids, list)
-            or len(token_type_ids) != len(prepared_ids)
-        ):
-            raise NERConfigurationError("NER tokenizer returned invalid token_type_ids")
+            if (
+                not isinstance(prepared_ids, list)
+                or len(prepared_ids) != len(input_ids) + 2
+                or prepared_ids[1:-1] != input_ids
+            ):
+                raise NERConfigurationError(
+                    "NER tokenizer does not implement expected BERT special tokens"
+                )
+            token_type_ids = self._tokenizer.create_token_type_ids_from_sequences(
+                input_ids
+            )
+            if (
+                not isinstance(token_type_ids, list)
+                or len(token_type_ids) != len(prepared_ids)
+            ):
+                raise NERConfigurationError(
+                    "NER tokenizer returned invalid token_type_ids"
+                )
+            special_tokens = [1, *([0] * len(input_ids)), 1]
+            window_offsets = [(0, 0), *offsets, (0, 0)]
+            prepared_batches.append(prepared_ids)
+            token_type_batches.append(token_type_ids)
+            special_token_batches.append(special_tokens)
+            window_offset_batches.append(window_offsets)
 
-        special_tokens = [1, *([0] * len(input_ids)), 1]
+        pad_token_id = getattr(self._tokenizer, "pad_token_id", 0)
+        if pad_token_id is None:
+            raise NERConfigurationError("NER tokenizer has no padding token")
+        maximum_length = max(len(item) for item in prepared_batches)
+        padded_ids = []
+        padded_attention = []
+        padded_token_types = []
+        for prepared_ids, token_type_ids in zip(
+            prepared_batches,
+            token_type_batches,
+        ):
+            padding = maximum_length - len(prepared_ids)
+            padded_ids.append([*prepared_ids, *([int(pad_token_id)] * padding)])
+            padded_attention.append([1] * len(prepared_ids) + [0] * padding)
+            padded_token_types.append([*token_type_ids, *([0] * padding)])
+
         model_inputs = {
-            "input_ids": torch.tensor([prepared_ids], dtype=torch.long),
-            "attention_mask": torch.ones((1, len(prepared_ids)), dtype=torch.long),
-            "token_type_ids": torch.tensor([token_type_ids], dtype=torch.long),
+            "input_ids": torch.tensor(padded_ids, dtype=torch.long),
+            "attention_mask": torch.tensor(padded_attention, dtype=torch.long),
+            "token_type_ids": torch.tensor(padded_token_types, dtype=torch.long),
         }
 
-        window_offsets: list[tuple[int, int]] = []
-        offset_index = 0
-        for special in special_tokens:
-            if special:
-                window_offsets.append((0, 0))
-            else:
-                window_offsets.append(offsets[offset_index])
-                offset_index += 1
-
         with torch.inference_mode():
-            logits = self._model(**model_inputs).logits[0]
+            logits = self._model(**model_inputs).logits
             probabilities = torch.softmax(logits, dim=-1)
             predicted_ids = torch.argmax(probabilities, dim=-1)
             predicted_scores = probabilities.gather(
-                1,
-                predicted_ids.unsqueeze(1),
-            ).squeeze(1)
+                2,
+                predicted_ids.unsqueeze(2),
+            ).squeeze(2)
 
-        if len(predicted_ids) != len(special_tokens):
-            raise NERConfigurationError("NER model output length does not match input")
+        if len(predicted_ids) != len(prepared_batches):
+            raise NERConfigurationError("NER model output batch does not match input")
 
-        predictions: list[TokenPrediction] = []
-        for index, ((start, end), special) in enumerate(
-            zip(window_offsets, special_tokens)
+        prediction_batches: list[list[TokenPrediction]] = []
+        for batch_index, (window_offsets, special_tokens) in enumerate(
+            zip(window_offset_batches, special_token_batches)
         ):
-            if special:
-                continue
-            label_id = int(predicted_ids[index].item())
-            try:
-                label = EXPECTED_ID2LABEL[label_id]
-            except KeyError as exc:
-                raise NERConfigurationError("NER model returned unknown label id") from exc
-            predictions.append(
-                TokenPrediction(
-                    label=label,
-                    start=int(start),
-                    end=int(end),
-                    score=float(predicted_scores[index].item()),
+            item_ids = predicted_ids[batch_index]
+            item_scores = predicted_scores[batch_index]
+            if len(item_ids) < len(special_tokens):
+                raise NERConfigurationError(
+                    "NER model output length does not match input"
                 )
-            )
-        return predictions
+            predictions: list[TokenPrediction] = []
+            for index, ((start, end), special) in enumerate(
+                zip(window_offsets, special_tokens)
+            ):
+                if special:
+                    continue
+                label_id = int(item_ids[index].item())
+                try:
+                    label = EXPECTED_ID2LABEL[label_id]
+                except KeyError as exc:
+                    raise NERConfigurationError(
+                        "NER model returned unknown label id"
+                    ) from exc
+                predictions.append(
+                    TokenPrediction(
+                        label=label,
+                        start=int(start),
+                        end=int(end),
+                        score=float(item_scores[index].item()),
+                    )
+                )
+            prediction_batches.append(predictions)
+        return prediction_batches
+
+
+def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
+    if cancellation_event is not None and cancellation_event.is_set():
+        raise NERInferenceCancelled("NER inference was cancelled")
