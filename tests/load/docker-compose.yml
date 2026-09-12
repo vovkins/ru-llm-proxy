@@ -1,0 +1,182 @@
+name: ru-llm-proxy-load
+
+services:
+  load-db:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    environment:
+      POSTGRES_USER: load
+      POSTGRES_PASSWORD: load-only-password
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U load -d litellm"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks: [load]
+
+  load-redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [load]
+
+  load-mock-upstream:
+    image: python:3.12-slim
+    command: ["python", "/workspace/tests/e2e/mock_openai_upstream.py"]
+    environment:
+      PORT: "8080"
+      MOCK_ECHO_FIRST_PII_PLACEHOLDER: "true"
+      MOCK_RESPONSE_DELAY_SECONDS: ${LOAD_MOCK_RESPONSE_DELAY_SECONDS:-0.02}
+      MOCK_STREAM_HOLD_SECONDS: ${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
+    volumes:
+      - ../..:/workspace:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [load]
+
+  load-presidio-analyzer:
+    build:
+      context: ../..
+      dockerfile: presidio/Dockerfile
+      target: analyzer
+      args:
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    environment:
+      PRESIDIO_ANALYZER_WORKERS: ${LOAD_ANALYZER_WORKERS:-1}
+      PRESIDIO_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
+      PRESIDIO_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-8}
+      PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+    ports:
+      - "127.0.0.1:${LOAD_ANALYZER_PORT:-15020}:5001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=3).read()
+      interval: 3s
+      timeout: 5s
+      retries: 80
+      start_period: 15s
+    networks: [load]
+
+  load-litellm:
+    build:
+      context: ../..
+      dockerfile: litellm/Dockerfile
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: sk-load-test-master
+      LITELLM_SALT_KEY: sk-load-test-salt-that-is-long-enough
+      DATABASE_URL: postgresql://load:load-only-password@load-db:5432/litellm
+      OPENAI_API_KEY: sk-load-test-upstream
+      REDIS_URL: redis://load-redis:6379
+      PRESIDIO_ANALYZER_URL: http://load-presidio-analyzer:5001
+      PII_GUARDRAIL_MODE: mask
+      PII_GUARDRAIL_FAILURE_MODE: fail_closed
+      PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS: ${LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-30}
+      PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS: "5"
+      PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}
+      PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS:-10}
+      PII_GUARDRAIL_REDIS_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}
+      PII_MAPPING_TTL_SECONDS: "7200"
+      DICTIONARY_SUBSTITUTIONS_ENABLED: "false"
+      SYNTHETIC_PII_ALLOWLIST_MODE: "off"
+      REGULATED_TOPIC_POLICY_MODE: "off"
+      PRE_EGRESS_POLICY_MODE: "off"
+      FINAL_PAYLOAD_LEAK_CHECK_MODE: block
+      PYTHONPATH: /app
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+      - ../../litellm_guardrails:/app/litellm_guardrails:ro
+    ports:
+      - "127.0.0.1:${LOAD_LITELLM_PORT:-14020}:4000"
+    depends_on:
+      load-db:
+        condition: service_healthy
+      load-redis:
+        condition: service_healthy
+      load-mock-upstream:
+        condition: service_healthy
+      load-presidio-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5).read()"
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+    networks: [load]
+
+  load-key-manager:
+    image: locustio/locust:2.46.5@sha256:02109fe359906ebea8a1a1f4c1567771e815990739b9400c33d6c2692ac00af5
+    profiles: [load]
+    user: "0:0"
+    entrypoint: ["python", "/workspace/tests/load/manage_keys.py"]
+    environment:
+      LOAD_TARGET_URL: http://load-litellm:4000
+      LOAD_MASTER_KEY: sk-load-test-master
+      LOAD_USERS: ${LOAD_USERS:-400}
+      LOAD_MODEL: ${LOAD_MODEL:-mock-chat}
+      LOAD_KEY_FILE_UID: "1000"
+      LOAD_KEY_FILE_GID: "1000"
+    volumes:
+      - ../..:/workspace:ro
+      - load-state:/state
+    depends_on:
+      load-litellm:
+        condition: service_healthy
+    networks: [load]
+
+  load-generator:
+    image: locustio/locust:2.46.5@sha256:02109fe359906ebea8a1a1f4c1567771e815990739b9400c33d6c2692ac00af5
+    profiles: [load]
+    working_dir: /workspace/tests/load
+    entrypoint: ["locust", "-f", "locustfile.py"]
+    environment:
+      LOAD_TARGET_URL: http://load-litellm:4000
+      LOAD_KEY_FILE: /state/keys.json
+      LOAD_REPORT_DIR: /results
+      LOAD_PROFILE: ${LOAD_PROFILE:-smoke}
+      LOAD_EXPECTED_USERS: ${LOAD_USERS:-8}
+      LOAD_PACE_SECONDS: ${LOAD_PACE_SECONDS:-15}
+      LOAD_STAGE_DURATION_SECONDS: ${LOAD_STAGE_DURATION_SECONDS:-120}
+      LOAD_API: ${LOAD_API:-mixed}
+      LOAD_CONTEXT_MODE: ${LOAD_CONTEXT_MODE:-mixed}
+      LOAD_STREAM: ${LOAD_STREAM:-mixed}
+      LOAD_CONTEXT_SIZES: ${LOAD_CONTEXT_SIZES:-1000,8000}
+      LOAD_MODEL: ${LOAD_MODEL:-mock-chat}
+      LOAD_VALIDATE_MAPPING: ${LOAD_VALIDATE_MAPPING:-true}
+      LOAD_REQUIRE_STREAM_RESTORATION: ${LOAD_REQUIRE_STREAM_RESTORATION:-false}
+      LOAD_ALLOW_LARGE_CONCURRENT: ${LOAD_ALLOW_LARGE_CONCURRENT:-false}
+      LOAD_READ_TIMEOUT_SECONDS: ${LOAD_READ_TIMEOUT_SECONDS:-600}
+      LOAD_KEY_SHARD_INDEX: ${LOAD_KEY_SHARD_INDEX:-0}
+      LOAD_KEY_SHARD_COUNT: ${LOAD_KEY_SHARD_COUNT:-1}
+      LOAD_REPORT_NODE: ${LOAD_REPORT_NODE:-local}
+    volumes:
+      - ../..:/workspace:ro
+      - load-state:/state:ro
+      - ${LOAD_RESULTS_DIR:-/tmp/ru-llm-proxy-load-results}:/results
+    depends_on:
+      load-litellm:
+        condition: service_healthy
+    networks: [load]
+
+volumes:
+  load-state:
+
+networks:
+  load:
+    driver: bridge

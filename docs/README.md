@@ -51,7 +51,9 @@
 исходный уровень — в
 [long-context-baseline.md](research/long-context-baseline.md). Настройки очереди,
 параллельности и поведение при перегрузке зафиксированы в
-[нагрузочном профиле Analyzer](research/analyzer-load-profile.md).
+[нагрузочном профиле Analyzer](research/analyzer-load-profile.md). Контур для
+ступенчатой нагрузки, 400 пользователей и длинных сессий описан в
+[руководстве по нагрузочному прототипу](research/load-prototype.md).
 
 ## Правила поддержки
 
