@@ -24,6 +24,24 @@ if [ -z "${LOAD_VALIDATE_MAPPING+x}" ]; then
 fi
 LOAD_REQUIRE_STREAM_RESTORATION=${LOAD_REQUIRE_STREAM_RESTORATION:-false}
 LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-}
+LOAD_INPUT_VARIATION=${LOAD_INPUT_VARIATION:-repeat}
+LOAD_ANALYZER_BACKEND=${LOAD_ANALYZER_BACKEND:-real}
+LOAD_ANALYZER_URL=${LOAD_ANALYZER_URL:-http://load-analyzer-router:5001}
+LOAD_ANALYZER_REPLICAS=${LOAD_ANALYZER_REPLICAS:-1}
+LOAD_LITELLM_REPLICAS=${LOAD_LITELLM_REPLICAS:-1}
+LOAD_ANALYZER_CPUS=${LOAD_ANALYZER_CPUS:-4.0}
+LOAD_ANALYZER_MEMORY=${LOAD_ANALYZER_MEMORY:-4g}
+LOAD_LITELLM_CPUS=${LOAD_LITELLM_CPUS:-2.0}
+LOAD_LITELLM_MEMORY=${LOAD_LITELLM_MEMORY:-2g}
+LOAD_DB_CPUS=${LOAD_DB_CPUS:-1.0}
+LOAD_DB_MEMORY=${LOAD_DB_MEMORY:-1g}
+LOAD_REDIS_CPUS=${LOAD_REDIS_CPUS:-1.0}
+LOAD_REDIS_MEMORY=${LOAD_REDIS_MEMORY:-512m}
+LOAD_MOCK_CPUS=${LOAD_MOCK_CPUS:-1.0}
+LOAD_MOCK_MEMORY=${LOAD_MOCK_MEMORY:-512m}
+LOAD_ROUTER_CPUS=${LOAD_ROUTER_CPUS:-1.0}
+LOAD_ROUTER_MEMORY=${LOAD_ROUTER_MEMORY:-256m}
+LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-}
 stats_pid=""
 keys_created=false
 stack_started=false
@@ -34,14 +52,20 @@ usage() {
 Usage: tests/load/run.sh [smoke|steady|stages|burst|streams|context]
 
 The default mock contour builds an isolated LiteLLM, PostgreSQL, Redis,
-Analyzer and mock-provider stack. Set LOAD_CONTOUR=existing only for an
-explicitly authorized low-volume run against an existing real-provider stack.
+Analyzer and mock-provider stack. LOAD_CONTOUR=mock-direct calibrates Locust
+against the mock provider without LiteLLM or Analyzer. Set LOAD_CONTOUR=existing
+only for an explicitly authorized low-volume real-provider run.
 
 Important overrides:
   LOAD_USERS, LOAD_RUN_TIME, LOAD_PACE_SECONDS, LOAD_CONTEXT_SIZES
   LOAD_API=chat|responses|mixed
   LOAD_CONTEXT_MODE=full-history|one-shot|previous-response|encrypted-state|mixed
   LOAD_STREAM=true|false|mixed
+  LOAD_INPUT_VARIATION=repeat|unique
+  LOAD_ANALYZER_BACKEND=real|mock
+  LOAD_ANALYZER_REPLICAS, LOAD_LITELLM_REPLICAS
+  LOAD_ANALYZER_CPUS, LOAD_ANALYZER_MEMORY
+  LOAD_LITELLM_CPUS, LOAD_LITELLM_MEMORY
   LOAD_KEEP_STACK=true
 
 Existing contour requirements:
@@ -106,6 +130,7 @@ case "$MODE" in
         LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS=${LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-1200}
         LOAD_READ_TIMEOUT_SECONDS=${LOAD_READ_TIMEOUT_SECONDS:-1300}
         LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-1}
+        LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-1300}
         ;;
     -h|--help|help)
         usage
@@ -124,6 +149,7 @@ LOAD_CONTEXT_MODE=${LOAD_CONTEXT_MODE:-mixed}
 LOAD_STREAM=${LOAD_STREAM:-mixed}
 LOAD_MOCK_STREAM_HOLD_SECONDS=${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
 LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-0}
+LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-30}
 
 export LOAD_PROFILE LOAD_USERS LOAD_RUN_TIME LOAD_CONTEXT_SIZES
 export LOAD_PACE_SECONDS LOAD_STAGE_DURATION_SECONDS LOAD_RESULTS_DIR LOAD_REPORT_NODE
@@ -131,6 +157,12 @@ export LOAD_API LOAD_CONTEXT_MODE LOAD_STREAM LOAD_MOCK_STREAM_HOLD_SECONDS
 export LOAD_MASTER_KEY LOAD_VALIDATE_MAPPING
 export LOAD_REQUIRE_STREAM_RESTORATION LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS
 export LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS LOAD_READ_TIMEOUT_SECONDS
+export LOAD_CONTOUR LOAD_INPUT_VARIATION LOAD_ANALYZER_REPLICAS LOAD_LITELLM_REPLICAS
+export LOAD_ANALYZER_BACKEND LOAD_ANALYZER_URL
+export LOAD_ANALYZER_CPUS LOAD_ANALYZER_MEMORY LOAD_LITELLM_CPUS LOAD_LITELLM_MEMORY
+export LOAD_DB_CPUS LOAD_DB_MEMORY LOAD_REDIS_CPUS LOAD_REDIS_MEMORY
+export LOAD_MOCK_CPUS LOAD_MOCK_MEMORY LOAD_ROUTER_CPUS LOAD_ROUTER_MEMORY
+export LOAD_STOP_TIMEOUT_SECONDS
 
 stop_stats() {
     if [ -n "$stats_pid" ] && kill -0 "$stats_pid" 2>/dev/null; then
@@ -143,15 +175,26 @@ collect_stack_artifacts() {
     if [ "$stack_started" != true ]; then
         return
     fi
-    "${COMPOSE[@]}" exec -T load-mock-upstream python -c \
+    mock_id=$("${COMPOSE[@]}" ps -q load-mock-upstream | head -n 1)
+    if [ -n "$mock_id" ]; then
+        docker exec "$mock_id" python -c \
         "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/capture').read().decode())" \
         > "$LOAD_RESULTS_DIR/mock-provider-capture.json" 2>/dev/null || true
-    "${COMPOSE[@]}" exec -T load-presidio-analyzer python -c \
-        "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:5001/metrics').read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('ru_presidio_analyzer_', '# HELP ru_presidio_analyzer_', '# TYPE ru_presidio_analyzer_'))))" \
-        > "$LOAD_RESULTS_DIR/analyzer-metrics.prom" 2>/dev/null || true
-    "${COMPOSE[@]}" exec -T load-litellm python -c \
-        "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:4000/metrics').read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('ru_pii_guardrail_', '# HELP ru_pii_guardrail_', '# TYPE ru_pii_guardrail_'))))" \
-        > "$LOAD_RESULTS_DIR/guardrail-metrics.prom" 2>/dev/null || true
+    fi
+    replica=0
+    for container_id in $("${COMPOSE[@]}" ps -q load-presidio-analyzer); do
+        replica=$((replica + 1))
+        docker exec "$container_id" python -c \
+            "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:5001/metrics').read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('ru_presidio_analyzer_', '# HELP ru_presidio_analyzer_', '# TYPE ru_presidio_analyzer_'))))" \
+            > "$LOAD_RESULTS_DIR/analyzer-metrics-$replica.prom" 2>/dev/null || true
+    done
+    replica=0
+    for container_id in $("${COMPOSE[@]}" ps -q load-litellm); do
+        replica=$((replica + 1))
+        docker exec "$container_id" python -c \
+            "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:4000/metrics').read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('ru_pii_guardrail_', '# HELP ru_pii_guardrail_', '# TYPE ru_pii_guardrail_'))))" \
+            > "$LOAD_RESULTS_DIR/guardrail-metrics-$replica.prom" 2>/dev/null || true
+    done
 }
 
 cleanup() {
@@ -160,8 +203,10 @@ cleanup() {
     set +e
     stop_stats
     collect_stack_artifacts
+    python3 "$ROOT/tests/load/summarize_run.py" "$LOAD_RESULTS_DIR" || true
     if [ "$keys_created" = true ]; then
-        "${COMPOSE[@]}" --profile load run --rm load-key-manager delete || true
+        "${COMPOSE[@]}" --profile load run --rm --no-deps \
+            load-key-manager delete || true
     fi
     if [ "$stack_started" = true ] && [ "$LOAD_KEEP_STACK" != true ]; then
         "${COMPOSE[@]}" --profile load down -v --remove-orphans || true
@@ -179,39 +224,62 @@ case "$LOAD_RESULTS_DIR" in
 esac
 mkdir -p "$LOAD_RESULTS_DIR"
 
+case "$LOAD_ANALYZER_BACKEND" in
+    real|mock) ;;
+    *) echo "LOAD_ANALYZER_BACKEND must be real or mock" >&2; exit 2 ;;
+esac
+if [ "$LOAD_ANALYZER_BACKEND" = mock ] && [ "$LOAD_CONTOUR" != mock ]; then
+    echo "The mock Analyzer backend is available only in LOAD_CONTOUR=mock" >&2
+    exit 2
+fi
+
 if [ "$LOAD_CONTOUR" = "mock" ]; then
+    case "$LOAD_ANALYZER_REPLICAS:$LOAD_LITELLM_REPLICAS" in
+        *[!0-9:]*|0:*|*:0) echo "Replica counts must be positive integers" >&2; exit 2 ;;
+    esac
     echo "Building and starting the isolated mock-provider load contour..."
     stack_started=true
     "${COMPOSE[@]}" up -d --build \
-        load-db load-redis load-mock-upstream load-presidio-analyzer load-litellm
+        --scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS" \
+        --scale "load-litellm=$LOAD_LITELLM_REPLICAS" \
+        load-db load-redis load-mock-upstream load-presidio-analyzer \
+        load-analyzer-router load-litellm load-litellm-router
 
     keys_created=true
-    "${COMPOSE[@]}" --profile load run --rm load-key-manager create \
+    "${COMPOSE[@]}" --profile load run --rm --no-deps load-key-manager create \
         --count "$LOAD_USERS"
 
     container_ids=$("${COMPOSE[@]}" ps -q \
-        load-db load-redis load-mock-upstream load-presidio-analyzer load-litellm)
+        load-db load-redis load-mock-upstream load-presidio-analyzer \
+        load-analyzer-router load-litellm load-litellm-router)
     if [ -z "$container_ids" ]; then
         echo "No load-contour containers found for Docker statistics" >&2
         exit 1
     fi
-    (
-        while true; do
-            sampled_at=$(date +%s)
-            docker stats --no-stream --format '{{json .}}' $container_ids 2>/dev/null \
-                | while IFS= read -r sample; do
-                    printf '{"sampled_at":%s,"docker":%s}\n' "$sampled_at" "$sample"
-                done
-            sleep 1
-        done
-    ) > "$LOAD_RESULTS_DIR/docker-stats.jsonl" &
+    python3 "$ROOT/tests/load/sample_metrics.py" \
+        --output-dir "$LOAD_RESULTS_DIR" --interval 1 &
     stats_pid=$!
 
-    compose_run_args=(--no-TTY)
-    locust_args=(--headless --host http://load-litellm:4000)
+    compose_run_args=(--no-TTY --no-deps)
+    locust_args=(--headless --host http://load-litellm-router:4000)
+elif [ "$LOAD_CONTOUR" = "mock-direct" ]; then
+    echo "Starting direct mock-provider calibration contour..."
+    stack_started=true
+    "${COMPOSE[@]}" up -d load-mock-upstream
+    "${COMPOSE[@]}" --profile load run --rm --no-deps \
+        load-key-manager create-local --count "$LOAD_USERS"
+    python3 "$ROOT/tests/load/sample_metrics.py" \
+        --output-dir "$LOAD_RESULTS_DIR" --interval 1 &
+    stats_pid=$!
+    compose_run_args=(
+        --no-TTY
+        --no-deps
+        -e LOAD_TARGET_URL=http://load-mock-upstream:8080
+    )
+    locust_args=(--headless --host http://load-mock-upstream:8080)
 else
     if [ "$LOAD_CONTOUR" != "existing" ]; then
-        echo "LOAD_CONTOUR must be mock or existing" >&2
+        echo "LOAD_CONTOUR must be mock, mock-direct or existing" >&2
         exit 2
     fi
     if [ "${LOAD_ALLOW_REAL_PROVIDER:-false}" != true ]; then
@@ -255,4 +323,5 @@ echo "Running $MODE with $LOAD_USERS users; reports: $LOAD_RESULTS_DIR"
     --csv /results/locust \
     --html /results/locust.html \
     --only-summary \
+    --stop-timeout "$LOAD_STOP_TIMEOUT_SECONDS" \
     --exit-code-on-error "$LOAD_EXIT_CODE_ON_ERROR"

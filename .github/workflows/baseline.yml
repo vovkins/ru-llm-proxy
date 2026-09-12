@@ -35,6 +35,7 @@ jobs:
           bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
           bash -n tests/e2e/test_final_leak_proxy_non_egress.sh
           bash -n tests/load/run.sh
+          bash -n tests/load/run_matrix.sh
           bash -n tests/test_litellm_ca_image.sh
 
       - name: Parse YAML configs

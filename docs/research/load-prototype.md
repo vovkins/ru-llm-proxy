@@ -55,14 +55,26 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 | `LOAD_API` | `mixed` | `chat`, `responses` или равномерная смесь |
 | `LOAD_CONTEXT_MODE` | `mixed` | Полная история, разовая загрузка, `previous_response_id` или `encrypted_content` |
 | `LOAD_STREAM` | `mixed` | `true`, `false` или равномерная смесь |
+| `LOAD_INPUT_VARIATION` | `repeat` | `repeat` использует прогретый кэш; `unique` создаёт новый безопасный текст в каждом запросе |
+| `LOAD_ANALYZER_BACKEND` | `real` | `real` использует модель; `mock` разрешён только для изолированного измерения LiteLLM |
+| `LOAD_ANALYZER_REPLICAS` | `1` | Число экземпляров Analyzer в испытательном контуре |
+| `LOAD_LITELLM_REPLICAS` | `1` | Число экземпляров LiteLLM в испытательном контуре |
+| `LOAD_ANALYZER_CPUS`, `LOAD_ANALYZER_MEMORY` | `4`, `4g` | Ограничения одного экземпляра Analyzer |
+| `LOAD_LITELLM_CPUS`, `LOAD_LITELLM_MEMORY` | `2`, `2g` | Ограничения одного экземпляра LiteLLM |
 | `LOAD_KEEP_STACK` | `false` | Оставить испытательный Compose-проект после запуска |
 | `LOAD_RESULTS_DIR` | Временный каталог | Каталог отчётов на рабочей станции |
 
 Профиль Analyzer задаётся через `LOAD_ANALYZER_WORKERS`,
 `LOAD_ANALYZER_CONCURRENCY_LIMIT`, `LOAD_ANALYZER_QUEUE_LIMIT` и
-`LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS`. Проверяйте несколько процессов только с
-учётом линейного роста памяти модели, описанного в
+`LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS`. Для масштабирования оставляйте один
+процесс модели в контейнере и изменяйте `LOAD_ANALYZER_REPLICAS`: запросы
+распределяет внутренняя испытательная точка балансировки. Проверяйте несколько
+процессов только с учётом линейного роста памяти модели, описанного в
 [профиле Analyzer](analyzer-load-profile.md).
+
+Режим `LOAD_CONTOUR=mock-direct` направляет генератор сразу к имитации провайдера.
+Он создаёт только локальные фиктивные ключи и предназначен для проверки, что
+Locust и имитация провайдера не ограничивают измеряемую нагрузку.
 
 ## Результаты
 
@@ -71,8 +83,12 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
   задержку, время до первого фрагмента и результат проверки восстановления;
 - `summary-local.json` содержит p50/p95/p99, RPS, условную входную пропускную
   способность и долю ошибок;
-- `docker-stats.jsonl` содержит CPU, память, сеть и число процессов контейнеров.
-- `analyzer-metrics.prom` и `guardrail-metrics.prom` содержат профильные метрики;
+- `docker-stats.jsonl` содержит ограниченную статистику ресурсов каждой реплики;
+- `redis-stats.jsonl` и `postgres-stats.jsonl` содержат разрешённые счётчики
+  соединений, операций и памяти без данных запросов;
+- `analyzer-metrics-N.prom` и `guardrail-metrics-N.prom` содержат метрики каждой
+  реплики;
+- `run-summary.json` объединяет задержки, ресурсы и состояние зависимостей;
 - `mock-provider-capture.json` содержит только счётчики и признаки достижения
   имитации провайдера, что позволяет проверить безопасный отказ до исходящего вызова.
 
@@ -119,3 +135,29 @@ tests/load/run.sh smoke
 отдельные `COMPOSE_PROJECT_NAME`, `LOAD_RESULTS_DIR` и `LOAD_REPORT_NODE`.
 Общий файл ключей делится без пересечений через `LOAD_KEY_SHARD_INDEX` и
 `LOAD_KEY_SHARD_COUNT`; `LOAD_USERS` задаёт число пользователей одного генератора.
+
+## Матрица масштабирования
+
+Последовательные серии запускаются отдельным сценарием и требуют явного
+подтверждения:
+
+```bash
+LOAD_ALLOW_SCALING_MATRIX=true tests/load/run_matrix.sh calibration
+LOAD_ALLOW_SCALING_MATRIX=true tests/load/run_matrix.sh baseline
+LOAD_ALLOW_SCALING_MATRIX=true tests/load/run_matrix.sh analyzer
+LOAD_ALLOW_SCALING_MATRIX=true tests/load/run_matrix.sh litellm
+LOAD_COMBINED_MATRIX="2:1 4:1 4:2" \
+  LOAD_ALLOW_SCALING_MATRIX=true tests/load/run_matrix.sh combined
+```
+
+Серии используют уникальный ввод, чтобы кэш полного текста не скрывал насыщение
+Analyzer. Серия `litellm` использует лёгкую имитацию Analyzer и измеряет только
+LiteLLM, Redis и PostgreSQL; проверка восстановления маски в ней отключена.
+Серии `analyzer` и `combined` всегда используют настоящую модель. По умолчанию
+сравниваются 1, 2 и 4 реплики; длительность, число
+пользователей, набор реплик и каталог результатов задаются переменными,
+перечисленными в `tests/load/run_matrix.sh --help`. Итоги всех запусков находятся
+в `matrix-summary.json` и `matrix-summary.md`.
+
+Методика и границы интерпретации результатов описаны в
+[матрице масштабирования](scaling-matrix.md).

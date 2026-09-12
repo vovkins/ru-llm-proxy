@@ -17,6 +17,7 @@ from load_support import (
     SafeReportWriter,
     SUPPORTED_APIS,
     SUPPORTED_CONTEXT_MODES,
+    SUPPORTED_INPUT_VARIATIONS,
     SUPPORTED_STREAM_MODES,
     boolean_env,
     choose_variant,
@@ -25,6 +26,7 @@ from load_support import (
     parse_sse_data,
     stream_delta,
     stream_response_id,
+    response_error_metadata,
     validate_large_context_safety,
 )
 
@@ -47,6 +49,11 @@ REQUIRE_STREAM_RESTORATION = boolean_env("LOAD_REQUIRE_STREAM_RESTORATION")
 ALLOW_LARGE_CONCURRENT = boolean_env("LOAD_ALLOW_LARGE_CONCURRENT")
 REPORT_DIR = Path(os.getenv("LOAD_REPORT_DIR", "/results"))
 REPORT_NODE = os.getenv("LOAD_REPORT_NODE", "local")
+CONTOUR = os.getenv("LOAD_CONTOUR", "mock")
+INPUT_VARIATION = os.getenv("LOAD_INPUT_VARIATION", "repeat")
+ANALYZER_BACKEND = os.getenv("LOAD_ANALYZER_BACKEND", "real")
+ANALYZER_REPLICAS = int(os.getenv("LOAD_ANALYZER_REPLICAS", "1"))
+LITELLM_REPLICAS = int(os.getenv("LOAD_LITELLM_REPLICAS", "1"))
 
 for value, allowed, label in (
     (API_MODE, SUPPORTED_APIS, "LOAD_API"),
@@ -57,6 +64,8 @@ for value, allowed, label in (
         raise ValueError(f"{label} has unsupported value: {value}")
 if PROFILE not in {"smoke", "steady", "stages", "burst", "streams", "context"}:
     raise ValueError(f"LOAD_PROFILE has unsupported value: {PROFILE}")
+if INPUT_VARIATION not in SUPPORTED_INPUT_VARIATIONS:
+    raise ValueError(f"LOAD_INPUT_VARIATION has unsupported value: {INPUT_VARIATION}")
 
 validate_large_context_safety(
     CONTEXT_SIZES,
@@ -96,6 +105,15 @@ def initialize_reporter(environment, **_kwargs) -> None:
             "generator_unit": "whitespace_token",
             "key_shard_index": KEY_SHARD_INDEX,
             "key_shard_count": KEY_SHARD_COUNT,
+            "contour": CONTOUR,
+            "input_variation": INPUT_VARIATION,
+            "analyzer_backend": ANALYZER_BACKEND,
+            "analyzer_replicas": ANALYZER_REPLICAS,
+            "litellm_replicas": LITELLM_REPLICAS,
+            "analyzer_cpus": os.getenv("LOAD_ANALYZER_CPUS", "4.0"),
+            "analyzer_memory": os.getenv("LOAD_ANALYZER_MEMORY", "4g"),
+            "litellm_cpus": os.getenv("LOAD_LITELLM_CPUS", "2.0"),
+            "litellm_memory": os.getenv("LOAD_LITELLM_MEMORY", "2g"),
         },
     )
 
@@ -136,6 +154,7 @@ class ProxyUser(HttpUser):
             stream=stream_value == "true",
             sizes=CONTEXT_SIZES,
             model=MODEL,
+            input_variation=INPUT_VARIATION,
         )
         self._single_request_sent = False
         self._request_count = 0
@@ -168,6 +187,9 @@ class ProxyUser(HttpUser):
         validation_result = "not_checked"
         response_id: str | None = None
         output_text = ""
+        error_code = ""
+        error_type = ""
+        retry_after_seconds = ""
 
         try:
             with self.client.post(
@@ -182,6 +204,10 @@ class ProxyUser(HttpUser):
                 status_code = response.status_code
                 if response.status_code >= 400:
                     error_kind = f"http_{response.status_code}"
+                    error_code, error_type = response_error_metadata(response)
+                    retry_after = response.headers.get("Retry-After", "")
+                    if retry_after.isdigit():
+                        retry_after_seconds = retry_after
                     response.failure(error_kind)
                 elif spec.stream:
                     chunks: list[str] = []
@@ -236,6 +262,9 @@ class ProxyUser(HttpUser):
                     "ttft_ms": round(ttft_ms, 3) if ttft_ms is not None else "",
                     "validation_result": validation_result,
                     "error_kind": error_kind,
+                    "error_code": error_code,
+                    "error_type": error_type,
+                    "retry_after_seconds": retry_after_seconds,
                 }
             )
 
