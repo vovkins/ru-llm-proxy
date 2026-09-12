@@ -139,6 +139,8 @@ test-static: test-routing-diagnostics
 		tests/test_ner_integration_config.py \
 		tests/test_analyzer_telemetry_config.py \
 		tests/test_long_context_benchmark.py \
+		tests/test_load_profile.py \
+		tests/test_load_compose_config.py \
 		tests/test_model_profile_config.py \
 		tests/test_codex_lb_compose_config.py \
 		tests/test_codex_lb_litellm_config.py \

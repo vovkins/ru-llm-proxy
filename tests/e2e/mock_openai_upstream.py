@@ -1,9 +1,12 @@
 """Tiny mock upstream for pre-egress proxy smoke tests."""
 
+from __future__ import annotations
+
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import re
+import threading
 import time
 
 
@@ -28,6 +31,12 @@ ECHO_RESPONSES_CONTENT = os.getenv(
     "true",
     "yes",
 }
+ECHO_FIRST_PII_PLACEHOLDER = os.getenv(
+    "MOCK_ECHO_FIRST_PII_PLACEHOLDER",
+    "false",
+).lower() in {"1", "true", "yes"}
+RESPONSE_DELAY_SECONDS = float(os.getenv("MOCK_RESPONSE_DELAY_SECONDS", "0"))
+STREAM_HOLD_SECONDS = float(os.getenv("MOCK_STREAM_HOLD_SECONDS", "0"))
 PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
 ANALYZER_SIGNATURE = "0" * 64
 
@@ -42,6 +51,7 @@ CAPTURE = {
     "provider_saw_phone_placeholder": False,
     "provider_saw_pii_placeholder": False,
 }
+CAPTURE_LOCK = threading.Lock()
 ANALYZER_OVERLOAD = {
     "reason": None,
     "retry_after_seconds": 1,
@@ -73,7 +83,17 @@ def _text_matches(value, pattern: re.Pattern) -> bool:
     return any(pattern.search(text) is not None for text in _iter_strings(value))
 
 
+def _first_match(value, pattern: re.Pattern) -> str | None:
+    for text in _iter_strings(value):
+        match = pattern.search(text)
+        if match is not None:
+            return match.group(0)
+    return None
+
+
 def _chat_response_content(payload) -> str:
+    if ECHO_FIRST_PII_PLACEHOLDER:
+        return _first_match(payload, PII_PLACEHOLDER_PATTERN) or "ok"
     if not ECHO_CHAT_CONTENT:
         return "ok"
     messages = payload.get("messages")
@@ -89,6 +109,8 @@ def _chat_response_content(payload) -> str:
 
 
 def _responses_response_content(payload) -> str:
+    if ECHO_FIRST_PII_PLACEHOLDER:
+        return _first_match(payload, PII_PLACEHOLDER_PATTERN) or "ok"
     if not ECHO_RESPONSES_CONTENT:
         return "ok"
 
@@ -133,26 +155,19 @@ def _analyzer_entities(payload):
 
 
 def _record_provider_payload(path, payload):
-    CAPTURE["provider_requests"] += 1
-    CAPTURE["provider_request_paths"].append(path)
-    CAPTURE["provider_saw_canary"] = (
-        CAPTURE["provider_saw_canary"] or _text_contains_canary(payload)
-    )
-    CAPTURE["provider_saw_private_key_marker"] = (
-        CAPTURE["provider_saw_private_key_marker"]
-        or _text_contains(payload, PRIVATE_KEY_MARKER)
-    )
-    CAPTURE["provider_saw_raw_phone"] = (
-        CAPTURE["provider_saw_raw_phone"] or _text_contains(payload, RAW_PHONE)
-    )
-    CAPTURE["provider_saw_phone_placeholder"] = (
-        CAPTURE["provider_saw_phone_placeholder"]
-        or _text_contains(payload, PHONE_PLACEHOLDER)
-    )
-    CAPTURE["provider_saw_pii_placeholder"] = (
-        CAPTURE["provider_saw_pii_placeholder"]
-        or _text_matches(payload, PII_PLACEHOLDER_PATTERN)
-    )
+    saw_canary = _text_contains_canary(payload)
+    saw_private_key = _text_contains(payload, PRIVATE_KEY_MARKER)
+    saw_raw_phone = _text_contains(payload, RAW_PHONE)
+    saw_phone_placeholder = _text_contains(payload, PHONE_PLACEHOLDER)
+    saw_pii_placeholder = _text_matches(payload, PII_PLACEHOLDER_PATTERN)
+    with CAPTURE_LOCK:
+        CAPTURE["provider_requests"] += 1
+        CAPTURE["provider_request_paths"].append(path)
+        CAPTURE["provider_saw_canary"] |= saw_canary
+        CAPTURE["provider_saw_private_key_marker"] |= saw_private_key
+        CAPTURE["provider_saw_raw_phone"] |= saw_raw_phone
+        CAPTURE["provider_saw_phone_placeholder"] |= saw_phone_placeholder
+        CAPTURE["provider_saw_pii_placeholder"] |= saw_pii_placeholder
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -181,18 +196,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _write_sse(self, events):
+    def _write_sse(self, events, *, hold_after_first=0.0):
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
         self.send_header("cache-control", "no-cache")
         self.send_header("connection", "close")
         self.end_headers()
-        for event_name, payload in events:
+        for index, (event_name, payload) in enumerate(events):
             if event_name:
                 self.wfile.write(f"event: {event_name}\n".encode("utf-8"))
             data = payload if isinstance(payload, str) else json.dumps(payload)
             self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
             self.wfile.flush()
+            if index == 0 and hold_after_first > 0:
+                time.sleep(hold_after_first)
         self.close_connection = True
 
     def do_GET(self):
@@ -210,7 +227,12 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if self.path == "/capture":
-            self._write_json(200, dict(CAPTURE))
+            with CAPTURE_LOCK:
+                capture = {
+                    **CAPTURE,
+                    "provider_request_paths": list(CAPTURE["provider_request_paths"]),
+                }
+            self._write_json(200, capture)
             return
         self._write_json(404, {"error": "not found"})
 
@@ -242,22 +264,24 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/capture/reset":
-            for key, value in CAPTURE.items():
-                if type(value) is int:
-                    CAPTURE[key] = 0
-                elif isinstance(value, list):
-                    CAPTURE[key] = []
-                else:
-                    CAPTURE[key] = False
-            self._write_json(200, dict(CAPTURE))
+            with CAPTURE_LOCK:
+                for key, value in CAPTURE.items():
+                    if type(value) is int:
+                        CAPTURE[key] = 0
+                    elif isinstance(value, list):
+                        CAPTURE[key] = []
+                    else:
+                        CAPTURE[key] = False
+                capture = dict(CAPTURE)
+            self._write_json(200, capture)
             return
 
         if self.path == "/api/v1/analyze":
             payload = self._read_json()
-            CAPTURE["analyzer_requests"] += 1
-            CAPTURE["analyzer_saw_canary"] = (
-                CAPTURE["analyzer_saw_canary"] or _text_contains_canary(payload)
-            )
+            saw_canary = _text_contains_canary(payload)
+            with CAPTURE_LOCK:
+                CAPTURE["analyzer_requests"] += 1
+                CAPTURE["analyzer_saw_canary"] |= saw_canary
             if ANALYZER_OVERLOAD["reason"] is not None:
                 reason = ANALYZER_OVERLOAD["reason"]
                 retry_after_seconds = ANALYZER_OVERLOAD["retry_after_seconds"]
@@ -282,6 +306,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
             response_content = _chat_response_content(payload)
+            if RESPONSE_DELAY_SECONDS > 0:
+                time.sleep(RESPONSE_DELAY_SECONDS)
             if payload.get("stream") is True:
                 created = int(time.time())
                 self._write_sse(
@@ -322,7 +348,8 @@ class Handler(BaseHTTPRequestHandler):
                             },
                         ),
                         ("", "[DONE]"),
-                    ]
+                    ],
+                    hold_after_first=STREAM_HOLD_SECONDS,
                 )
                 return
             self._write_json(
@@ -354,6 +381,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
             response_content = _responses_response_content(payload)
+            if RESPONSE_DELAY_SECONDS > 0:
+                time.sleep(RESPONSE_DELAY_SECONDS)
             response = {
                 "id": "resp_mock",
                 "object": "response",
@@ -404,7 +433,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "response": response,
                             },
                         ),
-                    ]
+                    ],
+                    hold_after_first=STREAM_HOLD_SECONDS,
                 )
                 return
             self._write_json(
