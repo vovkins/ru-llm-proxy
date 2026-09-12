@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -11,16 +13,25 @@ from typing import Any
 
 DEFAULT_CONCURRENCY_LIMIT = 1
 DEFAULT_QUEUE_LIMIT = 8
-DEFAULT_QUEUE_TIMEOUT_SECONDS = 0.25
+DEFAULT_QUEUE_TIMEOUT_SECONDS = 1.0
+DEFAULT_RETRY_AFTER_SECONDS = 1
+SERVICE_TIME_EWMA_ALPHA = 0.2
 
 
 class CapacityRejected(Exception):
     """Raised when analyzer capacity is exhausted before work can start."""
 
-    def __init__(self, reason: str, message: str, status_code: int = 503):
+    def __init__(
+        self,
+        reason: str,
+        message: str,
+        status_code: int = 503,
+        retry_after_seconds: int = DEFAULT_RETRY_AFTER_SECONDS,
+    ):
         super().__init__(message)
         self.reason = reason
         self.status_code = status_code
+        self.retry_after_seconds = max(1, int(retry_after_seconds))
 
 
 @dataclass
@@ -81,6 +92,7 @@ class AnalyzerCapacitySlot:
     def __init__(self, limiter: "AnalyzerCapacityLimiter"):
         self._limiter = limiter
         self._released = False
+        self._acquired_at = time.monotonic()
 
     async def __aenter__(self) -> "AnalyzerCapacitySlot":
         return self
@@ -92,7 +104,9 @@ class AnalyzerCapacitySlot:
         if self._released:
             return
         self._released = True
-        await self._limiter.release()
+        await self._limiter.release(
+            service_seconds=max(0.0, time.monotonic() - self._acquired_at)
+        )
 
 
 class AnalyzerCapacityLimiter:
@@ -110,6 +124,17 @@ class AnalyzerCapacityLimiter:
         self._condition = asyncio.Condition()
         self._active = 0
         self._waiters: deque[asyncio.Future[None]] = deque()
+        self._service_time_ewma_seconds: float | None = None
+
+    @property
+    def retry_after_seconds(self) -> int:
+        """Return a bounded delay based on configured wait and observed work."""
+        estimate = max(
+            float(DEFAULT_RETRY_AFTER_SECONDS),
+            self.queue_timeout_seconds,
+            self._service_time_ewma_seconds or 0.0,
+        )
+        return min(3_600, max(1, math.ceil(estimate)))
 
     async def acquire(self) -> AnalyzerCapacitySlot:
         """Acquire a capacity slot or reject when queue policy is exceeded."""
@@ -123,6 +148,7 @@ class AnalyzerCapacityLimiter:
                 raise CapacityRejected(
                     "queue_full",
                     "Presidio Analyzer capacity queue is full.",
+                    retry_after_seconds=self.retry_after_seconds,
                 )
 
             waiter = asyncio.get_running_loop().create_future()
@@ -136,14 +162,26 @@ class AnalyzerCapacityLimiter:
             raise CapacityRejected(
                 "queue_timeout",
                 "Timed out waiting for Presidio Analyzer capacity.",
+                retry_after_seconds=self.retry_after_seconds,
             ) from exc
         except asyncio.CancelledError:
             await self._cancel_waiter_or_release_reserved_slot(waiter)
             raise
 
-    async def release(self) -> None:
+    async def release(self, *, service_seconds: float | None = None) -> None:
         """Release one active capacity slot and wake one queued request."""
         async with self._condition:
+            if service_seconds is not None:
+                service_seconds = max(0.0, float(service_seconds))
+                previous = self._service_time_ewma_seconds
+                self._service_time_ewma_seconds = (
+                    service_seconds
+                    if previous is None
+                    else (
+                        SERVICE_TIME_EWMA_ALPHA * service_seconds
+                        + (1 - SERVICE_TIME_EWMA_ALPHA) * previous
+                    )
+                )
             if self._active > 0:
                 self._active -= 1
                 self._wake_next_waiter_unlocked()
@@ -181,6 +219,12 @@ class AnalyzerCapacityLimiter:
             "queue_timeout_seconds": self.queue_timeout_seconds,
             "active": self._active,
             "waiting": len(self._waiters),
+            "retry_after_seconds": self.retry_after_seconds,
+            "service_time_ewma_seconds": (
+                round(self._service_time_ewma_seconds, 6)
+                if self._service_time_ewma_seconds is not None
+                else None
+            ),
         }
 
 

@@ -131,6 +131,8 @@ Analyzer. По серверному `request_id` оно сопоставляет
 - `ru_presidio_analyzer_latency_seconds_*`;
 - `ru_presidio_analyzer_entities_detected_total`;
 - `ru_presidio_analyzer_capacity_rejections_total`;
+- `ru_presidio_analyzer_capacity_active`;
+- `ru_presidio_analyzer_capacity_waiting`;
 - `ru_presidio_analyzer_failures_total`;
 - `ru_presidio_analyzer_ner_failures_total`;
 - `ru_presidio_analyzer_ner_inference_total`;

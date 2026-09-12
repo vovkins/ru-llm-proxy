@@ -49,7 +49,9 @@
 Ручная проверка производительности длинного контекста описана в
 [long-context-benchmark.md](research/long-context-benchmark.md), а измеренный
 исходный уровень — в
-[long-context-baseline.md](research/long-context-baseline.md).
+[long-context-baseline.md](research/long-context-baseline.md). Настройки очереди,
+параллельности и поведение при перегрузке зафиксированы в
+[нагрузочном профиле Analyzer](research/analyzer-load-profile.md).
 
 ## Правила поддержки
 

@@ -32,7 +32,8 @@ def test_configuration_docs_document_analyzer_capacity_env():
     assert "`PRESIDIO_ANALYZER_WORKERS` | `1`" in configuration
     assert "`PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1`" in configuration
     assert "`PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8`" in configuration
-    assert "`PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `0.25`" in configuration
+    assert "`PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `1`" in configuration
+    assert "research/analyzer-load-profile.md" in configuration
 
 
 def test_setup_env_does_not_backfill_analyzer_capacity_env():
@@ -83,3 +84,4 @@ def test_monitoring_docs_list_analyzer_overload_log_event():
 
     assert "pii_guardrail_analyzer_overloaded" in monitoring
     assert 'operation="analyzer_overloaded"' in monitoring
+    assert "Retry-After" in monitoring

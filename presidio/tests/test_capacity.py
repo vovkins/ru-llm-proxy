@@ -34,6 +34,7 @@ async def _rejects_when_active_and_waiting_limits_are_full():
 
         assert exc_info.value.reason == "queue_full"
         assert exc_info.value.status_code == 503
+        assert exc_info.value.retry_after_seconds >= 1
         assert limiter.snapshot()["waiting"] == 1
     finally:
         await first_slot.release()
@@ -59,11 +60,36 @@ async def _rejects_when_queue_wait_times_out():
 
         assert exc_info.value.reason == "queue_timeout"
         assert exc_info.value.status_code == 503
+        assert exc_info.value.retry_after_seconds == 1
     finally:
         await first_slot.release()
 
     assert limiter.snapshot()["active"] == 0
     assert limiter.snapshot()["waiting"] == 0
+
+
+def test_retry_after_uses_observed_service_time_without_unbounded_values():
+    asyncio.run(_retry_after_uses_observed_service_time_without_unbounded_values())
+
+
+async def _retry_after_uses_observed_service_time_without_unbounded_values():
+    limiter = AnalyzerCapacityLimiter(
+        concurrency_limit=1,
+        queue_limit=0,
+        queue_timeout_seconds=0.25,
+    )
+    await limiter.acquire()
+    await limiter.release(service_seconds=2.2)
+
+    active_slot = await limiter.acquire()
+    try:
+        with pytest.raises(CapacityRejected) as exc_info:
+            await limiter.acquire()
+    finally:
+        await active_slot.release()
+
+    assert exc_info.value.retry_after_seconds == 3
+    assert limiter.snapshot()["service_time_ewma_seconds"] >= 0
 
 
 def test_waiting_request_acquires_slot_after_release():
