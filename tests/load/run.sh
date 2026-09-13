@@ -27,6 +27,14 @@ LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-}
 LOAD_INPUT_VARIATION=${LOAD_INPUT_VARIATION:-repeat}
 LOAD_ANALYZER_BACKEND=${LOAD_ANALYZER_BACKEND:-real}
 LOAD_ANALYZER_URL=${LOAD_ANALYZER_URL:-http://load-analyzer-router:5001}
+LOAD_ANALYZER_REPLICAS_WAS_SET=${LOAD_ANALYZER_REPLICAS+x}
+LOAD_LITELLM_REPLICAS_WAS_SET=${LOAD_LITELLM_REPLICAS+x}
+LOAD_ANALYZER_CONCURRENCY_LIMIT_WAS_SET=${LOAD_ANALYZER_CONCURRENCY_LIMIT+x}
+LOAD_ANALYZER_QUEUE_LIMIT_WAS_SET=${LOAD_ANALYZER_QUEUE_LIMIT+x}
+LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS_WAS_SET=${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS+x}
+LOAD_ANALYZER_MAX_CONNECTIONS_WAS_SET=${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS+x}
+LOAD_ANALYZER_MAX_KEEPALIVE_WAS_SET=${LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS+x}
+LOAD_REDIS_MAX_CONNECTIONS_WAS_SET=${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS+x}
 LOAD_ANALYZER_REPLICAS=${LOAD_ANALYZER_REPLICAS:-1}
 LOAD_LITELLM_REPLICAS=${LOAD_LITELLM_REPLICAS:-1}
 LOAD_ANALYZER_CONCURRENCY_LIMIT=${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
@@ -47,14 +55,20 @@ LOAD_MOCK_MEMORY=${LOAD_MOCK_MEMORY:-512m}
 LOAD_ROUTER_CPUS=${LOAD_ROUTER_CPUS:-1.0}
 LOAD_ROUTER_MEMORY=${LOAD_ROUTER_MEMORY:-256m}
 LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-}
+LOAD_STATEFUL_CHECKS=${LOAD_STATEFUL_CHECKS:-false}
+LOAD_STATEFUL_CHURN_DURATION_SECONDS=${LOAD_STATEFUL_CHURN_DURATION_SECONDS:-120}
+LOAD_STATEFUL_CHURN_CONCURRENCY=${LOAD_STATEFUL_CHURN_CONCURRENCY:-4}
+LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS=${LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS:-8}
+LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS=${LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS:-4}
 stats_pid=""
+churn_pid=""
 keys_created=false
 stack_started=false
 compose_scaffold_created=false
 
 usage() {
     cat <<'EOF'
-Usage: tests/load/run.sh [smoke|steady|stages|burst|streams|context]
+Usage: tests/load/run.sh [smoke|steady|stages|burst|streams|context|stateful]
 
 The default mock contour builds an isolated LiteLLM, PostgreSQL, Redis,
 Analyzer and mock-provider stack. LOAD_CONTOUR=mock-direct calibrates Locust
@@ -77,6 +91,8 @@ Important overrides:
   LOAD_ANALYZER_CPUS, LOAD_ANALYZER_MEMORY
   LOAD_LITELLM_CPUS, LOAD_LITELLM_MEMORY
   LOAD_KEEP_STACK=true
+  LOAD_STATEFUL_CHURN_DURATION_SECONDS, LOAD_STATEFUL_CHURN_CONCURRENCY
+  LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS
 
 Existing contour requirements:
   LOAD_ALLOW_REAL_PROVIDER=true
@@ -142,6 +158,30 @@ case "$MODE" in
         LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-1}
         LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-1300}
         ;;
+    stateful)
+        LOAD_PROFILE=steady
+        LOAD_USERS=${LOAD_USERS:-400}
+        LOAD_RUN_TIME=${LOAD_RUN_TIME:-3m}
+        LOAD_CONTEXT_SIZES=${LOAD_CONTEXT_SIZES:-1000,8000}
+        LOAD_API=${LOAD_API:-mixed}
+        LOAD_CONTEXT_MODE=${LOAD_CONTEXT_MODE:-mixed}
+        LOAD_STREAM=${LOAD_STREAM:-mixed}
+        LOAD_PACE_SECONDS=${LOAD_PACE_SECONDS:-15}
+        LOAD_INPUT_VARIATION=${LOAD_INPUT_VARIATION:-repeat}
+        if [ -z "$LOAD_ANALYZER_REPLICAS_WAS_SET" ]; then LOAD_ANALYZER_REPLICAS=4; fi
+        if [ -z "$LOAD_LITELLM_REPLICAS_WAS_SET" ]; then LOAD_LITELLM_REPLICAS=2; fi
+        if [ -z "$LOAD_ANALYZER_CONCURRENCY_LIMIT_WAS_SET" ]; then LOAD_ANALYZER_CONCURRENCY_LIMIT=1; fi
+        if [ -z "$LOAD_ANALYZER_QUEUE_LIMIT_WAS_SET" ]; then LOAD_ANALYZER_QUEUE_LIMIT=200; fi
+        if [ -z "$LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS_WAS_SET" ]; then LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS=30; fi
+        if [ -z "$LOAD_ANALYZER_MAX_CONNECTIONS_WAS_SET" ]; then LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=200; fi
+        if [ -z "$LOAD_ANALYZER_MAX_KEEPALIVE_WAS_SET" ]; then LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=100; fi
+        if [ -z "$LOAD_REDIS_MAX_CONNECTIONS_WAS_SET" ]; then LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS=200; fi
+        LOAD_VALIDATE_MAPPING=true
+        LOAD_REQUIRE_STREAM_RESTORATION=false
+        LOAD_STATEFUL_CHECKS=true
+        LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-40}
+        LOAD_EXIT_CODE_ON_ERROR=1
+        ;;
     -h|--help|help)
         usage
         exit 0
@@ -178,6 +218,8 @@ export LOAD_ANALYZER_CPUS LOAD_ANALYZER_MEMORY LOAD_LITELLM_CPUS LOAD_LITELLM_ME
 export LOAD_DB_CPUS LOAD_DB_MEMORY LOAD_REDIS_CPUS LOAD_REDIS_MEMORY
 export LOAD_MOCK_CPUS LOAD_MOCK_MEMORY LOAD_ROUTER_CPUS LOAD_ROUTER_MEMORY
 export LOAD_STOP_TIMEOUT_SECONDS
+export LOAD_STATEFUL_CHECKS LOAD_STATEFUL_CHURN_DURATION_SECONDS
+export LOAD_STATEFUL_CHURN_CONCURRENCY
 
 stop_stats() {
     if [ -n "$stats_pid" ] && kill -0 "$stats_pid" 2>/dev/null; then
@@ -186,16 +228,25 @@ stop_stats() {
     fi
 }
 
+stop_churn() {
+    if [ -n "$churn_pid" ] && kill -0 "$churn_pid" 2>/dev/null; then
+        kill "$churn_pid" 2>/dev/null || true
+        wait "$churn_pid" 2>/dev/null || true
+    fi
+}
+
 collect_stack_artifacts() {
     if [ "$stack_started" != true ]; then
         return
     fi
-    mock_id=$("${COMPOSE[@]}" ps -q load-mock-upstream | head -n 1)
-    if [ -n "$mock_id" ]; then
-        docker exec "$mock_id" python -c \
-        "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/capture').read().decode())" \
-        > "$LOAD_RESULTS_DIR/mock-provider-capture.json" 2>/dev/null || true
-    fi
+    for mock_service in load-mock-upstream load-mock-upstream-a load-mock-upstream-b; do
+        mock_id=$("${COMPOSE[@]}" ps -q "$mock_service" | head -n 1)
+        if [ -n "$mock_id" ]; then
+            docker exec "$mock_id" python -c \
+            "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/capture').read().decode())" \
+            > "$LOAD_RESULTS_DIR/$mock_service-capture.json" 2>/dev/null || true
+        fi
+    done
     replica=0
     for container_id in $("${COMPOSE[@]}" ps -q load-presidio-analyzer); do
         replica=$((replica + 1))
@@ -216,6 +267,7 @@ cleanup() {
     exit_status=$?
     trap - EXIT INT TERM
     set +e
+    stop_churn
     stop_stats
     collect_stack_artifacts
     python3 "$ROOT/tests/load/summarize_run.py" "$LOAD_RESULTS_DIR" || true
@@ -247,6 +299,10 @@ if [ "$LOAD_ANALYZER_BACKEND" = mock ] && [ "$LOAD_CONTOUR" != mock ]; then
     echo "The mock Analyzer backend is available only in LOAD_CONTOUR=mock" >&2
     exit 2
 fi
+if [ "$LOAD_STATEFUL_CHECKS" = true ] && [ "$LOAD_CONTOUR" != mock ]; then
+    echo "Stateful checks are available only in LOAD_CONTOUR=mock" >&2
+    exit 2
+fi
 
 if [ "$LOAD_CONTOUR" = "mock" ]; then
     case "$LOAD_ANALYZER_REPLICAS:$LOAD_LITELLM_REPLICAS" in
@@ -257,7 +313,8 @@ if [ "$LOAD_CONTOUR" = "mock" ]; then
     "${COMPOSE[@]}" up -d --build \
         --scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS" \
         --scale "load-litellm=$LOAD_LITELLM_REPLICAS" \
-        load-db load-redis load-mock-upstream load-presidio-analyzer \
+        load-db load-redis load-mock-upstream load-mock-upstream-a \
+        load-mock-upstream-b load-presidio-analyzer \
         load-analyzer-router load-litellm load-litellm-router
 
     keys_created=true
@@ -265,7 +322,8 @@ if [ "$LOAD_CONTOUR" = "mock" ]; then
         --count "$LOAD_USERS"
 
     container_ids=$("${COMPOSE[@]}" ps -q \
-        load-db load-redis load-mock-upstream load-presidio-analyzer \
+        load-db load-redis load-mock-upstream load-mock-upstream-a \
+        load-mock-upstream-b load-presidio-analyzer \
         load-analyzer-router load-litellm load-litellm-router)
     if [ -z "$container_ids" ]; then
         echo "No load-contour containers found for Docker statistics" >&2
@@ -277,6 +335,25 @@ if [ "$LOAD_CONTOUR" = "mock" ]; then
 
     compose_run_args=(--no-TTY --no-deps)
     locust_args=(--headless --host http://load-litellm-router:4000)
+
+    if [ "$LOAD_STATEFUL_CHECKS" = true ]; then
+        stateful_base_url="http://127.0.0.1:${LOAD_LITELLM_PORT:-14020}"
+        python3 "$ROOT/tests/load/stateful_checks.py" preflight \
+            --base-url "$stateful_base_url" \
+            --compose-file "$COMPOSE_FILE" \
+            --results-dir "$LOAD_RESULTS_DIR" \
+            --expected-users "$LOAD_USERS"
+        stateful_logs_since=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        python3 "$ROOT/tests/load/stateful_checks.py" churn \
+            --base-url "$stateful_base_url" \
+            --compose-file "$COMPOSE_FILE" \
+            --results-dir "$LOAD_RESULTS_DIR" \
+            --churn-duration-seconds "$LOAD_STATEFUL_CHURN_DURATION_SECONDS" \
+            --churn-concurrency "$LOAD_STATEFUL_CHURN_CONCURRENCY" \
+            --revocation-timeout-seconds "$LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS" \
+            --revocation-required-denials "$LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS" &
+        churn_pid=$!
+    fi
 elif [ "$LOAD_CONTOUR" = "mock-direct" ]; then
     echo "Starting direct mock-provider calibration contour..."
     stack_started=true
@@ -327,6 +404,8 @@ else
 fi
 
 echo "Running $MODE with $LOAD_USERS users; reports: $LOAD_RESULTS_DIR"
+load_status=0
+set +e
 "${COMPOSE[@]}" --profile load run --rm \
     "${compose_run_args[@]}" \
     -e LOAD_REPORT_NODE="$LOAD_REPORT_NODE" \
@@ -340,3 +419,26 @@ echo "Running $MODE with $LOAD_USERS users; reports: $LOAD_RESULTS_DIR"
     --only-summary \
     --stop-timeout "$LOAD_STOP_TIMEOUT_SECONDS" \
     --exit-code-on-error "$LOAD_EXIT_CODE_ON_ERROR"
+load_status=$?
+set -e
+
+if [ "$LOAD_STATEFUL_CHECKS" = true ]; then
+    churn_status=0
+    set +e
+    wait "$churn_pid"
+    churn_status=$?
+    churn_pid=""
+    set -e
+
+    validation_status=0
+    python3 "$ROOT/tests/load/stateful_checks.py" validate \
+        --compose-file "$COMPOSE_FILE" \
+        --results-dir "$LOAD_RESULTS_DIR" \
+        --expected-users "$LOAD_USERS" \
+        --logs-since "$stateful_logs_since" || validation_status=$?
+    if [ "$churn_status" -ne 0 ] || [ "$validation_status" -ne 0 ]; then
+        exit 1
+    fi
+fi
+
+exit "$load_status"

@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tests" / "load"))
 import load_support  # noqa: E402
 import manage_keys  # noqa: E402
 import sample_metrics  # noqa: E402
+import stateful_checks  # noqa: E402
 import summarize_run  # noqa: E402
 
 
@@ -246,6 +247,64 @@ def test_safe_report_aggregates_only_bounded_error_metadata(tmp_path):
     assert summary["error_code_counts"] == {"analyzer_overloaded": 1}
     assert summary["error_type_counts"] == {"service_unavailable": 1}
     assert summary["retry_after_seconds_counts"] == {"2": 1}
+
+
+def test_safe_report_summarizes_affinity_without_keys_or_markers(tmp_path):
+    writer = load_support.SafeReportWriter(
+        tmp_path,
+        node="affinity",
+        metadata={"profile": "steady"},
+    )
+    for user_index, deployments in (
+        (0, ("load-mock-a", "load-mock-a")),
+        (1, ("load-mock-b", "load-mock-a")),
+    ):
+        for deployment_id in deployments:
+            writer.record(
+                {
+                    "timestamp": 1,
+                    "user_index": user_index,
+                    "status_code": 200,
+                    "total_ms": 10,
+                    "deployment_id": deployment_id,
+                }
+            )
+
+    summary = writer.close()
+
+    assert summary["initial_deployment_counts"] == {
+        "load-mock-a": 1,
+        "load-mock-b": 1,
+    }
+    assert summary["deployment_transition_count"] == 1
+
+
+def test_provider_capture_summary_drops_repeated_paths_and_unknown_fields():
+    summary = stateful_checks.safe_provider_capture(
+        {
+            "deployment_id": "load-mock-a",
+            "provider_requests": 3,
+            "provider_request_paths": [
+                "/v1/chat/completions",
+                "/v1/chat/completions",
+                "/v1/responses",
+            ],
+            "provider_saw_pii_placeholder": True,
+            "provider_saw_synthetic_marker": False,
+            "request_body": "private-user@example.test",
+        }
+    )
+
+    assert summary == {
+        "deployment_id": "load-mock-a",
+        "provider_requests": 3,
+        "provider_request_path_counts": {
+            "/v1/chat/completions": 2,
+            "/v1/responses": 1,
+        },
+        "provider_saw_pii_placeholder": True,
+        "provider_saw_synthetic_marker": False,
+    }
 
 
 def test_key_state_is_atomic_and_owner_only(tmp_path):

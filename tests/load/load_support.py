@@ -357,6 +357,7 @@ class SafeReportWriter:
 
     FIELDNAMES = (
         "timestamp",
+        "user_index",
         "api",
         "context_mode",
         "stream",
@@ -369,6 +370,7 @@ class SafeReportWriter:
         "error_code",
         "error_type",
         "retry_after_seconds",
+        "deployment_id",
     )
 
     def __init__(self, output_dir: Path, *, node: str, metadata: dict[str, Any]) -> None:
@@ -388,6 +390,15 @@ class SafeReportWriter:
 
     def record(self, sample: dict[str, Any]) -> None:
         bounded = {name: sample.get(name) for name in self.FIELDNAMES}
+        user_index = bounded.get("user_index")
+        bounded["user_index"] = (
+            user_index
+            if isinstance(user_index, int) and 0 <= user_index <= 10_000
+            else ""
+        )
+        bounded["deployment_id"] = bounded_error_token(
+            bounded.get("deployment_id")
+        )
         with self._lock:
             self._writer.writerow(bounded)
             self._file.flush()
@@ -426,6 +437,21 @@ class SafeReportWriter:
             for item in samples
             if item.get("retry_after_seconds")
         )
+        initial_deployments: Counter[str] = Counter()
+        deployment_transitions = 0
+        deployments_by_user: dict[int, list[str]] = {}
+        for item in successful:
+            user_index = item.get("user_index")
+            deployment_id = str(item.get("deployment_id") or "")
+            if not isinstance(user_index, int) or not deployment_id:
+                continue
+            deployments_by_user.setdefault(user_index, []).append(deployment_id)
+        for deployments in deployments_by_user.values():
+            initial_deployments[deployments[0]] += 1
+            deployment_transitions += sum(
+                current != previous
+                for previous, current in zip(deployments, deployments[1:])
+            )
         context_units = sum(int(item.get("context_tokens") or 0) for item in samples)
         summary = {
             "schema_version": 1,
@@ -447,6 +473,8 @@ class SafeReportWriter:
             "error_code_counts": dict(sorted(error_code_counts.items())),
             "error_type_counts": dict(sorted(error_type_counts.items())),
             "retry_after_seconds_counts": dict(sorted(retry_after_counts.items())),
+            "initial_deployment_counts": dict(sorted(initial_deployments.items())),
+            "deployment_transition_count": deployment_transitions,
             "latency_ms": {
                 "p50": percentile(latencies, 0.50),
                 "p95": percentile(latencies, 0.95),
