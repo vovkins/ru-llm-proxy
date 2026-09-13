@@ -176,7 +176,9 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert "resilience)" in script
     assert "resilience_checks.py" in script
     assert "LOAD_RESILIENCE_CHECKS=true" in script
-    assert "LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-15}" in script
+    assert "LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-7200}" in script
+    assert "LOAD_CANCELLATION_TEST_TTL_SECONDS" in script
+    assert "LOAD_RESILIENCE_USER_RECOVERY_TIMEOUT_SECONDS" in script
     assert "LOAD_MOCK_FAILURE_DELAY_SECONDS=${LOAD_MOCK_FAILURE_DELAY_SECONDS:-60}" in script
     assert "analyzer-metrics-$replica.prom" in script
     assert "guardrail-metrics-$replica.prom" in script

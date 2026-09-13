@@ -395,6 +395,28 @@ def test_resilience_user_recovery_timeout_is_bounded(tmp_path):
         )
 
 
+def test_resilience_shortens_only_request_mapping_ttls(monkeypatch):
+    commands = []
+    monkeypatch.setattr(
+        resilience_checks,
+        "service_container_ids",
+        lambda _compose_file, _service: ["redis-container"],
+    )
+    monkeypatch.setattr(
+        resilience_checks,
+        "run_command",
+        lambda command, **_kwargs: commands.append(command) or "1",
+    )
+
+    resilience_checks.shorten_mapping_ttls(Path("compose.yml"), 15)
+
+    command = commands[0]
+    assert command[:4] == ["docker", "exec", "redis-container", "redis-cli"]
+    assert "pii_mapping:*" in command[-3]
+    assert "pii_analysis_cache" not in command[-3]
+    assert command[-1] == "15000"
+
+
 def test_resilience_measures_application_recovery_for_every_fault():
     events = [
         {"scenario": "analyzer", "fault_started_at": 100, "recovered_at": 110},

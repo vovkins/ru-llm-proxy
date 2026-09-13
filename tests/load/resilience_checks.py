@@ -353,6 +353,39 @@ def _close_connection(connection: http.client.HTTPConnection) -> None:
     connection.close()
 
 
+def shorten_mapping_ttls(compose_file: Path, ttl_seconds: float) -> None:
+    """Bound cancellation cleanup time without shortening the analysis cache."""
+    container_ids = service_container_ids(compose_file, "load-redis")
+    if len(container_ids) != 1:
+        raise RuntimeError("cancellation probe requires exactly one load Redis")
+    ttl_ms = max(1, int(ttl_seconds * 1_000))
+    script = """
+local cursor = '0'
+repeat
+  local result = redis.call('SCAN', cursor, 'MATCH', 'pii_mapping:*', 'COUNT', 1000)
+  cursor = result[1]
+  for _, key in ipairs(result[2]) do
+    redis.call('PEXPIRE', key, ARGV[1])
+  end
+until cursor == '0'
+return 1
+""".strip()
+    run_command(
+        [
+            "docker",
+            "exec",
+            container_ids[0],
+            "redis-cli",
+            "--raw",
+            "EVAL",
+            script,
+            "0",
+            str(ttl_ms),
+        ],
+        timeout=30,
+    )
+
+
 def cancel_request(args: argparse.Namespace) -> None:
     before = redis_snapshot(args.compose_file)
     baseline_count = before["pii_mappings"]["count"]
@@ -398,6 +431,16 @@ def cancel_request(args: argparse.Namespace) -> None:
         _close_connection(connection)
         raise AssertionError("cancellation probe did not observe a request mapping")
 
+    observed_mapping = redis_snapshot(args.compose_file)["pii_mappings"]
+    observed_ttl_ms = observed_mapping.get("max_ttl_ms")
+    if not isinstance(observed_ttl_ms, int) or observed_ttl_ms <= 0:
+        _close_connection(connection)
+        raise AssertionError("cancellation mapping does not have a positive TTL")
+    configured_ttl_ms = int(args.mapping_ttl_seconds * 1_000)
+    if observed_ttl_ms > configured_ttl_ms:
+        _close_connection(connection)
+        raise AssertionError("cancellation mapping TTL exceeds configured bound")
+
     closed_at = int(time.time())
     _close_connection(connection)
 
@@ -410,10 +453,18 @@ def cancel_request(args: argparse.Namespace) -> None:
             break
         time.sleep(0.25)
 
+    if not immediate_cleanup:
+        shorten_mapping_ttls(
+            args.compose_file,
+            args.cancellation_test_ttl_seconds,
+        )
     eventual_started = time.monotonic()
     eventual = wait_for_no_mappings(
         args.compose_file,
-        timeout=args.mapping_ttl_seconds + args.cancellation_expiry_grace_seconds,
+        timeout=(
+            args.cancellation_test_ttl_seconds
+            + args.cancellation_expiry_grace_seconds
+        ),
     )
     eventual_cleanup_seconds = round(time.monotonic() - eventual_started, 3)
     captures = {
@@ -427,7 +478,11 @@ def cancel_request(args: argparse.Namespace) -> None:
         "schema_version": 1,
         "mapping_observed_at": observed_at,
         "connection_closed_at": closed_at,
+        "configured_mapping_ttl_seconds": args.mapping_ttl_seconds,
+        "observed_mapping_ttl_ms": observed_ttl_ms,
         "immediate_cleanup": immediate_cleanup,
+        "test_ttl_shortened": not immediate_cleanup,
+        "cancellation_test_ttl_seconds": args.cancellation_test_ttl_seconds,
         "eventual_cleanup_seconds": eventual_cleanup_seconds,
         "final_pii_mapping_count": eventual["pii_mappings"]["count"],
         "provider_received_unmasked_marker": provider_received_raw,
@@ -573,6 +628,12 @@ def validate(args: argparse.Namespace) -> None:
     ]
     events = fault_report.get("events", [])
     failures: list[str] = []
+    warmup = fault_report.get("warmup", {})
+    if (
+        warmup.get("outcome") != "completed"
+        or warmup.get("successful_user_count") != args.expected_users
+    ):
+        failures.append("warmup_incomplete")
     if [event.get("scenario") for event in events] != expected_scenarios:
         failures.append("fault_scenarios_incomplete")
     if any(event.get("outcome") != "recovered" for event in events):
@@ -636,7 +697,7 @@ def validate(args: argparse.Namespace) -> None:
             sample.get("user_index", "")
             for sample in samples
             if not sample.get("error_kind")
-            and int(float(sample.get("timestamp") or 0)) < first_fault
+            and int(float(sample.get("timestamp") or 0)) <= first_fault
         }
         users_after = {
             sample.get("user_index", "")
@@ -664,7 +725,10 @@ def validate(args: argparse.Namespace) -> None:
 
     final_redis = wait_for_no_mappings(
         args.compose_file,
-        timeout=args.mapping_ttl_seconds + args.cancellation_expiry_grace_seconds,
+        timeout=(
+            args.cancellation_test_ttl_seconds
+            + args.cancellation_expiry_grace_seconds
+        ),
     )
     for name in ("analysis_cache_entries", "deployment_affinity"):
         if final_redis[name]["invalid_ttl_count"]:
@@ -726,6 +790,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user-recovery-timeout-seconds", type=float, default=1_200)
     parser.add_argument("--recovery-grace-seconds", type=float, default=15)
     parser.add_argument("--mapping-ttl-seconds", type=float, default=15)
+    parser.add_argument("--cancellation-test-ttl-seconds", type=float, default=15)
     parser.add_argument("--cancellation-observe-timeout-seconds", type=float, default=15)
     parser.add_argument("--cancellation-immediate-timeout-seconds", type=float, default=5)
     parser.add_argument("--cancellation-expiry-grace-seconds", type=float, default=10)
