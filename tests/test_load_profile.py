@@ -417,6 +417,94 @@ def test_resilience_shortens_only_request_mapping_ttls(monkeypatch):
     assert command[-1] == "15000"
 
 
+def test_resilience_accepts_and_cleans_bounded_mappings_after_redis_outage(
+    monkeypatch,
+):
+    observed = {
+        "pii_mappings": {
+            "count": 5,
+            "min_ttl_ms": 6_000_000,
+            "max_ttl_ms": 6_100_000,
+            "invalid_ttl_count": 0,
+        },
+        "analysis_cache_entries": {"invalid_ttl_count": 0},
+        "deployment_affinity": {"invalid_ttl_count": 0},
+    }
+    final = {
+        **observed,
+        "pii_mappings": {
+            "count": 0,
+            "min_ttl_ms": None,
+            "max_ttl_ms": None,
+            "invalid_ttl_count": 0,
+        },
+    }
+    shortened = []
+    monkeypatch.setattr(resilience_checks, "redis_snapshot", lambda _path: observed)
+    monkeypatch.setattr(
+        resilience_checks,
+        "shorten_mapping_ttls",
+        lambda _path, ttl: shortened.append(ttl),
+    )
+    monkeypatch.setattr(
+        resilience_checks,
+        "wait_for_no_mappings",
+        lambda _path, timeout: final,
+    )
+
+    result, report, failures = resilience_checks.finalize_mapping_state(
+        Path("compose.yml"),
+        mapping_ttl_seconds=7_200,
+        cleanup_ttl_seconds=15,
+        cleanup_grace_seconds=10,
+        allow_ttl_bounded_residual=True,
+    )
+
+    assert result["pii_mappings"]["count"] == 0
+    assert report["accepted_after_redis_outage"] is True
+    assert report["observed"]["count"] == 5
+    assert report["test_ttl_shortened"] is True
+    assert shortened == [15]
+    assert failures == []
+
+
+def test_resilience_rejects_unexplained_residual_mappings(monkeypatch):
+    observed = {
+        "pii_mappings": {
+            "count": 1,
+            "min_ttl_ms": 6_000_000,
+            "max_ttl_ms": 6_000_000,
+            "invalid_ttl_count": 0,
+        }
+    }
+    final = {
+        "pii_mappings": {
+            "count": 0,
+            "min_ttl_ms": None,
+            "max_ttl_ms": None,
+            "invalid_ttl_count": 0,
+        }
+    }
+    monkeypatch.setattr(resilience_checks, "redis_snapshot", lambda _path: observed)
+    monkeypatch.setattr(resilience_checks, "shorten_mapping_ttls", lambda *_args: None)
+    monkeypatch.setattr(
+        resilience_checks,
+        "wait_for_no_mappings",
+        lambda _path, timeout: final,
+    )
+
+    _result, report, failures = resilience_checks.finalize_mapping_state(
+        Path("compose.yml"),
+        mapping_ttl_seconds=7_200,
+        cleanup_ttl_seconds=15,
+        cleanup_grace_seconds=10,
+        allow_ttl_bounded_residual=False,
+    )
+
+    assert report["accepted_after_redis_outage"] is False
+    assert failures == ["unexplained_or_unbounded_residual_mappings"]
+
+
 def test_resilience_measures_application_recovery_for_every_fault():
     events = [
         {"scenario": "analyzer", "fault_started_at": 100, "recovered_at": 110},

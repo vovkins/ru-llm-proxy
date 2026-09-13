@@ -386,6 +386,57 @@ return 1
     )
 
 
+def finalize_mapping_state(
+    compose_file: Path,
+    *,
+    mapping_ttl_seconds: float,
+    cleanup_ttl_seconds: float,
+    cleanup_grace_seconds: float,
+    allow_ttl_bounded_residual: bool,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """Record explainable orphan mappings, then clean the isolated test store."""
+    observed = redis_snapshot(compose_file)
+    mapping_state = observed["pii_mappings"]
+    mapping_count = int(mapping_state.get("count") or 0)
+    invalid_ttl_count = int(mapping_state.get("invalid_ttl_count") or 0)
+    max_ttl_ms = mapping_state.get("max_ttl_ms")
+    configured_ttl_ms = int(mapping_ttl_seconds * 1_000)
+    ttl_is_bounded = (
+        mapping_count > 0
+        and invalid_ttl_count == 0
+        and isinstance(max_ttl_ms, int)
+        and 0 < max_ttl_ms <= configured_ttl_ms
+    )
+    failures: list[str] = []
+    accepted = mapping_count > 0 and allow_ttl_bounded_residual and ttl_is_bounded
+    if mapping_count > 0 and not accepted:
+        failures.append("unexplained_or_unbounded_residual_mappings")
+
+    cleanup_shortened = False
+    final = observed
+    if mapping_count > 0:
+        cleanup_shortened = True
+        shorten_mapping_ttls(compose_file, cleanup_ttl_seconds)
+        try:
+            final = wait_for_no_mappings(
+                compose_file,
+                timeout=cleanup_ttl_seconds + cleanup_grace_seconds,
+            )
+        except AssertionError:
+            final = redis_snapshot(compose_file)
+            failures.append("residual_mapping_cleanup_failed")
+
+    report = {
+        "observed": mapping_state,
+        "ttl_bounded": ttl_is_bounded,
+        "accepted_after_redis_outage": accepted,
+        "test_ttl_shortened": cleanup_shortened,
+        "cleanup_ttl_seconds": cleanup_ttl_seconds,
+        "final_pii_mapping_count": final["pii_mappings"]["count"],
+    }
+    return final, report, failures
+
+
 def cancel_request(args: argparse.Namespace) -> None:
     before = redis_snapshot(args.compose_file)
     baseline_count = before["pii_mappings"]["count"]
@@ -659,6 +710,9 @@ def validate(args: argparse.Namespace) -> None:
     fault_error_counts: dict[str, Counter[str]] = {
         str(item["scenario"]): Counter() for item in recovery
     }
+    fault_error_type_counts: dict[str, Counter[str]] = {
+        str(item["scenario"]): Counter() for item in recovery
+    }
     successful_users: Counter[str] = Counter()
     deployments = set()
     for sample in samples:
@@ -673,6 +727,9 @@ def validate(args: argparse.Namespace) -> None:
                 unexpected_error_counts[error_kind] += 1
             else:
                 fault_error_counts[scenario][error_kind] += 1
+                error_type = sample.get("error_type", "")
+                if error_type:
+                    fault_error_type_counts[scenario][error_type] += 1
             continue
         user_index = sample.get("user_index", "")
         deployment = sample.get("deployment_id", "")
@@ -723,13 +780,26 @@ def validate(args: argparse.Namespace) -> None:
     if transitions.get("before_redis_fault", 0):
         failures.append("affinity_changed_before_redis_fault")
 
-    final_redis = wait_for_no_mappings(
-        args.compose_file,
-        timeout=(
-            args.cancellation_test_ttl_seconds
-            + args.cancellation_expiry_grace_seconds
-        ),
+    allow_ttl_bounded_residual = (
+        any(
+            event.get("scenario") == "redis" and event.get("outcome") == "recovered"
+            for event in events
+        )
+        and fault_error_type_counts.get("redis", {}).get(
+            "guardrail_dependency_unavailable", 0
+        )
+        > 0
     )
+    final_redis, residual_mapping_cleanup, mapping_failures = (
+        finalize_mapping_state(
+            args.compose_file,
+            mapping_ttl_seconds=args.mapping_ttl_seconds,
+            cleanup_ttl_seconds=args.cancellation_test_ttl_seconds,
+            cleanup_grace_seconds=args.cancellation_expiry_grace_seconds,
+            allow_ttl_bounded_residual=allow_ttl_bounded_residual,
+        )
+    )
+    failures.extend(mapping_failures)
     for name in ("analysis_cache_entries", "deployment_affinity"):
         if final_redis[name]["invalid_ttl_count"]:
             failures.append(f"invalid_ttl_{name}")
@@ -759,10 +829,15 @@ def validate(args: argparse.Namespace) -> None:
             scenario: dict(sorted(counts.items()))
             for scenario, counts in fault_error_counts.items()
         },
+        "fault_error_type_counts": {
+            scenario: dict(sorted(counts.items()))
+            for scenario, counts in fault_error_type_counts.items()
+        },
         "application_recovery": recovery,
         "affinity_transitions": transitions,
         "fault_events": events,
         "client_cancellation": cancellation_report,
+        "residual_mapping_cleanup": residual_mapping_cleanup,
         "redis": final_redis,
         "provider_captures": captures,
     }
@@ -789,7 +864,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--recovery-timeout-seconds", type=float, default=120)
     parser.add_argument("--user-recovery-timeout-seconds", type=float, default=1_200)
     parser.add_argument("--recovery-grace-seconds", type=float, default=15)
-    parser.add_argument("--mapping-ttl-seconds", type=float, default=15)
+    parser.add_argument("--mapping-ttl-seconds", type=float, default=7_200)
     parser.add_argument("--cancellation-test-ttl-seconds", type=float, default=15)
     parser.add_argument("--cancellation-observe-timeout-seconds", type=float, default=15)
     parser.add_argument("--cancellation-immediate-timeout-seconds", type=float, default=5)
