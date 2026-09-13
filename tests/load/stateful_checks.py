@@ -555,6 +555,7 @@ def validate(args: argparse.Namespace) -> None:
         failures.append("mapping_isolation_mismatch")
 
     initial_by_user: dict[str, str] = {}
+    successful_requests_by_user: Counter[str] = Counter()
     for sample in samples:
         if sample.get("error_kind"):
             continue
@@ -562,7 +563,14 @@ def validate(args: argparse.Namespace) -> None:
         if deployment_id not in KNOWN_DEPLOYMENTS:
             failures.append("unknown_or_missing_deployment")
             break
-        initial_by_user.setdefault(sample.get("user_index", ""), deployment_id)
+        user_index = sample.get("user_index", "")
+        initial_by_user.setdefault(user_index, deployment_id)
+        successful_requests_by_user[user_index] += 1
+    if len(initial_by_user) != args.expected_users:
+        failures.append("not_all_users_observed")
+    minimum_requests_per_user = min(successful_requests_by_user.values(), default=0)
+    if minimum_requests_per_user < 2:
+        failures.append("insufficient_requests_per_user")
     distribution = Counter(initial_by_user.values())
     if set(distribution) != KNOWN_DEPLOYMENTS:
         failures.append("deployments_not_distributed")
@@ -605,6 +613,8 @@ def validate(args: argparse.Namespace) -> None:
         "schema_version": 1,
         "passed": not failures,
         "failures": sorted(set(failures)),
+        "observed_user_count": len(initial_by_user),
+        "minimum_successful_requests_per_user": minimum_requests_per_user,
         "initial_deployment_counts": dict(sorted(distribution.items())),
         "deployment_transition_count": summary.get("deployment_transition_count"),
         "redis": final_redis,

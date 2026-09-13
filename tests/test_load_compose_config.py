@@ -153,6 +153,9 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert "LOAD_STATEFUL_CHECKS=true" in script
     assert "LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS" in script
     assert "LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS" in script
+    assert "LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-90" in script
+    assert "LOAD_READ_TIMEOUT_SECONDS:-150" in script
+    assert "LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-0.5}" in script
     assert "analyzer-metrics-$replica.prom" in script
     assert "guardrail-metrics-$replica.prom" in script
     assert "sample_metrics.py" in script
