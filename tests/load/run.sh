@@ -60,15 +60,26 @@ LOAD_STATEFUL_CHURN_DURATION_SECONDS=${LOAD_STATEFUL_CHURN_DURATION_SECONDS:-120
 LOAD_STATEFUL_CHURN_CONCURRENCY=${LOAD_STATEFUL_CHURN_CONCURRENCY:-4}
 LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS=${LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS:-8}
 LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS=${LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS:-4}
+LOAD_RESILIENCE_CHECKS=${LOAD_RESILIENCE_CHECKS:-false}
+LOAD_RESILIENCE_SCENARIOS=${LOAD_RESILIENCE_SCENARIOS:-analyzer,litellm,redis,postgres}
+LOAD_RESILIENCE_INITIAL_DELAY_SECONDS=${LOAD_RESILIENCE_INITIAL_DELAY_SECONDS:-430}
+LOAD_RESILIENCE_DOWNTIME_SECONDS=${LOAD_RESILIENCE_DOWNTIME_SECONDS:-8}
+LOAD_RESILIENCE_BETWEEN_SECONDS=${LOAD_RESILIENCE_BETWEEN_SECONDS:-150}
+LOAD_RESILIENCE_RECOVERY_TIMEOUT_SECONDS=${LOAD_RESILIENCE_RECOVERY_TIMEOUT_SECONDS:-120}
+LOAD_RESILIENCE_RECOVERY_GRACE_SECONDS=${LOAD_RESILIENCE_RECOVERY_GRACE_SECONDS:-15}
+LOAD_CANCELLATION_OBSERVE_TIMEOUT_SECONDS=${LOAD_CANCELLATION_OBSERVE_TIMEOUT_SECONDS:-15}
+LOAD_CANCELLATION_IMMEDIATE_TIMEOUT_SECONDS=${LOAD_CANCELLATION_IMMEDIATE_TIMEOUT_SECONDS:-5}
+LOAD_CANCELLATION_EXPIRY_GRACE_SECONDS=${LOAD_CANCELLATION_EXPIRY_GRACE_SECONDS:-10}
 stats_pid=""
 churn_pid=""
+fault_pid=""
 keys_created=false
 stack_started=false
 compose_scaffold_created=false
 
 usage() {
     cat <<'EOF'
-Usage: tests/load/run.sh [smoke|steady|stages|burst|streams|context|stateful]
+Usage: tests/load/run.sh [smoke|steady|stages|burst|streams|context|stateful|resilience]
 
 The default mock contour builds an isolated LiteLLM, PostgreSQL, Redis,
 Analyzer and mock-provider stack. LOAD_CONTOUR=mock-direct calibrates Locust
@@ -93,6 +104,9 @@ Important overrides:
   LOAD_KEEP_STACK=true
   LOAD_STATEFUL_CHURN_DURATION_SECONDS, LOAD_STATEFUL_CHURN_CONCURRENCY
   LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS
+  LOAD_RESILIENCE_SCENARIOS, LOAD_RESILIENCE_INITIAL_DELAY_SECONDS
+  LOAD_RESILIENCE_DOWNTIME_SECONDS, LOAD_RESILIENCE_BETWEEN_SECONDS
+  LOAD_RESILIENCE_RECOVERY_TIMEOUT_SECONDS
 
 Existing contour requirements:
   LOAD_ALLOW_REAL_PROVIDER=true
@@ -185,6 +199,35 @@ case "$MODE" in
         LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-0.5}
         LOAD_EXIT_CODE_ON_ERROR=1
         ;;
+    resilience)
+        LOAD_PROFILE=steady
+        LOAD_USERS=${LOAD_USERS:-400}
+        LOAD_RUN_TIME=${LOAD_RUN_TIME:-22m}
+        LOAD_CONTEXT_SIZES=${LOAD_CONTEXT_SIZES:-1000}
+        LOAD_API=${LOAD_API:-mixed}
+        LOAD_CONTEXT_MODE=${LOAD_CONTEXT_MODE:-mixed}
+        LOAD_STREAM=${LOAD_STREAM:-mixed}
+        LOAD_PACE_SECONDS=${LOAD_PACE_SECONDS:-15}
+        LOAD_INPUT_VARIATION=${LOAD_INPUT_VARIATION:-repeat}
+        if [ -z "$LOAD_ANALYZER_REPLICAS_WAS_SET" ]; then LOAD_ANALYZER_REPLICAS=4; fi
+        if [ -z "$LOAD_LITELLM_REPLICAS_WAS_SET" ]; then LOAD_LITELLM_REPLICAS=2; fi
+        if [ -z "$LOAD_ANALYZER_CONCURRENCY_LIMIT_WAS_SET" ]; then LOAD_ANALYZER_CONCURRENCY_LIMIT=1; fi
+        if [ -z "$LOAD_ANALYZER_QUEUE_LIMIT_WAS_SET" ]; then LOAD_ANALYZER_QUEUE_LIMIT=200; fi
+        if [ -z "$LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS_WAS_SET" ]; then LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS=30; fi
+        if [ -z "$LOAD_ANALYZER_MAX_CONNECTIONS_WAS_SET" ]; then LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=200; fi
+        if [ -z "$LOAD_ANALYZER_MAX_KEEPALIVE_WAS_SET" ]; then LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=100; fi
+        if [ -z "$LOAD_REDIS_MAX_CONNECTIONS_WAS_SET" ]; then LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS=200; fi
+        LOAD_VALIDATE_MAPPING=true
+        LOAD_REQUIRE_STREAM_RESTORATION=false
+        LOAD_RESILIENCE_CHECKS=true
+        LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS=${LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-90}
+        LOAD_READ_TIMEOUT_SECONDS=${LOAD_READ_TIMEOUT_SECONDS:-150}
+        LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-150}
+        LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-1}
+        LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-15}
+        LOAD_MOCK_FAILURE_DELAY_SECONDS=${LOAD_MOCK_FAILURE_DELAY_SECONDS:-60}
+        LOAD_EXIT_CODE_ON_ERROR=0
+        ;;
     -h|--help|help)
         usage
         exit 0
@@ -204,6 +247,7 @@ LOAD_MOCK_STREAM_HOLD_SECONDS=${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
 LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-0}
 LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-30}
 LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS=${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-7200}
 
 export LOAD_PROFILE LOAD_USERS LOAD_RUN_TIME LOAD_CONTEXT_SIZES
 export LOAD_PACE_SECONDS LOAD_STAGE_DURATION_SECONDS LOAD_RESULTS_DIR LOAD_REPORT_NODE
@@ -223,6 +267,13 @@ export LOAD_MOCK_CPUS LOAD_MOCK_MEMORY LOAD_ROUTER_CPUS LOAD_ROUTER_MEMORY
 export LOAD_STOP_TIMEOUT_SECONDS
 export LOAD_STATEFUL_CHECKS LOAD_STATEFUL_CHURN_DURATION_SECONDS
 export LOAD_STATEFUL_CHURN_CONCURRENCY
+export LOAD_RESILIENCE_CHECKS LOAD_RESILIENCE_SCENARIOS
+export LOAD_RESILIENCE_INITIAL_DELAY_SECONDS LOAD_RESILIENCE_DOWNTIME_SECONDS
+export LOAD_RESILIENCE_BETWEEN_SECONDS LOAD_RESILIENCE_RECOVERY_TIMEOUT_SECONDS
+export LOAD_RESILIENCE_RECOVERY_GRACE_SECONDS LOAD_PII_MAPPING_TTL_SECONDS
+export LOAD_CANCELLATION_OBSERVE_TIMEOUT_SECONDS
+export LOAD_CANCELLATION_IMMEDIATE_TIMEOUT_SECONDS
+export LOAD_CANCELLATION_EXPIRY_GRACE_SECONDS LOAD_MOCK_FAILURE_DELAY_SECONDS
 
 stop_stats() {
     if [ -n "$stats_pid" ] && kill -0 "$stats_pid" 2>/dev/null; then
@@ -235,6 +286,13 @@ stop_churn() {
     if [ -n "$churn_pid" ] && kill -0 "$churn_pid" 2>/dev/null; then
         kill "$churn_pid" 2>/dev/null || true
         wait "$churn_pid" 2>/dev/null || true
+    fi
+}
+
+stop_fault_injector() {
+    if [ -n "$fault_pid" ] && kill -0 "$fault_pid" 2>/dev/null; then
+        kill "$fault_pid" 2>/dev/null || true
+        wait "$fault_pid" 2>/dev/null || true
     fi
 }
 
@@ -270,6 +328,7 @@ cleanup() {
     exit_status=$?
     trap - EXIT INT TERM
     set +e
+    stop_fault_injector
     stop_churn
     stop_stats
     collect_stack_artifacts
@@ -304,6 +363,14 @@ if [ "$LOAD_ANALYZER_BACKEND" = mock ] && [ "$LOAD_CONTOUR" != mock ]; then
 fi
 if [ "$LOAD_STATEFUL_CHECKS" = true ] && [ "$LOAD_CONTOUR" != mock ]; then
     echo "Stateful checks are available only in LOAD_CONTOUR=mock" >&2
+    exit 2
+fi
+if [ "$LOAD_RESILIENCE_CHECKS" = true ] && [ "$LOAD_CONTOUR" != mock ]; then
+    echo "Resilience checks are available only in LOAD_CONTOUR=mock" >&2
+    exit 2
+fi
+if [ "$LOAD_STATEFUL_CHECKS" = true ] && [ "$LOAD_RESILIENCE_CHECKS" = true ]; then
+    echo "Stateful and resilience checks cannot run in the same invocation" >&2
     exit 2
 fi
 
@@ -356,6 +423,32 @@ if [ "$LOAD_CONTOUR" = "mock" ]; then
             --revocation-timeout-seconds "$LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS" \
             --revocation-required-denials "$LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS" &
         churn_pid=$!
+    fi
+    if [ "$LOAD_RESILIENCE_CHECKS" = true ]; then
+        resilience_base_url="http://127.0.0.1:${LOAD_LITELLM_PORT:-14020}"
+        python3 "$ROOT/tests/load/stateful_checks.py" preflight \
+            --base-url "$resilience_base_url" \
+            --compose-file "$COMPOSE_FILE" \
+            --results-dir "$LOAD_RESULTS_DIR" \
+            --expected-users "$LOAD_USERS"
+        python3 "$ROOT/tests/load/resilience_checks.py" cancel \
+            --base-url "$resilience_base_url" \
+            --compose-file "$COMPOSE_FILE" \
+            --results-dir "$LOAD_RESULTS_DIR" \
+            --mapping-ttl-seconds "$LOAD_PII_MAPPING_TTL_SECONDS" \
+            --cancellation-observe-timeout-seconds "$LOAD_CANCELLATION_OBSERVE_TIMEOUT_SECONDS" \
+            --cancellation-immediate-timeout-seconds "$LOAD_CANCELLATION_IMMEDIATE_TIMEOUT_SECONDS" \
+            --cancellation-expiry-grace-seconds "$LOAD_CANCELLATION_EXPIRY_GRACE_SECONDS"
+        python3 "$ROOT/tests/load/resilience_checks.py" inject \
+            --base-url "$resilience_base_url" \
+            --compose-file "$COMPOSE_FILE" \
+            --results-dir "$LOAD_RESULTS_DIR" \
+            --scenarios "$LOAD_RESILIENCE_SCENARIOS" \
+            --initial-delay-seconds "$LOAD_RESILIENCE_INITIAL_DELAY_SECONDS" \
+            --downtime-seconds "$LOAD_RESILIENCE_DOWNTIME_SECONDS" \
+            --between-seconds "$LOAD_RESILIENCE_BETWEEN_SECONDS" \
+            --recovery-timeout-seconds "$LOAD_RESILIENCE_RECOVERY_TIMEOUT_SECONDS" &
+        fault_pid=$!
     fi
 elif [ "$LOAD_CONTOUR" = "mock-direct" ]; then
     echo "Starting direct mock-provider calibration contour..."
@@ -440,6 +533,29 @@ if [ "$LOAD_STATEFUL_CHECKS" = true ]; then
         --expected-users "$LOAD_USERS" \
         --logs-since "$stateful_logs_since" || validation_status=$?
     if [ "$churn_status" -ne 0 ] || [ "$validation_status" -ne 0 ]; then
+        exit 1
+    fi
+fi
+
+if [ "$LOAD_RESILIENCE_CHECKS" = true ]; then
+    fault_status=0
+    set +e
+    wait "$fault_pid"
+    fault_status=$?
+    fault_pid=""
+    set -e
+
+    validation_status=0
+    python3 "$ROOT/tests/load/resilience_checks.py" validate \
+        --compose-file "$COMPOSE_FILE" \
+        --results-dir "$LOAD_RESULTS_DIR" \
+        --expected-users "$LOAD_USERS" \
+        --scenarios "$LOAD_RESILIENCE_SCENARIOS" \
+        --recovery-grace-seconds "$LOAD_RESILIENCE_RECOVERY_GRACE_SECONDS" \
+        --mapping-ttl-seconds "$LOAD_PII_MAPPING_TTL_SECONDS" \
+        --cancellation-expiry-grace-seconds "$LOAD_CANCELLATION_EXPIRY_GRACE_SECONDS" \
+        || validation_status=$?
+    if [ "$fault_status" -ne 0 ] || [ "$validation_status" -ne 0 ]; then
         exit 1
     fi
 fi

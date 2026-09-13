@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tests" / "load"))
 
 import load_support  # noqa: E402
 import manage_keys  # noqa: E402
+import resilience_checks  # noqa: E402
 import sample_metrics  # noqa: E402
 import stateful_checks  # noqa: E402
 import summarize_run  # noqa: E402
@@ -346,6 +347,143 @@ def test_admin_churn_checks_key_without_calling_a_model(monkeypatch):
         "revoked": 1,
     }
     assert [payload for path, payload in calls if path == "/models"] == [None, None]
+    assert not any(path.startswith("/v1/") for path, _payload in calls)
+
+
+def test_resilience_fault_windows_include_recovery_grace():
+    events = [
+        {"fault_started_at": 100, "recovered_at": 110},
+        {"fault_started_at": 200, "recovered_at": 215},
+    ]
+
+    assert resilience_checks.fault_windows(events, 5) == [
+        (99, 115),
+        (199, 220),
+    ]
+    assert resilience_checks.timestamp_in_windows(114, [(99, 115)])
+    assert not resilience_checks.timestamp_in_windows(116, [(99, 115)])
+
+
+def test_resilience_measures_application_recovery_for_every_fault():
+    events = [
+        {"scenario": "analyzer", "fault_started_at": 100, "recovered_at": 110},
+        {"scenario": "redis", "fault_started_at": 200, "recovered_at": 210},
+    ]
+    samples = [
+        {"timestamp": "111", "user_index": "0", "error_kind": ""},
+        {"timestamp": "115", "user_index": "1", "error_kind": ""},
+        {"timestamp": "211", "user_index": "0", "error_kind": ""},
+        {"timestamp": "230", "user_index": "1", "error_kind": ""},
+    ]
+
+    assert resilience_checks.application_recovery(events, samples, 2, 5) == [
+        {
+            "scenario": "analyzer",
+            "component_recovered_at": 110,
+            "application_recovered_at": 115,
+            "application_recovery_seconds": 5,
+            "recovered_user_count": 2,
+            "expected_user_count": 2,
+            "fault_window": [99, 120],
+        },
+        {
+            "scenario": "redis",
+            "component_recovered_at": 210,
+            "application_recovered_at": 230,
+            "application_recovery_seconds": 20,
+            "recovered_user_count": 2,
+            "expected_user_count": 2,
+            "fault_window": [199, 235],
+        },
+    ]
+
+
+def test_resilience_reports_incomplete_recovery_before_next_fault():
+    recovery = resilience_checks.application_recovery(
+        [
+            {"scenario": "redis", "fault_started_at": 100, "recovered_at": 110},
+            {"scenario": "postgres", "fault_started_at": 200, "recovered_at": 210},
+        ],
+        [{"timestamp": "115", "user_index": "0", "error_kind": ""}],
+        expected_users=2,
+        grace_seconds=5,
+    )
+
+    assert recovery[0]["application_recovered_at"] is None
+    assert recovery[0]["recovered_user_count"] == 1
+    assert recovery[0]["fault_window"] == [99, 199]
+    assert resilience_checks.scenario_for_timestamp(150, recovery) == "redis"
+    assert resilience_checks.scenario_for_timestamp(205, recovery) == "postgres"
+
+
+def test_resilience_affinity_allows_transitions_only_after_redis_fault():
+    samples = [
+        {
+            "timestamp": "10",
+            "user_index": "0",
+            "deployment_id": "load-mock-a",
+            "error_kind": "",
+        },
+        {
+            "timestamp": "20",
+            "user_index": "0",
+            "deployment_id": "load-mock-b",
+            "error_kind": "",
+        },
+        {
+            "timestamp": "30",
+            "user_index": "1",
+            "deployment_id": "load-mock-a",
+            "error_kind": "",
+        },
+        {
+            "timestamp": "50",
+            "user_index": "1",
+            "deployment_id": "load-mock-b",
+            "error_kind": "",
+        },
+    ]
+
+    assert resilience_checks.affinity_transitions(samples, 40) == {
+        "after_redis_fault": 1,
+        "before_redis_fault": 1,
+    }
+
+
+def test_resilience_selects_one_replica_and_requires_redundancy(monkeypatch):
+    monkeypatch.setattr(
+        resilience_checks,
+        "service_container_ids",
+        lambda _compose_file, service: (
+            ["container-a", "container-b"]
+            if service == "load-litellm"
+            else ["container-a"]
+        ),
+    )
+
+    assert resilience_checks.select_fault_target(
+        Path("compose.yml"), "litellm"
+    ) == ("container-b", 2)
+    with pytest.raises(RuntimeError, match="requires at least 2"):
+        resilience_checks.select_fault_target(Path("compose.yml"), "analyzer")
+
+
+def test_resilience_admin_probe_uses_only_key_administration(monkeypatch):
+    calls = []
+
+    def fake_request(_base_url, path, **kwargs):
+        calls.append((path, kwargs.get("payload")))
+        return stateful_checks.HTTPResult(200, {}, b'{"key":"sk-probe"}')
+
+    monkeypatch.setattr(resilience_checks, "http_request", fake_request)
+
+    result = resilience_checks.admin_round_trip(
+        "http://proxy.invalid",
+        "sk-master",
+    )
+
+    assert result == {"create_status": 200, "delete_status": 200}
+    assert [path for path, _payload in calls] == ["/key/generate", "/key/delete"]
     assert not any(path.startswith("/v1/") for path, _payload in calls)
 
 
