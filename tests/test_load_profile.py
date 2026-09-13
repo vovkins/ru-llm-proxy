@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from collections import Counter
 import stat
 import sys
 from pathlib import Path
@@ -305,6 +306,47 @@ def test_provider_capture_summary_drops_repeated_paths_and_unknown_fields():
         "provider_saw_pii_placeholder": True,
         "provider_saw_synthetic_marker": False,
     }
+
+
+def test_admin_churn_checks_key_without_calling_a_model(monkeypatch):
+    calls = []
+    model_checks = 0
+
+    def fake_request(_base_url, path, **kwargs):
+        nonlocal model_checks
+        calls.append((path, kwargs.get("payload")))
+        if path == "/key/generate":
+            return stateful_checks.HTTPResult(200, {}, b'{"key":"sk-temporary"}')
+        if path == "/models":
+            model_checks += 1
+            status = 200 if model_checks == 1 else 403
+            return stateful_checks.HTTPResult(status, {}, b"{}")
+        return stateful_checks.HTTPResult(200, {}, b"{}")
+
+    moments = iter((0.0, 0.0, 0.0, 6.0))
+    monkeypatch.setattr(stateful_checks, "http_request", fake_request)
+    monkeypatch.setattr(stateful_checks.time, "monotonic", lambda: next(moments))
+    args = Namespace(
+        base_url="http://proxy.invalid",
+        master_key="sk-master",
+        revocation_timeout_seconds=5,
+        revocation_required_denials=1,
+        revocation_poll_seconds=0,
+        churn_interval_seconds=0,
+    )
+    counters = Counter()
+
+    stateful_checks.churn_worker(args, deadline=5, counters=counters)
+
+    assert counters == {
+        "created": 1,
+        "read": 1,
+        "used": 1,
+        "deleted": 1,
+        "revoked": 1,
+    }
+    assert [payload for path, payload in calls if path == "/models"] == [None, None]
+    assert not any(path.startswith("/v1/") for path, _payload in calls)
 
 
 def test_key_state_is_atomic_and_owner_only(tmp_path):

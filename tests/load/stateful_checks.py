@@ -420,19 +420,13 @@ def churn_worker(args: argparse.Namespace, deadline: float, counters: Counter) -
                 continue
             counters["read"] += 1
 
-            model_call = http_request(
+            authenticated = http_request(
                 args.base_url,
-                "/v1/chat/completions",
+                "/models",
                 token=key,
-                payload={
-                    "model": "mock-chat",
-                    "messages": [
-                        {"role": "user", "content": "Нейтральная проверка"}
-                    ],
-                },
             )
-            if model_call.status != 200:
-                counters[f"use_http_{model_call.status}"] += 1
+            if authenticated.status != 200:
+                counters[f"use_http_{authenticated.status}"] += 1
                 continue
             counters["used"] += 1
 
