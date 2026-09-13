@@ -259,6 +259,34 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 не число сообщений клиента. Событие `presidio_analyzer_request` содержит
 безопасное поле `text_chunk_count`; текст и координаты в него не входят.
 
+## Управление ёмкостью
+
+Исходный ресурсный профиль и его ограничения приведены в
+[матрице масштабирования](research/scaling-matrix.md). Для Analyzer главным
+показателем является поток нового текста, а не общее число запросов.
+
+| Сигнал | Интерпретация | Действие |
+| --- | --- | --- |
+| Доля `ru_pii_guardrail_analysis_cache_requests_total{result="miss"}` растёт | Увеличивается холодная работа Analyzer | Сопоставить с размером полей и BERT-окнами; при устойчивом росте увеличить Analyzer |
+| `ru_presidio_analyzer_capacity_waiting > 0` дольше двух минут | Текущая ёмкость почти исчерпана | Увеличить Analyzer до появления отказов |
+| Растут `ru_presidio_analyzer_capacity_rejections_total` или `ru_pii_guardrail_fail_closed_total{operation="analyzer_overloaded"}` | Очередь уже не принимает нагрузку | Срочно увеличить ёмкость либо снизить частоту запросов; клиентам соблюдать `Retry-After` |
+| CPU Analyzer выше 60% пять минут | Недостаточный запас на всплеск и отказ экземпляра | Увеличить число экземпляров; не число процессов внутри Pod |
+| Растут `ru_presidio_analyzer_ner_windows_processed_*` и `ru_presidio_analyzer_text_chunks_*` | Появились большие новые поля | Проверить задержку и тайм-ауты отдельно от обычного трафика |
+| CPU LiteLLM выше 60% или растёт задержка при стабильном Analyzer | Насыщается шлюз | Увеличить обслуживающие экземпляры LiteLLM |
+| Растут `codex_lb_active_connections` и задержка OpenAI | Насыщается маршрут ChatGPT OAuth | Масштабировать штатным Helm-механизмом и проверить лимиты подписок |
+| Redis вытесняет записи или растёт его задержка | Под угрозой кэш, привязки и таблицы замен | Увеличить память/соединения и проверить отказоустойчивость |
+| PostgreSQL использует более 70% соединений | Следующее масштабирование LiteLLM может исчерпать пул | Уменьшить пул процесса, увеличить предел базы или добавить PgBouncer |
+
+Для Kubernetes используйте минимум два сигнала: CPU и прикладной показатель
+очереди/отказов. Увеличение должно быть быстрым, уменьшение — с окном
+стабилизации не менее десяти минут, чтобы не терять прогретые экземпляры после
+короткого спада. Один процесс на Pod делает CPU пригодным для HPA; для
+прикладных метрик требуется адаптер `custom.metrics.k8s.io`.
+
+Пределы соединений PostgreSQL, Redis и Analyzer рассчитывайте по максимальному
+числу Pod. После изменения `maxReplicas` повторите проверку суммарного числа
+соединений и сценарий отказа одного экземпляра.
+
 ## Политики в мониторинге
 
 - Словарные правила при `DICTIONARY_SUBSTITUTIONS_ENABLED=true` загружаются из
@@ -297,9 +325,15 @@ sum(rate(ru_pii_guardrail_pre_calls_total{result="error"}[5m])) > 0
 sum(rate(ru_presidio_analyzer_requests_total{outcome=~"overload|timeout_or_cancelled|analyzer_error"}[5m])) > 0
 increase(ru_presidio_analyzer_ner_failures_total[5m]) > 0
 sum(rate(ru_presidio_analyzer_ner_inference_total{outcome=~"failure|unavailable"}[5m])) > 0
-histogram_quantile(0.95, sum(rate(ru_presidio_analyzer_latency_seconds_bucket[5m])) by (le)) > 2
 sum(rate(litellm_proxy_failed_requests_metric_total[5m])) > 0
 ```
+
+Единый порог задержки Analyzer не задавайте без учёта размера нового ввода:
+холодные поля 1k, 8k и 1m имеют принципиально разное время обработки. Для
+прогретого внутреннего контура используйте отдельную синтетическую проверку с
+целевым p95 не более двух секунд; рабочую задержку сопоставляйте с
+`input_characters`, `text_chunks`, `ner_windows_processed` и долей промахов
+кэша.
 
 События политик обычно не являются отказом сервиса, но нужны на панели мониторинга:
 
