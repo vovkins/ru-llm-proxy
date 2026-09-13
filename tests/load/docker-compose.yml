@@ -12,6 +12,8 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+    cpus: ${LOAD_DB_CPUS:-1.0}
+    mem_limit: ${LOAD_DB_MEMORY:-1g}
     networks: [load]
 
   load-redis:
@@ -21,6 +23,8 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    cpus: ${LOAD_REDIS_CPUS:-1.0}
+    mem_limit: ${LOAD_REDIS_MEMORY:-512m}
     networks: [load]
 
   load-mock-upstream:
@@ -42,6 +46,8 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    cpus: ${LOAD_MOCK_CPUS:-1.0}
+    mem_limit: ${LOAD_MOCK_MEMORY:-512m}
     networks: [load]
 
   load-presidio-analyzer:
@@ -56,8 +62,6 @@ services:
       PRESIDIO_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
       PRESIDIO_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-8}
       PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
-    ports:
-      - "127.0.0.1:${LOAD_ANALYZER_PORT:-15020}:5001"
     healthcheck:
       test:
         - CMD
@@ -68,6 +72,26 @@ services:
       timeout: 5s
       retries: 80
       start_period: 15s
+    cpus: ${LOAD_ANALYZER_CPUS:-4.0}
+    mem_limit: ${LOAD_ANALYZER_MEMORY:-4g}
+    networks: [load]
+
+  load-analyzer-router:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/analyzer.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${LOAD_ANALYZER_PORT:-15020}:5001"
+    depends_on:
+      load-presidio-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5001/router-health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    cpus: ${LOAD_ROUTER_CPUS:-1.0}
+    mem_limit: ${LOAD_ROUTER_MEMORY:-256m}
     networks: [load]
 
   load-litellm:
@@ -81,7 +105,7 @@ services:
       DATABASE_URL: postgresql://load:load-only-password@load-db:5432/litellm
       OPENAI_API_KEY: sk-load-test-upstream
       REDIS_URL: redis://load-redis:6379
-      PRESIDIO_ANALYZER_URL: http://load-presidio-analyzer:5001
+      PRESIDIO_ANALYZER_URL: ${LOAD_ANALYZER_URL:-http://load-analyzer-router:5001}
       PII_GUARDRAIL_MODE: mask
       PII_GUARDRAIL_FAILURE_MODE: fail_closed
       PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS: ${LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-30}
@@ -99,8 +123,6 @@ services:
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
       - ../../litellm_guardrails:/app/litellm_guardrails:ro
-    ports:
-      - "127.0.0.1:${LOAD_LITELLM_PORT:-14020}:4000"
     depends_on:
       load-db:
         condition: service_healthy
@@ -108,7 +130,7 @@ services:
         condition: service_healthy
       load-mock-upstream:
         condition: service_healthy
-      load-presidio-analyzer:
+      load-analyzer-router:
         condition: service_healthy
     healthcheck:
       test:
@@ -118,6 +140,26 @@ services:
       timeout: 5s
       retries: 60
       start_period: 20s
+    cpus: ${LOAD_LITELLM_CPUS:-2.0}
+    mem_limit: ${LOAD_LITELLM_MEMORY:-2g}
+    networks: [load]
+
+  load-litellm-router:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/litellm.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${LOAD_LITELLM_PORT:-14020}:4000"
+    depends_on:
+      load-litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/router-health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    cpus: ${LOAD_ROUTER_CPUS:-1.0}
+    mem_limit: ${LOAD_ROUTER_MEMORY:-256m}
     networks: [load]
 
   load-key-manager:
@@ -126,7 +168,7 @@ services:
     user: "0:0"
     entrypoint: ["python", "/workspace/tests/load/manage_keys.py"]
     environment:
-      LOAD_TARGET_URL: http://load-litellm:4000
+      LOAD_TARGET_URL: http://load-litellm-router:4000
       LOAD_MASTER_KEY: sk-load-test-master
       LOAD_USERS: ${LOAD_USERS:-400}
       LOAD_MODEL: ${LOAD_MODEL:-mock-chat}
@@ -136,7 +178,7 @@ services:
       - ../..:/workspace:ro
       - load-state:/state
     depends_on:
-      load-litellm:
+      load-litellm-router:
         condition: service_healthy
     networks: [load]
 
@@ -146,7 +188,7 @@ services:
     working_dir: /workspace/tests/load
     entrypoint: ["locust", "-f", "locustfile.py"]
     environment:
-      LOAD_TARGET_URL: http://load-litellm:4000
+      LOAD_TARGET_URL: http://load-litellm-router:4000
       LOAD_KEY_FILE: /state/keys.json
       LOAD_REPORT_DIR: /results
       LOAD_PROFILE: ${LOAD_PROFILE:-smoke}
@@ -165,12 +207,27 @@ services:
       LOAD_KEY_SHARD_INDEX: ${LOAD_KEY_SHARD_INDEX:-0}
       LOAD_KEY_SHARD_COUNT: ${LOAD_KEY_SHARD_COUNT:-1}
       LOAD_REPORT_NODE: ${LOAD_REPORT_NODE:-local}
+      LOAD_CONTOUR: ${LOAD_CONTOUR:-mock}
+      LOAD_INPUT_VARIATION: ${LOAD_INPUT_VARIATION:-repeat}
+      LOAD_ANALYZER_BACKEND: ${LOAD_ANALYZER_BACKEND:-real}
+      LOAD_ANALYZER_REPLICAS: ${LOAD_ANALYZER_REPLICAS:-1}
+      LOAD_LITELLM_REPLICAS: ${LOAD_LITELLM_REPLICAS:-1}
+      LOAD_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
+      LOAD_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-8}
+      LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+      LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}
+      LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS:-10}
+      LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}
+      LOAD_ANALYZER_CPUS: ${LOAD_ANALYZER_CPUS:-4.0}
+      LOAD_ANALYZER_MEMORY: ${LOAD_ANALYZER_MEMORY:-4g}
+      LOAD_LITELLM_CPUS: ${LOAD_LITELLM_CPUS:-2.0}
+      LOAD_LITELLM_MEMORY: ${LOAD_LITELLM_MEMORY:-2g}
     volumes:
       - ../..:/workspace:ro
       - load-state:/state:ro
       - ${LOAD_RESULTS_DIR:-/tmp/ru-llm-proxy-load-results}:/results
     depends_on:
-      load-litellm:
+      load-litellm-router:
         condition: service_healthy
     networks: [load]
 

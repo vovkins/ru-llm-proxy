@@ -28,13 +28,22 @@ def test_load_contour_is_isolated_and_uses_real_stateful_dependencies():
         "load-redis",
         "load-mock-upstream",
         "load-presidio-analyzer",
+        "load-analyzer-router",
         "load-litellm",
+        "load-litellm-router",
         "load-key-manager",
         "load-generator",
     }
     assert services["load-db"]["image"].startswith("postgres:16-alpine@sha256:")
     assert services["load-redis"]["image"] == "redis:7-alpine"
     assert services["load-presidio-analyzer"]["build"]["target"] == "analyzer"
+    assert "ports" not in services["load-presidio-analyzer"]
+    assert "ports" not in services["load-litellm"]
+    assert services["load-analyzer-router"]["image"] == "nginx:1.27-alpine"
+    assert services["load-litellm-router"]["image"] == "nginx:1.27-alpine"
+    assert services["load-litellm"]["environment"]["PRESIDIO_ANALYZER_URL"] == (
+        "${LOAD_ANALYZER_URL:-http://load-analyzer-router:5001}"
+    )
     assert services["load-litellm"]["depends_on"]["load-db"]["condition"] == (
         "service_healthy"
     )
@@ -50,6 +59,14 @@ def test_load_contour_cannot_send_requests_to_a_real_provider():
         "http://load-mock-upstream:8080/v1"
     )
     assert config["model_list"][0]["model_name"] == "mock-chat"
+
+
+def test_load_balancers_expire_idle_upstreams_before_uvicorn():
+    for name in ("analyzer.conf", "litellm.conf"):
+        config = (ROOT / "tests" / "load" / "nginx" / name).read_text(
+            encoding="utf-8"
+        )
+        assert "keepalive_timeout 4s;" in config
 
 
 def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
@@ -69,6 +86,24 @@ def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     assert generator["environment"]["LOAD_EXPECTED_USERS"] == "${LOAD_USERS:-8}"
     assert generator["environment"]["LOAD_KEY_SHARD_INDEX"] == "${LOAD_KEY_SHARD_INDEX:-0}"
     assert generator["environment"]["LOAD_REPORT_NODE"] == "${LOAD_REPORT_NODE:-local}"
+    assert generator["environment"]["LOAD_INPUT_VARIATION"] == (
+        "${LOAD_INPUT_VARIATION:-repeat}"
+    )
+    assert generator["environment"]["LOAD_ANALYZER_REPLICAS"] == (
+        "${LOAD_ANALYZER_REPLICAS:-1}"
+    )
+    assert generator["environment"]["LOAD_ANALYZER_BACKEND"] == (
+        "${LOAD_ANALYZER_BACKEND:-real}"
+    )
+    assert generator["environment"]["LOAD_ANALYZER_QUEUE_LIMIT"] == (
+        "${LOAD_ANALYZER_QUEUE_LIMIT:-8}"
+    )
+    assert generator["environment"]["LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS"] == (
+        "${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}"
+    )
+    assert generator["environment"]["LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS"] == (
+        "${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}"
+    )
 
 
 def test_load_proxy_uses_project_guardrails_with_safe_failure_defaults():
@@ -100,9 +135,24 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert "/Applications/Docker.app/Contents/Resources/bin" in script
     assert 'export PATH="$DOCKER_DESKTOP_BIN:$PATH"' in script
     assert "mock-provider-capture.json" in script
-    assert "analyzer-metrics.prom" in script
+    assert "analyzer-metrics-$replica.prom" in script
+    assert "guardrail-metrics-$replica.prom" in script
+    assert "sample_metrics.py" in script
+    assert "summarize_run.py" in script
+    assert '--stop-timeout "$LOAD_STOP_TIMEOUT_SECONDS"' in script
+    assert 'LOAD_CONTOUR" = "mock-direct' in script
+    assert 'LOAD_ANALYZER_BACKEND must be real or mock' in script
+    assert '--scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS"' in script
+    assert '--scale "load-litellm=$LOAD_LITELLM_REPLICAS"' in script
+    assert '--profile load run --rm --no-deps load-key-manager create' in script
+    assert 'compose_run_args=(--no-TTY --no-deps)' in script
     assert 'if [ -z "$container_ids" ]' in script
     assert 'LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-0}' in script
+    assert (
+        "LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS="
+        "${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}"
+    ) in script
+    assert "export LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS" in script
     assert "LOAD_ALLOW_LARGE_CONCURRENT" in (
         ROOT / "tests" / "load" / "load_support.py"
     ).read_text(encoding="utf-8")
@@ -135,3 +185,31 @@ def test_reports_use_tmp_by_default_and_never_mount_the_project_for_writes():
         "${LOAD_RESULTS_DIR:-/tmp/ru-llm-proxy-load-results}:/results"
         in generator["volumes"]
     )
+
+
+def test_scaled_services_have_configurable_resource_limits():
+    services = _compose()["services"]
+
+    assert services["load-presidio-analyzer"]["cpus"] == (
+        "${LOAD_ANALYZER_CPUS:-4.0}"
+    )
+    assert services["load-presidio-analyzer"]["mem_limit"] == (
+        "${LOAD_ANALYZER_MEMORY:-4g}"
+    )
+    assert services["load-litellm"]["cpus"] == "${LOAD_LITELLM_CPUS:-2.0}"
+    assert services["load-litellm"]["mem_limit"] == "${LOAD_LITELLM_MEMORY:-2g}"
+
+
+def test_scaling_matrix_is_explicit_and_uses_unique_synthetic_input():
+    script = (ROOT / "tests" / "load" / "run_matrix.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "LOAD_ALLOW_SCALING_MATRIX=true" in script
+    assert "LOAD_INPUT_VARIATION=unique" in script
+    assert "LOAD_ANALYZER_MATRIX:-1 2 4" in script
+    assert "LOAD_ANALYZER_MATRIX_LITELLM_REPLICAS:-2" in script
+    assert "LOAD_LITELLM_MATRIX:-1 2 4" in script
+    assert "LOAD_ANALYZER_URL=\"$analyzer_url\"" in script
+    assert '1 "$replicas" mock' in script
+    assert "compare_runs.py" in script

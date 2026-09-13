@@ -23,8 +23,10 @@ SUPPORTED_CONTEXT_MODES = frozenset(
     {"full-history", "one-shot", "previous-response", "encrypted-state", "mixed"}
 )
 SUPPORTED_STREAM_MODES = frozenset({"true", "false", "mixed"})
+SUPPORTED_INPUT_VARIATIONS = frozenset({"repeat", "unique"})
 PII_PLACEHOLDER = re.compile(r"^<[A-Z][A-Z0-9_]*_[1-9][0-9]*>$")
 REPORT_NODE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+SAFE_ERROR_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 def parse_context_sizes(value: str) -> tuple[int, ...]:
@@ -70,14 +72,21 @@ def context_bucket(token_count: int) -> str:
     return str(token_count)
 
 
-def synthetic_text(token_count: int, *, marker: str, seed: int) -> str:
+def synthetic_text(
+    token_count: int,
+    *,
+    marker: str,
+    seed: int,
+    unique_nonce: str | None = None,
+) -> str:
     """Create exactly token_count whitespace units with one per-user PII marker."""
     if token_count < 1:
         return ""
     neutral = ("контекст", "пример", "данные")[seed % 3]
     if token_count == 1:
         return marker
-    return f"{marker} {(neutral + ' ') * (token_count - 2)}{neutral}"
+    final_token = f"итерация{unique_nonce}" if unique_nonce is not None else neutral
+    return f"{marker} {(neutral + ' ') * (token_count - 2)}{final_token}"
 
 
 def extract_output_text(payload: object, api: str) -> str:
@@ -174,6 +183,7 @@ class ConversationState:
         stream: bool,
         sizes: tuple[int, ...],
         model: str,
+        input_variation: str = "repeat",
     ) -> None:
         self.user_index = user_index
         self.api = api
@@ -181,8 +191,12 @@ class ConversationState:
         self.stream = stream
         self.sizes = sizes
         self.model = model
+        if input_variation not in SUPPORTED_INPUT_VARIATIONS:
+            raise ValueError(f"unsupported input variation: {input_variation}")
+        self.input_variation = input_variation
         self.marker = f"loaduser{user_index:04d}@example.test"
         self._step = 0
+        self._request_serial = 0
         self._history: list[dict[str, Any]] = []
         self._previous_response_id: str | None = None
 
@@ -199,10 +213,23 @@ class ConversationState:
         size = self.sizes[self._step]
         previous_size = self.sizes[self._step - 1] if self._step else 0
         delta_size = size - previous_size
+        unique_nonce = None
+        if self.input_variation == "unique":
+            unique_nonce = f"{self.user_index:04d}{self._request_serial:08d}"
         if self.context_mode == "one-shot":
-            text = synthetic_text(size, marker=self.marker, seed=self._step)
+            text = synthetic_text(
+                size,
+                marker=self.marker,
+                seed=self._step,
+                unique_nonce=unique_nonce,
+            )
         else:
-            text = synthetic_text(delta_size, marker=self.marker, seed=self._step)
+            text = synthetic_text(
+                delta_size,
+                marker=self.marker,
+                seed=self._step,
+                unique_nonce=unique_nonce,
+            )
 
         payload: dict[str, Any] = {"model": self.model, "stream": self.stream}
         if self.api == "chat":
@@ -239,6 +266,7 @@ class ConversationState:
             path = "/v1/responses"
 
         self._step += 1
+        self._request_serial += 1
         return RequestSpec(
             api=self.api,
             context_mode=self.context_mode,
@@ -300,6 +328,30 @@ def percentile(values: list[float], quantile: float) -> float | None:
     return round(ordered[index], 3)
 
 
+def bounded_error_token(value: object) -> str:
+    if isinstance(value, str) and SAFE_ERROR_TOKEN_PATTERN.fullmatch(value):
+        return value
+    return "redacted" if value not in (None, "") else ""
+
+
+def response_error_metadata(response: object) -> tuple[str, str]:
+    try:
+        payload = response.json()
+    except (AttributeError, TypeError, ValueError):
+        return "", ""
+    if not isinstance(payload, dict):
+        return "", ""
+    error = payload.get("error")
+    if isinstance(error, dict):
+        return (
+            bounded_error_token(error.get("code")),
+            bounded_error_token(error.get("type")),
+        )
+    return bounded_error_token(payload.get("code")), bounded_error_token(
+        payload.get("type")
+    )
+
+
 class SafeReportWriter:
     """Write bounded metrics without request, response, key or PII values."""
 
@@ -314,6 +366,9 @@ class SafeReportWriter:
         "ttft_ms",
         "validation_result",
         "error_kind",
+        "error_code",
+        "error_type",
+        "retry_after_seconds",
     )
 
     def __init__(self, output_dir: Path, *, node: str, metadata: dict[str, Any]) -> None:
@@ -357,6 +412,20 @@ class SafeReportWriter:
         validation_counts = Counter(
             str(item.get("validation_result") or "not_checked") for item in samples
         )
+        error_kind_counts = Counter(
+            str(item["error_kind"]) for item in samples if item.get("error_kind")
+        )
+        error_code_counts = Counter(
+            str(item["error_code"]) for item in samples if item.get("error_code")
+        )
+        error_type_counts = Counter(
+            str(item["error_type"]) for item in samples if item.get("error_type")
+        )
+        retry_after_counts = Counter(
+            str(item["retry_after_seconds"])
+            for item in samples
+            if item.get("retry_after_seconds")
+        )
         context_units = sum(int(item.get("context_tokens") or 0) for item in samples)
         summary = {
             "schema_version": 1,
@@ -367,9 +436,17 @@ class SafeReportWriter:
             "success_count": len(successful),
             "failure_count": len(samples) - len(successful),
             "requests_per_second": round(len(samples) / elapsed, 3),
+            "successful_requests_per_second": round(len(successful) / elapsed, 3),
+            "failure_rate": round((len(samples) - len(successful)) / len(samples), 6)
+            if samples
+            else 0.0,
             "synthetic_input_units_per_second": round(context_units / elapsed, 3),
             "status_counts": dict(sorted(status_counts.items())),
             "validation_counts": dict(sorted(validation_counts.items())),
+            "error_kind_counts": dict(sorted(error_kind_counts.items())),
+            "error_code_counts": dict(sorted(error_code_counts.items())),
+            "error_type_counts": dict(sorted(error_type_counts.items())),
+            "retry_after_seconds_counts": dict(sorted(retry_after_counts.items())),
             "latency_ms": {
                 "p50": percentile(latencies, 0.50),
                 "p95": percentile(latencies, 0.95),

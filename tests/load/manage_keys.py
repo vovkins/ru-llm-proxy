@@ -101,9 +101,31 @@ def create_key(
     return key
 
 
-def create_keys(args: argparse.Namespace) -> None:
+def validate_count(args: argparse.Namespace) -> None:
     if args.count < 1 or args.count > 10_000:
         raise ValueError("count must be between 1 and 10000")
+
+
+def create_local_keys(args: argparse.Namespace) -> None:
+    validate_count(args)
+    if args.key_file.exists():
+        raise FileExistsError(f"{args.key_file} already exists; remove it first")
+    run_id = uuid.uuid4().hex[:12]
+    write_state(
+        args.key_file,
+        {
+            "schema_version": 1,
+            "run_id": run_id,
+            "model": args.model,
+            "created_at": int(time.time()),
+            "keys": [f"sk-load-local-{run_id}-{index:04d}" for index in range(args.count)],
+        },
+    )
+    print(f"Created {args.count} local calibration keys.", flush=True)
+
+
+def create_keys(args: argparse.Namespace) -> None:
+    validate_count(args)
     if args.concurrency < 1 or args.concurrency > 32:
         raise ValueError("concurrency must be between 1 and 32")
     if args.key_file.exists():
@@ -194,7 +216,7 @@ def wait_until_ready(base_url: str, timeout: int) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("create", "delete"))
+    parser.add_argument("action", choices=("create", "delete", "create-local"))
     parser.add_argument(
         "--base-url",
         default=os.getenv("LOAD_TARGET_URL", "http://load-litellm:4000"),
@@ -213,6 +235,9 @@ def main() -> None:
     args = build_parser().parse_args()
     if not args.master_key:
         raise SystemExit("LOAD_MASTER_KEY is required")
+    if args.action == "create-local":
+        create_local_keys(args)
+        return
     wait_until_ready(args.base_url, args.ready_timeout)
     if args.action == "create":
         create_keys(args)
