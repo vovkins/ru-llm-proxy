@@ -703,6 +703,46 @@ class TestAnalyzeText:
         assert exc_info.value.failure_class == "unexpected_failure"
         mock_response.raise_for_status.assert_not_called()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [500, 502, 504])
+    async def test_analyzer_5xx_is_retryable_unavailability(
+        self,
+        guardrail,
+        status_code,
+    ):
+        response = MagicMock()
+        response.status_code = status_code
+        client = AsyncMock()
+        client.post.return_value = response
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError):
+                await guardrail._analyze_text("Обычный текст")
+
+        response.raise_for_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_analyzer_connection_error_is_retryable_unavailability(
+        self,
+        guardrail,
+    ):
+        request = httpx.Request("POST", "http://analyzer.invalid/api/v1/analyze")
+        client = AsyncMock()
+        client.post.side_effect = httpx.ConnectError(
+            "connection refused",
+            request=request,
+        )
+
+        with patch(
+            "litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client",
+            return_value=client,
+        ):
+            with pytest.raises(AnalyzerUnavailableError):
+                await guardrail._analyze_text("Обычный текст")
+
 
 # === analysis cache ===
 
@@ -1174,7 +1214,7 @@ class TestAnalysisCache:
                 )
             ),
         ):
-            with pytest.raises(RuntimeError, match="required analyzer unavailable"):
+            with pytest.raises(ProxyException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=auth,
                     cache=MagicMock(),
@@ -1182,6 +1222,8 @@ class TestAnalysisCache:
                     call_type="completion",
                 )
 
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
         guardrail._redis.get.assert_not_awaited()
 
 
@@ -2065,14 +2107,16 @@ class TestPreCallHook:
             ),
         ):
             with caplog.at_level(logging.INFO):
-                with pytest.raises(RuntimeError) as exc_info:
+                with pytest.raises(ProxyException) as exc_info:
                     await guardrail.async_pre_call_hook(
                         user_api_key_dict=MagicMock(),
                         cache=MagicMock(),
                         data=data,
                     )
 
-        assert "required analyzer unavailable" in str(exc_info.value)
+        assert "required analyzer unavailable" in exc_info.value.message
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
         assert data["messages"][0]["content"] == f"Мой телефон {secret}"
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()
@@ -5254,12 +5298,16 @@ class TestPreCallHook:
         text = "Мой телефон +79031234567"
 
         with patch.object(guardrail, "_analyze_text", return_value=[_entity(text, "+79031234567")]):
-            with pytest.raises(RuntimeError, match="PII guardrail mapping save failed"):
+            with pytest.raises(ProxyException) as exc_info:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
                     data={"messages": [{"role": "user", "content": text}]},
                 )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
+        assert exc_info.value.type == "guardrail_dependency_unavailable"
 
 
 # === async_post_call_success_hook ===
@@ -5865,12 +5913,15 @@ class TestPostCallHook:
             ],
         )
 
-        with pytest.raises(RuntimeError, match="PII guardrail mapping load failed"):
+        with pytest.raises(ProxyException) as exc_info:
             await guardrail.async_post_call_success_hook(
                 data={"metadata": {"pii_request_id": "req-1"}},
                 user_api_key_dict=MagicMock(),
                 response=response,
             )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
 
 
 # === async_post_call_streaming_iterator_hook ===
@@ -6151,9 +6202,11 @@ class TestStreamingPostCallHook:
             request_data={"metadata": {"pii_request_id": "req-1"}},
         )
 
-        with pytest.raises(RuntimeError, match="PII guardrail stream mapping load failed"):
+        with pytest.raises(ProxyException) as exc_info:
             await _anext(result_stream)
 
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
         guardrail._redis.delete.assert_not_called()
 
     @pytest.mark.asyncio

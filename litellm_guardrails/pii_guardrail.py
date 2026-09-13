@@ -220,8 +220,10 @@ PII_REQUEST_ID_METADATA_KEY = "pii_request_id"
 PII_STREAMING_RESTORATION_DONE_METADATA_KEY = "pii_streaming_restoration_done"
 ANALYZER_OVERLOADED_MESSAGE = "PII guardrail analyzer overloaded"
 ANALYZER_UNAVAILABLE_MESSAGE = "PII guardrail required analyzer unavailable"
+DEPENDENCY_UNAVAILABLE_MESSAGE = "PII guardrail dependency unavailable"
 ANALYZER_OVERLOAD_REASONS = frozenset({"queue_full", "queue_timeout"})
 DEFAULT_ANALYZER_RETRY_AFTER_SECONDS = 1
+DEFAULT_DEPENDENCY_RETRY_AFTER_SECONDS = 1
 MAX_ANALYZER_RETRY_AFTER_SECONDS = 3_600
 ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
@@ -1236,6 +1238,8 @@ class RuPIIGuardrail(CustomGuardrail):
             error_type=type(error).__name__,
         )
         if self.failure_mode == "fail_closed":
+            if operation in {"mapping save", "mapping load", "stream mapping load"}:
+                self._raise_dependency_unavailable(operation, error)
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
 
@@ -1261,10 +1265,44 @@ class RuPIIGuardrail(CustomGuardrail):
             error_type=type(error).__name__,
         )
         if self.dictionary_substitutions_failure_mode == "fail_closed":
+            if operation in {"mapping save", "mapping load", "stream mapping load"}:
+                self._raise_dependency_unavailable(operation, error)
             raise RuntimeError(
                 f"Dictionary substitution {operation} failed"
             ) from error
         return data
+
+    def _raise_dependency_unavailable(
+        self,
+        operation: str,
+        error: Exception,
+    ) -> None:
+        """Expose transient state-store failures as retryable service outages."""
+        operation_label = operation.replace(" ", "_")
+        structured_error = {
+            "message": DEPENDENCY_UNAVAILABLE_MESSAGE,
+            "type": "guardrail_dependency_unavailable",
+            "code": "guardrail_dependency_unavailable",
+            "details": {
+                "operation": operation_label,
+                "retry_after_seconds": DEFAULT_DEPENDENCY_RETRY_AFTER_SECONDS,
+            },
+        }
+        exc = ProxyException(
+            message=DEPENDENCY_UNAVAILABLE_MESSAGE,
+            type="guardrail_dependency_unavailable",
+            param={
+                "guardrail_dependency": {
+                    "code": structured_error["code"],
+                    "details": structured_error["details"],
+                }
+            },
+            code=503,
+            headers={"Retry-After": str(DEFAULT_DEPENDENCY_RETRY_AFTER_SECONDS)},
+            provider_specific_fields={"error": structured_error},
+        )
+        exc.status_code = 503
+        raise exc from error
 
     def _log_gateway_audit(
         self,
@@ -1392,7 +1430,31 @@ class RuPIIGuardrail(CustomGuardrail):
             phase=error.phase,
             failure_class=error.failure_class,
         )
-        raise RuntimeError(ANALYZER_UNAVAILABLE_MESSAGE) from error
+        structured_error = {
+            "message": ANALYZER_UNAVAILABLE_MESSAGE,
+            "type": "analyzer_unavailable",
+            "code": "analyzer_unavailable",
+            "details": {
+                "phase": error.phase,
+                "failure_class": error.failure_class,
+                "retry_after_seconds": DEFAULT_ANALYZER_RETRY_AFTER_SECONDS,
+            },
+        }
+        exc = ProxyException(
+            message=ANALYZER_UNAVAILABLE_MESSAGE,
+            type="analyzer_unavailable",
+            param={
+                "analyzer_unavailable": {
+                    "code": structured_error["code"],
+                    "details": structured_error["details"],
+                }
+            },
+            code=503,
+            headers={"Retry-After": str(DEFAULT_ANALYZER_RETRY_AFTER_SECONDS)},
+            provider_specific_fields={"error": structured_error},
+        )
+        exc.status_code = 503
+        raise exc from error
 
     async def _get_redis(self):
         """Lazy Redis connection."""
@@ -2720,9 +2782,21 @@ class RuPIIGuardrail(CustomGuardrail):
                     phase="readiness",
                     failure_class="unexpected_failure",
                 )
+            if isinstance(response.status_code, int) and response.status_code >= 500:
+                raise AnalyzerUnavailableError(
+                    phase="readiness",
+                    failure_class="unexpected_failure",
+                )
             response.raise_for_status()
             data = response.json()
             return data.get("entities", [])
+        except (AnalyzerOverloadedError, AnalyzerUnavailableError):
+            raise
+        except httpx.RequestError as exc:
+            raise AnalyzerUnavailableError(
+                phase="readiness",
+                failure_class="unexpected_failure",
+            ) from exc
         finally:
             PII_ANALYZER_LATENCY.observe(time.perf_counter() - started_at)
 

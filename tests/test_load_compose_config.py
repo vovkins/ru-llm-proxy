@@ -53,6 +53,8 @@ def test_load_contour_is_isolated_and_uses_real_stateful_dependencies():
 
 def test_load_contour_cannot_send_requests_to_a_real_provider():
     compose_text = COMPOSE_PATH.read_text(encoding="utf-8")
+    compose = yaml.safe_load(compose_text)
+    services = compose["services"]
     config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
 
     assert "api.openai.com" not in compose_text
@@ -73,14 +75,29 @@ def test_load_contour_cannot_send_requests_to_a_real_provider():
     ]
     assert config["router_settings"]["deployment_affinity_ttl_seconds"] == 86400
     assert config["general_settings"]["user_api_key_cache_ttl"] == 5
+    assert services["load-litellm"]["environment"]["PII_MAPPING_TTL_SECONDS"] == (
+        "${LOAD_PII_MAPPING_TTL_SECONDS:-7200}"
+    )
 
 
-def test_load_balancers_expire_idle_upstreams_before_uvicorn():
+def test_load_balancers_refresh_scaled_services_and_expire_idle_upstreams():
     for name in ("analyzer.conf", "litellm.conf"):
         config = (ROOT / "tests" / "load" / "nginx" / name).read_text(
             encoding="utf-8"
         )
+        assert "resolver 127.0.0.11 valid=1s ipv6=off;" in config
+        assert " resolve;" in config
+        assert "proxy_next_upstream_tries 2;" in config
         assert "keepalive_timeout 4s;" in config
+
+    analyzer = (ROOT / "tests" / "load" / "nginx" / "analyzer.conf").read_text(
+        encoding="utf-8"
+    )
+    litellm = (ROOT / "tests" / "load" / "nginx" / "litellm.conf").read_text(
+        encoding="utf-8"
+    )
+    assert "proxy_next_upstream error timeout http_502 http_503 non_idempotent;" in analyzer
+    assert "proxy_next_upstream error timeout;" in litellm
 
 
 def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
@@ -156,6 +173,13 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert "LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-90" in script
     assert "LOAD_READ_TIMEOUT_SECONDS:-150" in script
     assert "LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-0.5}" in script
+    assert "resilience)" in script
+    assert "resilience_checks.py" in script
+    assert "LOAD_RESILIENCE_CHECKS=true" in script
+    assert "LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-7200}" in script
+    assert "LOAD_CANCELLATION_TEST_TTL_SECONDS" in script
+    assert "LOAD_RESILIENCE_USER_RECOVERY_TIMEOUT_SECONDS" in script
+    assert "LOAD_MOCK_FAILURE_DELAY_SECONDS=${LOAD_MOCK_FAILURE_DELAY_SECONDS:-60}" in script
     assert "analyzer-metrics-$replica.prom" in script
     assert "guardrail-metrics-$replica.prom" in script
     assert "sample_metrics.py" in script

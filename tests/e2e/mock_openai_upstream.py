@@ -41,7 +41,7 @@ FAILURE_DELAY_SECONDS = float(os.getenv("MOCK_FAILURE_DELAY_SECONDS", "3"))
 DEPLOYMENT_ID = os.getenv("MOCK_DEPLOYMENT_ID", "load-mock-default")
 PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
 SYNTHETIC_MARKER_PATTERN = re.compile(
-    r"(?:loaduser[0-9]{4}|state(?:chat|responses|failure|timeout|stream))[a-z0-9-]*@example\.test"
+    r"(?:loaduser[0-9]{4}|state(?:chat|responses|failure|timeout|stream|cancel))[a-z0-9-]*@example\.test"
 )
 ANALYZER_SIGNATURE = "0" * 64
 
