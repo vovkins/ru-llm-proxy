@@ -185,6 +185,42 @@ def select_fault_target(
     return container_ids[-1], len(container_ids)
 
 
+def wait_for_user_successes(
+    results_dir: Path,
+    expected_users: int,
+    *,
+    since: int | None,
+    timeout: float,
+) -> dict[str, int]:
+    """Wait until every expected virtual user records a successful response."""
+    expected_user_ids = {str(index) for index in range(expected_users)}
+    deadline = time.monotonic() + timeout
+    successful_users: set[str] = set()
+    while time.monotonic() < deadline:
+        successful_users.clear()
+        for sample_path in sorted(results_dir.glob("samples-*.csv")):
+            with sample_path.open(encoding="utf-8", newline="") as handle:
+                for sample in csv.DictReader(handle):
+                    if sample.get("error_kind"):
+                        continue
+                    timestamp = int(float(sample.get("timestamp") or 0))
+                    if since is not None and timestamp < since:
+                        continue
+                    user_index = sample.get("user_index", "")
+                    if user_index in expected_user_ids:
+                        successful_users.add(user_index)
+        if successful_users == expected_user_ids:
+            return {
+                "completed_at": int(time.time()),
+                "successful_user_count": len(successful_users),
+            }
+        time.sleep(1)
+    raise TimeoutError(
+        "not all virtual users recorded a successful response before timeout; "
+        f"recovered={len(successful_users)}/{expected_users}"
+    )
+
+
 def inject(args: argparse.Namespace) -> None:
     scenarios = tuple(item.strip() for item in args.scenarios.split(",") if item.strip())
     unknown = sorted(set(scenarios) - set(SCENARIO_SERVICES))
@@ -199,6 +235,33 @@ def inject(args: argparse.Namespace) -> None:
     report_path = args.results_dir / "fault-events.json"
     write_json(report_path, report)
     time.sleep(args.initial_delay_seconds)
+    warmup_started_at = int(time.time())
+    report["warmup"] = {"started_at": warmup_started_at, "outcome": "waiting"}
+    write_json(report_path, report)
+    try:
+        warmup = wait_for_user_successes(
+            args.results_dir,
+            args.expected_users,
+            since=None,
+            timeout=args.user_recovery_timeout_seconds,
+        )
+    except Exception as exc:
+        report["warmup"].update(
+            {
+                "outcome": "failed",
+                "error_type": type(exc).__name__,
+            }
+        )
+        write_json(report_path, report)
+        raise
+    report["warmup"].update(
+        {
+            "outcome": "completed",
+            **warmup,
+            "duration_seconds": warmup["completed_at"] - warmup_started_at,
+        }
+    )
+    write_json(report_path, report)
 
     for index, scenario in enumerate(scenarios):
         service = SCENARIO_SERVICES[scenario]
@@ -249,6 +312,19 @@ def inject(args: argparse.Namespace) -> None:
                 args.recovery_timeout_seconds,
             )
             event["recovered_at"] = int(time.time())
+            user_recovery = wait_for_user_successes(
+                args.results_dir,
+                args.expected_users,
+                since=event["recovered_at"],
+                timeout=args.user_recovery_timeout_seconds,
+            )
+            event["application_recovered_at"] = user_recovery["completed_at"]
+            event["application_recovery_seconds"] = (
+                event["application_recovered_at"] - event["recovered_at"]
+            )
+            event["recovered_user_count"] = user_recovery[
+                "successful_user_count"
+            ]
             event["outcome"] = "recovered"
         except Exception as exc:
             event["outcome"] = "failed"
@@ -647,6 +723,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--downtime-seconds", type=float, default=8)
     parser.add_argument("--between-seconds", type=float, default=150)
     parser.add_argument("--recovery-timeout-seconds", type=float, default=120)
+    parser.add_argument("--user-recovery-timeout-seconds", type=float, default=1_200)
     parser.add_argument("--recovery-grace-seconds", type=float, default=15)
     parser.add_argument("--mapping-ttl-seconds", type=float, default=15)
     parser.add_argument("--cancellation-observe-timeout-seconds", type=float, default=15)

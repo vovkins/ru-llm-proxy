@@ -364,6 +364,37 @@ def test_resilience_fault_windows_include_recovery_grace():
     assert not resilience_checks.timestamp_in_windows(116, [(99, 115)])
 
 
+def test_resilience_waits_for_every_users_success(tmp_path):
+    sample_path = tmp_path / "samples-local.csv"
+    sample_path.write_text(
+        "timestamp,user_index,error_kind\n"
+        "100,0,http_503\n"
+        "101,0,\n"
+        "102,1,\n",
+        encoding="utf-8",
+    )
+
+    result = resilience_checks.wait_for_user_successes(
+        tmp_path,
+        expected_users=2,
+        since=101,
+        timeout=1,
+    )
+
+    assert result["successful_user_count"] == 2
+    assert result["completed_at"] > 0
+
+
+def test_resilience_user_recovery_timeout_is_bounded(tmp_path):
+    with pytest.raises(TimeoutError, match="recovered=0/2"):
+        resilience_checks.wait_for_user_successes(
+            tmp_path,
+            expected_users=2,
+            since=None,
+            timeout=0,
+        )
+
+
 def test_resilience_measures_application_recovery_for_every_fault():
     events = [
         {"scenario": "analyzer", "fault_started_at": 100, "recovered_at": 110},
