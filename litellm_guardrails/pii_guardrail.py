@@ -3987,6 +3987,48 @@ class RuPIIGuardrail(CustomGuardrail):
             restored_fields=restored_fields,
         )
 
+    async def async_post_call_failure_hook(
+        self,
+        request_data: dict,
+        original_exception: Exception,
+        user_api_key_dict: UserAPIKeyAuth,
+        traceback_str: Optional[str] = None,
+    ) -> None:
+        """Delete request-scoped mappings when the provider call fails.
+
+        LiteLLM registers the pre-call and post-call guardrail instances as
+        callbacks. The pre-call instance owns mapping creation, so it also owns
+        failure cleanup; limiting cleanup to it avoids duplicate Redis work.
+        """
+        if self.event_hook not in (None, "pre_call"):
+            return None
+
+        request_id = self._get_response_request_id(request_data)
+        if not request_id:
+            return None
+
+        try:
+            await self._delete_mapping(request_id)
+        except Exception as e:
+            PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+            _safe_log(
+                logging.WARNING,
+                "pii_guardrail_failure_cleanup_failed",
+                request_id=request_id,
+                provider_error_type=type(original_exception).__name__,
+                error_type=type(e).__name__,
+            )
+            return None
+
+        PII_POST_CALLS.labels(result="provider_failure_cleanup").inc()
+        _safe_log(
+            logging.INFO,
+            "pii_guardrail_failure_cleanup",
+            request_id=request_id,
+            provider_error_type=type(original_exception).__name__,
+        )
+        return None
+
     @classmethod
     def _iter_stream_delta_text_targets(
         cls,

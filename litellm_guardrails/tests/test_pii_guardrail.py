@@ -5265,6 +5265,64 @@ class TestPreCallHook:
 # === async_post_call_success_hook ===
 
 
+class TestPostCallFailureHook:
+    @pytest.mark.asyncio
+    async def test_deletes_mapping_without_transforming_provider_error(self):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+
+        result = await guardrail.async_post_call_failure_hook(
+            request_data={"metadata": {"pii_request_id": "failed-request"}},
+            original_exception=RuntimeError("provider unavailable"),
+            user_api_key_dict=MagicMock(),
+        )
+
+        assert result is None
+        guardrail._redis.delete.assert_awaited_once_with(
+            "pii_mapping:failed-request"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cleanup_runs_only_for_pre_call_guardrail(self):
+        guardrail = RuPIIGuardrail(event_hook="post_call")
+        guardrail._redis = _mock_redis()
+
+        await guardrail.async_post_call_failure_hook(
+            request_data={"metadata": {"pii_request_id": "failed-request"}},
+            original_exception=RuntimeError("provider unavailable"),
+            user_api_key_dict=MagicMock(),
+        )
+
+        guardrail._redis.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_missing_mapping_id_skips_redis(self):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+
+        await guardrail.async_post_call_failure_hook(
+            request_data={"metadata": {}},
+            original_exception=RuntimeError("provider unavailable"),
+            user_api_key_dict=MagicMock(),
+        )
+
+        guardrail._redis.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_error_keeps_original_provider_error(self):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.delete.side_effect = RuntimeError("redis unavailable")
+
+        result = await guardrail.async_post_call_failure_hook(
+            request_data={"metadata": {"pii_request_id": "failed-request"}},
+            original_exception=RuntimeError("provider unavailable"),
+            user_api_key_dict=MagicMock(),
+        )
+
+        assert result is None
+
+
 class TestPostCallHook:
     @pytest.mark.asyncio
     async def test_unmasks_response(self, guardrail):

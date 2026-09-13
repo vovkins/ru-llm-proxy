@@ -27,6 +27,8 @@ def test_load_contour_is_isolated_and_uses_real_stateful_dependencies():
         "load-db",
         "load-redis",
         "load-mock-upstream",
+        "load-mock-upstream-a",
+        "load-mock-upstream-b",
         "load-presidio-analyzer",
         "load-analyzer-router",
         "load-litellm",
@@ -55,10 +57,22 @@ def test_load_contour_cannot_send_requests_to_a_real_provider():
 
     assert "api.openai.com" not in compose_text
     assert "api.z.ai" not in compose_text
-    assert config["model_list"][0]["litellm_params"]["api_base"] == (
-        "http://load-mock-upstream:8080/v1"
-    )
-    assert config["model_list"][0]["model_name"] == "mock-chat"
+    mock_chat = [
+        item for item in config["model_list"] if item["model_name"] == "mock-chat"
+    ]
+    assert {item["litellm_params"]["api_base"] for item in mock_chat} == {
+        "http://load-mock-upstream-a:8080/v1",
+        "http://load-mock-upstream-b:8080/v1",
+    }
+    assert {item["model_info"]["id"] for item in mock_chat} == {
+        "load-mock-a",
+        "load-mock-b",
+    }
+    assert config["router_settings"]["optional_pre_call_checks"] == [
+        "deployment_affinity"
+    ]
+    assert config["router_settings"]["deployment_affinity_ttl_seconds"] == 86400
+    assert config["general_settings"]["user_api_key_cache_ttl"] == 5
 
 
 def test_load_balancers_expire_idle_upstreams_before_uvicorn():
@@ -134,7 +148,14 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert '"${COMPOSE[@]}" --profile load down -v --remove-orphans' in script
     assert "/Applications/Docker.app/Contents/Resources/bin" in script
     assert 'export PATH="$DOCKER_DESKTOP_BIN:$PATH"' in script
-    assert "mock-provider-capture.json" in script
+    assert '"$LOAD_RESULTS_DIR/$mock_service-capture.json"' in script
+    assert "stateful_checks.py" in script
+    assert "LOAD_STATEFUL_CHECKS=true" in script
+    assert "LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS" in script
+    assert "LOAD_STATEFUL_REVOCATION_REQUIRED_DENIALS" in script
+    assert "LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-90" in script
+    assert "LOAD_READ_TIMEOUT_SECONDS:-150" in script
+    assert "LOAD_SPAWN_RATE=${LOAD_SPAWN_RATE:-0.5}" in script
     assert "analyzer-metrics-$replica.prom" in script
     assert "guardrail-metrics-$replica.prom" in script
     assert "sample_metrics.py" in script

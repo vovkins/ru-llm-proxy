@@ -210,6 +210,7 @@ class ProxyUser(HttpUser):
         error_code = ""
         error_type = ""
         retry_after_seconds = ""
+        deployment_id = ""
 
         try:
             with self.client.post(
@@ -222,6 +223,7 @@ class ProxyUser(HttpUser):
                 timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
             ) as response:
                 status_code = response.status_code
+                deployment_id = response.headers.get("x-litellm-model-id", "")
                 if response.status_code >= 400:
                     error_kind = f"http_{response.status_code}"
                     error_code, error_type = response_error_metadata(response)
@@ -273,6 +275,7 @@ class ProxyUser(HttpUser):
             REPORTER.record(
                 {
                     "timestamp": int(time.time()),
+                    "user_index": self.user_index,
                     "api": spec.api,
                     "context_mode": spec.context_mode,
                     "stream": str(spec.stream).lower(),
@@ -285,6 +288,7 @@ class ProxyUser(HttpUser):
                     "error_code": error_code,
                     "error_type": error_type,
                     "retry_after_seconds": retry_after_seconds,
+                    "deployment_id": deployment_id,
                 }
             )
 

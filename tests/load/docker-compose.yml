@@ -50,6 +50,56 @@ services:
     mem_limit: ${LOAD_MOCK_MEMORY:-512m}
     networks: [load]
 
+  load-mock-upstream-a:
+    image: python:3.12-slim
+    command: ["python", "/workspace/tests/e2e/mock_openai_upstream.py"]
+    environment:
+      PORT: "8080"
+      MOCK_DEPLOYMENT_ID: load-mock-a
+      MOCK_ECHO_FIRST_PII_PLACEHOLDER: "true"
+      MOCK_RESPONSE_DELAY_SECONDS: ${LOAD_MOCK_RESPONSE_DELAY_SECONDS:-0.02}
+      MOCK_STREAM_HOLD_SECONDS: ${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
+      MOCK_FAILURE_DELAY_SECONDS: ${LOAD_MOCK_FAILURE_DELAY_SECONDS:-3}
+    volumes:
+      - ../..:/workspace:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    cpus: ${LOAD_MOCK_CPUS:-1.0}
+    mem_limit: ${LOAD_MOCK_MEMORY:-512m}
+    networks: [load]
+
+  load-mock-upstream-b:
+    image: python:3.12-slim
+    command: ["python", "/workspace/tests/e2e/mock_openai_upstream.py"]
+    environment:
+      PORT: "8080"
+      MOCK_DEPLOYMENT_ID: load-mock-b
+      MOCK_ECHO_FIRST_PII_PLACEHOLDER: "true"
+      MOCK_RESPONSE_DELAY_SECONDS: ${LOAD_MOCK_RESPONSE_DELAY_SECONDS:-0.02}
+      MOCK_STREAM_HOLD_SECONDS: ${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
+      MOCK_FAILURE_DELAY_SECONDS: ${LOAD_MOCK_FAILURE_DELAY_SECONDS:-3}
+    volumes:
+      - ../..:/workspace:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    cpus: ${LOAD_MOCK_CPUS:-1.0}
+    mem_limit: ${LOAD_MOCK_MEMORY:-512m}
+    networks: [load]
+
   load-presidio-analyzer:
     build:
       context: ../..
@@ -129,6 +179,10 @@ services:
       load-redis:
         condition: service_healthy
       load-mock-upstream:
+        condition: service_healthy
+      load-mock-upstream-a:
+        condition: service_healthy
+      load-mock-upstream-b:
         condition: service_healthy
       load-analyzer-router:
         condition: service_healthy

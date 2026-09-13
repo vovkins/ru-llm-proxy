@@ -159,7 +159,7 @@ make monitor-smoke STACK=litellm-presidio
 | Метрика | Метки | Назначение |
 | --- | --- | --- |
 | `ru_pii_guardrail_pre_calls_total` | `result` | Итог проверок до провайдера |
-| `ru_pii_guardrail_post_calls_total` | `result` | Итог восстановления |
+| `ru_pii_guardrail_post_calls_total` | `result` | Итог восстановления или очистки сопоставления после ошибки провайдера |
 | `ru_pii_guardrail_entities_detected_total` | `entity_type` | Найденные сущности |
 | `ru_pii_guardrail_blocked_total` | `entity_type` | Блокировки PII |
 | `ru_pii_guardrail_fail_open_total` | `operation` | Небезопасное продолжение после ошибки |
@@ -186,6 +186,11 @@ LiteLLM создаёт отдельные экземпляры защитног�
 `ru_pii_guardrail_analyzer_latency_seconds_count`. Их отсутствие при наличии
 трафика означает неисправность регистрации метрик; проверьте журналы запуска на
 `Prometheus metric registration conflict`.
+
+`ru_pii_guardrail_post_calls_total{result="provider_failure_cleanup"}` означает,
+что внешний вызов завершился ошибкой, а защитный слой удалил временное
+`pii_mapping:*` немедленно, не дожидаясь его срока жизни. Рост ошибок удаления
+отражается в `ru_pii_guardrail_fail_open_total{operation="mapping_delete"}`.
 
 Для растущей истории сравнивайте `result="hit"` и `result="miss"` у
 `ru_pii_guardrail_analysis_cache_requests_total`. `bypass` означает отсутствие

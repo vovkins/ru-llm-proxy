@@ -37,7 +37,12 @@ ECHO_FIRST_PII_PLACEHOLDER = os.getenv(
 ).lower() in {"1", "true", "yes"}
 RESPONSE_DELAY_SECONDS = float(os.getenv("MOCK_RESPONSE_DELAY_SECONDS", "0"))
 STREAM_HOLD_SECONDS = float(os.getenv("MOCK_STREAM_HOLD_SECONDS", "0"))
+FAILURE_DELAY_SECONDS = float(os.getenv("MOCK_FAILURE_DELAY_SECONDS", "3"))
+DEPLOYMENT_ID = os.getenv("MOCK_DEPLOYMENT_ID", "load-mock-default")
 PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
+SYNTHETIC_MARKER_PATTERN = re.compile(
+    r"(?:loaduser[0-9]{4}|state(?:chat|responses|failure|timeout|stream))[a-z0-9-]*@example\.test"
+)
 ANALYZER_SIGNATURE = "0" * 64
 
 CAPTURE = {
@@ -50,6 +55,7 @@ CAPTURE = {
     "provider_saw_raw_phone": False,
     "provider_saw_phone_placeholder": False,
     "provider_saw_pii_placeholder": False,
+    "provider_saw_synthetic_marker": False,
 }
 CAPTURE_LOCK = threading.Lock()
 ANALYZER_OVERLOAD = {
@@ -160,6 +166,7 @@ def _record_provider_payload(path, payload):
     saw_raw_phone = _text_contains(payload, RAW_PHONE)
     saw_phone_placeholder = _text_contains(payload, PHONE_PLACEHOLDER)
     saw_pii_placeholder = _text_matches(payload, PII_PLACEHOLDER_PATTERN)
+    saw_synthetic_marker = _text_matches(payload, SYNTHETIC_MARKER_PATTERN)
     with CAPTURE_LOCK:
         CAPTURE["provider_requests"] += 1
         CAPTURE["provider_request_paths"].append(path)
@@ -168,6 +175,14 @@ def _record_provider_payload(path, payload):
         CAPTURE["provider_saw_raw_phone"] |= saw_raw_phone
         CAPTURE["provider_saw_phone_placeholder"] |= saw_phone_placeholder
         CAPTURE["provider_saw_pii_placeholder"] |= saw_pii_placeholder
+        CAPTURE["provider_saw_synthetic_marker"] |= saw_synthetic_marker
+
+
+def _failure_mode(payload) -> str | None:
+    for mode in ("429", "500", "timeout", "stream_disconnect"):
+        if _text_contains(payload, f"LOAD_UPSTREAM_FAIL_{mode.upper()}"):
+            return mode
+    return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -232,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
                     **CAPTURE,
                     "provider_request_paths": list(CAPTURE["provider_request_paths"]),
                 }
-            self._write_json(200, capture)
+            self._write_json(200, {**capture, "deployment_id": DEPLOYMENT_ID})
             return
         self._write_json(404, {"error": "not found"})
 
@@ -305,17 +320,70 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
+            failure_mode = _failure_mode(payload)
+            if failure_mode == "429":
+                self._write_json(
+                    429,
+                    {
+                        "error": {
+                            "code": "rate_limit_exceeded",
+                            "type": "rate_limit_error",
+                            "message": "Synthetic load-test rate limit.",
+                        }
+                    },
+                    headers={"Retry-After": "2"},
+                )
+                return
+            if failure_mode == "500":
+                self._write_json(
+                    500,
+                    {
+                        "error": {
+                            "code": "upstream_error",
+                            "type": "server_error",
+                            "message": "Synthetic load-test provider failure.",
+                        }
+                    },
+                )
+                return
+            if failure_mode == "timeout":
+                time.sleep(FAILURE_DELAY_SECONDS)
             response_content = _chat_response_content(payload)
             if RESPONSE_DELAY_SECONDS > 0:
                 time.sleep(RESPONSE_DELAY_SECONDS)
             if payload.get("stream") is True:
                 created = int(time.time())
+                if failure_mode == "stream_disconnect":
+                    self._write_sse(
+                        [
+                            (
+                                "",
+                                {
+                                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                    "object": "chat.completion.chunk",
+                                    "created": created,
+                                    "model": "mock-chat",
+                                    "choices": [
+                                        {
+                                            "index": 0,
+                                            "delta": {
+                                                "role": "assistant",
+                                                "content": response_content,
+                                            },
+                                            "finish_reason": None,
+                                        }
+                                    ],
+                                },
+                            )
+                        ]
+                    )
+                    return
                 self._write_sse(
                     [
                         (
                             "",
                             {
-                                "id": "chatcmpl-mock",
+                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",
@@ -334,7 +402,7 @@ class Handler(BaseHTTPRequestHandler):
                         (
                             "",
                             {
-                                "id": "chatcmpl-mock",
+                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",
@@ -355,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
             self._write_json(
                 200,
                 {
-                    "id": "chatcmpl-mock",
+                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
                     "object": "chat.completion",
                     "created": int(time.time()),
                     "model": "mock-chat",
@@ -380,11 +448,39 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
+            failure_mode = _failure_mode(payload)
+            if failure_mode == "429":
+                self._write_json(
+                    429,
+                    {
+                        "error": {
+                            "code": "rate_limit_exceeded",
+                            "type": "rate_limit_error",
+                            "message": "Synthetic load-test rate limit.",
+                        }
+                    },
+                    headers={"Retry-After": "2"},
+                )
+                return
+            if failure_mode == "500":
+                self._write_json(
+                    500,
+                    {
+                        "error": {
+                            "code": "upstream_error",
+                            "type": "server_error",
+                            "message": "Synthetic load-test provider failure.",
+                        }
+                    },
+                )
+                return
+            if failure_mode == "timeout":
+                time.sleep(FAILURE_DELAY_SECONDS)
             response_content = _responses_response_content(payload)
             if RESPONSE_DELAY_SECONDS > 0:
                 time.sleep(RESPONSE_DELAY_SECONDS)
             response = {
-                "id": "resp_mock",
+                "id": f"resp_{DEPLOYMENT_ID}",
                 "object": "response",
                 "created_at": int(time.time()),
                 "status": "completed",
@@ -411,6 +507,24 @@ class Handler(BaseHTTPRequestHandler):
                 },
             }
             if payload.get("stream") is True:
+                if failure_mode == "stream_disconnect":
+                    self._write_sse(
+                        [
+                            (
+                                "response.output_text.delta",
+                                {
+                                    "type": "response.output_text.delta",
+                                    "sequence_number": 0,
+                                    "item_id": "msg_mock",
+                                    "output_index": 0,
+                                    "content_index": 0,
+                                    "delta": response_content,
+                                    "logprobs": [],
+                                },
+                            )
+                        ]
+                    )
+                    return
                 self._write_sse(
                     [
                         (

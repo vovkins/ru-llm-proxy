@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from collections import Counter
 import stat
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ sys.path.insert(0, str(ROOT / "tests" / "load"))
 import load_support  # noqa: E402
 import manage_keys  # noqa: E402
 import sample_metrics  # noqa: E402
+import stateful_checks  # noqa: E402
 import summarize_run  # noqa: E402
 
 
@@ -246,6 +248,105 @@ def test_safe_report_aggregates_only_bounded_error_metadata(tmp_path):
     assert summary["error_code_counts"] == {"analyzer_overloaded": 1}
     assert summary["error_type_counts"] == {"service_unavailable": 1}
     assert summary["retry_after_seconds_counts"] == {"2": 1}
+
+
+def test_safe_report_summarizes_affinity_without_keys_or_markers(tmp_path):
+    writer = load_support.SafeReportWriter(
+        tmp_path,
+        node="affinity",
+        metadata={"profile": "steady"},
+    )
+    for user_index, deployments in (
+        (0, ("load-mock-a", "load-mock-a")),
+        (1, ("load-mock-b", "load-mock-a")),
+    ):
+        for deployment_id in deployments:
+            writer.record(
+                {
+                    "timestamp": 1,
+                    "user_index": user_index,
+                    "status_code": 200,
+                    "total_ms": 10,
+                    "deployment_id": deployment_id,
+                }
+            )
+
+    summary = writer.close()
+
+    assert summary["initial_deployment_counts"] == {
+        "load-mock-a": 1,
+        "load-mock-b": 1,
+    }
+    assert summary["deployment_transition_count"] == 1
+
+
+def test_provider_capture_summary_drops_repeated_paths_and_unknown_fields():
+    summary = stateful_checks.safe_provider_capture(
+        {
+            "deployment_id": "load-mock-a",
+            "provider_requests": 3,
+            "provider_request_paths": [
+                "/v1/chat/completions",
+                "/v1/chat/completions",
+                "/v1/responses",
+            ],
+            "provider_saw_pii_placeholder": True,
+            "provider_saw_synthetic_marker": False,
+            "request_body": "private-user@example.test",
+        }
+    )
+
+    assert summary == {
+        "deployment_id": "load-mock-a",
+        "provider_requests": 3,
+        "provider_request_path_counts": {
+            "/v1/chat/completions": 2,
+            "/v1/responses": 1,
+        },
+        "provider_saw_pii_placeholder": True,
+        "provider_saw_synthetic_marker": False,
+    }
+
+
+def test_admin_churn_checks_key_without_calling_a_model(monkeypatch):
+    calls = []
+    model_checks = 0
+
+    def fake_request(_base_url, path, **kwargs):
+        nonlocal model_checks
+        calls.append((path, kwargs.get("payload")))
+        if path == "/key/generate":
+            return stateful_checks.HTTPResult(200, {}, b'{"key":"sk-temporary"}')
+        if path == "/models":
+            model_checks += 1
+            status = 200 if model_checks == 1 else 403
+            return stateful_checks.HTTPResult(status, {}, b"{}")
+        return stateful_checks.HTTPResult(200, {}, b"{}")
+
+    moments = iter((0.0, 0.0, 0.0, 6.0))
+    monkeypatch.setattr(stateful_checks, "http_request", fake_request)
+    monkeypatch.setattr(stateful_checks.time, "monotonic", lambda: next(moments))
+    args = Namespace(
+        base_url="http://proxy.invalid",
+        master_key="sk-master",
+        revocation_timeout_seconds=5,
+        revocation_required_denials=1,
+        revocation_poll_seconds=0,
+        churn_interval_seconds=0,
+    )
+    counters = Counter()
+
+    stateful_checks.churn_worker(args, deadline=5, counters=counters)
+
+    assert counters == {
+        "created": 1,
+        "read": 1,
+        "used": 1,
+        "deleted": 1,
+        "revoked": 1,
+    }
+    assert [payload for path, payload in calls if path == "/models"] == [None, None]
+    assert not any(path.startswith("/v1/") for path, _payload in calls)
 
 
 def test_key_state_is_atomic_and_owner_only(tmp_path):
