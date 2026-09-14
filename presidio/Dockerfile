@@ -134,6 +134,6 @@ RUN python verify_cpu_runtime.py
 FROM analyzer-runtime AS analyzer-gpu
 COPY --from=analyzer-gpu-build /usr/local /usr/local
 ENV PRESIDIO_ANALYZER_DEVICE_PROFILE=gpu \
-    PRESIDIO_ANALYZER_GPU_PRECISION=fp32 \
-    PRESIDIO_ANALYZER_NER_BATCH_SIZE=4
+    PRESIDIO_ANALYZER_GPU_PRECISION=fp16 \
+    PRESIDIO_ANALYZER_NER_BATCH_SIZE=8
 RUN python verify_gpu_runtime.py --build-only

@@ -125,6 +125,8 @@ def test_gpu_image_is_explicit_pinned_and_separate_from_cpu_runtime():
     assert "MINIMUM_COMPUTE_CAPABILITY = (7, 5)" in verifier
     assert "target: analyzer-gpu" in compose
     assert "PRESIDIO_ANALYZER_DEVICE_PROFILE: gpu" in compose
+    assert "PRESIDIO_ANALYZER_GPU_PRECISION: fp16" in compose
+    assert 'PRESIDIO_ANALYZER_NER_BATCH_SIZE: "8"' in compose
     assert "driver: nvidia" in compose
 
 

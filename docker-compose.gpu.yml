@@ -6,8 +6,8 @@ services:
         PYTORCH_GPU_INDEX_URL: ${PYTORCH_GPU_INDEX_URL:-https://download.pytorch.org/whl/cu126}
     environment:
       PRESIDIO_ANALYZER_DEVICE_PROFILE: gpu
-      PRESIDIO_ANALYZER_GPU_PRECISION: fp32
-      PRESIDIO_ANALYZER_NER_BATCH_SIZE: "4"
+      PRESIDIO_ANALYZER_GPU_PRECISION: fp16
+      PRESIDIO_ANALYZER_NER_BATCH_SIZE: "8"
       PRESIDIO_ANALYZER_WORKERS: "1"
     deploy:
       resources:
