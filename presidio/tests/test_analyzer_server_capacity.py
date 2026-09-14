@@ -1041,6 +1041,20 @@ async def _lifespan_emits_safe_ner_startup_events(monkeypatch, caplog):
         "is_warmed_up",
         lambda: True,
     )
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "runtime_metadata",
+        lambda: {
+            "profile": "gpu",
+            "device": "cuda:0",
+            "precision": "fp16",
+            "inference_batch_size": 8,
+            "device_name": "Synthetic GPU",
+            "compute_capability": "7.5",
+            "cuda_version": "12.6",
+            "gpu_memory_total_bytes": 16 * 1024**3,
+        },
+    )
 
     with caplog.at_level(logging.INFO, logger="presidio.analyzer_server"):
         async with analyzer_server.lifespan(None):
@@ -1060,6 +1074,14 @@ async def _lifespan_emits_safe_ner_startup_events(monkeypatch, caplog):
             "revision": analyzer_server.MODEL_REVISION,
             "state": "ready",
             "warmed_up": True,
+            "device_profile": "gpu",
+            "device": "cuda:0",
+            "precision": "fp16",
+            "inference_batch_size": 8,
+            "device_name": "Synthetic GPU",
+            "compute_capability": "7.5",
+            "cuda_version": "12.6",
+            "gpu_memory_total_bytes": 16 * 1024**3,
         }
     ]
 
