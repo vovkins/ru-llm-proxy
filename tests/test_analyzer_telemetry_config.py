@@ -94,6 +94,15 @@ def test_docs_describe_analyzer_telemetry_contract():
         compliance
     )
 
+    for metric in (
+        "ru_presidio_analyzer_runtime_info",
+        "ru_presidio_analyzer_gpu_memory_total_bytes",
+        "ru_presidio_analyzer_gpu_memory_allocated_bytes",
+        "ru_presidio_analyzer_gpu_memory_reserved_bytes",
+        "ru_presidio_analyzer_gpu_memory_peak_allocated_bytes",
+    ):
+        assert metric in monitoring
+
 
 def test_analysis_cache_contract_is_observable_and_documented():
     guardrail = (ROOT / "litellm_guardrails" / "pii_guardrail.py").read_text()
