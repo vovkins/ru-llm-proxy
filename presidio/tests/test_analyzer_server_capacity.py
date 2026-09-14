@@ -1043,7 +1043,7 @@ async def _lifespan_emits_safe_ner_startup_events(monkeypatch, caplog):
     )
     monkeypatch.setattr(
         analyzer_server.ner_recognizer,
-        "runtime_metadata",
+        "runtime_info",
         lambda: {
             "profile": "gpu",
             "device": "cuda:0",
