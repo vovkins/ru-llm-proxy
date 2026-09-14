@@ -28,6 +28,7 @@ def main() -> None:
                 "profile": parameters.get("profile"),
                 "input_variation": parameters.get("input_variation"),
                 "analyzer_backend": parameters.get("analyzer_backend", "real"),
+                "analyzer_profile": parameters.get("analyzer_profile", "cpu"),
                 "analyzer_replicas": parameters.get("analyzer_replicas"),
                 "litellm_replicas": parameters.get("litellm_replicas"),
                 "requests_per_second": request.get("requests_per_second"),
@@ -80,7 +81,7 @@ def main() -> None:
         analyzer = (
             "mock"
             if row["analyzer_backend"] == "mock"
-            else row["analyzer_replicas"]
+            else f'{row["analyzer_profile"]} x {row["analyzer_replicas"]}'
         )
         values = (
             row["run"],
