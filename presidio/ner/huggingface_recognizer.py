@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -47,6 +49,14 @@ MAX_CONTENT_TOKENS = 384
 WINDOW_OVERLAP_TOKENS = 64
 WINDOW_BOUNDARY_SEARCH_TOKENS = 64
 DEFAULT_INFERENCE_BATCH_SIZE = 4
+DEVICE_PROFILE_ENV = "PRESIDIO_ANALYZER_DEVICE_PROFILE"
+GPU_PRECISION_ENV = "PRESIDIO_ANALYZER_GPU_PRECISION"
+INFERENCE_BATCH_SIZE_ENV = "PRESIDIO_ANALYZER_NER_BATCH_SIZE"
+DEVICE_PROFILE_CPU = "cpu"
+DEVICE_PROFILE_GPU = "gpu"
+GPU_PRECISION_FP32 = "fp32"
+GPU_PRECISION_FP16 = "fp16"
+MINIMUM_CUDA_COMPUTE_CAPABILITY = (7, 5)
 
 EXPECTED_ID2LABEL = {
     0: "O",
@@ -133,6 +143,7 @@ NER_FAILURE_PHASES = frozenset(
         "artifact_verification",
         "model_validation",
         "model_loading",
+        "device_initialization",
         "warmup",
         "readiness",
         "normalization",
@@ -151,6 +162,12 @@ NER_FAILURE_CLASSES = frozenset(
         "dependency_import_failed",
         "tokenizer_load_failed",
         "model_load_failed",
+        "device_profile_invalid",
+        "cuda_build_missing",
+        "cuda_device_unavailable",
+        "cuda_device_unsupported",
+        "cuda_model_placement_failed",
+        "cuda_out_of_memory",
         "runtime_contract_invalid",
         "warmup_failed",
         "not_ready",
@@ -448,25 +465,109 @@ class HuggingFaceNERRecognizer:
         model_directory: Path = MODEL_DIRECTORY,
         tokenizer: Any | None = None,
         model: Any | None = None,
-        inference_batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE,
+        inference_batch_size: int | None = None,
+        device_profile: str | None = None,
+        gpu_precision: str | None = None,
     ):
         if (tokenizer is None) != (model is None):
             raise ValueError("tokenizer and model must be supplied together")
+        if inference_batch_size is None:
+            raw_batch_size = os.getenv(
+                INFERENCE_BATCH_SIZE_ENV,
+                str(DEFAULT_INFERENCE_BATCH_SIZE),
+            )
+            try:
+                inference_batch_size = int(raw_batch_size)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("inference_batch_size must be an integer") from exc
         if inference_batch_size < 1:
             raise ValueError("inference_batch_size must be positive")
+        raw_device_profile = (
+            device_profile
+            if device_profile is not None
+            else os.getenv(DEVICE_PROFILE_ENV, DEVICE_PROFILE_CPU)
+        )
+        normalized_device_profile = str(raw_device_profile).strip().lower()
+        if normalized_device_profile not in {
+            DEVICE_PROFILE_CPU,
+            DEVICE_PROFILE_GPU,
+        }:
+            raise ValueError("device_profile must be cpu or gpu")
+        raw_gpu_precision = (
+            gpu_precision
+            if gpu_precision is not None
+            else os.getenv(GPU_PRECISION_ENV, GPU_PRECISION_FP32)
+        )
+        normalized_gpu_precision = str(raw_gpu_precision).strip().lower()
+        if normalized_gpu_precision not in {
+            GPU_PRECISION_FP32,
+            GPU_PRECISION_FP16,
+        }:
+            raise ValueError("gpu_precision must be fp32 or fp16")
+        if (
+            normalized_device_profile == DEVICE_PROFILE_CPU
+            and normalized_gpu_precision != GPU_PRECISION_FP32
+        ):
+            raise ValueError("CPU profile only supports fp32 precision")
         self.model_directory = Path(model_directory)
         self._tokenizer = tokenizer
         self._model = model
         self._manifest: ModelManifest | None = None
         self._inference_batch_size = inference_batch_size
+        self._device_profile = normalized_device_profile
+        self._gpu_precision = normalized_gpu_precision
+        self._device = DEVICE_PROFILE_CPU
+        self._device_name: str | None = None
+        self._compute_capability: tuple[int, int] | None = None
+        self._cuda_version: str | None = None
+        self._gpu_memory_total_bytes = 0
         self._warmed_up = False
         self._state = NER_STATE_NOT_LOADED
         self._failure_phase: str | None = None
         self._failure_class: str | None = None
         if self.is_loaded():
             self._validate_runtime_components(tokenizer, model)
+            self._configure_model_runtime(model)
             self._warmed_up = True
             self._state = NER_STATE_READY
+
+    def runtime_info(self) -> dict[str, Any]:
+        """Return bounded, non-sensitive runtime information."""
+        compute_capability = (
+            ".".join(str(value) for value in self._compute_capability)
+            if self._compute_capability is not None
+            else None
+        )
+        return {
+            "profile": self._device_profile,
+            "device": self._device,
+            "precision": self._gpu_precision,
+            "device_name": self._device_name,
+            "compute_capability": compute_capability,
+            "cuda_version": self._cuda_version,
+            "gpu_memory_total_bytes": self._gpu_memory_total_bytes,
+            "inference_batch_size": self._inference_batch_size,
+        }
+
+    def gpu_memory_allocated_bytes(self) -> int:
+        return self._cuda_memory_value("memory_allocated")
+
+    def gpu_memory_reserved_bytes(self) -> int:
+        return self._cuda_memory_value("memory_reserved")
+
+    def gpu_peak_memory_allocated_bytes(self) -> int:
+        return self._cuda_memory_value("max_memory_allocated")
+
+    def _cuda_memory_value(self, function_name: str) -> int:
+        if self._device_profile != DEVICE_PROFILE_GPU:
+            return 0
+        try:
+            import torch
+
+            function = getattr(torch.cuda, function_name)
+            return max(0, int(function(0)))
+        except Exception:
+            return 0
 
     def is_loaded(self) -> bool:
         return self._tokenizer is not None and self._model is not None
@@ -634,6 +735,22 @@ class HuggingFaceNERRecognizer:
                 clear_components=True,
             )
             raise
+        try:
+            self._configure_model_runtime(model)
+        except NERBackendError as exc:
+            self._mark_failed(
+                phase=exc.phase,
+                failure_class=exc.failure_class,
+                clear_components=True,
+            )
+            raise
+        except Exception:
+            self._mark_failed(
+                phase="device_initialization",
+                failure_class="cuda_model_placement_failed",
+                clear_components=True,
+            )
+            raise
 
         self._tokenizer = tokenizer
         self._model = model
@@ -660,6 +777,49 @@ class HuggingFaceNERRecognizer:
             MODEL_ID,
             MODEL_REVISION,
         )
+
+    def _configure_model_runtime(self, model: Any) -> None:
+        """Bind the fixed model to the selected runtime without fallback."""
+        import torch
+
+        self._cuda_version = str(torch.version.cuda) if torch.version.cuda else None
+        if self._device_profile == DEVICE_PROFILE_CPU:
+            self._device = DEVICE_PROFILE_CPU
+            return
+        if torch.version.cuda is None:
+            raise NERUnavailableError(
+                phase="device_initialization",
+                failure_class="cuda_build_missing",
+            )
+        if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+            raise NERUnavailableError(
+                phase="device_initialization",
+                failure_class="cuda_device_unavailable",
+            )
+        capability = tuple(int(value) for value in torch.cuda.get_device_capability(0))
+        if capability < MINIMUM_CUDA_COMPUTE_CAPABILITY:
+            raise NERUnavailableError(
+                phase="device_initialization",
+                failure_class="cuda_device_unsupported",
+            )
+        try:
+            device = torch.device("cuda:0")
+            model.to(device)
+            properties = torch.cuda.get_device_properties(0)
+        except Exception as exc:
+            failure_class = (
+                "cuda_out_of_memory"
+                if isinstance(exc, torch.cuda.OutOfMemoryError)
+                else "cuda_model_placement_failed"
+            )
+            raise NERUnavailableError(
+                phase="device_initialization",
+                failure_class=failure_class,
+            ) from exc
+        self._device = str(device)
+        self._device_name = str(properties.name)
+        self._compute_capability = capability
+        self._gpu_memory_total_bytes = max(0, int(properties.total_memory))
 
     def _warm_up(self) -> None:
         if not self.is_loaded():
@@ -1048,9 +1208,17 @@ class HuggingFaceNERRecognizer:
                     ],
                 )
             except Exception as exc:
+                failure_class = "forward_pass_failed"
+                try:
+                    import torch
+
+                    if isinstance(exc, torch.cuda.OutOfMemoryError):
+                        failure_class = "cuda_out_of_memory"
+                except Exception:
+                    pass
                 raise NERProcessingError(
                     phase="inference",
-                    failure_class="forward_pass_failed",
+                    failure_class=failure_class,
                     windows_processed=windows_processed,
                 ) from exc
             for window, token_predictions in zip(batch, batch_predictions):
@@ -1214,12 +1382,30 @@ class HuggingFaceNERRecognizer:
             padded_token_types.append([*token_type_ids, *([0] * padding)])
 
         model_inputs = {
-            "input_ids": torch.tensor(padded_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(padded_attention, dtype=torch.long),
-            "token_type_ids": torch.tensor(padded_token_types, dtype=torch.long),
+            "input_ids": torch.tensor(
+                padded_ids,
+                dtype=torch.long,
+                device=self._device,
+            ),
+            "attention_mask": torch.tensor(
+                padded_attention,
+                dtype=torch.long,
+                device=self._device,
+            ),
+            "token_type_ids": torch.tensor(
+                padded_token_types,
+                dtype=torch.long,
+                device=self._device,
+            ),
         }
 
-        with torch.inference_mode():
+        precision_context = (
+            torch.autocast(device_type="cuda", dtype=torch.float16)
+            if self._device_profile == DEVICE_PROFILE_GPU
+            and self._gpu_precision == GPU_PRECISION_FP16
+            else nullcontext()
+        )
+        with torch.inference_mode(), precision_context:
             logits = self._model(**model_inputs).logits
             probabilities = torch.softmax(logits, dim=-1)
             predicted_ids = torch.argmax(probabilities, dim=-1)
@@ -1227,6 +1413,10 @@ class HuggingFaceNERRecognizer:
                 2,
                 predicted_ids.unsqueeze(2),
             ).squeeze(2)
+
+        # A single transfer avoids synchronizing the GPU once per token.
+        predicted_ids = predicted_ids.detach().cpu()
+        predicted_scores = predicted_scores.detach().cpu()
 
         if len(predicted_ids) != len(prepared_batches):
             raise NERConfigurationError("NER model output batch does not match input")

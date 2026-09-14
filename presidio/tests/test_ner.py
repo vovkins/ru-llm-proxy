@@ -85,9 +85,14 @@ class FakeModel:
         self.eval_called = False
         self.call_count = 0
         self.input_lengths = []
+        self.selected_device = None
 
     def eval(self):
         self.eval_called = True
+        return self
+
+    def to(self, device):
+        self.selected_device = str(device)
         return self
 
     def __call__(self, **kwargs):
@@ -99,6 +104,117 @@ class FakeModel:
         for index, label_id in enumerate(self.label_ids):
             logits[0, index, label_id] = 10.0
         return SimpleNamespace(logits=logits)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"device_profile": "automatic"}, "device_profile must be cpu or gpu"),
+        (
+            {"device_profile": "cpu", "gpu_precision": "fp16"},
+            "CPU profile only supports fp32",
+        ),
+        ({"inference_batch_size": 0}, "inference_batch_size must be positive"),
+    ],
+)
+def test_runtime_configuration_rejects_ambiguous_or_invalid_values(
+    kwargs,
+    message,
+):
+    tokenizer = FakeTokenizer([(0, 1)])
+    model = FakeModel([0, 0, 0])
+
+    with pytest.raises(ValueError, match=message):
+        HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model, **kwargs)
+
+
+def test_cpu_runtime_is_the_default_and_does_not_move_the_model():
+    tokenizer = FakeTokenizer([(0, 1)])
+    model = FakeModel([0, 0, 0])
+
+    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+
+    assert recognizer.runtime_info() == {
+        "profile": "cpu",
+        "device": "cpu",
+        "precision": "fp32",
+        "device_name": None,
+        "compute_capability": None,
+        "cuda_version": None,
+        "gpu_memory_total_bytes": 0,
+        "inference_batch_size": 4,
+    }
+    assert model.selected_device is None
+
+
+def _configure_fake_cuda(monkeypatch, *, available=True, capability=(7, 5)):
+    monkeypatch.setattr(torch.version, "cuda", "12.6")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: available)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1 if available else 0)
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda _index: capability)
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda _index: SimpleNamespace(
+            name="Synthetic T4",
+            total_memory=16 * 1024**3,
+        ),
+    )
+
+
+def test_gpu_runtime_moves_model_and_reports_bounded_device_metadata(monkeypatch):
+    _configure_fake_cuda(monkeypatch)
+    tokenizer = FakeTokenizer([(0, 1)])
+    model = FakeModel([0, 0, 0])
+
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=tokenizer,
+        model=model,
+        device_profile="gpu",
+    )
+
+    assert model.selected_device == "cuda:0"
+    assert recognizer.runtime_info() == {
+        "profile": "gpu",
+        "device": "cuda:0",
+        "precision": "fp32",
+        "device_name": "Synthetic T4",
+        "compute_capability": "7.5",
+        "cuda_version": "12.6",
+        "gpu_memory_total_bytes": 16 * 1024**3,
+        "inference_batch_size": 4,
+    }
+
+
+def test_gpu_runtime_fails_closed_when_cuda_is_unavailable(monkeypatch):
+    _configure_fake_cuda(monkeypatch, available=False)
+    tokenizer = FakeTokenizer([(0, 1)])
+    model = FakeModel([0, 0, 0])
+
+    with pytest.raises(NERUnavailableError) as exc_info:
+        HuggingFaceNERRecognizer(
+            tokenizer=tokenizer,
+            model=model,
+            device_profile="gpu",
+        )
+
+    assert exc_info.value.phase == "device_initialization"
+    assert exc_info.value.failure_class == "cuda_device_unavailable"
+
+
+def test_gpu_runtime_rejects_pre_turing_devices(monkeypatch):
+    _configure_fake_cuda(monkeypatch, capability=(7, 0))
+    tokenizer = FakeTokenizer([(0, 1)])
+    model = FakeModel([0, 0, 0])
+
+    with pytest.raises(NERUnavailableError) as exc_info:
+        HuggingFaceNERRecognizer(
+            tokenizer=tokenizer,
+            model=model,
+            device_profile="gpu",
+        )
+
+    assert exc_info.value.failure_class == "cuda_device_unsupported"
 
 
 class GlobalLabelModel(FakeModel):
@@ -776,6 +892,24 @@ def test_inference_failure_is_not_suppressed():
     assert unavailable.value.phase == "inference"
     assert unavailable.value.failure_class == "forward_pass_failed"
     assert model.call_count == 1
+
+
+def test_cuda_out_of_memory_is_classified_and_latches_unhealthy_state():
+    tokenizer = FakeTokenizer([(0, 4)])
+    model = FakeModel(
+        [0, 1, 0],
+        error=torch.cuda.OutOfMemoryError("synthetic allocation failure"),
+    )
+    recognizer = HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+
+    with pytest.raises(NERProcessingError) as exc_info:
+        recognizer.analyze("Иван")
+
+    assert exc_info.value.phase == "inference"
+    assert exc_info.value.failure_class == "cuda_out_of_memory"
+    assert "synthetic" not in str(exc_info.value)
+    assert recognizer.state() == "failed"
+    assert recognizer.failure_class() == "cuda_out_of_memory"
 
 
 def test_inference_failure_reports_completed_windows():

@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack require-analyzer-profile
 
 # Docker Desktop stores its credential helper outside the default non-interactive
 # PATH on macOS. Export it once for every recipe and recursive make invocation.
@@ -17,6 +17,11 @@ NER_EVALUATION_MODEL_SHA256 ?= 6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3
 NER_EVALUATION_SYSTEM ?= fef2 secret-detection BERT + current recognizers
 NER_EVALUATION_FLAGS ?=
 ANALYZER_IMAGE ?= ru-llm-proxy-presidio-analyzer:latest
+ANALYZER_PROFILE ?= cpu
+ANALYZER_PROFILE_CPU := cpu
+ANALYZER_PROFILE_GPU := gpu
+ANALYZER_COMPOSE_FILE = $(if $(filter $(ANALYZER_PROFILE_GPU),$(ANALYZER_PROFILE)),-f docker-compose.gpu.yml,)
+ANALYZER_DOCKER_FLAGS = $(if $(filter $(ANALYZER_PROFILE_GPU),$(ANALYZER_PROFILE)),--gpus all,)
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
 	-e PYTHONDONTWRITEBYTECODE=1 \
@@ -28,11 +33,11 @@ STACK_CODEX_LB := litellm-presidio-codex-lb
 STACK_START_TIMEOUT ?= 180
 ENV_FILE ?= .env
 BUILD_ENV_FILE := $(shell if [ -f "$(ENV_FILE)" ]; then printf "%s" "$(ENV_FILE)"; else printf "%s" ".env.example"; fi)
-BASE_COMPOSE = docker compose --env-file $(ENV_FILE) -f docker-compose.yml
+BASE_COMPOSE = docker compose --env-file $(ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE)
 CODEX_LB_COMPOSE = $(BASE_COMPOSE) -f docker-compose.codex-lb.yml
 COMPOSE = $(if $(filter $(STACK_CODEX_LB),$(STACK)),$(CODEX_LB_COMPOSE),$(BASE_COMPOSE))
-BUILD_COMPOSE = CODEX_LB_POSTGRES_PASSWORD=build-only CODEX_LB_API_KEY=build-only docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml -f docker-compose.codex-lb.yml --profile test
-CLEAN_CODEX_LB_COMPOSE = docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml -f docker-compose.codex-lb.yml
+BUILD_COMPOSE = CODEX_LB_POSTGRES_PASSWORD=build-only CODEX_LB_API_KEY=build-only docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE) -f docker-compose.codex-lb.yml --profile test
+CLEAN_CODEX_LB_COMPOSE = docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE) -f docker-compose.codex-lb.yml
 
 # Default target
 help:
@@ -41,9 +46,11 @@ help:
 	@echo "Составы для setup/up/down/restart/logs/health/clean и проверок стенда:"
 	@echo "  STACK=$(STACK_LITELLM_PRESIDIO)"
 	@echo "  STACK=$(STACK_CODEX_LB)"
+	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU)  — Analyzer на CPU (по умолчанию)"
+	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)  — Analyzer на одной NVIDIA GPU"
 	@echo ""
 	@echo "Жизненный цикл:"
-	@echo "  make build                         — собрать и загрузить образы обоих составов"
+	@echo "  make build ANALYZER_PROFILE=<профиль> — собрать и загрузить образы обоих составов"
 	@echo "  make setup STACK=<состав>          — выполнить первичную настройку выбранного состава"
 	@echo "  make up STACK=<состав>             — запустить уже собранный и настроенный состав"
 	@echo "  make down STACK=<состав>           — остановить выбранный состав"
@@ -59,7 +66,7 @@ help:
 	@echo "  make test-recognizers — unit-тесты recognizers и NER helpers"
 	@echo "  make test-recognizer-api — API-level Analyzer recognizer regression tests"
 	@echo "  make test-ner-evaluation — быстрые тесты корпуса и метрик NER"
-	@echo "  make test-hf-model — собрать Analyzer и проверить модель без сети"
+	@echo "  make test-hf-model ANALYZER_PROFILE=<профиль> — собрать и проверить модель без сети"
 	@echo "  make test-ner-proxy — проверить mask/block через реальный Analyzer и mock-провайдер"
 	@echo "  make test-ner-integration — собрать модель и выполнить полный NER integration gate"
 	@echo "  make ner-evaluate STACK=<состав> — оценить запущенный Analyzer на обезличенном корпусе"
@@ -86,8 +93,14 @@ require-stack:
 		*) echo "❌ Укажите STACK=$(STACK_LITELLM_PRESIDIO) или STACK=$(STACK_CODEX_LB)"; exit 2 ;; \
 	esac
 
+require-analyzer-profile:
+	@case "$(ANALYZER_PROFILE)" in \
+		"$(ANALYZER_PROFILE_CPU)"|"$(ANALYZER_PROFILE_GPU)") ;; \
+		*) echo "❌ Укажите ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU) или ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)"; exit 2 ;; \
+	esac
+
 # === Setup ===
-setup: require-stack
+setup: require-stack require-analyzer-profile
 	bash scripts/setup_env.sh "$(ENV_FILE)" .env.example "$(STACK)"
 	@if [ "$(STACK)" = "$(STACK_CODEX_LB)" ]; then \
 		bash scripts/setup_codex_lb.sh "$(ENV_FILE)"; \
@@ -96,14 +109,14 @@ setup: require-stack
 	fi
 
 # === Build ===
-build:
+build: require-analyzer-profile
 	@echo "⬇️  Загрузка готовых образов обоих составов"
 	$(BUILD_COMPOSE) pull nginx redis db codex-lb-db
 	@echo "🔨 Сборка прикладных и тестовых образов обоих составов"
 	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer codex-lb guardrail-tests presidio-analyzer-tests
 
 # === Up ===
-up: require-stack
+up: require-stack require-analyzer-profile
 	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
 	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
 	$(COMPOSE) up -d --no-build
@@ -112,19 +125,19 @@ up: require-stack
 	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
 
 # === Down ===
-down: require-stack
+down: require-stack require-analyzer-profile
 	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
 	$(COMPOSE) down
 
 # === Restart (recreate containers and reread configuration) ===
-restart: require-stack
+restart: require-stack require-analyzer-profile
 	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
 	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
 	$(COMPOSE) up -d --no-build --force-recreate
 	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
 
 # === Logs ===
-logs: require-stack
+logs: require-stack require-analyzer-profile
 	$(COMPOSE) logs -f --tail=50
 
 # === Test ===
@@ -181,24 +194,28 @@ test-ner-evaluation:
 	@echo "🧪 NER migration corpus and metrics tests"
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q presidio/tests/test_evaluation.py
 
-test-hf-model:
-	@echo "🧪 Pinned Hugging Face model smoke test without network"
-	docker compose build presidio-analyzer
-	@$(MAKE) test-hf-model-run
+test-hf-model: require-analyzer-profile
+	@echo "🧪 Pinned Hugging Face model smoke test without network ($(ANALYZER_PROFILE))"
+	$(BASE_COMPOSE) build presidio-analyzer
+	@$(MAKE) test-hf-model-run ANALYZER_PROFILE="$(ANALYZER_PROFILE)" ANALYZER_IMAGE="$(ANALYZER_IMAGE)"
 
-test-hf-model-run:
-	@echo "🧪 Run pinned Hugging Face model smoke without network"
-	docker run --rm --network none $(ANALYZER_IMAGE) python verify_cpu_runtime.py
-	docker run --rm --network none $(ANALYZER_IMAGE) python real_model_smoke.py
+test-hf-model-run: require-analyzer-profile
+	@echo "🧪 Run pinned Hugging Face model smoke without network ($(ANALYZER_PROFILE))"
+	@if [ "$(ANALYZER_PROFILE)" = "$(ANALYZER_PROFILE_GPU)" ]; then \
+		docker run --rm --network none $(ANALYZER_DOCKER_FLAGS) $(ANALYZER_IMAGE) python verify_gpu_runtime.py; \
+	else \
+		docker run --rm --network none $(ANALYZER_IMAGE) python verify_cpu_runtime.py; \
+	fi
+	docker run --rm --network none $(ANALYZER_DOCKER_FLAGS) $(ANALYZER_IMAGE) python real_model_smoke.py
 
 test-ner-proxy:
 	@echo "🧪 Real Analyzer proxy mask/block flow with mock provider"
 	bash tests/e2e/test_ner_proxy_flow.sh
 
-test-ner-integration:
+test-ner-integration: require-analyzer-profile
 	@echo "🧪 Full pinned NER integration gate"
-	@$(MAKE) test-hf-model
-	@$(MAKE) test-ner-proxy
+	@$(MAKE) test-hf-model ANALYZER_PROFILE="$(ANALYZER_PROFILE)"
+	@ANALYZER_PROFILE="$(ANALYZER_PROFILE)" bash tests/e2e/test_ner_proxy_flow.sh
 
 ner-evaluate: require-stack
 	@echo "📊 NER evaluation via $(ANALYZER_URL)"
@@ -244,7 +261,7 @@ test-routing-diagnostics:
 	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
-health: require-stack
+health: require-stack require-analyzer-profile
 	bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)"
 
 # === Clean ===

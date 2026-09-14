@@ -22,9 +22,12 @@ def test_makefile_exposes_separate_real_model_and_proxy_gates():
 
     assert "test-hf-model-run:" in makefile
     assert "python verify_cpu_runtime.py" in makefile
+    assert "python verify_gpu_runtime.py" in makefile
+    assert "ANALYZER_PROFILE" in makefile
     assert "docker run --rm --network none $(ANALYZER_IMAGE)" in makefile
     assert "test-ner-proxy:" in makefile
     assert "bash tests/e2e/test_ner_proxy_flow.sh" in makefile
+    assert "docker-compose.ner-proxy.gpu.yml" in _read(SCRIPT)
     assert "test-ner-integration:" in makefile
     assert "tests/test_ner_integration_config.py" in makefile
 

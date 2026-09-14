@@ -64,6 +64,9 @@ class _NoopMetric:
     def observe(self, amount: float):
         return None
 
+    def set(self, amount: float):
+        return None
+
     def set_function(self, callback):
         return None
 
@@ -249,11 +252,40 @@ ANALYZER_TEXT_CHUNK_CHARACTERS = _build_metric(
     "Characters in one bounded outer Analyzer text chunk.",
     buckets=(1024, 8192, 32000, 64000, 96000, 128000),
 )
+ANALYZER_RUNTIME_INFO = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_runtime_info",
+    "Static Analyzer NER runtime information.",
+    ["profile", "precision", "compute_capability"],
+)
+ANALYZER_GPU_MEMORY_TOTAL = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_gpu_memory_total_bytes",
+    "Total memory of the selected CUDA device, or zero for CPU.",
+)
+ANALYZER_GPU_MEMORY_ALLOCATED = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_gpu_memory_allocated_bytes",
+    "Current PyTorch memory allocated on the selected CUDA device.",
+)
+ANALYZER_GPU_MEMORY_RESERVED = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_gpu_memory_reserved_bytes",
+    "Current PyTorch memory reserved on the selected CUDA device.",
+)
+ANALYZER_GPU_MEMORY_PEAK = _build_metric(
+    Gauge,
+    "ru_presidio_analyzer_gpu_memory_peak_allocated_bytes",
+    "Peak PyTorch memory allocated on the selected CUDA device.",
+)
 
 ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYSIS_SIGNATURE_SCHEMA = "ru-llm-proxy-analyzer-v1"
 ANALYSIS_SIGNATURE_ENV_NAMES = (
+    "PRESIDIO_ANALYZER_DEVICE_PROFILE",
+    "PRESIDIO_ANALYZER_GPU_PRECISION",
+    "PRESIDIO_ANALYZER_NER_BATCH_SIZE",
     "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM",
     "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
     "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES",
@@ -348,6 +380,13 @@ async def lifespan(_app: FastAPI):
     )
     try:
         ner_recognizer.load_model()
+        runtime = ner_recognizer.runtime_info()
+        ANALYZER_RUNTIME_INFO.labels(
+            profile=runtime["profile"],
+            precision=runtime["precision"],
+            compute_capability=runtime["compute_capability"] or "none",
+        ).set(1)
+        ANALYZER_GPU_MEMORY_TOTAL.set(runtime["gpu_memory_total_bytes"])
         _safe_log(
             logging.INFO,
             "presidio_ner_startup_ready",
@@ -355,6 +394,14 @@ async def lifespan(_app: FastAPI):
             revision=MODEL_REVISION,
             state=ner_recognizer.state(),
             warmed_up=ner_recognizer.is_warmed_up(),
+            device_profile=runtime["profile"],
+            device=runtime["device"],
+            precision=runtime["precision"],
+            device_name=runtime["device_name"] or "none",
+            compute_capability=runtime["compute_capability"] or "none",
+            cuda_version=runtime["cuda_version"] or "none",
+            gpu_memory_total_bytes=runtime["gpu_memory_total_bytes"],
+            inference_batch_size=runtime["inference_batch_size"],
         )
     except Exception:
         phase = ner_recognizer.failure_phase() or "startup"
@@ -405,6 +452,15 @@ ANALYZER_CAPACITY_ACTIVE.set_function(
 ANALYZER_CAPACITY_WAITING.set_function(
     lambda: capacity_limiter.snapshot()["waiting"]
 )
+ANALYZER_GPU_MEMORY_ALLOCATED.set_function(
+    ner_recognizer.gpu_memory_allocated_bytes
+)
+ANALYZER_GPU_MEMORY_RESERVED.set_function(
+    ner_recognizer.gpu_memory_reserved_bytes
+)
+ANALYZER_GPU_MEMORY_PEAK.set_function(
+    ner_recognizer.gpu_peak_memory_allocated_bytes
+)
 
 
 class AnalyzeRequest(BaseModel):
@@ -453,6 +509,7 @@ async def health():
     ner_status = "loaded" if ner_recognizer.is_loaded() else "not_loaded"
     ner_warmed_up = ner_recognizer.is_warmed_up()
     ner_state = ner_recognizer.state()
+    runtime = ner_recognizer.runtime_info()
     payload = {
         "status": "ok" if ner_state == "ready" else "unhealthy",
         "ner": ner_status,
@@ -462,9 +519,23 @@ async def health():
         "ner_backend": "huggingface_transformers",
         "ner_model": MODEL_ID,
         "ner_revision": MODEL_REVISION,
+        "ner_device_profile": runtime["profile"],
+        "ner_device": runtime["device"],
+        "ner_precision": runtime["precision"],
+        "ner_inference_batch_size": runtime["inference_batch_size"],
         "analysis_signature": ANALYSIS_SIGNATURE,
         "capacity": capacity_limiter.snapshot(),
     }
+    if runtime["device_name"] is not None:
+        payload["ner_device_name"] = runtime["device_name"]
+    if runtime["compute_capability"] is not None:
+        payload["ner_compute_capability"] = runtime["compute_capability"]
+    if runtime["cuda_version"] is not None:
+        payload["ner_cuda_version"] = runtime["cuda_version"]
+    if runtime["gpu_memory_total_bytes"]:
+        payload["ner_gpu_memory_total_bytes"] = runtime[
+            "gpu_memory_total_bytes"
+        ]
     if ner_recognizer.failure_phase() is not None:
         payload["ner_failure_phase"] = ner_recognizer.failure_phase()
     if ner_recognizer.failure_class() is not None:
