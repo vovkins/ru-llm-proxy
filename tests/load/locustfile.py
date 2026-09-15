@@ -52,6 +52,7 @@ REPORT_NODE = os.getenv("LOAD_REPORT_NODE", "local")
 CONTOUR = os.getenv("LOAD_CONTOUR", "mock")
 INPUT_VARIATION = os.getenv("LOAD_INPUT_VARIATION", "repeat")
 ANALYZER_BACKEND = os.getenv("LOAD_ANALYZER_BACKEND", "real")
+ANALYZER_PROFILE = os.getenv("LOAD_ANALYZER_PROFILE", "cpu")
 ANALYZER_REPLICAS = int(os.getenv("LOAD_ANALYZER_REPLICAS", "1"))
 LITELLM_REPLICAS = int(os.getenv("LOAD_LITELLM_REPLICAS", "1"))
 
@@ -108,6 +109,7 @@ def initialize_reporter(environment, **_kwargs) -> None:
             "contour": CONTOUR,
             "input_variation": INPUT_VARIATION,
             "analyzer_backend": ANALYZER_BACKEND,
+            "analyzer_profile": ANALYZER_PROFILE,
             "analyzer_replicas": ANALYZER_REPLICAS,
             "litellm_replicas": LITELLM_REPLICAS,
             "analyzer_concurrency_limit": int(

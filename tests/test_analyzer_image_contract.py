@@ -105,6 +105,42 @@ def test_production_image_enforces_cpu_only_runtime():
     assert "torch.cuda.is_available()" in verifier
 
 
+def test_gpu_image_is_explicit_pinned_and_separate_from_cpu_runtime():
+    dockerfile = _read(PRESIDIO / "Dockerfile")
+    gpu_requirements = _read(PRESIDIO / "requirements-analyzer-gpu.txt")
+    verifier = _read(PRESIDIO / "verify_gpu_runtime.py")
+    compose = _read(ROOT / "docker-compose.gpu.yml")
+
+    assert "torch==2.13.0" in gpu_requirements
+    assert (
+        'ARG PYTORCH_GPU_INDEX_URL="https://download.pytorch.org/whl/cu126"'
+        in dockerfile
+    )
+    assert "FROM analyzer-common-build AS analyzer-gpu-build" in dockerfile
+    assert "FROM analyzer-runtime AS analyzer-gpu" in dockerfile
+    assert "COPY --from=analyzer-gpu-build /usr/local /usr/local" in dockerfile
+    assert "RUN python verify_gpu_runtime.py --build-only" in dockerfile
+    assert 'EXPECTED_TORCH_VERSION = "2.13.0+cu126"' in verifier
+    assert 'EXPECTED_CUDA_VERSION = "12.6"' in verifier
+    assert "MINIMUM_COMPUTE_CAPABILITY = (7, 5)" in verifier
+    assert "target: analyzer-gpu" in compose
+    assert "PRESIDIO_ANALYZER_DEVICE_PROFILE: gpu" in compose
+    assert "PRESIDIO_ANALYZER_GPU_PRECISION: fp16" in compose
+    assert 'PRESIDIO_ANALYZER_NER_BATCH_SIZE: "8"' in compose
+    assert "driver: nvidia" in compose
+
+
+def test_makefile_selects_analyzer_profile_without_changing_stack_contract():
+    makefile = _read(ROOT / "Makefile")
+
+    assert "ANALYZER_PROFILE ?= cpu" in makefile
+    assert "docker-compose.gpu.yml" in makefile
+    assert "require-analyzer-profile:" in makefile
+    assert "ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU)" in makefile
+    assert "ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)" in makefile
+    assert "--gpus all" in makefile
+
+
 def test_analyzer_healthchecks_use_python_standard_library():
     dockerfile = _read(PRESIDIO / "Dockerfile")
     compose_files = (

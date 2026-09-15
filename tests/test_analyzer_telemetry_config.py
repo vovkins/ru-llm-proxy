@@ -28,6 +28,11 @@ def test_analyzer_server_exposes_safe_request_telemetry():
     assert "ru_presidio_analyzer_text_chunks" in source
     assert "ru_presidio_analyzer_text_chunk_characters" in source
     assert "ru_presidio_analyzer_merge_decisions" in source
+    assert "ru_presidio_analyzer_runtime_info" in source
+    assert "ru_presidio_analyzer_gpu_memory_total_bytes" in source
+    assert "ru_presidio_analyzer_gpu_memory_allocated_bytes" in source
+    assert "ru_presidio_analyzer_gpu_memory_reserved_bytes" in source
+    assert "ru_presidio_analyzer_gpu_memory_peak_allocated_bytes" in source
     assert "1200," in source
     assert "presidio_ner_inference" in source
     assert "presidio_analyzer_phase" in source
@@ -88,6 +93,15 @@ def test_docs_describe_analyzer_telemetry_contract():
     assert "Per-request telemetry Presidio Analyzer будет реализована в #31" not in (
         compliance
     )
+
+    for metric in (
+        "ru_presidio_analyzer_runtime_info",
+        "ru_presidio_analyzer_gpu_memory_total_bytes",
+        "ru_presidio_analyzer_gpu_memory_allocated_bytes",
+        "ru_presidio_analyzer_gpu_memory_reserved_bytes",
+        "ru_presidio_analyzer_gpu_memory_peak_allocated_bytes",
+    ):
+        assert metric in monitoring
 
 
 def test_analysis_cache_contract_is_observable_and_documented():

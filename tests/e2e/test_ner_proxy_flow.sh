@@ -3,6 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/tests/e2e/docker-compose.ner-proxy.yml"
+ANALYZER_PROFILE="${ANALYZER_PROFILE:-cpu}"
+GPU_COMPOSE_FILE="$ROOT_DIR/tests/e2e/docker-compose.ner-proxy.gpu.yml"
+COMPOSE_FILES=(-f "$COMPOSE_FILE")
+if [ "$ANALYZER_PROFILE" = "gpu" ]; then
+    COMPOSE_FILES+=(-f "$GPU_COMPOSE_FILE")
+elif [ "$ANALYZER_PROFILE" != "cpu" ]; then
+    echo "ANALYZER_PROFILE must be cpu or gpu" >&2
+    exit 2
+fi
 PROJECT_NAME="${NER_PROXY_PROJECT:-ru-llm-proxy-ner-$$-${RANDOM}}"
 MASK_PORT="${NER_PROXY_MASK_PORT:-14010}"
 BLOCK_PORT="${NER_PROXY_BLOCK_PORT:-14011}"
@@ -22,7 +31,7 @@ export NER_PROXY_ANALYZER_PORT="$ANALYZER_PORT"
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
-    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down -v --remove-orphans >/dev/null 2>&1 || true
+    docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
     rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
@@ -43,12 +52,12 @@ wait_for_http() {
     done
 
     echo "Timed out waiting for $description at $url" >&2
-    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps >&2 || true
+    docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" ps >&2 || true
     return 1
 }
 
 reset_capture() {
-    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T mock-upstream \
+    docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" exec -T mock-upstream \
         python - <<'PY' >/dev/null
 import urllib.request
 
@@ -64,7 +73,7 @@ PY
 
 capture_to() {
     local output_file="$1"
-    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T mock-upstream \
+    docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" exec -T mock-upstream \
         python - <<'PY' >"$output_file"
 import urllib.request
 
@@ -199,7 +208,7 @@ if ! docker image inspect "${ANALYZER_IMAGE:-ru-llm-proxy-presidio-analyzer:late
     exit 1
 fi
 
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d
+docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" up -d
 
 wait_for_http "http://127.0.0.1:${ANALYZER_PORT}/api/v1/health" "Analyzer" 180
 wait_for_http "http://127.0.0.1:${MASK_PORT}/health/liveliness" "mask proxy"
@@ -272,7 +281,7 @@ expect_metric_at_least "$block_metrics" ru_pii_guardrail_blocked_total 1 entity_
 expect_metric_at_least "$block_metrics" ru_pii_guardrail_analysis_cache_requests_total 1 result hit
 
 proxy_logs="$tmp_dir/proxy-logs.txt"
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs \
+docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" logs \
     litellm-mask litellm-block >"$proxy_logs"
 python3 - "$proxy_logs" <<'PY'
 import sys

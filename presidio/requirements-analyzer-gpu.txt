@@ -1,0 +1,2 @@
+# CUDA 12.6 remains compatible with Tesla T4 and newer NVIDIA architectures.
+torch==2.13.0

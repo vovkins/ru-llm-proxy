@@ -59,6 +59,7 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 | `LOAD_STREAM` | `mixed` | `true`, `false` или равномерная смесь |
 | `LOAD_INPUT_VARIATION` | `repeat` | `repeat` использует прогретый кэш; `unique` создаёт новый безопасный текст в каждом запросе |
 | `LOAD_ANALYZER_BACKEND` | `real` | `real` использует модель; `mock` разрешён только для изолированного измерения LiteLLM |
+| `LOAD_ANALYZER_PROFILE` | `cpu` | `cpu` или `gpu`; GPU подключает отдельный Compose-файл и требует NVIDIA Container Toolkit |
 | `LOAD_ANALYZER_REPLICAS` | `1` | Число экземпляров Analyzer в испытательном контуре |
 | `LOAD_LITELLM_REPLICAS` | `1` | Число экземпляров LiteLLM в испытательном контуре |
 | `LOAD_ANALYZER_CPUS`, `LOAD_ANALYZER_MEMORY` | `4`, `4g` | Ограничения одного экземпляра Analyzer |
@@ -85,6 +86,15 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 распределяет внутренняя испытательная точка балансировки. Проверяйте несколько
 процессов только с учётом линейного роста памяти модели, описанного в
 [профиле Analyzer](analyzer-load-profile.md).
+
+GPU-контур запускается той же командой:
+
+```bash
+LOAD_ANALYZER_PROFILE=gpu tests/load/run.sh smoke
+```
+
+Он использует FP16, пакет 8 и один процесс на реплику. Итоги T4 приведены в
+[сравнительном отчёте](gpu-analyzer-benchmark.md).
 
 Пулы `LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` и
 `LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS` задаются на каждый процесс LiteLLM.

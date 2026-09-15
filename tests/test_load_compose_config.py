@@ -7,6 +7,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_PATH = ROOT / "tests" / "load" / "docker-compose.yml"
+GPU_COMPOSE_PATH = ROOT / "tests" / "load" / "docker-compose.gpu.yml"
 CONFIG_PATH = ROOT / "tests" / "load" / "litellm-config.yaml"
 LOCUST_IMAGE = (
     "locustio/locust:2.46.5@"
@@ -126,6 +127,9 @@ def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     assert generator["environment"]["LOAD_ANALYZER_BACKEND"] == (
         "${LOAD_ANALYZER_BACKEND:-real}"
     )
+    assert generator["environment"]["LOAD_ANALYZER_PROFILE"] == (
+        "${LOAD_ANALYZER_PROFILE:-cpu}"
+    )
     assert generator["environment"]["LOAD_ANALYZER_QUEUE_LIMIT"] == (
         "${LOAD_ANALYZER_QUEUE_LIMIT:-8}"
     )
@@ -150,6 +154,22 @@ def test_load_proxy_uses_project_guardrails_with_safe_failure_defaults():
         "post_call",
     }
     assert config["litellm_settings"]["require_auth_for_metrics_endpoint"] is False
+
+
+def test_gpu_load_overlay_reuses_the_cuda_analyzer_profile():
+    service = yaml.safe_load(GPU_COMPOSE_PATH.read_text(encoding="utf-8"))[
+        "services"
+    ]["load-presidio-analyzer"]
+
+    assert service["build"]["target"] == "analyzer-gpu"
+    assert service["environment"] == {
+        "PRESIDIO_ANALYZER_DEVICE_PROFILE": "gpu",
+        "PRESIDIO_ANALYZER_GPU_PRECISION": "fp16",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "8",
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+    }
+    device = service["deploy"]["resources"]["reservations"]["devices"][0]
+    assert device == {"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}
 
 
 def test_run_script_requires_explicit_consent_for_real_provider_load():
@@ -187,6 +207,8 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert '--stop-timeout "$LOAD_STOP_TIMEOUT_SECONDS"' in script
     assert 'LOAD_CONTOUR" = "mock-direct' in script
     assert 'LOAD_ANALYZER_BACKEND must be real or mock' in script
+    assert 'LOAD_ANALYZER_PROFILE must be cpu or gpu' in script
+    assert 'GPU_COMPOSE_FILE="$ROOT/tests/load/docker-compose.gpu.yml"' in script
     assert '--scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS"' in script
     assert '--scale "load-litellm=$LOAD_LITELLM_REPLICAS"' in script
     assert '--profile load run --rm --no-deps load-key-manager create' in script

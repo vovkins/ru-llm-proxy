@@ -54,7 +54,8 @@ make health STACK=litellm-presidio
 | PostgreSQL `codex-lb` | `pg_isready -U codex_lb -d codex_lb` | Принимает соединения |
 
 `GET /health` LiteLLM может обращаться к моделям и не используется как проверка
-живости. Health Analyzer также возвращает ревизию NER и снимок `capacity`.
+живости. Health Analyzer также возвращает ревизию NER, снимок `capacity` и
+безопасные сведения `runtime` о профиле, точности, CUDA и видеокарте.
 
 Перегрузка Analyzer возвращает `503 analyzer_overloaded`. Событие
 `pii_guardrail_analyzer_overloaded` и метрика
@@ -225,6 +226,11 @@ LiteLLM создаёт отдельные экземпляры защитног�
 | `ru_presidio_analyzer_text_chunks_*` | нет | Число наружных фрагментов одного поля |
 | `ru_presidio_analyzer_text_chunk_characters_*` | нет | Размер обработанного наружного фрагмента |
 | `ru_presidio_analyzer_merge_decisions_total` | `reason`, `winner_source`, `loser_source` | Разрешение пересечений детекторов |
+| `ru_presidio_analyzer_runtime_info` | `profile`, `precision`, `compute_capability` | Активный CPU/GPU-профиль и ограниченные свойства CUDA |
+| `ru_presidio_analyzer_gpu_memory_total_bytes` | нет | Общая память выбранной видеокарты; ноль для CPU |
+| `ru_presidio_analyzer_gpu_memory_allocated_bytes` | нет | Текущая память, занятая PyTorch |
+| `ru_presidio_analyzer_gpu_memory_reserved_bytes` | нет | Текущий резерв распределителя PyTorch |
+| `ru_presidio_analyzer_gpu_memory_peak_allocated_bytes` | нет | Пиковая память PyTorch после запуска процесса |
 
 `ru_pii_guardrail_analyzer_latency_seconds_*` измеряет весь HTTP-вызов из
 LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в Analyzer вместе
@@ -271,6 +277,7 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 | `ru_presidio_analyzer_capacity_waiting > 0` дольше двух минут | Текущая ёмкость почти исчерпана | Увеличить Analyzer до появления отказов |
 | Растут `ru_presidio_analyzer_capacity_rejections_total` или `ru_pii_guardrail_fail_closed_total{operation="analyzer_overloaded"}` | Очередь уже не принимает нагрузку | Срочно увеличить ёмкость либо снизить частоту запросов; клиентам соблюдать `Retry-After` |
 | CPU Analyzer выше 60% пять минут | Недостаточный запас на всплеск и отказ экземпляра | Увеличить число экземпляров; не число процессов внутри Pod |
+| Растёт GPU-память или появляются `cuda_out_of_memory` | GPU-профиль близок к пределу либо выбран неверный размер пакета | Не включать переход на CPU; уменьшить плотность реплик или пакет и перезапустить нездоровую реплику |
 | Растут `ru_presidio_analyzer_ner_windows_processed_*` и `ru_presidio_analyzer_text_chunks_*` | Появились большие новые поля | Проверить задержку и тайм-ауты отдельно от обычного трафика |
 | CPU LiteLLM выше 60% или растёт задержка при стабильном Analyzer | Насыщается шлюз | Увеличить обслуживающие экземпляры LiteLLM |
 | Растут `codex_lb_active_connections` и задержка OpenAI | Насыщается маршрут ChatGPT OAuth | Масштабировать штатным Helm-механизмом и проверить лимиты подписок |
@@ -286,6 +293,12 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 Пределы соединений PostgreSQL, Redis и Analyzer рассчитывайте по максимальному
 числу Pod. После изменения `maxReplicas` повторите проверку суммарного числа
 соединений и сценарий отказа одного экземпляра.
+
+Метрики PyTorch не показывают загрузку вычислительных блоков, температуру,
+мощность и ошибки драйвера. Для GPU-узлов добавьте NVIDIA DCGM Exporter и
+сопоставляйте его показатели с `runtime_info`, очередью и задержкой Analyzer.
+Проверенный профиль T4 описан в
+[отчёте GPU-профиля](research/gpu-analyzer-benchmark.md).
 
 ## Политики в мониторинге
 
