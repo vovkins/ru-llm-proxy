@@ -283,6 +283,9 @@ ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYSIS_SIGNATURE_SCHEMA = "ru-llm-proxy-analyzer-v1"
 ANALYSIS_SIGNATURE_ENV_NAMES = (
+    "PRESIDIO_ANALYZER_NER_MODEL_PROFILE",
+    "PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS",
+    "PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING",
     "PRESIDIO_ANALYZER_DEVICE_PROFILE",
     "PRESIDIO_ANALYZER_GPU_PRECISION",
     "PRESIDIO_ANALYZER_NER_BATCH_SIZE",
@@ -321,6 +324,7 @@ def _analysis_source_files() -> tuple[Path, ...]:
     files = [
         root / "analyzer_server.py",
         root / "entity_types.py",
+        root / "model_profiles.py",
         root / "result_merging.py",
         root / "text_chunking.py",
     ]
@@ -402,6 +406,9 @@ async def lifespan(_app: FastAPI):
             cuda_version=runtime["cuda_version"] or "none",
             gpu_memory_total_bytes=runtime["gpu_memory_total_bytes"],
             inference_batch_size=runtime["inference_batch_size"],
+            model_profile=runtime.get("model_profile", "unknown"),
+            o_logit_bias=runtime.get("o_logit_bias", 0.0),
+            span_postprocessing=runtime.get("span_postprocessing", "none"),
         )
     except Exception:
         phase = ner_recognizer.failure_phase() or "startup"

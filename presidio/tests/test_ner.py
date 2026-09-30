@@ -143,6 +143,9 @@ def test_cpu_runtime_is_the_default_and_does_not_move_the_model():
         "cuda_version": None,
         "gpu_memory_total_bytes": 0,
         "inference_batch_size": 4,
+        "model_profile": "bert",
+        "o_logit_bias": 0.0,
+        "span_postprocessing": "none",
     }
     assert model.selected_device is None
 
@@ -183,6 +186,9 @@ def test_gpu_runtime_moves_model_and_reports_bounded_device_metadata(monkeypatch
         "cuda_version": "12.6",
         "gpu_memory_total_bytes": 16 * 1024**3,
         "inference_batch_size": 4,
+        "model_profile": "bert",
+        "o_logit_bias": 0.0,
+        "span_postprocessing": "none",
     }
 
 
@@ -1157,3 +1163,124 @@ def test_adapter_rejects_unexpected_label_map():
 
     with pytest.raises(NERConfigurationError, match="labels"):
         HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model)
+
+
+class LogitRowsModel(FakeModel):
+    """Returns explicit per-token logits; positions include [CLS] and [SEP]."""
+
+    def __init__(self, rows):
+        super().__init__([0] * len(rows))
+        self.rows = rows
+
+    def __call__(self, **kwargs):
+        self.call_count += 1
+        logits = torch.full((1, len(self.rows), len(EXPECTED_ID2LABEL)), -10.0)
+        for index, row in enumerate(self.rows):
+            for label_id, value in row.items():
+                logits[0, index, label_id] = value
+        return SimpleNamespace(logits=logits)
+
+
+def _weak_login_strong_person_model():
+    # "dev" is barely a LOGIN (2.6 vs O 2.1); "Иван" is clearly a PERSON.
+    return LogitRowsModel([{0: 10.0}, {0: 2.1, 7: 2.6}, {0: 0.0, 1: 8.0}, {0: 10.0}])
+
+
+def test_o_logit_bias_drops_weak_entities_and_keeps_model_probability():
+    text = "dev Иван"
+    offsets = [(0, 3), (4, 8)]
+    plain = HuggingFaceNERRecognizer(
+        tokenizer=FakeTokenizer(offsets),
+        model=_weak_login_strong_person_model(),
+    )
+    biased = HuggingFaceNERRecognizer(
+        tokenizer=FakeTokenizer(offsets),
+        model=_weak_login_strong_person_model(),
+        o_logit_bias=1.0,
+    )
+
+    plain_results = plain.analyze(text, score_threshold=0.0)
+    biased_results = biased.analyze(text, score_threshold=0.0)
+
+    assert [r.entity_type for r in plain_results] == ["LOGIN", "PERSON"]
+    assert [r.entity_type for r in biased_results] == ["PERSON"]
+    person_probability = float(
+        torch.softmax(torch.tensor([0.0, 8.0, *([-10.0] * 15)]), dim=0)[1]
+    )
+    assert biased_results[0].score == pytest.approx(person_probability)
+
+
+def _fragmented_secret_recognizer(**kwargs):
+    # "key=abc+def": the model marks "abc" and "def" but not "+".
+    offsets = [(0, 3), (3, 4), (4, 7), (7, 8), (8, 11)]
+    labels = [0, 0, 13, 0, 13]
+    tokenizer = FakeTokenizer(offsets)
+    model = FakeModel([0, *labels, 0])
+    return HuggingFaceNERRecognizer(tokenizer=tokenizer, model=model, **kwargs)
+
+
+def test_default_profile_keeps_model_fragments_unchanged():
+    results = _fragmented_secret_recognizer().analyze("key=abc+def")
+
+    assert [(r.entity_type, r.start, r.end) for r in results] == [
+        ("SECRET_KEY", 4, 7),
+        ("SECRET_KEY", 8, 11),
+    ]
+
+
+def test_span_postprocessing_masks_the_whole_value():
+    recognizer = _fragmented_secret_recognizer(span_postprocessing="secrets-contracts")
+
+    results = recognizer.analyze("key=abc+def")
+
+    assert [(r.entity_type, r.start, r.end) for r in results] == [
+        ("SECRET_KEY", 4, 11)
+    ]
+    assert recognizer.runtime_info()["span_postprocessing"] == "secrets-contracts"
+
+
+def test_span_postprocessing_failure_is_request_scoped(monkeypatch):
+    recognizer = _fragmented_secret_recognizer(span_postprocessing="secrets")
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "presidio.ner.huggingface_recognizer.postprocess_spans",
+        broken,
+    )
+    with pytest.raises(NERProcessingError) as error:
+        recognizer.analyze("key=abc+def")
+
+    assert error.value.phase == "postprocessing"
+    assert error.value.failure_class == "span_postprocessing_failed"
+    assert recognizer.is_ready()
+
+
+def test_tiny2_profile_validates_its_own_manifest_identity():
+    from presidio.model_profiles import PROFILES
+
+    tiny2 = PROFILES["tiny2"]
+    recognizer = HuggingFaceNERRecognizer(
+        tokenizer=FakeTokenizer([(0, 1)]),
+        model=FakeModel([0, 0, 0]),
+        profile=tiny2,
+    )
+    manifest = ModelManifest(
+        model_id=tiny2.model_id,
+        revision=tiny2.revision,
+        architecture="BertForTokenClassification",
+        license="mit",
+        base_model="cointegrated/rubert-tiny2",
+        files=(),
+    )
+
+    recognizer._validate_manifest(manifest)
+    with pytest.raises(NERConfigurationError):
+        HuggingFaceNERRecognizer(
+            tokenizer=FakeTokenizer([(0, 1)]),
+            model=FakeModel([0, 0, 0]),
+        )._validate_manifest(manifest)
+    assert recognizer.model_directory == tiny2.directory
+    assert recognizer.runtime_info()["model_profile"] == "tiny2"
+    assert recognizer.runtime_info()["o_logit_bias"] == 1.0

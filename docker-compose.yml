@@ -114,6 +114,7 @@ services:
         PIP_PROXY: ${PIP_PROXY:-}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
         NER_MODEL_PROXY: ${NER_MODEL_PROXY:-}
+        NER_MODEL_PROFILE: ${NER_MODEL_PROFILE:-bert}
     container_name: presidio-analyzer
     restart: unless-stopped
     ports:
@@ -126,6 +127,11 @@ services:
       - PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=${PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM:-true}
       - PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=${PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES:-internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local}
       - PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=${PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS:-true}
+      # Must match the NER_MODEL_PROFILE the image was built with.
+      - PRESIDIO_ANALYZER_NER_MODEL_PROFILE=${NER_MODEL_PROFILE:-bert}
+      # Empty values keep the profile defaults (bert: 0 / none, tiny2: 1.0 / secrets-contracts).
+      - PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS=${PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS:-}
+      - PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING=${PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING:-}
     healthcheck:
       test:
         - CMD

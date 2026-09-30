@@ -39,6 +39,9 @@ docker-compose.override.yml
 
 # NER models (downloaded at setup)
 models/
+# Local model weights for the image build; only the README is tracked.
+presidio/model-artifacts/*/*
+!presidio/model-artifacts/*/README.md
 *.bin
 *.gguf
 
