@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "model_id": "local/rubert-tiny2-secret-detection",
+  "revision": "nikita-style-tiny2-2026-09-28-mix-a-s1",
+  "architecture": "BertForTokenClassification",
+  "license": "mit",
+  "base_model": "cointegrated/rubert-tiny2",
+  "files": [
+    {
+      "path": "config.json",
+      "size": 1471,
+      "sha256": "cf7dbc1a569ccec8105b1780e51a167df2dfe7e82fadbafdb46eca789b2ee25f"
+    },
+    {
+      "path": "model.safetensors",
+      "size": 116412100,
+      "sha256": "53cde9f0e47f95478411457e1d74fdc16070517d54a2b45a27d74e49ea75cb67"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 695,
+      "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 2413438,
+      "sha256": "b6a9f282c732603652189b1fc2f32a2e2578b43927c5cf44a2e3585631419bb0"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 1458,
+      "sha256": "71b22b163773e6d2a3bc53236a6dca9245f2e0422b09e2d9597dbf02825c7135"
+    },
+    {
+      "path": "vocab.txt",
+      "size": 1080667,
+      "sha256": "f056a69b097422652053bf87565c35543e5d81540ca4b7dddd28de4157a969e0"
+    }
+  ]
+}
