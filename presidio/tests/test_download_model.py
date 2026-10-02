@@ -176,3 +176,49 @@ def test_download_model_rejects_existing_different_revision(tmp_path):
 
     with pytest.raises(ModelArtifactError, match="does not match"):
         download_model(changed_manifest, output_directory)
+
+
+def test_download_model_copies_verified_local_artifacts(tmp_path, monkeypatch):
+    files = {name: f"{name}-content".encode() for name in EXPECTED_MODEL_FILES}
+    manifest_path = _write_manifest(tmp_path / "manifest.json", files)
+    source = tmp_path / "artifacts" / "tiny2"
+    source.mkdir(parents=True)
+    for name, content in files.items():
+        (source / name).write_bytes(content)
+
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("local artifacts must not be downloaded")
+
+    monkeypatch.setattr("presidio.download_hf_model.download_file", no_network)
+    output = tmp_path / "model"
+    download_model(manifest_path, output, source)
+
+    verify_model_directory(output, load_manifest(manifest_path))
+    assert (output / EMBEDDED_MANIFEST_NAME).is_file()
+
+
+def test_download_model_rejects_tampered_local_artifact(tmp_path):
+    files = {name: f"{name}-content".encode() for name in EXPECTED_MODEL_FILES}
+    manifest_path = _write_manifest(tmp_path / "manifest.json", files)
+    source = tmp_path / "tiny2"
+    source.mkdir()
+    for name, content in files.items():
+        (source / name).write_bytes(content)
+    (source / "model.safetensors").write_bytes(b"model.safetensors-contenX")
+
+    with pytest.raises(ModelArtifactError, match="SHA-256 mismatch"):
+        download_model(manifest_path, tmp_path / "model", source)
+    assert not (tmp_path / "model").exists()
+
+
+def test_local_source_directory_ignores_readme_only_folder(tmp_path):
+    from presidio.download_hf_model import local_source_directory
+
+    folder = tmp_path / "tiny2"
+    folder.mkdir()
+    (folder / "README.md").write_text("instructions", encoding="utf-8")
+
+    assert local_source_directory(tmp_path, "tiny2") is None
+    (folder / "config.json").write_text("{}", encoding="utf-8")
+    assert local_source_directory(tmp_path, "tiny2") == folder
+    assert local_source_directory(None, "tiny2") is None

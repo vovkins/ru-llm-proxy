@@ -1,5 +1,21 @@
 # Конфигурация
 
+## Дополнительный backend NER
+
+Обычный запуск использует Transformers/PyTorch. CPU Tiny2 через Triton/ONNX
+включается отдельным compose-файлом; запуск и откат — в
+[руководстве Triton](ner-triton.md).
+
+| Переменная | Default | Назначение |
+|---|---|---|
+| `PRESIDIO_ANALYZER_NER_BACKEND` | `transformers` | `transformers` / `triton` |
+| `PRESIDIO_ANALYZER_TRITON_URL` | `http://ner-triton:8000` | Внутренний HTTP(S) endpoint |
+| `PRESIDIO_ANALYZER_TRITON_MODEL_NAME` | `tiny2` | Имя проверенной модели |
+| `PRESIDIO_ANALYZER_TRITON_MODEL_VERSION` | `1` | Явная версия модели |
+| `PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS` | `60` | Таймаут одного вызова |
+| `TRITON_MODEL_INSTANCES` | `1` | Инстансы CPU модели в дополнительном образе |
+
+
 Этот документ является единым справочником по переменным окружения проекта. `.env.example` намеренно содержит только минимальные значения для быстрого запуска; остальные настройки задаются через `docker-compose.yml`, `litellm-config.yaml`, административный интерфейс LiteLLM, параметры Makefile или переменные окружения конкретных быстрых проверок.
 
 Правило эксплуатации: секреты и локальные значения первичной настройки лежат в `.env`, публичные имена моделей, пользовательские ключи, бюджеты и доступы пользователей администрируются через административный интерфейс LiteLLM, а расширенные политики запуска меняются только осознанно и документируются в заявке на изменение.
@@ -90,6 +106,7 @@
 | `PYTORCH_INDEX_URL` | `https://download.pytorch.org/whl/cpu` | URL индекса с `torch==2.13.0+cpu` | Отдельный источник CPU-only PyTorch. В изолированной сети должен указывать на одобренное зеркало точной версии. |
 | `PYTORCH_GPU_INDEX_URL` | `https://download.pytorch.org/whl/cu126` | URL индекса с `torch==2.13.0` для CUDA 12.6 | Источник PyTorch только для `ANALYZER_PROFILE=gpu`. В CPU-образ не попадает. |
 | `NER_MODEL_PROXY` | Пусто | URL HTTP-прокси без встроенных секретов | Переопределяет общий прокси только для загрузки закрепленных файлов NER-модели во время сборки. |
+| `NER_MODEL_PROFILE` | `bert` | `bert`, `tiny2` | Какая закреплённая NER-модель попадёт в образ Analyzer и будет обслуживать запросы. `bert` скачивается с Hugging Face; для `tiny2` файлы модели кладутся в `presidio/model-artifacts/tiny2/` до сборки. Подробности — `docs/research/ner-tiny2.md`. |
 
 Корпоративная цепочка сертификатов хранится локально в верхнеуровневых файлах
 `certs/*.crt`; это не переменные окружения и не часть репозитория. Вся
@@ -110,6 +127,9 @@
 | `PRESIDIO_ANALYZER_DEVICE_PROFILE` | `cpu` | `cpu`, `gpu` | Внутренний контракт образа: устройство BERT. Задаётся выбранной целью сборки и Compose-профилем, а не вручную в `.env`. |
 | `PRESIDIO_ANALYZER_GPU_PRECISION` | `fp32` для CPU, `fp16` для GPU | `fp32`, `fp16` | Точность вычисления BERT. `fp16` разрешён только в GPU-профиле и выбран по результатам проверки качества. |
 | `PRESIDIO_ANALYZER_NER_BATCH_SIZE` | `4` для CPU, `8` для GPU | Положительное целое | Число BERT-окон в одном вызове модели. Значение задаётся профилем и обычно не переопределяется. |
+| `PRESIDIO_ANALYZER_NER_MODEL_PROFILE` | `bert` | `bert`, `tiny2` | Профиль NER-модели. Устанавливается образом из `NER_MODEL_PROFILE` и должен совпадать с ним: сервис при старте сверяет модель в образе с манифестом профиля. |
+| `PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS` | Профиль: `0` для `bert`, `1.0` для `tiny2` | Число от 0 до 10 | Прибавка к оценке «не сущность» перед выбором метки. Больше — меньше лишних срабатываний и больше риск пропуска. Оценка уверенности в ответе не меняется. |
+| `PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING` | Профиль: `none` для `bert`, `secrets-contracts` для `tiny2` | `none`, `secrets`, `secrets-contracts` | Исправление границ найденных значений: склейка кусков, расширение до разделителей, срез хвостовой пунктуации. `secrets` — только учётные данные, `secrets-contracts` — ещё номера договоров. |
 
 Эффективная параллельность Analyzer: `replicas * PRESIDIO_ANALYZER_WORKERS *
 PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Перегрузка Analyzer всегда трактуется

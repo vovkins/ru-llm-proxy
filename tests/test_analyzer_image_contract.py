@@ -76,8 +76,9 @@ def test_production_image_uses_verified_local_only_model():
     assert "COPY --from=analyzer-build /usr/local /usr/local" in dockerfile
     assert "HF_HUB_OFFLINE=1" in dockerfile
     assert "TRANSFORMERS_OFFLINE=1" in dockerfile
-    assert recognizer.count("local_files_only=True") == 2
-    assert recognizer.count("trust_remote_code=False") == 2
+    # Original tokenizer/model plus the tokenizer-only Triton path.
+    assert recognizer.count("local_files_only=True") == 3
+    assert recognizer.count("trust_remote_code=False") == 3
     assert "COPY presidio/text_chunking.py ." in dockerfile
 
 

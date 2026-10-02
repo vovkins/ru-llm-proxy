@@ -26,16 +26,22 @@ ARG PYTORCH_GPU_INDEX_URL="https://download.pytorch.org/whl/cu126"
 
 # Model acquisition remains independent from Python dependencies. A dedicated
 # proxy can override the generic HTTP(S)_PROXY only for this verified download.
+# NER_MODEL_PROFILE selects the pinned artifact: "bert" (default) downloads
+# Nikita's model from Hugging Face; "tiny2" copies files placed in
+# presidio/model-artifacts/tiny2/ (see its README) and verifies their SHA-256.
 FROM python-base AS model-download
 ARG NER_MODEL_PROXY=""
+ARG NER_MODEL_PROFILE="bert"
 WORKDIR /model-build
-COPY presidio/model_artifact.py presidio/download_hf_model.py presidio/model_manifest.json ./
+COPY presidio/model_artifact.py presidio/model_profiles.py presidio/download_hf_model.py ./
+COPY presidio/model_manifest.json presidio/model_manifest.tiny2.json ./
+COPY presidio/model-artifacts/ ./model-artifacts/
 RUN set -eu; \
     if [ -n "$NER_MODEL_PROXY" ]; then \
         export HTTP_PROXY="$NER_MODEL_PROXY" HTTPS_PROXY="$NER_MODEL_PROXY"; \
         export http_proxy="$NER_MODEL_PROXY" https_proxy="$NER_MODEL_PROXY"; \
     fi; \
-    python download_hf_model.py
+    python download_hf_model.py --profile "$NER_MODEL_PROFILE" --local-artifacts-root model-artifacts
 
 # Supported architectures install all runtime packages from wheels.
 FROM python-base AS analyzer-common-build
@@ -107,11 +113,14 @@ ENV HF_HUB_OFFLINE=1 \
     TOKENIZERS_PARALLELISM=false \
     PYTHONDONTWRITEBYTECODE=1
 
-COPY --from=model-download /opt/models/ner_rus_bert-secret_detection /opt/models/ner_rus_bert-secret_detection
+ARG NER_MODEL_PROFILE="bert"
+ENV PRESIDIO_ANALYZER_NER_MODEL_PROFILE=$NER_MODEL_PROFILE
+COPY --from=model-download /opt/models /opt/models
 COPY presidio/analyzer_server.py .
 COPY presidio/capacity.py .
 COPY presidio/entity_types.py .
 COPY presidio/model_artifact.py .
+COPY presidio/model_profiles.py .
 COPY presidio/result_merging.py .
 COPY presidio/text_chunking.py .
 COPY presidio/real_model_smoke.py .
@@ -137,3 +146,22 @@ ENV PRESIDIO_ANALYZER_DEVICE_PROFILE=gpu \
     PRESIDIO_ANALYZER_GPU_PRECISION=fp16 \
     PRESIDIO_ANALYZER_NER_BATCH_SIZE=8
 RUN python verify_gpu_runtime.py --build-only
+
+# Explicit optional Tiny2 ONNX/Triton target. Default Analyzer targets stay intact.
+FROM analyzer-build AS triton-model-export
+ENV HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
+COPY presidio/requirements-onnx-export.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install -r requirements-onnx-export.txt
+COPY --from=model-download /opt/models /opt/models
+COPY presidio/model_artifact.py presidio/model_profiles.py presidio/result_merging.py presidio/entity_types.py ./
+COPY presidio/ner/ ./ner/
+COPY presidio/export_triton_model.py ./
+RUN python export_triton_model.py --out /export/models
+
+FROM nvcr.io/nvidia/tritonserver:26.08-py3 AS ner-triton
+COPY --from=triton-model-export /export/models /models
+COPY presidio/triton_entrypoint.py /opt/ru-ner/triton_entrypoint.py
+ENV TRITON_MODEL_INSTANCES=1
+EXPOSE 8000 8002
+ENTRYPOINT ["python3", "/opt/ru-ner/triton_entrypoint.py"]

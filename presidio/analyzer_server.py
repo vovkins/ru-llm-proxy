@@ -283,6 +283,13 @@ ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYSIS_SIGNATURE_SCHEMA = "ru-llm-proxy-analyzer-v1"
 ANALYSIS_SIGNATURE_ENV_NAMES = (
+    "PRESIDIO_ANALYZER_NER_BACKEND",
+    "PRESIDIO_ANALYZER_TRITON_URL",
+    "PRESIDIO_ANALYZER_TRITON_MODEL_NAME",
+    "PRESIDIO_ANALYZER_TRITON_MODEL_VERSION",
+    "PRESIDIO_ANALYZER_NER_MODEL_PROFILE",
+    "PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS",
+    "PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING",
     "PRESIDIO_ANALYZER_DEVICE_PROFILE",
     "PRESIDIO_ANALYZER_GPU_PRECISION",
     "PRESIDIO_ANALYZER_NER_BATCH_SIZE",
@@ -321,6 +328,7 @@ def _analysis_source_files() -> tuple[Path, ...]:
     files = [
         root / "analyzer_server.py",
         root / "entity_types.py",
+        root / "model_profiles.py",
         root / "result_merging.py",
         root / "text_chunking.py",
     ]
@@ -402,6 +410,9 @@ async def lifespan(_app: FastAPI):
             cuda_version=runtime["cuda_version"] or "none",
             gpu_memory_total_bytes=runtime["gpu_memory_total_bytes"],
             inference_batch_size=runtime["inference_batch_size"],
+            model_profile=runtime.get("model_profile", "unknown"),
+            o_logit_bias=runtime.get("o_logit_bias", 0.0),
+            span_postprocessing=runtime.get("span_postprocessing", "none"),
         )
     except Exception:
         phase = ner_recognizer.failure_phase() or "startup"
@@ -506,17 +517,21 @@ def _correlation_log_fields() -> dict[str, str | int]:
 
 @app.get("/api/v1/health")
 async def health():
+    runtime = ner_recognizer.runtime_info()
+    if runtime.get('backend') == 'triton':
+        # Probe remote readiness before serving a healthy cache signature. Keep
+        # blocking HTTP off the API event loop, including on the first outage.
+        await asyncio.to_thread(ner_recognizer.is_ready)
     ner_status = "loaded" if ner_recognizer.is_loaded() else "not_loaded"
     ner_warmed_up = ner_recognizer.is_warmed_up()
     ner_state = ner_recognizer.state()
-    runtime = ner_recognizer.runtime_info()
     payload = {
         "status": "ok" if ner_state == "ready" else "unhealthy",
         "ner": ner_status,
         "ner_state": ner_state,
         "ner_warmed_up": ner_warmed_up,
         "ner_required": True,
-        "ner_backend": "huggingface_transformers",
+        "ner_backend": "triton_onnxruntime" if runtime.get('backend') == 'triton' else "huggingface_transformers",
         "ner_model": MODEL_ID,
         "ner_revision": MODEL_REVISION,
         "ner_device_profile": runtime["profile"],
