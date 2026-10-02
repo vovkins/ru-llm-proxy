@@ -1,0 +1,44 @@
+# Opt-in CPU Tiny2/FP32 backend; combine with docker-compose.yml.
+services:
+  ner-triton:
+    image: ru-llm-proxy-ner-triton:tiny2-fp32
+    build:
+      context: .
+      dockerfile: presidio/Dockerfile
+      target: ner-triton
+      args:
+        NER_MODEL_PROFILE: tiny2
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    environment:
+      TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-1}
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v2/models/tiny2/versions/1/ready', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [ru-llm-proxy]
+  presidio-analyzer:
+    image: ru-llm-proxy-presidio-analyzer:tiny2-triton
+    build:
+      target: analyzer
+      args:
+        NER_MODEL_PROFILE: tiny2
+    environment:
+      PRESIDIO_ANALYZER_NER_MODEL_PROFILE: tiny2
+      PRESIDIO_ANALYZER_NER_BACKEND: triton
+      PRESIDIO_ANALYZER_TRITON_URL: http://ner-triton:8000
+      PRESIDIO_ANALYZER_TRITON_MODEL_NAME: tiny2
+      PRESIDIO_ANALYZER_TRITON_MODEL_VERSION: "1"
+      PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS: ${PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS:-60}
+      PRESIDIO_ANALYZER_NER_BATCH_SIZE: ${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-8}
+      PRESIDIO_ANALYZER_DEVICE_PROFILE: cpu
+      PRESIDIO_ANALYZER_GPU_PRECISION: fp32
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    depends_on:
+      ner-triton:
+        condition: service_healthy

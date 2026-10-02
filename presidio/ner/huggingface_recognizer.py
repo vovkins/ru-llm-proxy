@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import threading
 import time
@@ -25,6 +26,7 @@ except ImportError:
     from presidio.entity_types import NER_ENTITY_TYPES
 
 from .span_postprocessing import postprocess_spans
+from .backend_settings import resolve_backend
 from .text_processing import TokenWindow, normalize_for_ner, plan_token_windows
 
 try:
@@ -172,6 +174,8 @@ NER_FAILURE_PHASES = frozenset(
         "offset_mapping",
         "postprocessing",
         "startup",
+        "triton_loading",
+        "triton_readiness",
     }
 )
 NER_FAILURE_CLASSES = frozenset(
@@ -200,6 +204,9 @@ NER_FAILURE_CLASSES = frozenset(
         "span_postprocessing_failed",
         "unexpected_failure",
         "startup_failed",
+        "triton_load_failed",
+        "triton_unavailable",
+        "triton_inference_failed",
     }
 )
 NER_INFERENCE_OUTCOMES = frozenset(
@@ -534,6 +541,12 @@ class HuggingFaceNERRecognizer:
         ):
             raise ValueError("CPU profile only supports fp32 precision")
         self._profile = profile if profile is not None else ACTIVE_PROFILE
+        self._backend_settings = resolve_backend()
+        if self._backend_settings.backend == 'triton':
+            if self._profile.name != 'tiny2' or normalized_device_profile != 'cpu':
+                raise ValueError('Triton backend currently requires tiny2 and CPU profile')
+            if model is not None:
+                raise ValueError('Injected local models cannot be used with Triton backend')
         self._o_logit_bias = parse_o_logit_bias(
             self._profile.o_logit_bias if o_logit_bias is None else o_logit_bias
         )
@@ -585,6 +598,7 @@ class HuggingFaceNERRecognizer:
             "model_profile": self._profile.name,
             "o_logit_bias": self._o_logit_bias,
             "span_postprocessing": self._span_postprocessing,
+            "backend": self._backend_settings.backend,
         }
 
     def gpu_memory_allocated_bytes(self) -> int:
@@ -614,6 +628,10 @@ class HuggingFaceNERRecognizer:
         return self._warmed_up
 
     def is_ready(self) -> bool:
+        if (self._backend_settings.backend == 'triton' and self._state == NER_STATE_READY and
+            self._model is not None and not self._model.ready()):
+            self._mark_failed(phase='triton_readiness', failure_class='triton_unavailable',
+                              clear_components=False)
         return (
             self._state == NER_STATE_READY
             and self.is_loaded()
@@ -709,6 +727,10 @@ class HuggingFaceNERRecognizer:
                 clear_components=True,
             )
             raise
+
+        if self._backend_settings.backend == 'triton':
+            self._load_triton(manifest)
+            return
 
         try:
             from transformers import AutoModelForTokenClassification, AutoTokenizer
@@ -834,6 +856,33 @@ class HuggingFaceNERRecognizer:
             EntityPrediction(entity_type=label, start=start, end=end, score=score)
             for start, end, label, score in repaired
         ]
+
+    def _load_triton(self, manifest: ModelManifest) -> None:
+        from .triton_model import TritonModel
+        model = None
+        try:
+            from transformers import AutoTokenizer
+            self._validate_manifest(manifest)
+            tokenizer = AutoTokenizer.from_pretrained(
+                str(self.model_directory), local_files_only=True, use_fast=True,
+                trust_remote_code=False, fix_mistral_regex=False)
+            config = json.loads((self.model_directory / 'config.json').read_text())
+            model = TritonModel(self._backend_settings, manifest, config)
+            self._validate_runtime_components(tokenizer, model)
+            if self._inference_batch_size > model.max_batch_size:
+                raise NERConfigurationError('NER batch exceeds Triton maximum batch size')
+            self._tokenizer, self._model, self._manifest = tokenizer, model, manifest
+            self._state = NER_STATE_WARMING_UP
+            self._warm_up()
+            self._state = NER_STATE_READY
+            logger.info('NER backend=triton model_profile=%s graph_sha256=%s',
+                        self._profile.name, model.graph_digest)
+        except Exception as exc:
+            if model is not None:
+                model.client.close()
+            self._mark_failed(phase='triton_loading', failure_class='triton_load_failed',
+                              clear_components=True)
+            raise NERUnavailableError(phase='triton_loading', failure_class='triton_load_failed') from exc
 
     def _configure_model_runtime(self, model: Any) -> None:
         """Bind the fixed model to the selected runtime without fallback."""
@@ -1441,6 +1490,10 @@ class HuggingFaceNERRecognizer:
         if pad_token_id is None:
             raise NERConfigurationError("NER tokenizer has no padding token")
         maximum_length = max(len(item) for item in prepared_batches)
+        if self._backend_settings.backend == 'triton':
+            if maximum_length > MAX_CONTENT_TOKENS + 2:
+                raise NERConfigurationError('Triton window exceeds content-token contract')
+            maximum_length = MAX_CONTENT_TOKENS + 2
         padded_ids = []
         padded_attention = []
         padded_token_types = []

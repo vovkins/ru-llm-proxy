@@ -951,6 +951,28 @@ def test_health_reports_fixed_model_identity(monkeypatch):
     asyncio.run(_health_reports_fixed_model_identity(monkeypatch))
 
 
+def test_health_checks_remote_backend_before_first_healthy_cache_signature(monkeypatch):
+    state = {'value': 'ready'}
+    original_runtime = analyzer_server.ner_recognizer.runtime_info()
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'runtime_info',
+                        lambda: {**original_runtime, 'backend': 'triton'})
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'state', lambda: state['value'])
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_loaded', lambda: True)
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_warmed_up', lambda: state['value'] == 'ready')
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'failure_phase', lambda: 'triton_readiness')
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'failure_class', lambda: 'triton_unavailable')
+    def remote_probe():
+        state['value'] = 'failed'
+        return False
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_ready', remote_probe)
+    response = asyncio.run(analyzer_server.health())
+    assert response.status_code == 503
+    payload = json.loads(response.body)
+    assert payload['ner_backend'] == 'triton_onnxruntime'
+    assert payload['ner_state'] == 'failed'
+    assert payload['ner_warmed_up'] is False
+
+
 async def _health_reports_fixed_model_identity(monkeypatch):
     _set_ner_state(
         monkeypatch,

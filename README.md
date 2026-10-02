@@ -102,6 +102,11 @@ make health STACK=litellm-presidio ANALYZER_PROFILE=gpu
 
 ## Первый запрос
 
+Для наших весов Tiny2 доступен дополнительный CPU backend **Triton + ONNX Runtime**.
+Запуск и откат описаны в [руководстве Triton](docs/ner-triton.md).
+Обычный состав продолжает использовать Transformers/PyTorch.
+
+
 Создайте пользовательский ключ в административном интерфейсе LiteLLM или
 локальной командой:
 

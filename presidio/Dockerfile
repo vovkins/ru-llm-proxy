@@ -146,3 +146,22 @@ ENV PRESIDIO_ANALYZER_DEVICE_PROFILE=gpu \
     PRESIDIO_ANALYZER_GPU_PRECISION=fp16 \
     PRESIDIO_ANALYZER_NER_BATCH_SIZE=8
 RUN python verify_gpu_runtime.py --build-only
+
+# Explicit optional Tiny2 ONNX/Triton target. Default Analyzer targets stay intact.
+FROM analyzer-build AS triton-model-export
+ENV HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
+COPY presidio/requirements-onnx-export.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install -r requirements-onnx-export.txt
+COPY --from=model-download /opt/models /opt/models
+COPY presidio/model_artifact.py presidio/model_profiles.py presidio/result_merging.py presidio/entity_types.py ./
+COPY presidio/ner/ ./ner/
+COPY presidio/export_triton_model.py ./
+RUN python export_triton_model.py --out /export/models
+
+FROM nvcr.io/nvidia/tritonserver:26.08-py3 AS ner-triton
+COPY --from=triton-model-export /export/models /models
+COPY presidio/triton_entrypoint.py /opt/ru-ner/triton_entrypoint.py
+ENV TRITON_MODEL_INSTANCES=1
+EXPOSE 8000 8002
+ENTRYPOINT ["python3", "/opt/ru-ner/triton_entrypoint.py"]
