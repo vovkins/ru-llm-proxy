@@ -92,6 +92,21 @@ def test_default_corpus_covers_all_target_types_and_risk_classes():
     )
 
 
+def test_instruction_corpus_separates_originals_pairs_and_holdouts():
+    cases = load_corpus(DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl"))
+    assert len(cases) == 43
+    assert sum("original" in case.tags for case in cases) == 8
+    assert sum("holdout" in case.tags for case in cases) == 14
+    assert sum("negative" in case.tags for case in cases) == 28
+    assert sum(case.critical for case in cases) == 15
+    assert {"PERSON", "ORGANIZATION"} <= {
+        entity.entity_type
+        for case in cases
+        if "uppercase" in case.tags
+        for entity in case.expected
+    }
+
+
 def test_load_corpus_rejects_duplicate_ids(tmp_path):
     record = {
         "id": "duplicate",

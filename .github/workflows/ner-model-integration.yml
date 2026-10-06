@@ -13,6 +13,7 @@ on:
       - "tests/e2e/docker-compose.ner-proxy.yml"
       - "tests/e2e/litellm-config.ner-proxy.yaml"
       - "tests/e2e/mock_openai_upstream.py"
+      - "tests/e2e/ner_instruction_checks.py"
       - "tests/e2e/test_ner_proxy_flow.sh"
       - "tests/test_ner_integration_config.py"
   push:
@@ -29,6 +30,7 @@ on:
       - "tests/e2e/docker-compose.ner-proxy.yml"
       - "tests/e2e/litellm-config.ner-proxy.yaml"
       - "tests/e2e/mock_openai_upstream.py"
+      - "tests/e2e/ner_instruction_checks.py"
       - "tests/e2e/test_ner_proxy_flow.sh"
       - "tests/test_ner_integration_config.py"
   workflow_dispatch:

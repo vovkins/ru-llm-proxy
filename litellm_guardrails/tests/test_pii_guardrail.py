@@ -936,6 +936,32 @@ class TestAnalysisCache:
         assert "+79031234567" not in serialized
 
     @pytest.mark.asyncio
+    async def test_changed_signature_does_not_reuse_false_positive(self, guardrail):
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        source = "Верни ровно MODEL_OK."
+        old_context = self._context()
+        new_context = {**old_context, "analyzer_signature": "b" * 64}
+        old_key = guardrail._analysis_cache_key(source, old_context)
+        cached = guardrail._serialize_analysis_cache_entry(
+            source,
+            [{"entity_type": "PERSON", "start": 0, "end": 5, "score": 0.85}],
+        )
+        await guardrail._redis.setex(old_key, guardrail.mapping_ttl_seconds, cached)
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze:
+            entities = await guardrail._analyze_text_with_cache(
+                source, new_context, str(uuid.uuid4()), 1
+            )
+
+        assert entities == []
+        analyze.assert_awaited_once_with(source)
+        assert guardrail._redis.values[old_key] == cached
+        new_key = guardrail._analysis_cache_key(source, new_context)
+        assert new_key != old_key
+        assert new_key in guardrail._redis.values
+
+    @pytest.mark.asyncio
     async def test_cached_entities_still_create_request_scoped_mapping(
         self,
         guardrail,

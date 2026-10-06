@@ -14,6 +14,9 @@ services:
       - PORT=8080
       - FINAL_PAYLOAD_LEAK_CHECK_CANARIES=${NER_PROXY_CANARIES}
       - MOCK_ECHO_CHAT_CONTENT=true
+      - MOCK_ECHO_RESPONSES_CONTENT=true
+    ports:
+      - "127.0.0.1:${NER_PROXY_CAPTURE_PORT:-14012}:8080"
     volumes:
       - ../..:/workspace:ro
     healthcheck:

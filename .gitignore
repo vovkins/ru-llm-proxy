@@ -51,6 +51,7 @@ data/
 !presidio/evaluation/data/
 presidio/evaluation/data/*
 !presidio/evaluation/data/ner_migration.jsonl
+!presidio/evaluation/data/instruction_regressions.jsonl
 !presidio/evaluation/data/deterministic_rules_review.jsonl
 pgdata/
 cache/

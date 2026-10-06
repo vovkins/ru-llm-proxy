@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
+from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
 from capacity import CapacityRejected, build_limiter_from_env
 from recognizers import ALL_RECOGNIZERS
@@ -436,6 +437,16 @@ nlp_engine_provider = NlpEngineProvider(
 )
 nlp_engine = nlp_engine_provider.create_engine()
 analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+
+# The specialized BERT owns these types: generic spaCy predictions otherwise
+# mistake instructions for names and override BERT as structural findings.
+for recognizer in analyzer.registry.recognizers:
+    if isinstance(recognizer, SpacyRecognizer):
+        recognizer.supported_entities = [
+            entity
+            for entity in recognizer.supported_entities
+            if entity not in {"PERSON", "ORGANIZATION"}
+        ]
 
 # Register custom Russian regex recognizers
 for recognizer_cls in ALL_RECOGNIZERS:

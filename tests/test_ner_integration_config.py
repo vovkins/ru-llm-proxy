@@ -60,6 +60,7 @@ def test_proxy_compose_uses_real_analyzer_and_both_pii_modes():
     assert "PII_GUARDRAIL_MODE=block" in compose
     assert "PII_GUARDRAIL_FAILURE_MODE=fail_closed" in compose
     assert "MOCK_ECHO_CHAT_CONTENT=true" in compose
+    assert "MOCK_ECHO_RESPONSES_CONTENT=true" in compose
     assert "PRE_EGRESS_POLICY_MODE=off" in compose
     assert "FINAL_PAYLOAD_LEAK_CHECK_MODE=block" in compose
 
@@ -94,6 +95,12 @@ def test_proxy_script_proves_mask_restore_and_block_non_egress():
     assert "provider_saw_pii_placeholder true" in script
     assert "provider_requests 0" in script
     assert 'block_status" != "422"' in script
+    assert "ner_instruction_checks.py" in script
+    assert "instruction_regressions.jsonl" in _read(
+        ROOT / "tests/e2e/ner_instruction_checks.py"
+    )
+    assert "mock-responses" in _read(CONFIG)
+    assert "tests/e2e/ner_instruction_checks.py" in _read(WORKFLOW)
 
 
 def test_baseline_validates_new_workflow_and_shell_assets():
