@@ -30,6 +30,7 @@
 | Загрузка закреплённого артефакта, вывод без сети, длинный текст и Unicode | Реальная модель | `presidio/real_model_smoke.py` |
 | Качество по обезличенному корпусу и отсутствие регрессии относительно DeepPavlov | Исследовательский корпус | `presidio/tests/test_evaluation.py`, `presidio/evaluation/reports/` |
 | Обычные инструкции без ложного маскирования, чувствительные значения внутри инструкций и оба режима обоих API | Регрессионный корпус/сквозной | `presidio/evaluation/data/instruction_regressions.jsonl`, `tests/e2e/ner_instruction_checks.py` через `make test-ner-proxy` |
+| Зависимость контекстных правил от NLP, все 29 категорий и сравнение без spaCy | Модульный/исследовательский | `presidio/tests/test_nlp_context_contract.py`, `presidio/tests/test_spacy_ablation.py`, `presidio/evaluation/spacy_ablation.py`; [результаты](spacy-ablation.md) |
 | Состав образа, закрепление модели и обязательная проверка контрольных сумм | Статический контракт | `tests/test_analyzer_image_contract.py` |
 | Состав отдельного CI-контура, кэширование и отсутствие секретов | Статический контракт | `tests/test_ner_integration_config.py` |
 
