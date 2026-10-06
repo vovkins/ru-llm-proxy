@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import urllib.request
+from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -64,7 +65,71 @@ def _restored_text(response, api, stream):
     )
 
 
+def check_entity_filters(analyzer_url):
+    examples = {
+        "PERSON": ("Клиент Иван Петров подписал документ.", "Иван Петров"),
+        "ORGANIZATION": ("Документы подготовлены для ООО Вектор.", "ООО Вектор"),
+        "CONTRACT_NUMBER": (
+            "Госконтракт № 0173100004521000123.",
+            "0173100004521000123",
+        ),
+    }
+    cases = []
+    for count in range(1, len(examples) + 1):
+        for entity_types in combinations(examples, count):
+            cases.append(
+                (
+                    "-".join(entity_types),
+                    " ".join(examples[entity][0] for entity in entity_types),
+                    {entity: examples[entity][1] for entity in entity_types},
+                )
+            )
+    cases.extend(
+        [
+            (
+                "mixed-regex-bert",
+                " ".join(text for text, _value in examples.values())
+                + " КПП получателя: 770801001.",
+                {
+                    **{entity: value for entity, (_text, value) in examples.items()},
+                    "RU_KPP": "770801001",
+                },
+            ),
+            ("regex-only", "КПП получателя: 770801001.", {"RU_KPP": "770801001"}),
+            ("location", "Встреча состоится в Москве.", {"LOCATION": "Москве"}),
+        ]
+    )
+    for case_id, text, values in cases:
+        response = _request(
+            analyzer_url,
+            "/api/v1/analyze",
+            {"text": text, "entities": list(values), "score_threshold": 0.35},
+        )
+        results = response["entities"]
+        assert response["text"] == text, f"{case_id}: original text changed"
+        assert {result["entity_type"] for result in results} <= set(
+            values
+        ), f"{case_id}: unrequested type returned"
+        for entity_type, value in values.items():
+            start = text.index(value)
+            assert any(
+                result["entity_type"] == entity_type
+                and result["start"] <= start
+                and result["end"] >= start + len(value)
+                for result in results
+            ), f"{case_id}: filtered sensitive value not fully covered"
+    for entity_type in examples:
+        response = _request(
+            analyzer_url,
+            "/api/v1/analyze",
+            {"text": "Верни ровно MODEL_OK.", "entities": [entity_type]},
+        )
+        assert response["entities"] == [], f"{entity_type}: unexpected detection"
+    return len(cases) + len(examples)
+
+
 def check_instructions(analyzer_url, proxy_url, capture_url):
+    entity_filter_cases = check_entity_filters(analyzer_url)
     cases = load_corpus(CORPUS)
     client = AnalyzerClient(analyzer_url, timeout_seconds=60)
     predictions = {case.case_id: client.analyze(case) for case in cases}
@@ -114,6 +179,7 @@ def check_instructions(analyzer_url, proxy_url, capture_url):
             {
                 "status": "ok",
                 "analyzer_cases": len(cases),
+                "entity_filter_cases": entity_filter_cases,
                 "echo_flows": flows,
                 "holdout_cases": sum("holdout" in case.tags for case in cases),
                 "metrics": metrics["aggregate"],

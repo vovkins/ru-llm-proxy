@@ -22,6 +22,7 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
 from capacity import CapacityRejected, build_limiter_from_env
+from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
 from result_merging import MergeDecision, merge_results
 from text_chunking import TextChunk, plan_text_chunks
@@ -767,6 +768,19 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
     try:
         ner_recognizer.require_ready()
 
+        presidio_entities = request.entities
+        if request.entities and request.language in nlp_engine.get_supported_languages():
+            # BERT-only categories are outside Presidio's registry. Keep unknown
+            # categories in its filter so invalid requests still fail explicitly.
+            bert_only_entities = NER_ENTITY_TYPES - set(
+                analyzer.get_supported_entities(language=request.language)
+            )
+            presidio_entities = [
+                entity
+                for entity in request.entities
+                if entity not in bert_only_entities
+            ]
+
         chunks = plan_text_chunks(request.text)
         _record_text_chunk_metrics(chunks)
         results: list[RecognizerResult] = []
@@ -776,12 +790,14 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             chunk_text = request.text[chunk.start : chunk.end]
             presidio_started_at = time.perf_counter()
             try:
-                chunk_results = analyzer.analyze(
-                    text=chunk_text,
-                    language=request.language,
-                    entities=request.entities,
-                    score_threshold=request.score_threshold,
-                )
+                chunk_results = []
+                if not request.entities or presidio_entities:
+                    chunk_results = analyzer.analyze(
+                        text=chunk_text,
+                        language=request.language,
+                        entities=presidio_entities,
+                        score_threshold=request.score_threshold,
+                    )
             except Exception:
                 presidio_duration += time.perf_counter() - presidio_started_at
                 _record_analyzer_phase("presidio", "failure", presidio_duration)

@@ -158,6 +158,9 @@ def _entity_texts(entities, entity_type):
 
 
 class _EmptyAnalyzer:
+    def get_supported_entities(self, language=None):
+        return []
+
     def analyze(self, **_kwargs):
         return []
 
