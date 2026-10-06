@@ -29,7 +29,7 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
     def test_script_exercises_streaming_chat_completions(self):
         self.assertIn('BASE_URL="${LITELLM_URL:-http://localhost:4000}"', self.script)
         self.assertIn('"$BASE_URL/v1/chat/completions"', self.script)
-        self.assertIn('"stream":true', self.script.replace(" ", ""))
+        self.assertIn(". + {stream: true}", self.script)
         self.assertIn("Accept: text/event-stream", self.script)
         self.assertIn("--no-buffer", self.script)
         self.assertIn("CURL_EXIT=$curl_exit", self.script)
@@ -54,6 +54,30 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("expect_responses_tool_restoration", self.script)
         self.assertIn("previous_response_id", self.script)
         self.assertIn("prompt_cache_key", self.script)
+
+    def test_script_checks_restoration_in_both_chat_modes(self):
+        self.assertIn(
+            'expect_chat_restoration "non-streaming guardrails request" non-stream',
+            self.script,
+        )
+        self.assertIn(
+            'expect_chat_restoration "streaming guardrails request" stream', self.script
+        )
+        self.assertIn(
+            'delta.content // empty] | join("") | contains($marker)', self.script
+        )
+        self.assertIn('test("<EMAIL_ADDRESS_[0-9]+>") | not', self.script)
+        self.assertIn(
+            "$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py", self.makefile
+        )
+
+    def test_script_checks_native_stream_text_and_tool_arguments(self):
+        self.assertIn("expect_responses_stream_restoration", self.script)
+        self.assertIn("response.output_text.delta", self.script)
+        self.assertIn("response.function_call_arguments.delta", self.script)
+        self.assertIn("delta.tool_calls[]?", self.script)
+        self.assertEqual(self.script.count("for mode in non-stream stream; do"), 2)
+        self.assertIn("fromjson | .email == \\$marker", self.script)
 
     def test_script_uses_bounded_curl_timeouts(self):
         self.assertIn(
@@ -90,12 +114,12 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("jq is required", self.script)
 
     def test_script_requires_stream_completion_marker(self):
-        self.assertIn('^data:[[:space:]]*\\[DONE\\]', self.script)
-        self.assertIn('^event:[[:space:]]*error', self.script)
+        self.assertIn("^data:[[:space:]]*\\[DONE\\]", self.script)
+        self.assertIn("^event:[[:space:]]*error", self.script)
 
     def test_script_does_not_print_proxy_token(self):
         self.assertIn("Authorization: Bearer $RU_LLM_PROXY_TOKEN", self.script)
-        self.assertNotIn("echo \"$RU_LLM_PROXY_TOKEN", self.script)
+        self.assertNotIn('echo "$RU_LLM_PROXY_TOKEN', self.script)
         self.assertNotIn("printf '%s' \"$RU_LLM_PROXY_TOKEN", self.script)
 
     def test_makefile_and_readme_describe_broader_static_target(self):
@@ -112,7 +136,9 @@ class GuardrailsSmokeMakefileTest(unittest.TestCase):
         self.assertIn("принадлежащих проверке Redis-сопоставлений", self.monitoring)
         self.assertIn("docker compose exec -T redis", self.monitoring)
         self.assertIn("CURL_CONNECT_TIMEOUT", self.monitoring)
-        checklist = self.monitoring.split("Минимальный проверочный список обновления:", 1)[1]
+        checklist = self.monitoring.split(
+            "Минимальный проверочный список обновления:", 1
+        )[1]
         checklist = checklist.split("## Ссылки", 1)[0]
         self.assertIn("локальном окружении Docker Compose", checklist)
         self.assertIn("`make guardrails-smoke STACK=litellm-presidio`", checklist)

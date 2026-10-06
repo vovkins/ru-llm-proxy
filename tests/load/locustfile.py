@@ -45,7 +45,6 @@ KEY_SHARD_COUNT = int(os.getenv("LOAD_KEY_SHARD_COUNT", "1"))
 CONNECT_TIMEOUT_SECONDS = float(os.getenv("LOAD_CONNECT_TIMEOUT_SECONDS", "5"))
 READ_TIMEOUT_SECONDS = float(os.getenv("LOAD_READ_TIMEOUT_SECONDS", "180"))
 VALIDATE_MAPPING = boolean_env("LOAD_VALIDATE_MAPPING", True)
-REQUIRE_STREAM_RESTORATION = boolean_env("LOAD_REQUIRE_STREAM_RESTORATION")
 ALLOW_LARGE_CONCURRENT = boolean_env("LOAD_ALLOW_LARGE_CONCURRENT")
 REPORT_DIR = Path(os.getenv("LOAD_REPORT_DIR", "/results"))
 REPORT_NODE = os.getenv("LOAD_REPORT_NODE", "local")
@@ -258,9 +257,8 @@ class ProxyUser(HttpUser):
                         and PII_PLACEHOLDER.fullmatch(output_text)
                     ):
                         validation_result = "masked_only"
-                        if REQUIRE_STREAM_RESTORATION:
-                            error_kind = "stream_restoration_missing"
-                            response.failure(error_kind)
+                        error_kind = "stream_restoration_missing"
+                        response.failure(error_kind)
                     else:
                         validation_result = "mismatch"
                         error_kind = "mapping_isolation_mismatch"

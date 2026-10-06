@@ -108,6 +108,9 @@ jobs:
       - name: Run LiteLLM guardrail unit tests
         run: make test-guardrail
 
+      - name: Run deterministic masking and restoration round trips
+        run: make test-flow
+
   recognizer-api:
     runs-on: ubuntu-latest
     needs: baseline

@@ -27,6 +27,11 @@ from litellm_guardrails.dictionary_policy import (
     DictionarySubstitutionPolicy,
     DictionarySubstitutionResult,
 )
+from litellm_guardrails.streaming_restoration import (
+    StreamingResponseRestorer,
+    restore_arguments,
+    restore_text,
+)
 from litellm_guardrails.metrics import (
     DICTIONARY_SUBSTITUTION_MAPPING_SIZE,
     DICTIONARY_SUBSTITUTIONS_APPLIED,
@@ -68,66 +73,6 @@ if not any(
     _guardrail_log_handler.setFormatter(logging.Formatter("%(message)s"))
     _guardrail_log_handler._ru_llm_proxy_guardrail_handler = True
     logger.addHandler(_guardrail_log_handler)
-
-
-class _StreamingPlaceholderReplacer:
-    """Chunk-safe placeholder replacement for independently streamed text fields."""
-
-    def __init__(self, mapping: dict[str, str]):
-        self._mapping = mapping
-        self._placeholders = sorted(mapping, key=len, reverse=True)
-        self._pending: dict[tuple[int, str], str] = {}
-
-    def push(self, key: tuple[int, str], text: str) -> str:
-        """Return text safe to emit now, keeping possible placeholder prefixes."""
-        combined = self._pending.get(key, "") + text
-        emit, pending = self._split_safe_prefix(combined)
-        self._pending[key] = pending
-        return self._replace(emit)
-
-    def flush(self, key: tuple[int, str]) -> str:
-        """Flush pending text for one stream field."""
-        pending = self._pending.pop(key, "")
-        return self._replace(pending)
-
-    def flush_choice(self, choice_index: int) -> dict[str, str]:
-        """Flush all pending fields for one choice."""
-        flushed: dict[str, str] = {}
-        for key in list(self._pending):
-            key_choice_index, field = key
-            if key_choice_index != choice_index:
-                continue
-            value = self.flush(key)
-            if value:
-                flushed[field] = flushed.get(field, "") + value
-        return flushed
-
-    def flush_all(self) -> dict[tuple[int, str], str]:
-        """Flush all remaining pending fields."""
-        flushed: dict[tuple[int, str], str] = {}
-        for key in list(self._pending):
-            value = self.flush(key)
-            if value:
-                flushed[key] = value
-        return flushed
-
-    def _split_safe_prefix(self, text: str) -> tuple[str, str]:
-        keep = 0
-        for length in range(1, len(text) + 1):
-            suffix = text[-length:]
-            if any(
-                suffix != placeholder and placeholder.startswith(suffix)
-                for placeholder in self._placeholders
-            ):
-                keep = length
-        if keep == 0:
-            return text, ""
-        return text[:-keep], text[-keep:]
-
-    def _replace(self, text: str) -> str:
-        for placeholder in self._placeholders:
-            text = text.replace(placeholder, self._mapping[placeholder])
-        return text
 
 
 # Presidio Analyzer service URL from environment
@@ -4031,7 +3976,12 @@ class RuPIIGuardrail(CustomGuardrail):
 
             for target, field in targets:
                 original_value = self._get_container_field(target, field)
-                restored_value = self._replace_placeholders(
+                replace = (
+                    restore_arguments
+                    if field == "arguments"
+                    else self._replace_placeholders
+                )
+                restored_value = replace(
                     original_value,
                     mapping,
                 )
@@ -4103,77 +4053,6 @@ class RuPIIGuardrail(CustomGuardrail):
         )
         return None
 
-    @classmethod
-    def _iter_stream_delta_text_targets(
-        cls,
-        chunk: Any,
-    ) -> list[tuple[int, Any, str]]:
-        """Return stream delta text fields that can contain placeholders."""
-        targets: list[tuple[int, Any, str]] = []
-        choices = getattr(chunk, "choices", None)
-        if not isinstance(choices, list):
-            return targets
-
-        for choice in choices:
-            try:
-                choice_index = int(cls._get_container_field(choice, "index") or 0)
-            except (TypeError, ValueError):
-                choice_index = 0
-
-            delta = cls._get_container_field(choice, "delta")
-            if delta is None:
-                continue
-
-            for field in ("content", "reasoning_content"):
-                value = cls._get_container_field(delta, field)
-                if isinstance(value, str):
-                    targets.append((choice_index, delta, field))
-
-        return targets
-
-    @classmethod
-    def _append_stream_delta_text(cls, delta: Any, field: str, text: str) -> None:
-        """Append restored trailing text to a stream delta field."""
-        current_value = cls._get_container_field(delta, field)
-        if isinstance(current_value, str):
-            cls._set_container_field(delta, field, current_value + text)
-        else:
-            cls._set_container_field(delta, field, text)
-
-    def _flush_stream_choice(
-        self,
-        choice: Any,
-        replacer: _StreamingPlaceholderReplacer,
-    ) -> None:
-        """Flush pending text for a finished streaming choice onto its delta."""
-        try:
-            choice_index = int(self._get_container_field(choice, "index") or 0)
-        except (TypeError, ValueError):
-            choice_index = 0
-
-        delta = self._get_container_field(choice, "delta")
-        if delta is None:
-            return
-
-        for field, text in replacer.flush_choice(choice_index).items():
-            self._append_stream_delta_text(delta, field, text)
-
-    @staticmethod
-    def _build_stream_flush_chunk(
-        choice_index: int,
-        field: str,
-        text: str,
-    ) -> Any:
-        """Build a final stream chunk for pending text when no finish chunk exists."""
-        return litellm.ModelResponseStream(
-            choices=[
-                litellm.StreamingChoices(
-                    index=choice_index,
-                    delta={field: text},
-                )
-            ]
-        )
-
     async def async_post_call_streaming_iterator_hook(
         self,
         user_api_key_dict: UserAPIKeyAuth,
@@ -4182,89 +4061,83 @@ class RuPIIGuardrail(CustomGuardrail):
     ):
         """Unmask placeholders in streaming response chunks."""
         request_id = self._get_response_request_id(request_data)
-        if not request_id:
-            PII_POST_CALLS.labels(result="skipped").inc()
-            async for item in response:
-                yield item
-            return
-
+        iterator = response.__aiter__()
+        restorer = None
         try:
-            mapping = await self._load_mapping(request_id)
-        except Exception as e:
-            PII_POST_CALLS.labels(result="error").inc()
-            self._handle_failure("stream mapping load", e, request_data)
-            async for item in response:
-                yield item
-            return
-
-        if not mapping:
-            PII_POST_CALLS.labels(result="no_mapping").inc()
-            _safe_log(
-                logging.INFO,
-                "pii_guardrail_no_mapping",
-                request_id=request_id,
-            )
-            self._mark_streaming_restoration_done(request_data)
-            async for item in response:
-                yield item
-            return
-
-        replacer = _StreamingPlaceholderReplacer(mapping)
-        restored_fields = 0
-        try:
-            async for item in response:
-                for choice_index, target, field in self._iter_stream_delta_text_targets(
-                    item
-                ):
-                    original_value = self._get_container_field(target, field)
-                    restored_value = replacer.push(
-                        (choice_index, field),
-                        original_value,
-                    )
-                    if restored_value != original_value:
-                        restored_fields += 1
-                    self._set_container_field(target, field, restored_value)
-
-                choices = getattr(item, "choices", None)
-                if isinstance(choices, list):
-                    for choice in choices:
-                        if self._get_container_field(choice, "finish_reason") is not None:
-                            self._flush_stream_choice(choice, replacer)
-
-                yield item
-
-            for (choice_index, field), text in replacer.flush_all().items():
-                restored_fields += 1
-                yield self._build_stream_flush_chunk(choice_index, field, text)
+            if not request_id:
+                PII_POST_CALLS.labels(result="skipped").inc()
+            else:
+                try:
+                    mapping = await self._load_mapping(request_id)
+                except Exception as e:
+                    PII_POST_CALLS.labels(result="error").inc()
+                    self._handle_failure("stream mapping load", e, request_data)
+                else:
+                    if mapping:
+                        restorer = StreamingResponseRestorer(mapping)
+                    else:
+                        PII_POST_CALLS.labels(result="no_mapping").inc()
+                        _safe_log(
+                            logging.INFO,
+                            "pii_guardrail_no_mapping",
+                            request_id=request_id,
+                        )
+                        self._mark_streaming_restoration_done(request_data)
+            async for item in iterator:
+                for restored_item in restorer.process(item) if restorer else [item]:
+                    yield restored_item
+            if restorer:
+                for item in restorer.finish():
+                    yield item
         finally:
-            self._mark_streaming_restoration_done(request_data)
+            if restorer:
+                self._mark_streaming_restoration_done(request_data)
             try:
-                await self._delete_mapping(request_id)
+                close = getattr(iterator, "aclose", None)
+                if not callable(close):
+                    # Native LiteLLM Responses iterators expose the HTTP response.
+                    http_response = getattr(iterator, "response", None)
+                    if isinstance(http_response, httpx.Response):
+                        close = http_response.aclose
+                if callable(close):
+                    result = close()
+                    if inspect.isawaitable(result):
+                        await result
             except Exception as e:
-                PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
                 _safe_log(
                     logging.WARNING,
-                    "pii_guardrail_cleanup_failed",
+                    "pii_guardrail_stream_close_failed",
                     request_id=request_id,
                     error_type=type(e).__name__,
                 )
+            finally:
+                if restorer:
+                    try:
+                        await self._delete_mapping(request_id)
+                    except Exception as e:
+                        PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+                        _safe_log(
+                            logging.WARNING,
+                            "pii_guardrail_cleanup_failed",
+                            request_id=request_id,
+                            error_type=type(e).__name__,
+                        )
+
+        if restorer is None:
+            return
 
         PII_POST_CALLS.labels(
-            result="restored" if restored_fields else "no_placeholders"
+            result="restored" if restorer.restored_fields else "no_placeholders"
         ).inc()
         _safe_log(
             logging.INFO,
             "pii_guardrail_stream_restored",
             request_id=request_id,
-            mapping_size=len(mapping),
-            restored_fields=restored_fields,
+            mapping_size=len(restorer.mapping),
+            restored_fields=restorer.restored_fields,
         )
 
     @staticmethod
     def _replace_placeholders(text: str, mapping: dict[str, str]) -> str:
-        """Replace placeholders with originals, longest keys first for stability."""
-        for placeholder, original in sorted(
-            mapping.items(), key=lambda item: len(item[0]), reverse=True
-        ):
-            text = text.replace(placeholder, original)
-        return text
+        """Restore known keys once without rewriting an inserted original value."""
+        return restore_text(text, mapping)

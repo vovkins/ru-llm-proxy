@@ -114,7 +114,7 @@ guardrails:
           description: "post_call; восстанавливает плейсхолдеры текущего запроса в ответах модели."
         - name: "response_fields"
           type: "list[string]"
-          description: "Без потоковой передачи: content, reasoning_content, текстовые блоки ответа, tool_calls[].function.arguments и function_call.arguments. С потоковой передачей: delta.content и delta.reasoning_content."
+          description: "Оба режима: текст и рассуждения, JSON-аргументы инструментов Chat Completions и Responses. В потоке также восстанавливаются итоговые события Responses. Служебные поля и encrypted_content не изменяются."
         - name: "streaming"
           type: "string"
           description: "async_post_call_streaming_iterator_hook восстанавливает плейсхолдеры на границах фрагментов потока и удаляет сопоставление Redis после завершения потока."

@@ -461,20 +461,26 @@ make guardrails-smoke STACK=litellm-presidio
 
 ## Обновление LiteLLM
 
-LiteLLM запускается из готового образа, поэтому весь проект пересобирать не
-нужно:
+Основа LiteLLM закреплена по версии `1.98.0` и SHA-256 в
+`litellm/Dockerfile`; тестовые зависимости и образы используют ту же версию.
+Перед обновлением измените тег и digest в Dockerfile и тестовых Compose-файлах,
+а также версию `litellm` в `tests/requirements-guardrails.txt`. Проверьте
+`make test-guardrail` и `make test-flow` с пересобранным тестовым образом.
+
+Для применения обновления достаточно пересобрать производный образ LiteLLM и
+пересоздать его контейнер; весь проект пересобирать не нужно:
 
 ```bash
 make update-litellm STACK=litellm-presidio
 ```
 
-В промышленной среде после стендовой проверки фиксируйте тег или digest образа.
+Без изменения закреплённой основы эта команда не устанавливает новый выпуск.
 Перед обновлением сохраните PostgreSQL, где находятся пользователи, ключи,
 бюджеты и статистика.
 
 Минимальный проверочный список обновления:
 
-1. Зафиксировать текущий digest: `docker compose images litellm`.
+1. Записать текущий тег и digest из `litellm/Dockerfile` для отката.
 2. Сделать резервную копию PostgreSQL.
 3. Выполнить `make update-litellm STACK=litellm-presidio`.
 4. Проверить `make health STACK=litellm-presidio`.
