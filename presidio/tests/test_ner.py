@@ -32,6 +32,7 @@ from presidio.ner.huggingface_recognizer import (
     WindowEntityPrediction,
     decode_bio_predictions,
     merge_window_predictions,
+    refine_organization_quotes,
     should_run_ner,
 )
 from presidio.result_merging import (
@@ -466,6 +467,126 @@ def test_repeated_values_keep_tokenizer_offsets():
     results = recognizer.analyze(text)
 
     assert [(result.start, result.end) for result in results] == [(0, 4), (14, 18)]
+
+
+@pytest.mark.parametrize("quotes", [("«", "»"), ('"', '"'), ("„", "“"), ("“", "”")])
+def test_organization_quotes_join_only_already_detected_name(quotes):
+    opening, closing = quotes
+    text = f"Компания {opening}Северный Контур{closing} открыла счёт."
+    start = text.index(opening)
+    end = text.index(closing, start + 1) + 1
+    predictions = [
+        EntityPrediction("ORGANIZATION", start, start + 1, 0.6),
+        EntityPrediction("ORGANIZATION", start + 1, end - 1, 0.8),
+    ]
+
+    assert refine_organization_quotes(text, predictions) == [
+        EntityPrediction("ORGANIZATION", start, end, 0.6)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "values", "types"),
+    [
+        ("Компания «Северный Контур».", ["Северный"], ["ORGANIZATION"]),
+        ("Компания «Северный Контур».", ["Контур"], ["ORGANIZATION"]),
+        ("Компания «Иван Петров».", ["Иван", "Петров"], ["ORGANIZATION", "PERSON"]),
+        ("Компания «LOGIN=service.user».", ["service.user"], ["LOGIN"]),
+        ("Компания «MODEL_OK».", [], []),
+        ("Компания «Северный Контур\".", ["Северный Контур"], ["ORGANIZATION"]),
+        ("Компания «Северный\nКонтур».", ["Северный\nКонтур"], ["ORGANIZATION"]),
+        ("Компания «12345678».", ["12345678"], ["ORGANIZATION"]),
+        ("Компания «Северный» и «Контур».", ["Северный» и «Контур"], ["ORGANIZATION"]),
+    ],
+)
+def test_organization_quotes_do_not_invent_words_or_merge_other_types(text, values, types):
+    predictions = [
+        EntityPrediction(entity_type, text.index(value), text.index(value) + len(value), 0.8)
+        for value, entity_type in zip(values, types)
+    ]
+    assert refine_organization_quotes(text, predictions) == predictions
+
+
+def test_organization_quotes_keep_legal_form_and_separate_names():
+    text = 'ООО «Вектор» и компания «Северный Контур».'
+    first_end = text.index('»') + 1
+    second_start = text.index('«', first_end)
+    second_end = text.index('»', second_start) + 1
+    predictions = [
+        EntityPrediction("ORGANIZATION", 0, first_end - 1, 0.9),
+        EntityPrediction("ORGANIZATION", second_start + 1, second_end - 1, 0.8),
+    ]
+    assert refine_organization_quotes(text, predictions) == [
+        EntityPrediction("ORGANIZATION", 0, first_end, 0.9),
+        EntityPrediction("ORGANIZATION", second_start, second_end, 0.8),
+    ]
+
+
+def test_organization_quotes_join_word_spans_but_not_unmasked_separator():
+    text = 'Компания «Северный Контур».'
+    start = text.index('«')
+    end = text.index('»') + 1
+    predictions = [
+        EntityPrediction("ORGANIZATION", start + 1, start + 9, 0.8),
+        EntityPrediction("ORGANIZATION", start + 10, end - 1, 0.7),
+    ]
+    assert refine_organization_quotes(text, predictions) == [
+        EntityPrediction("ORGANIZATION", start, end, 0.7)
+    ]
+    text = text.replace("Северный Контур", "Северный;Контур")
+    assert refine_organization_quotes(text, predictions) == predictions
+
+
+@pytest.mark.parametrize("entities", [None, ["ORGANIZATION"], ["PERSON"]])
+def test_quote_refinement_preserves_filters_threshold_and_one_forward_pass(entities):
+    text = "Компания «Вектор»."
+    start = text.index("Вектор")
+    recognizer, _, model = _recognizer_for([5], [(start, start + 6)])
+    results = recognizer.analyze(text, entities=entities, score_threshold=0.35)
+    assert [(result.entity_type, result.start, result.end) for result in results] == (
+        [] if entities == ["PERSON"] else [("ORGANIZATION", start - 1, start + 7)]
+    )
+    assert model.call_count == 1
+
+
+def test_quote_refinement_does_not_restore_below_threshold_words(monkeypatch):
+    text = "Компания «Северный Контур»."
+    recognizer, _, _ = _recognizer_for([0], [(0, 1)])
+    predictions = [
+        WindowEntityPrediction(EntityPrediction("ORGANIZATION", 10, 18, 0.9), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("ORGANIZATION", 19, 25, 0.349999), 0, False, False),
+    ]
+    monkeypatch.setattr(recognizer, "_predict_window_entities", lambda _text, **_kw: (predictions, 1))
+    results = recognizer.analyze(text, score_threshold=0.35)
+    assert [(result.start, result.end) for result in results] == [(10, 18)]
+
+
+@pytest.mark.parametrize("entities", [None, ["ORGANIZATION"]])
+def test_quote_refinement_keeps_conflicts_even_when_other_type_is_not_requested(monkeypatch, entities):
+    text = 'Компания «Вектор».'
+    recognizer, _, _ = _recognizer_for([0], [(0, 1)])
+    predictions = [
+        WindowEntityPrediction(EntityPrediction("ORGANIZATION", 10, 16, 0.9), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 10, 16, 0.9), 0, False, False),
+    ]
+    monkeypatch.setattr(recognizer, "_predict_window_entities", lambda _text, **_kw: (predictions, 1))
+    results = recognizer.analyze(text, entities=entities)
+    assert [(result.start, result.end) for result in results if result.entity_type == "ORGANIZATION"] == [(10, 16)]
+
+
+def test_quote_refinement_failure_is_request_scoped_and_explicit():
+    text = 'Компания «Вектор».'
+    recognizer, _, _ = _recognizer_for([5], [(10, 16)])
+    with patch(
+        "presidio.ner.huggingface_recognizer.refine_organization_quotes",
+        side_effect=ValueError("synthetic processing failure"),
+    ):
+        with pytest.raises(NERProcessingError) as error:
+            recognizer.analyze(text)
+    assert error.value.phase == "decoding"
+    assert error.value.failure_class == "bio_decoding_failed"
+    assert recognizer.is_ready()
+    assert [(result.start, result.end) for result in recognizer.analyze(text)] == [(9, 17)]
 
 
 def test_score_threshold_uses_unrounded_span_minimum(monkeypatch):

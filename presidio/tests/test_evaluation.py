@@ -107,6 +107,26 @@ def test_instruction_corpus_separates_originals_pairs_and_holdouts():
     }
 
 
+def test_name_corpus_has_explicit_scope_and_untuned_holdout():
+    path = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
+    with pytest.raises(ValueError, match="does not cover target"):
+        load_corpus(path)
+    cases = load_corpus(path, required_entity_types=frozenset({"PERSON", "ORGANIZATION"}))
+    assert len(cases) == 36
+    assert sum("holdout" in case.tags for case in cases) == 10
+    assert sum("negative" in case.tags for case in cases) == 10
+    assert all(case.score_threshold == 0.35 for case in cases)
+    assert {"quotes", "initials", "uppercase", "unicode", "token_window", "outer_chunk"} <= {
+        tag for case in cases for tag in case.tags
+    }
+
+
+@pytest.mark.parametrize("required", [frozenset(), frozenset({"UNKNOWN"})])
+def test_corpus_rejects_invalid_required_types(required):
+    with pytest.raises(ValueError, match="non-empty target subset"):
+        load_corpus(required_entity_types=required)
+
+
 def test_load_corpus_rejects_duplicate_ids(tmp_path):
     record = {
         "id": "duplicate",

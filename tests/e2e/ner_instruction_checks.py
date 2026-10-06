@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
 import urllib.request
 from itertools import combinations
 from pathlib import Path
@@ -16,6 +17,19 @@ from presidio.evaluation.metrics import evaluate_predictions
 from presidio.evaluation.run_baseline import AnalyzerClient
 
 CORPUS = DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl")
+NAME_CORPUS = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
+NAME_TYPES = frozenset({"PERSON", "ORGANIZATION"})
+# Model limitations remain explicit; these are not exemptions in production code.
+NAME_EXACT_LIMITATIONS = {
+    "org_named_after_person": (["ORGANIZATION"], ["ORGANIZATION", "PERSON"]),
+    "org_with_instruction": (["ORGANIZATION"], ["ORGANIZATION"]),
+    "person_uppercase": (["PERSON"], ["ORGANIZATION"]),
+    "negative_request_number": ([], ["ORGANIZATION"]),
+}
+
+
+def _name_cases():
+    return load_corpus(NAME_CORPUS, required_entity_types=NAME_TYPES)
 
 
 def _request(base_url, path, payload, *, stream=False):
@@ -189,11 +203,79 @@ def check_instructions(analyzer_url, proxy_url, capture_url):
     )
 
 
+def check_names(analyzer_url, proxy_url, block_proxy_url, capture_url):
+    cases = _name_cases()
+    client = AnalyzerClient(analyzer_url, timeout_seconds=60)
+    predictions = {case.case_id: client.analyze(case) for case in cases}
+    metrics = evaluate_predictions(cases, predictions)
+    limitations = {
+        row["case_id"]: (row["missing_entity_types"], row["unexpected_target_types"])
+        for row in metrics["cases"]
+        if row["missing_entity_types"] or row["unexpected_target_types"]
+    }
+    assert limitations == NAME_EXACT_LIMITATIONS, "name corpus: unexpected exact-span/type change"
+    assert metrics["aggregate"]["critical_coverage_recall"] == 1.0
+    filters = flows = blocked = 0
+    for case in cases:
+        results = predictions[case.case_id]
+        for expected in case.expected:
+            assert all(
+                any(result["start"] <= index < result["end"] for result in results)
+                for index in range(expected.start, expected.end)
+                if case.text[index].isalnum()
+            ), f"{case.case_id}: unmasked name characters"
+        for entity_type in sorted(NAME_TYPES):
+            filtered = _request(analyzer_url, "/api/v1/analyze", {
+                "text": case.text, "entities": [entity_type], "score_threshold": 0.35,
+            })["entities"]
+            assert filtered == [result for result in results if result["entity_type"] == entity_type], (
+                f"{case.case_id}: filtered analysis differs"
+            )
+            filters += 1
+        for api in ("chat/completions", "responses"):
+            for stream in (False, True):
+                payload = {
+                    "model": "mock-chat" if api == "chat/completions" else "mock-responses",
+                    "stream": stream,
+                }
+                if api == "chat/completions":
+                    payload["messages"] = [{"role": "user", "content": case.text}]
+                else:
+                    payload["input"] = case.text
+                _request(capture_url, "/capture/reset", {})
+                response = _request(proxy_url, "/v1/" + api, payload, stream=stream)
+                assert _restored_text(response, api, stream) == case.text, f"{case.case_id}: restoration changed"
+                with urllib.request.urlopen(capture_url + "/capture", timeout=5) as captured:
+                    capture = json.load(captured)
+                assert capture["provider_requests"] == 1
+                assert not capture["provider_saw_canary"], f"{case.case_id}: sensitive egress"
+                assert capture["provider_saw_pii_placeholder"] == bool(results)
+                flows += 1
+                if not results:
+                    continue
+                _request(capture_url, "/capture/reset", {})
+                try:
+                    _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
+                except urllib.error.HTTPError as error:
+                    assert error.code == 422, f"{case.case_id}: unexpected block status"
+                else:
+                    raise AssertionError(f"{case.case_id}: sensitive request was not blocked")
+                with urllib.request.urlopen(capture_url + "/capture", timeout=5) as captured:
+                    assert json.load(captured)["provider_requests"] == 0
+                blocked += 1
+    print(json.dumps({
+        "status": "ok", "name_cases": len(cases), "name_filter_cases": filters,
+        "echo_flows": flows, "blocked_flows": blocked,
+        "exact_limitations": sorted(limitations), "metrics": metrics["aggregate"],
+    }, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--canaries", action="store_true")
     parser.add_argument("--analyzer-url")
     parser.add_argument("--proxy-url")
+    parser.add_argument("--block-proxy-url")
     parser.add_argument("--capture-url")
     args = parser.parse_args()
     if args.canaries:
@@ -202,16 +284,17 @@ def main():
                 sorted(
                     {
                         case.text[entity.start : entity.end]
-                        for case in load_corpus(CORPUS)
+                        for case in (*load_corpus(CORPUS), *_name_cases())
                         for entity in case.expected
                     }
                 )
             )
         )
         return
-    if not all((args.analyzer_url, args.proxy_url, args.capture_url)):
-        parser.error("Analyzer, proxy and capture URLs are required")
+    if not all((args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)):
+        parser.error("Analyzer, mask/block proxy and capture URLs are required")
     check_instructions(args.analyzer_url, args.proxy_url, args.capture_url)
+    check_names(args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
 
 
 if __name__ == "__main__":
