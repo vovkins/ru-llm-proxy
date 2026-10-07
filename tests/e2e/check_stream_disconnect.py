@@ -14,14 +14,15 @@ FAILURES = []
 CHECKS = 0
 
 
-def started(host, path, tool=False, extra=""):
+def started(host, path, tool=False, extra="", *, wait_loaded=True):
     marker = "SSE_CONTROLLED " + ("SSE_TOOL " if tool else "") + extra
     case_id, connection, before, _ = begin(host, path, marker, stream=True)
     key = accepted(case_id, before)
     release(case_id)
     wait_for(lambda: state(case_id, "stream_first"), "provider SSE headers sent")
-    wait_for(lambda: REDIS.hget("stream_observation:" + key.split(":", 1)[1], "loaded_at"),
-             "guardrail waiting for first SSE event")
+    if wait_loaded:
+        wait_for(lambda: REDIS.hget("stream_observation:" + key.split(":", 1)[1], "loaded_at"),
+                 "guardrail waiting for first SSE event")
     return case_id, connection, key
 
 
@@ -193,6 +194,31 @@ def check_before_headers(host, path):
         release(case_id)
 
 
+def check_early_race(host, path, tool):
+    case_id, connection, key = started(host, path, tool, wait_loaded=False)
+    try:
+        disconnect(connection)
+        wait_for(lambda: state(case_id, "stream_first").get("closed_at"),
+                 "early-race upstream EOF", 5)
+        wait_for(lambda: not REDIS.exists(key), "early-race mapping deletion", 5)
+        assert state(case_id, "stream_first")["released_at"] is None
+    except AssertionError as exc:
+        request_id = key.split(":", 1)[1]
+        observation = REDIS.hgetall("stream_observation:" + request_id)
+        evidence = {
+            "mapping_exists": bool(REDIS.exists(key)),
+            "loaded": bool(observation.get("loaded_at")),
+            "delete_entered": bool(observation.get("delete_entered_at")),
+            "deleted": bool(observation.get("deleted_at")),
+            "failure_499": bool(REDIS.exists("disconnect_observation:" + request_id)),
+            "upstream_closed": bool(state(case_id, "stream_first").get("closed_at")),
+        }
+        raise AssertionError(f"{exc}; evidence={json.dumps(evidence)}") from exc
+    finally:
+        connection.close()
+        release(case_id, "stream_first")
+
+
 
 def run_case(label, operation):
     global CHECKS
@@ -223,6 +249,9 @@ def run():
                     run_case(f"{label} EOF tool={tool} {phase}",
                              lambda: check_provider(host, path, tool, phase))
                 run_case(f"{label} error tool={tool}", lambda: check_provider(host, path, tool, error=True))
+                for repeat in range(5):
+                    run_case(f"{label} early race tool={tool} repeat={repeat}",
+                             lambda: check_early_race(host, path, tool))
             run_case(label + " neighbour", lambda: check_neighbour(host, path))
             for repeat in range(5):
                 def race():
