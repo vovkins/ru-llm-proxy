@@ -839,6 +839,126 @@ async def test_cancel_during_mapping_load_still_closes_and_deletes():
 
 
 @pytest.mark.asyncio
+async def test_repeated_task_cancel_finishes_real_litellm_stream_close():
+    import httpx
+    from openai import AsyncOpenAI, AsyncStream
+    from openai.types.chat import ChatCompletionChunk
+
+    loading = asyncio.Event()
+    closing = asyncio.Event()
+    release_close = asyncio.Event()
+    closed = asyncio.Event()
+
+    class Transport(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            await asyncio.Event().wait()
+            yield b""
+
+        async def aclose(self):
+            closing.set()
+            await release_close.wait()
+            closed.set()
+
+    client = AsyncOpenAI(api_key="sk-synthetic-test")
+    response = httpx.Response(200, stream=Transport(), request=httpx.Request("POST", "http://synthetic.test"))
+    sdk_stream = AsyncStream(cast_to=ChatCompletionChunk, response=response, client=client)
+    logging_obj = MagicMock()
+    logging_obj.model_call_details = {"litellm_params": {}}
+    logging_obj.optional_params = {}
+    logging_obj.stream_options = None
+    upstream = litellm.CustomStreamWrapper(
+        completion_stream=sdk_stream, model="mock-chat", custom_llm_provider="openai",
+        logging_obj=logging_obj,
+    )
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+
+    async def load(_key):
+        loading.set()
+        await asyncio.Event().wait()
+
+    guardrail._redis.get.side_effect = load
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=upstream,
+        request_data={"metadata": {"pii_request_id": "double-cancel"}},
+    )
+    task = asyncio.create_task(anext(stream))
+    try:
+        await asyncio.wait_for(loading.wait(), 1)
+        task.cancel()
+        await asyncio.wait_for(closing.wait(), 1)
+        task.cancel()
+        release_close.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+        assert closed.is_set(), "HTTP is_closed is not proof that the transport was released"
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:double-cancel")
+    finally:
+        release_close.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await response.stream.aclose()
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("phase", ["close", "delete"])
+@pytest.mark.parametrize("cancel_count", [1, 3])
+async def test_direct_task_cancellation_drains_cleanup(api, phase, cancel_count):
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    closed = asyncio.Event()
+    deleted = asyncio.Event()
+    cleanup_tasks = {task for task in asyncio.all_tasks() if task.get_name() == "ru-pii-stream-cleanup"}
+
+    async def wait_at(boundary):
+        if phase == boundary:
+            entered.set()
+            await release.wait()
+
+    async def delete(_key):
+        await wait_at("delete")
+        deleted.set()
+
+    class Upstream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return _chat({"content": "safe <LOC"}) if api == "chat" else _arguments_delta('{"city":"<LOC')
+
+        async def aclose(self):
+            await wait_at("close")
+            closed.set()
+
+    guardrail._redis.delete.side_effect = delete
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=Upstream(),
+        request_data={"metadata": {"pii_request_id": "direct-cancel"}},
+    )
+    await anext(stream)
+    task = asyncio.create_task(stream.aclose())
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        for _ in range(cancel_count):
+            task.cancel()
+            await asyncio.sleep(0)
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+        assert closed.is_set() and deleted.is_set()
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:direct-cancel")
+        assert {item for item in asyncio.all_tasks() if item.get_name() == "ru-pii-stream-cleanup"} == cleanup_tasks
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("blocked", ["close", "delete"])
 async def test_stream_cleanup_dependency_wait_is_bounded(blocked, monkeypatch, caplog):
     original = anyio.fail_after

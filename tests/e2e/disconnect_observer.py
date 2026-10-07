@@ -1,5 +1,6 @@
 """Test-only observation of mapping cleanup and the stock 499 path."""
 
+import asyncio
 import time
 
 import redis as sync_redis
@@ -11,7 +12,7 @@ class ObservedGuardrail(RuPIIGuardrail):
     # LiteLLM detects iterator overrides in the leaf class, not its MRO.
     async_post_call_streaming_iterator_hook = RuPIIGuardrail.async_post_call_streaming_iterator_hook
 
-    def _observe_stream(self, request_id, field):
+    def _observe_stream(self, request_id, field, value=None):
         # Synchronous test-only observation must not shield the actual cleanup.
         client = sync_redis.Redis.from_url(
             "redis://redis:6379", decode_responses=True,
@@ -19,7 +20,7 @@ class ObservedGuardrail(RuPIIGuardrail):
         )
         try:
             key = f"stream_observation:{request_id}"
-            client.hset(key, field, time.monotonic())
+            client.hset(key, field, time.monotonic() if value is None else value)
             client.expire(key, 120)
         finally:
             client.close()
@@ -29,7 +30,11 @@ class ObservedGuardrail(RuPIIGuardrail):
             self._observed_loads = set()
         self._observed_loads.add(request_id)
         self._observe_stream(request_id, "load_entered_at")
-        result = await super()._load_mapping(request_id)
+        try:
+            result = await super()._load_mapping(request_id)
+        except asyncio.CancelledError:
+            self._observe_stream(request_id, "load_cancel_count", asyncio.current_task().cancelling())
+            raise
         self._observe_stream(request_id, "loaded_at")
         return result
 
@@ -37,10 +42,20 @@ class ObservedGuardrail(RuPIIGuardrail):
         observe = request_id in getattr(self, "_observed_loads", ())
         if observe:
             self._observe_stream(request_id, "delete_entered_at")
+            self._observe_stream(request_id, "delete_cancel_count", asyncio.current_task().cancelling())
         await super()._delete_mapping(request_id)
         if observe:
             self._observe_stream(request_id, "deleted_at")
             self._observed_loads.discard(request_id)
+
+    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping):
+        self._observe_stream(request_id, "close_entered_at")
+        self._observe_stream(request_id, "iterator_type", type(iterator).__name__)
+        self._observe_stream(request_id, "native_type", type(getattr(iterator, "completion_stream", None)).__name__)
+        try:
+            await super()._cleanup_stream(iterator, request_id, cleanup_mapping)
+        finally:
+            self._observe_stream(request_id, "cleanup_returned_at")
 
     async def async_post_call_failure_hook(
         self, request_data, original_exception, user_api_key_dict, traceback_str=None

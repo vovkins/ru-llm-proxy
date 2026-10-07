@@ -125,8 +125,10 @@ def check_cancel(host, path, tool, phase):
         closed_at = disconnect(connection)
         upstream = wait_for(lambda: state(case_id, phase).get("closed_at"), "upstream EOF", 5)
         wait_for(lambda: not REDIS.exists(key), "specific stream mapping deleted", 5)
-        observation = REDIS.hgetall("stream_observation:" + key.split(":", 1)[1])
-        assert observation.get("deleted_at"), observation
+        observation_key = "stream_observation:" + key.split(":", 1)[1]
+        wait_for(lambda: REDIS.hget(observation_key, "deleted_at"),
+                 "stream deletion observation published", 5)
+        observation = REDIS.hgetall(observation_key)
         assert state(case_id, phase)["released_at"] is None
         MEASUREMENTS.append({"route": host, "api": path, "tool": tool, "phase": phase,
                              "upstream_close_ms": round((upstream - closed_at) * 1000, 3),
@@ -212,6 +214,7 @@ def check_early_race(host, path, tool):
             "deleted": bool(observation.get("deleted_at")),
             "failure_499": bool(REDIS.exists("disconnect_observation:" + request_id)),
             "upstream_closed": bool(state(case_id, "stream_first").get("closed_at")),
+            "lifecycle": observation,
         }
         raise AssertionError(f"{exc}; evidence={json.dumps(evidence)}") from exc
     finally:
@@ -249,11 +252,11 @@ def run():
                     run_case(f"{label} EOF tool={tool} {phase}",
                              lambda: check_provider(host, path, tool, phase))
                 run_case(f"{label} error tool={tool}", lambda: check_provider(host, path, tool, error=True))
-                for repeat in range(5):
+                for repeat in range(25):
                     run_case(f"{label} early race tool={tool} repeat={repeat}",
                              lambda: check_early_race(host, path, tool))
             run_case(label + " neighbour", lambda: check_neighbour(host, path))
-            for repeat in range(5):
+            for repeat in range(25):
                 def race():
                     case_id, connection, key = started(host, path)
                     advance(case_id, PHASES_TEXT, "stream_terminal")

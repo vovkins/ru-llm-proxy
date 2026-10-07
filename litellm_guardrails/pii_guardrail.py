@@ -12,7 +12,7 @@ import re
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Coroutine, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
 import anyio
@@ -690,6 +690,27 @@ def _safe_log(level: int, event: str, **fields) -> None:
 def _latency_ms(started_at: float) -> float:
     """Return elapsed milliseconds rounded for stable structured logs."""
     return round((time.perf_counter() - started_at) * 1000, 3)
+
+
+async def _finish_stream_cleanup(cleanup: Coroutine[Any, Any, None]) -> None:
+    # AnyIO shields its scopes, but direct Task.cancel() can interrupt them.
+    task = asyncio.create_task(cleanup, name="ru-pii-stream-cleanup")
+    interruption = None
+    with anyio.CancelScope(shield=True):
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as error:
+                if task.cancelled():
+                    raise
+                interruption = error
+            except Exception:
+                break
+        try:
+            task.result()
+        finally:
+            if interruption is not None:
+                raise interruption
 
 
 class RuPIIGuardrail(CustomGuardrail):
@@ -4098,39 +4119,9 @@ class RuPIIGuardrail(CustomGuardrail):
             if restorer:
                 restorer.finish()
                 self._mark_streaming_restoration_done(request_data)
-            try:
-                close = getattr(iterator, "aclose", None)
-                if not callable(close):
-                    # Native LiteLLM Responses iterators expose the HTTP response.
-                    http_response = getattr(iterator, "response", None)
-                    if isinstance(http_response, httpx.Response):
-                        close = http_response.aclose
-                if callable(close):
-                    # Starlette's cancelled scope would cancel every cleanup await.
-                    with anyio.fail_after(2, shield=True):
-                        result = close()
-                        if inspect.isawaitable(result):
-                            await result
-            except Exception as e:
-                _safe_log(
-                    logging.WARNING,
-                    "pii_guardrail_stream_close_failed",
-                    request_id=request_id,
-                    error_type=type(e).__name__,
-                )
-            finally:
-                if cleanup_mapping:
-                    try:
-                        with anyio.fail_after(2, shield=True):
-                            await self._delete_mapping(request_id)
-                    except Exception as e:
-                        PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
-                        _safe_log(
-                            logging.WARNING,
-                            "pii_guardrail_cleanup_failed",
-                            request_id=request_id,
-                            error_type=type(e).__name__,
-                        )
+            await _finish_stream_cleanup(
+                self._cleanup_stream(iterator, request_id, cleanup_mapping)
+            )
 
         if restorer is None:
             return
@@ -4148,6 +4139,36 @@ class RuPIIGuardrail(CustomGuardrail):
             mapping_size=len(restorer.mapping),
             restored_fields=restorer.restored_fields,
         )
+
+    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping):
+        try:
+            close = getattr(iterator, "aclose", None)
+            if not callable(close):
+                # Native LiteLLM Responses iterators expose the HTTP response.
+                http_response = getattr(iterator, "response", None)
+                if isinstance(http_response, httpx.Response):
+                    close = http_response.aclose
+            if callable(close):
+                with anyio.fail_after(2, shield=True):
+                    result = close()
+                    if inspect.isawaitable(result):
+                        await result
+        except Exception as e:
+            _safe_log(
+                logging.WARNING, "pii_guardrail_stream_close_failed",
+                request_id=request_id, error_type=type(e).__name__,
+            )
+        finally:
+            if cleanup_mapping:
+                try:
+                    with anyio.fail_after(2, shield=True):
+                        await self._delete_mapping(request_id)
+                except Exception as e:
+                    PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
+                    _safe_log(
+                        logging.WARNING, "pii_guardrail_cleanup_failed",
+                        request_id=request_id, error_type=type(e).__name__,
+                    )
 
     @staticmethod
     def _replace_placeholders(text: str, mapping: dict[str, str]) -> str:
