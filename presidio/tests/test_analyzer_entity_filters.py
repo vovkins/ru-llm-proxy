@@ -102,7 +102,10 @@ def test_filters_route_to_available_sources(sources, entities):
         presidio.assert_called_once()
         assert presidio.call_args.kwargs["entities"] == expected_presidio_filter
     ner.assert_called_once()
-    assert ner.call_args.kwargs["entities"] == entities
+    expected_ner_filter = entities
+    if entities and {"PERSON", "ORGANIZATION"}.intersection(entities):
+        expected_ner_filter = list(dict.fromkeys([*entities, "PERSON", "ORGANIZATION"]))
+    assert ner.call_args.kwargs["entities"] == expected_ner_filter
     assert ner.call_args.kwargs["score_threshold"] == 0.35
 
 
@@ -114,6 +117,38 @@ def test_category_shared_with_bert_keeps_its_regex_recognizer(sources):
     assert response.status_code == 200
     assert [entity["text"] for entity in response.json()["entities"]] == ["analytics"]
     assert presidio.call_args.kwargs["entities"] == ["LOGIN"]
+
+
+@pytest.mark.parametrize("entities", [None, ["PERSON"], ["PERSON", "RU_KPP"]])
+def test_name_context_reuses_one_nlp_pass(sources, monkeypatch, entities):
+    presidio, _ner = sources
+    artifacts = analyzer_server.nlp_engine.process_text(FILTER_TEXT, "ru")
+    process = Mock(return_value=artifacts)
+    monkeypatch.setattr(analyzer_server.nlp_engine, "process_text", process)
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze", json={"text": FILTER_TEXT, "entities": entities}
+    )
+    assert response.status_code == 200
+    process.assert_called_once_with(FILTER_TEXT, "ru")
+    if presidio.called:
+        assert presidio.call_args.kwargs["nlp_artifacts"] is artifacts
+
+
+def test_api_filters_after_legal_name_refinement(sources):
+    _presidio, ner = sources
+    text = "Клиент ООО Иван Петров подтвердил заявку."
+    ner.side_effect = lambda *_args, **_kwargs: [
+        _ner_result(text, "ORGANIZATION", "ООО"),
+        _ner_result(text, "PERSON", "Иван Петров"),
+    ]
+    for entity_type in ("PERSON", "ORGANIZATION"):
+        response = TestClient(analyzer_server.app).post(
+            "/api/v1/analyze", json={"text": text, "entities": [entity_type]}
+        )
+        assert response.status_code == 200
+        assert [r["text"] for r in response.json()["entities"]] == (
+            ["ООО Иван Петров"] if entity_type == "ORGANIZATION" else []
+        )
 
 
 @pytest.mark.parametrize("entity_type", sorted(BERT_ONLY_TYPES))

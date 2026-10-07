@@ -120,6 +120,23 @@ def test_name_corpus_has_explicit_scope_and_untuned_holdout():
         tag for case in cases for tag in case.tags
     }
 
+def test_name_context_corpus_keeps_pairs_and_separate_holdout():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_context_regressions.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 32
+    assert sum("holdout" in case.tags for case in cases) == 10
+    assert sum("negative" in case.tags for case in cases) == 9
+    assert {
+        "legal_form",
+        "sentence_boundary",
+        "service_number",
+        "person_field",
+        "counterexample",
+    } <= {tag for case in cases for tag in case.tags}
+    assert all(case.score_threshold == 0.35 for case in cases)
+
 
 @pytest.mark.parametrize("required", [frozenset(), frozenset({"UNKNOWN"})])
 def test_corpus_rejects_invalid_required_types(required):
