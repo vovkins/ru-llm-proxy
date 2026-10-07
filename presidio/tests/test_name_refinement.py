@@ -6,7 +6,9 @@ import pytest
 from presidio_analyzer import RecognizerResult
 
 from presidio import analyzer_server
-from result_merging import DETECTION_SOURCE_METADATA_KEY, SOURCE_NER, merge_results
+from result_merging import (
+    DETECTION_SOURCE_METADATA_KEY, SOURCE_NER, merge_results, name_context_evidence,
+)
 
 
 def result(text, value, entity_type="ORGANIZATION", score=0.8, source=SOURCE_NER):
@@ -200,3 +202,143 @@ def test_numeric_lookbehind_is_bounded_and_conservative():
     outcome = merge_results(text, [entity])
     assert summary(text, outcome) == [("ORGANIZATION", "1111", 0.8)]
     assert "name_service_number_suppressed" not in [d.reason for d in outcome.decisions]
+
+
+@pytest.mark.parametrize("entities", [None, [], ["PERSON"], ["ORGANIZATION"]])
+def test_fragmented_fio_joins_accepted_name_and_login_fragments(entities):
+    text = "ФИО: ИВАН ПЕТРОВ."
+    fragments = [
+        result(text, "ИВ", "PERSON", 0.78),
+        result(text, "АН П", "LOGIN", 0.51),
+        result(text, "ЕТ", "PERSON", 0.53),
+        result(text, "РО", "LOGIN", 0.54),
+        result(text, "В", "PERSON", 0.63),
+    ]
+    # The last single letter is inside the surname, not the first name.
+    fragments[-1].start = text.rindex("В")
+    fragments[-1].end = fragments[-1].start + 1
+    for order in (fragments, list(reversed(fragments))):
+        outcome = merge_results(text, order, requested_entities=entities, score_threshold=0.35)
+        assert summary(text, outcome) == (
+            [] if entities == ["ORGANIZATION"] else [("PERSON", "ИВАН ПЕТРОВ", 0.51)]
+        )
+        if outcome.results:
+            assert outcome.results[0].recognition_metadata == fragments[0].recognition_metadata
+
+
+@pytest.mark.parametrize("label", ["ФИО", "Ф.И.О."])
+@pytest.mark.parametrize("separator", [":", " ="])
+@pytest.mark.parametrize("value", ["АННА СОКОЛОВА.", "не заполнено.", ""])
+def test_exact_person_field_label_is_not_a_name(label, separator, value):
+    text = label + separator + " " + value
+    outcome = merge_results(text, [result(text, label, "PERSON")])
+    assert not outcome.results
+    assert [d.reason for d in outcome.decisions] == ["name_field_label"]
+
+
+@pytest.mark.parametrize("text,value", [
+    ("Подписал Петров Ф. И. О.", "Петров Ф. И. О."),
+    ("Ф.И.О. подписал документ", "Ф.И.О."),
+    ("Организация Ф.И.О.: письмо", "Организация Ф.И.О."),
+])
+def test_person_label_suppression_does_not_remove_initials_or_larger_names(text, value):
+    assert summary(text, merge_results(text, [result(text, value, "PERSON")])) == [
+        ("PERSON", value, 0.8)
+    ]
+
+
+def test_structural_person_label_is_not_suppressed():
+    text = "Ф.И.О.: не заполнено."
+    assert merge_results(text, [result(text, "Ф.И.О.", "PERSON", source="structural")]).results
+
+
+@pytest.mark.parametrize("entities", [None, ["PERSON"], ["ORGANIZATION"]])
+def test_legal_context_joins_fragmented_ner_name_over_exact_location_prefix(entities):
+    text = "Получатель: АО Анна Соколова."
+    fragments = [
+        result(text, "АО", score=0.7),
+        result(text, "АО", "LOCATION", source="structural"),
+        result(text, "Анна", "LOGIN", 0.71),
+        result(text, "Соколова", "PERSON", 0.99),
+    ]
+    outcome = merge_results(text, fragments, requested_entities=entities)
+    assert summary(text, outcome) == (
+        [] if entities == ["PERSON"] else [("ORGANIZATION", "АО Анна Соколова", 0.7)]
+    )
+    assert "name_legal_prefix" in [d.reason for d in outcome.decisions]
+
+
+@pytest.mark.parametrize("source,entity_type,value", [
+    ("native_credential", "LOGIN", "Анна"),
+    ("structural", "LOCATION", "Анна"),
+    ("ner", "LOCATION", "Соколова"),
+    ("structural", "PRIVATE_KEY", "АО Анна Соколова"),
+])
+def test_explicit_legal_context_does_not_override_competing_sensitive_results(source, entity_type, value):
+    text = "АО Анна Соколова"
+    outcome = merge_results(text, [
+        result(text, "АО"), result(text, "Анна", "LOGIN"),
+        result(text, "Соколова", "PERSON"),
+        result(text, value, entity_type, source=source),
+    ])
+    assert "name_explicit_value" not in [d.reason for d in outcome.decisions]
+
+
+@pytest.mark.parametrize("prefix", ["Компания ", "Название организации: "])
+def test_explicit_org_context_refines_person_type(prefix):
+    text = prefix + "АННА СОКОЛОВА получила письмо."
+    for entity_type in ("PERSON", "ORGANIZATION"):
+        outcome = merge_results(text, [result(text, "АННА СОКОЛОВА", "PERSON")], requested_entities=[entity_type])
+        assert summary(text, outcome) == (
+            [("ORGANIZATION", "АННА СОКОЛОВА", 0.8)] if entity_type == "ORGANIZATION" else []
+        )
+
+
+@pytest.mark.parametrize("prefix", [
+    "Сотрудник компании ", "Для компании работает ", "Клиент ",
+    "Контакт компании ", "В компании ",
+])
+def test_human_roles_or_ambiguous_client_do_not_reclassify_person(prefix):
+    text = prefix + "АННА СОКОЛОВА получила письмо."
+    assert summary(text, merge_results(text, [result(text, "АННА СОКОЛОВА", "PERSON")])) == [
+        ("PERSON", "АННА СОКОЛОВА", 0.8)
+    ]
+
+
+@pytest.mark.parametrize("gap", ["\n", " " * 17, "\t" * 17])
+def test_explicit_name_value_does_not_bridge_lines_or_excessive_gap(gap):
+    text = "ФИО: ИВАН" + gap + "ПЕТРОВ"
+    assert not name_context_evidence(text)
+
+
+@pytest.mark.parametrize("text", [
+    "ФИО: ИВАН ПЕТРОВ СЕРГЕЕВ НИКОЛАЕВ",
+    "ФИО: Иван ПетровLOGIN", "ФИО: Иван login=Петров", "ФИО: Иван Петров_123",
+])
+def test_explicit_name_grammar_is_bounded_and_does_not_take_partial_words(text):
+    assert not name_context_evidence(text)
+
+
+def test_context_does_not_invent_missing_letters_or_raise_confidence():
+    text = "ФИО: ИВАН ПЕТРОВ"
+    fragments = [result(text, "ИВАН", "PERSON", 0.8), result(text, "ЕТРОВ", "LOGIN", 0.5)]
+    assert "name_explicit_value" not in [d.reason for d in merge_results(text, fragments).decisions]
+    fragments[1] = result(text, "ПЕТРОВ", "LOGIN", 0.2)
+    assert "name_explicit_value" not in [d.reason for d in merge_results(text, fragments, score_threshold=0.35).decisions]
+
+
+def test_many_adjacent_fields_are_independent():
+    text = "ФИО: Иван Петров.\nФ.И.О. = Анна Соколова."
+    outcome = merge_results(text, [
+        result(text, "Иван Петров"), result(text, "Анна Соколова"),
+        result(text, "Ф.И.О.", "PERSON"),
+    ])
+    assert summary(text, outcome) == [
+        ("PERSON", "Иван Петров", 0.8), ("PERSON", "Анна Соколова", 0.8),
+    ]
+
+
+def test_truncated_whitespace_lookbehind_is_not_a_sentence_start():
+    text = "Сотрудник" + " " * 65 + "компания АННА СОКОЛОВА"
+    outcome = merge_results(text, [result(text, "АННА СОКОЛОВА", "PERSON")])
+    assert summary(text, outcome) == [("PERSON", "АННА СОКОЛОВА", 0.8)]

@@ -18,6 +18,7 @@ from result_merging import (
     DETECTION_SOURCE_METADATA_KEY,
     NER_MODEL_METADATA_KEY,
     SOURCE_NER,
+    name_context_evidence,
 )
 
 try:
@@ -368,6 +369,7 @@ def _filter_window_predictions(
     *,
     score_threshold: float,
     requested_entities: Optional[set[str]],
+    supporting_name_spans: tuple[tuple[int, int], ...] = (),
 ) -> list[WindowEntityPrediction]:
     return [
         prediction
@@ -376,6 +378,14 @@ def _filter_window_predictions(
         and (
             requested_entities is None
             or prediction.entity.entity_type in requested_entities
+            or (
+                prediction.entity.entity_type == "LOGIN"
+                and not prediction.touches_internal_boundary
+                and any(
+                    start <= prediction.entity.start < prediction.entity.end <= end
+                    for start, end in supporting_name_spans
+                )
+            )
         )
     ]
 
@@ -1071,10 +1081,16 @@ class HuggingFaceNERRecognizer:
             )
             raise error from exc
         requested_entities = _normalize_requested_entities(entities)
+        supporting_name_spans = (
+            tuple((context.start, context.end) for context in name_context_evidence(normalized.text))
+            if requested_entities and requested_entities & {"PERSON", "ORGANIZATION"}
+            else ()
+        )
         filtered_predictions = _filter_window_predictions(
             window_predictions,
             score_threshold=score_threshold,
             requested_entities=requested_entities,
+            supporting_name_spans=supporting_name_spans,
         )
         try:
             entity_predictions = merge_window_predictions(filtered_predictions)
@@ -1110,6 +1126,7 @@ class HuggingFaceNERRecognizer:
                 recovery_predictions,
                 score_threshold=score_threshold,
                 requested_entities=requested_entities,
+                supporting_name_spans=supporting_name_spans,
             )
             selected_recovery_predictions = _select_boundary_recovery_predictions(
                 filtered_recovery_predictions,

@@ -19,18 +19,19 @@ from presidio.evaluation.run_baseline import AnalyzerClient
 CORPUS = DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl")
 NAME_CORPUS = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
 CONTEXT_CORPUS = DEFAULT_CORPUS_PATH.with_name("name_context_regressions.jsonl")
+FIELD_HOLDOUT_CORPUS = DEFAULT_CORPUS_PATH.with_name("name_field_holdout.jsonl")
 NAME_TYPES = frozenset({"PERSON", "ORGANIZATION"})
 # Model limitations remain explicit; these are not exemptions in production code.
 NAME_EXACT_LIMITATIONS = {
     "person_uppercase": (["PERSON"], ["ORGANIZATION"]),
 }
 CONTEXT_EXACT_LIMITATIONS = {
-    "fio_uppercase": (["PERSON"], ["LOGIN", "LOGIN", "PERSON", "PERSON", "PERSON"]),
     "client_uppercase": (["PERSON"], ["ORGANIZATION"]),
-    "holdout_legal_person": (["ORGANIZATION"], ["LOCATION", "LOGIN", "PERSON"]),
-    "holdout_fio": ([], ["PERSON"]),
-    "holdout_company_uppercase": (["ORGANIZATION"], ["PERSON"]),
-    "holdout_missing_person": ([], ["PERSON"]),
+}
+# An untouched control exposed a label-plus-delimiter span. Keep this visible
+# rather than using the control to tune production or changing its annotation.
+FIELD_HOLDOUT_EXACT_LIMITATIONS = {
+    "field_person_dotted": ([], ["PERSON"]),
 }
 
 
@@ -40,6 +41,10 @@ def _name_cases():
 
 def _context_cases():
     return load_corpus(CONTEXT_CORPUS, required_entity_types=NAME_TYPES)
+
+
+def _field_holdout_cases():
+    return load_corpus(FIELD_HOLDOUT_CORPUS, required_entity_types=NAME_TYPES)
 
 
 def _canary_values(cases):
@@ -229,9 +234,13 @@ def check_instructions(analyzer_url, proxy_url, capture_url):
 
 
 def check_names(
-    analyzer_url, proxy_url, block_proxy_url, capture_url, *, context=False
+    analyzer_url, proxy_url, block_proxy_url, capture_url, *, context=False,
+    field_holdout=False,
 ):
-    cases = _context_cases() if context else _name_cases()
+    cases = (
+        _field_holdout_cases() if field_holdout
+        else _context_cases() if context else _name_cases()
+    )
     client = AnalyzerClient(analyzer_url, timeout_seconds=60)
     predictions = {case.case_id: client.analyze(case) for case in cases}
     metrics = evaluate_predictions(cases, predictions)
@@ -241,27 +250,24 @@ def check_names(
         if row["missing_entity_types"] or row["unexpected_target_types"]
     }
     expected_limitations = (
-        CONTEXT_EXACT_LIMITATIONS if context else NAME_EXACT_LIMITATIONS
+        FIELD_HOLDOUT_EXACT_LIMITATIONS if field_holdout
+        else CONTEXT_EXACT_LIMITATIONS if context else NAME_EXACT_LIMITATIONS
     )
     assert (
         limitations == expected_limitations
     ), "name corpus: unexpected exact-span/type change"
-    if not context:
-        assert metrics["aggregate"]["critical_coverage_recall"] == 1.0
+    assert metrics["aggregate"]["critical_coverage_recall"] == 1.0
     filters = flows = blocked = 0
     for case in cases:
         results = predictions[case.case_id]
         for expected in case.expected:
-            assert all(
-                any(result["start"] <= index < result["end"] for result in results)
-                for index in range(expected.start, expected.end)
-                if case.text[index].isalnum()
-            ), f"{case.case_id}: unmasked name characters"
+            assert any(
+                result["start"] <= expected.start and result["end"] >= expected.end
+                for result in results
+            ), f"{case.case_id}: no complete sensitive span"
         name_reference = results
-        if context:
-            # The full scan also includes LOCATION/credentials, which may win
-            # overlaps. Compare single-name filters with the same source scope.
-            name_reference = _request(
+        if context or field_holdout:
+            combined = _request(
                 analyzer_url,
                 "/api/v1/analyze",
                 {
@@ -270,6 +276,9 @@ def check_names(
                     "score_threshold": 0.35,
                 },
             )["entities"]
+            assert combined == [
+                result for result in results if result["entity_type"] in NAME_TYPES
+            ], f"{case.case_id}: combined name filter differs from full scan"
             filters += 1
         for entity_type in sorted(NAME_TYPES):
             filtered = _request(
@@ -334,7 +343,10 @@ def check_names(
         json.dumps(
             {
                 "status": "ok",
-                "corpus": "name_context" if context else "names",
+                "corpus": (
+                    "name_field_holdout" if field_holdout
+                    else "name_context" if context else "names"
+                ),
                 "name_cases": len(cases),
                 "name_filter_cases": filters,
                 "echo_flows": flows,
@@ -359,7 +371,7 @@ def main():
         print(
             ",".join(
                 _canary_values(
-                    (*load_corpus(CORPUS), *_name_cases(), *_context_cases())
+                    (*load_corpus(CORPUS), *_name_cases(), *_context_cases(), *_field_holdout_cases())
                 )
             )
         )
@@ -378,6 +390,13 @@ def main():
         args.block_proxy_url,
         args.capture_url,
         context=True,
+    )
+    check_names(
+        args.analyzer_url,
+        args.proxy_url,
+        args.block_proxy_url,
+        args.capture_url,
+        field_holdout=True,
     )
 
 

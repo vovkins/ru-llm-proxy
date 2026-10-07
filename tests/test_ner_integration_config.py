@@ -103,6 +103,16 @@ def test_proxy_script_proves_mask_restore_and_block_non_egress():
     assert "tests/e2e/ner_instruction_checks.py" in _read(WORKFLOW)
 
 
+def test_name_corpora_gate_requires_complete_critical_spans_and_filter_agreement():
+    script = _read(ROOT / "tests/e2e/ner_instruction_checks.py")
+    assert "name_field_holdout.jsonl" in script
+    assert 'assert metrics["aggregate"]["critical_coverage_recall"] == 1.0' in script
+    assert "no complete sensitive span" in script
+    assert "combined name filter differs from full scan" in script
+    assert '"fio_uppercase": (["PERSON"]' not in script
+    assert '"holdout_legal_person": (["ORGANIZATION"]' not in script
+
+
 def test_baseline_validates_new_workflow_and_shell_assets():
     baseline = _read(ROOT / ".github" / "workflows" / "baseline.yml")
 

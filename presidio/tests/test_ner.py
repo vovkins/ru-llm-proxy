@@ -34,12 +34,73 @@ from presidio.ner.huggingface_recognizer import (
     merge_window_predictions,
     refine_organization_quotes,
     should_run_ner,
+    _filter_window_predictions,
 )
 from presidio.result_merging import (
     DETECTION_SOURCE_METADATA_KEY,
     NER_MODEL_METADATA_KEY,
     SOURCE_NER,
 )
+
+
+def test_name_support_filter_retains_only_complete_login_within_explicit_value():
+    predictions = [
+        WindowEntityPrediction(EntityPrediction("LOGIN", 5, 9, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 10, 16, 0.8), 0, False, True),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 19, 24, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 4, 9, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 11, 15, 0.2), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("PASSWORD", 5, 9, 0.8), 0, False, False),
+    ]
+    assert _filter_window_predictions(
+        predictions, score_threshold=0.35, requested_entities={"PERSON", "ORGANIZATION"},
+        supporting_name_spans=((5, 16),),
+    ) == predictions[:1]
+
+
+def test_name_support_does_not_change_requested_boundary_or_empty_filter_semantics():
+    prediction = WindowEntityPrediction(EntityPrediction("LOGIN", 5, 9, 0.8), 0, False, True)
+    for requested in (None, {"LOGIN"}):
+        assert _filter_window_predictions(
+            [prediction], score_threshold=0.35, requested_entities=requested,
+            supporting_name_spans=((5, 16),),
+        ) == [prediction]
+
+
+def test_adapter_retains_local_support_without_second_forward_pass(monkeypatch):
+    text = "ФИО: ИВАН ПЕТРОВ. login=account"
+    recognizer = HuggingFaceNERRecognizer(tokenizer=FakeTokenizer([(0, 1)]), model=FakeModel())
+    predictions = [
+        WindowEntityPrediction(EntityPrediction("PERSON", 5, 9, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 10, 16, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 24, 31, 0.8), 0, False, False),
+    ]
+    calls = []
+
+    def predict(text, **kwargs):
+        calls.append(text)
+        return predictions, 1
+
+    monkeypatch.setattr(recognizer, "_predict_window_entities", predict)
+    results = recognizer.analyze(text, entities=["PERSON", "ORGANIZATION"])
+    assert [(r.entity_type, r.start, r.end) for r in results] == [
+        ("PERSON", 5, 9), ("LOGIN", 10, 16),
+    ]
+    assert len(calls) == 1
+
+
+def test_truncated_unrequested_login_does_not_trigger_boundary_recovery(monkeypatch):
+    text = "ФИО: ИВАН ПЕТРОВ."
+    recognizer = HuggingFaceNERRecognizer(tokenizer=FakeTokenizer([(0, 1)]), model=FakeModel())
+    predictions = [
+        WindowEntityPrediction(EntityPrediction("PERSON", 5, 9, 0.8), 0, False, False),
+        WindowEntityPrediction(EntityPrediction("LOGIN", 10, 16, 0.8), 0, False, True),
+    ]
+    monkeypatch.setattr(recognizer, "_predict_window_entities", lambda *_a, **_kw: (predictions, 1))
+    monkeypatch.setattr(recognizer, "_recover_window_boundaries", lambda *_a, **_kw: pytest.fail("unrequested boundary recovery"))
+    results = recognizer.analyze(text, entities=["PERSON", "ORGANIZATION"])
+    assert [(r.entity_type, r.start, r.end) for r in results] == [("PERSON", 5, 9)]
+    assert recognizer.is_ready()
 
 
 class FakeTokenizer:

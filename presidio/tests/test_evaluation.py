@@ -138,6 +138,18 @@ def test_name_context_corpus_keeps_pairs_and_separate_holdout():
     assert all(case.score_threshold == 0.35 for case in cases)
 
 
+def test_name_field_holdout_is_separate_and_checks_positive_and_negative_cases():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_field_holdout.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 12
+    assert all("holdout" in case.tags for case in cases)
+    assert sum(case.critical for case in cases) == 6
+    assert sum("negative" in case.tags for case in cases) == 6
+    assert all(case.score_threshold == 0.35 for case in cases)
+
+
 @pytest.mark.parametrize("required", [frozenset(), frozenset({"UNKNOWN"})])
 def test_corpus_rejects_invalid_required_types(required):
     with pytest.raises(ValueError, match="non-empty target subset"):
