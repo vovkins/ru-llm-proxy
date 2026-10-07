@@ -4023,6 +4023,8 @@ class RuPIIGuardrail(CustomGuardrail):
         LiteLLM registers the pre-call and post-call guardrail instances as
         callbacks. The pre-call instance owns mapping creation, so it also owns
         failure cleanup; limiting cleanup to it avoids duplicate Redis work.
+        With general_settings.cancel_on_disconnect, LiteLLM 1.98.0 converts
+        a non-streaming HTTP disconnect to 499 before invoking this hook.
         """
         if self.event_hook not in (None, "pre_call"):
             return None

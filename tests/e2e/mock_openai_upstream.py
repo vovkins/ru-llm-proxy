@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import re
+import select
+import socket
 import threading
 import time
 
@@ -58,6 +60,15 @@ CAPTURE = {
     "provider_saw_synthetic_marker": False,
 }
 CAPTURE_LOCK = threading.Lock()
+CONTROL_PATTERN = re.compile(r"DISCONNECT_CASE_([a-f0-9]{16})")
+CONTROL_REQUESTS = {}
+CONTROL_RELEASES = {}
+CONTROL_ONCE_RELEASES = set()
+
+
+def _control_id(payload):
+    marker = _first_match(payload, CONTROL_PATTERN)
+    return marker.rsplit("_", 1)[-1] if marker else None
 ANALYZER_OVERLOAD = {
     "reason": None,
     "retry_after_seconds": 1,
@@ -211,6 +222,43 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _controlled_wait(self, payload, phase="provider"):
+        case_id = _control_id(payload)
+        if case_id is None:
+            return True
+        key = f"{phase}:{case_id}"
+        with CAPTURE_LOCK:
+            release = CONTROL_RELEASES.setdefault(key, threading.Event())
+            state = CONTROL_REQUESTS.setdefault(key, {"attempts": 0})
+            state.update(
+                attempts=state["attempts"] + 1,
+                accepted_at=time.monotonic(),
+                closed_at=None,
+                released_at=None,
+                saw_raw_phone=_text_contains(payload, RAW_PHONE),
+                saw_placeholder=_text_matches(payload, PII_PLACEHOLDER_PATTERN),
+            )
+        # Watch EOF while a deterministic test holds the response, not a sleep.
+        deadline = time.monotonic() + 45
+        while not release.is_set() and time.monotonic() < deadline:
+            readable, _, _ = select.select([self.connection], [], [], 0.01)
+            if readable:
+                try:
+                    disconnected = not self.connection.recv(1, socket.MSG_PEEK)
+                except OSError:
+                    disconnected = True
+                if disconnected:
+                    with CAPTURE_LOCK:
+                        state["closed_at"] = time.monotonic()
+                    self.close_connection = True
+                    return False
+        with CAPTURE_LOCK:
+            if key in CONTROL_ONCE_RELEASES:
+                release.clear()
+                CONTROL_ONCE_RELEASES.remove(key)
+            state["released_at"] = time.monotonic()
+        return True
+
     def _write_sse(self, events, *, hold_after_first=0.0):
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
@@ -228,6 +276,11 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_GET(self):
+        if self.path == "/control/requests":
+            with CAPTURE_LOCK:
+                states = {key: dict(value) for key, value in CONTROL_REQUESTS.items()}
+            self._write_json(200, states)
+            return
         if self.path == "/health":
             self._write_json(200, {"status": "ok"})
             return
@@ -252,6 +305,20 @@ class Handler(BaseHTTPRequestHandler):
         self._write_json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/control/release":
+            payload = self._read_json()
+            case_id = payload.get("id", "")
+            phase = payload.get("phase", "provider")
+            if not re.fullmatch(r"[a-f0-9]{16}", case_id) or phase not in {"provider", "analyzer"}:
+                self._write_json(400, {"error": "invalid synthetic control id"})
+                return
+            with CAPTURE_LOCK:
+                key = f"{phase}:{case_id}"
+                if payload.get("once") is True:
+                    CONTROL_ONCE_RELEASES.add(key)
+                CONTROL_RELEASES.setdefault(key, threading.Event()).set()
+            self._write_json(200, {"released": True})
+            return
         if self.path == "/analyzer/overload":
             payload = self._read_json()
             reason = payload.get("reason")
@@ -293,6 +360,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/api/v1/analyze":
             payload = self._read_json()
+            if _text_contains(payload, "DISCONNECT_HOLD_ANALYZER"):
+                if not self._controlled_wait(payload, "analyzer"):
+                    return
             saw_canary = _text_contains_canary(payload)
             with CAPTURE_LOCK:
                 CAPTURE["analyzer_requests"] += 1
@@ -320,6 +390,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
+            if not self._controlled_wait(payload):
+                return
             failure_mode = _failure_mode(payload)
             if failure_mode == "429":
                 self._write_json(
@@ -448,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
+            if not self._controlled_wait(payload):
+                return
             failure_mode = _failure_mode(payload)
             if failure_mode == "429":
                 self._write_json(

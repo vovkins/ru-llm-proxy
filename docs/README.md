@@ -58,6 +58,8 @@
 находятся в [матрице масштабирования](research/scaling-matrix.md).
 Сравнение CPU с NVIDIA Tesla T4, параметры CUDA-профиля и расчёт числа GPU
 находятся в [отчёте GPU-профиля Analyzer](research/gpu-analyzer-benchmark.md).
+Проверка очистки Redis после отключения непотокового клиента описана в
+[отчёте об отмене запроса](research/nonstream-disconnect.md).
 
 ## Правила поддержки
 

@@ -5341,6 +5341,50 @@ class TestPreCallHook:
 
 class TestPostCallFailureHook:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [499, 429, 500, 504])
+    async def test_http_failure_and_repeated_cleanup_are_request_scoped(self, status_code):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        original = pii_guardrail.HTTPException(status_code=status_code, detail="failure")
+        data = {"metadata": {"pii_request_id": "server-generated"}}
+
+        for _ in range(2):
+            assert await guardrail.async_post_call_failure_hook(
+                data, original, MagicMock()
+            ) is None
+
+        assert guardrail._redis.delete.await_count == 2
+        assert all(call.args == ("pii_mapping:server-generated",)
+                   for call in guardrail._redis.delete.await_args_list)
+        assert original.status_code == status_code
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_is_not_transformed(self):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        original = asyncio.CancelledError()
+        assert await guardrail.async_post_call_failure_hook(
+            {"metadata": {"pii_request_id": "cancelled"}}, original, MagicMock()
+        ) is None
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:cancelled")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("dependency_error", [ConnectionError, TimeoutError])
+    async def test_redis_failure_preserves_499_and_safe_logs(self, dependency_error, caplog):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.delete.side_effect = dependency_error("RAW_SECRET_SENTINEL")
+        original = pii_guardrail.HTTPException(status_code=499, detail="disconnect")
+
+        assert await guardrail.async_post_call_failure_hook(
+            {"metadata": {"pii_request_id": "cancelled"}}, original, MagicMock()
+        ) is None
+
+        assert original.status_code == 499 and original.detail == "disconnect"
+        assert "pii_guardrail_failure_cleanup_failed" in caplog.text
+        assert "RAW_SECRET_SENTINEL" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_deletes_mapping_without_transforming_provider_error(self):
         guardrail = RuPIIGuardrail(event_hook="pre_call")
         guardrail._redis = _mock_redis()

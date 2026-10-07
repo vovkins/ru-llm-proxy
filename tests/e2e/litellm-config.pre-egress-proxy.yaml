@@ -23,4 +23,5 @@ guardrails:
       default_on: true
 
 general_settings:
+  cancel_on_disconnect: true
   master_key: os.environ/LITELLM_MASTER_KEY

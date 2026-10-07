@@ -194,9 +194,15 @@ LiteLLM создаёт отдельные экземпляры защитног�
 `Prometheus metric registration conflict`.
 
 `ru_pii_guardrail_post_calls_total{result="provider_failure_cleanup"}` означает,
-что внешний вызов завершился ошибкой, а защитный слой удалил временное
+что внешний вызов завершился ошибкой или отменён при отключении клиента,
+а защитный слой удалил временное
 `pii_mapping:*` немедленно, не дожидаясь его срока жизни. Рост ошибок удаления
 отражается в `ru_pii_guardrail_fail_open_total{operation="mapping_delete"}`.
+
+При `stream=false` обнаруженное отключение клиента регистрируется LiteLLM как
+`499`. Сам по себе этот статус не означает отказ модели. Отмена включена
+штатной `general_settings.cancel_on_disconnect`; сетевой посредник может
+задержать обнаружение обрыва. [Проверка и ограничения](research/nonstream-disconnect.md).
 
 Для растущей истории сравнивайте `result="hit"` и `result="miss"` у
 `ru_pii_guardrail_analysis_cache_requests_total`. `bypass` означает отсутствие
@@ -399,6 +405,8 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 | `pii_guardrail_restored`, `pii_guardrail_stream_restored` | `INFO` | Восстановление ответа |
 | `pii_guardrail_unsupported_response` | `WARNING` | Неизвестный непотоковый формат ответа; сопоставление удаляется без восстановления |
 | `pii_guardrail_cleanup_failed` | `WARNING` | Redis не удалил сопоставление; запись ограничена настроенным TTL |
+| `pii_guardrail_failure_cleanup` | `INFO` | Удаление сопоставления после ошибки или обнаруженного отключения клиента |
+| `pii_guardrail_failure_cleanup_failed` | `WARNING` | Неудачная очистка после ошибки; исходная ошибка сохраняется, запись ограничена TTL |
 | `pii_guardrail_failed_open`, `pii_guardrail_failed_closed` | `ERROR` | Ошибка зависимости |
 | `pii_guardrail_analyzer_overloaded` | `ERROR` | Перегрузка Analyzer |
 | `presidio_analyzer_request`, `presidio_analyzer_phase`, `presidio_ner_inference` | `INFO` | Обработка и этапы Analyzer |

@@ -177,9 +177,10 @@ guardrails:
           description: "async_post_call_streaming_iterator_hook восстанавливает плейсхолдеры на границах фрагментов потока и удаляет сопоставление Redis после завершения потока."
         - name: "mapping_cleanup"
           type: "string"
-          description: "Удаляет Redis pii_mapping:<pii_request_id> после успешного post_call или обработки потокового итератора."
+          description: "Удаляет Redis pii_mapping:<pii_request_id> после восстановления, ошибки провайдера или обнаруженного отключения непотокового клиента."
 
 general_settings:
+  cancel_on_disconnect: true
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
 
