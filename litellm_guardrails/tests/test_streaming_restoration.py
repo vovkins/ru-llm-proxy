@@ -7,6 +7,7 @@ import random
 from unittest.mock import AsyncMock, MagicMock
 
 import litellm
+import anyio
 import pytest
 from openai.types.responses import (
     ResponseFunctionCallArgumentsDeltaEvent,
@@ -357,7 +358,7 @@ async def test_unknown_response_event_passes_through_without_a_fake_terminal_eve
     events = [unknown, _arguments_delta('{"city":"<LOC', sequence=5)]
     restored = await _restore(guardrail, copy.deepcopy(events))
     assert restored[0] == unknown
-    assert "".join(event["delta"] for event in restored[1:]) == '{"city":"<LOC'
+    assert "".join(event["delta"] for event in restored[1:]) == '{"city":"'
     assert all(event["type"].endswith(".delta") for event in restored)
 
 
@@ -725,3 +726,149 @@ async def test_responses_cancellation_closes_http_response_even_without_mapping(
         guardrail._redis.delete.assert_awaited_once_with("pii_mapping:cancel-http-test")
     else:
         guardrail._redis.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+async def test_starlette_cancel_scope_does_not_cancel_stream_cleanup(api):
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+    closed = asyncio.Event()
+    deleted = asyncio.Event()
+
+    async def delete(_key):
+        await anyio.sleep(0)
+        deleted.set()
+
+    guardrail._redis.delete.side_effect = delete
+
+    class Upstream:
+        first = True
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self.first:
+                self.first = False
+                return _chat({"content": "safe <LOC"}) if api == "chat" else _arguments_delta('{"city":"<LOC')
+            await anyio.sleep_forever()
+
+        async def aclose(self):
+            await anyio.sleep(0)
+            closed.set()
+
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=Upstream(),
+        request_data={"metadata": {"pii_request_id": "scope-cancel-test"}},
+    )
+    await anext(stream)
+    with anyio.CancelScope() as scope:
+        scope.cancel()
+        await anext(stream)
+    assert closed.is_set()
+    assert deleted.is_set(), "Cancelled ASGI scope interrupted mapping deletion"
+    guardrail._redis.delete.assert_awaited_once_with("pii_mapping:scope-cancel-test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", [False, True])
+async def test_bare_eof_discards_pending_placeholder_without_fake_success(arguments):
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+    event = _arguments_delta('{"city":"<LOC') if arguments else _chat({"content": "safe <LOC"})
+    result = await _restore(guardrail, [event])
+    assert len(result) == 1
+    if arguments:
+        assert result[0]["delta"] == '{"city":"'
+    else:
+        assert result[0].choices[0].delta.content == "safe "
+        assert result[0].choices[0].finish_reason is None
+    guardrail._redis.delete.assert_awaited_once_with("pii_mapping:stream-test")
+
+
+@pytest.mark.asyncio
+async def test_cancel_discards_request_local_pending_buffers(monkeypatch):
+    from litellm_guardrails import pii_guardrail
+
+    restorer = pii_guardrail.StreamingResponseRestorer({"<LOCATION_1>": "Тверь"})
+    monkeypatch.setattr(pii_guardrail, "StreamingResponseRestorer", lambda _mapping: restorer)
+    guardrail = _guardrail(restorer.mapping)
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=_chunks([_arguments_delta('{"city":"<LOC')]),
+        request_data={"metadata": {"pii_request_id": "discard-cancel"}},
+    )
+    await anext(stream)
+    assert restorer._json and restorer._templates
+    await stream.aclose()
+    assert not restorer._json and not restorer._templates and not restorer._text._pending
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_mapping_load_still_closes_and_deletes():
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+    closed = asyncio.Event()
+    deleted = asyncio.Event()
+
+    async def blocked_load(_key):
+        await anyio.sleep_forever()
+
+    async def delete(_key):
+        await anyio.sleep(0)
+        deleted.set()
+
+    class Upstream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            pytest.fail("Cancelled mapping load must not read the provider")
+
+        async def aclose(self):
+            await anyio.sleep(0)
+            closed.set()
+
+    guardrail._redis.get.side_effect = blocked_load
+    guardrail._redis.delete.side_effect = delete
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=Upstream(),
+        request_data={"metadata": {"pii_request_id": "load-cancel-test"}},
+    )
+    with anyio.move_on_after(0.01):
+        await anext(stream)
+    assert closed.is_set() and deleted.is_set()
+    guardrail._redis.delete.assert_awaited_once_with("pii_mapping:load-cancel-test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked", ["close", "delete"])
+async def test_stream_cleanup_dependency_wait_is_bounded(blocked, monkeypatch, caplog):
+    original = anyio.fail_after
+    monkeypatch.setattr(anyio, "fail_after", lambda _timeout, **kwargs: original(0.01, **kwargs))
+    guardrail = _guardrail({"<LOCATION_1>": "Тверь"})
+
+    async def blocked_delete(_key):
+        await anyio.sleep_forever()
+
+    if blocked == "delete":
+        guardrail._redis.delete.side_effect = blocked_delete
+
+    class Upstream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return _chat({"content": "safe <LOC"})
+
+        async def aclose(self):
+            if blocked == "close":
+                await anyio.sleep_forever()
+
+    stream = guardrail.async_post_call_streaming_iterator_hook(
+        user_api_key_dict=MagicMock(), response=Upstream(),
+        request_data={"metadata": {"pii_request_id": "bounded-cleanup"}},
+    )
+    await anext(stream)
+    await stream.aclose()
+    guardrail._redis.delete.assert_awaited_once_with("pii_mapping:bounded-cleanup")
+    expected = "pii_guardrail_stream_close_failed" if blocked == "close" else "pii_guardrail_cleanup_failed"
+    assert expected in caplog.text and "TimeoutError" in caplog.text
+    assert "Тверь" not in caplog.text

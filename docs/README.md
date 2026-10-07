@@ -60,6 +60,8 @@
 находятся в [отчёте GPU-профиля Analyzer](research/gpu-analyzer-benchmark.md).
 Проверка очистки Redis после отключения непотокового клиента описана в
 [отчёте об отмене запроса](research/nonstream-disconnect.md).
+Реальные сетевые обрывы потоковых ответов и выявленное ограничение LiteLLM —
+в [отчёте о проверке SSE](research/stream-disconnect.md).
 
 ## Правила поддержки
 

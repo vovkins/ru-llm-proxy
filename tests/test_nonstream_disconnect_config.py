@@ -25,6 +25,8 @@ def test_existing_gate_runs_real_disconnect_checks():
     makefile = (ROOT / "Makefile").read_text()
     target = makefile.split("test-final-leak-proxy:\n", 1)[1].split("\n\n", 1)[0]
     assert "bash tests/e2e/test_nonstream_disconnect.sh" in target
+    script = (ROOT / "tests/e2e/test_nonstream_disconnect.sh").read_text()
+    assert "check_stream_disconnect.py" in script
     workflow = (ROOT / ".github/workflows/baseline.yml").read_text()
     assert "bash -n tests/e2e/test_nonstream_disconnect.sh" in workflow
     assert "run: make test-final-leak-proxy" in workflow

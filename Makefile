@@ -165,6 +165,7 @@ test-static: test-routing-diagnostics
 		tests/test_pre_egress_policy_config.py \
 		tests/test_final_payload_leak_check_config.py \
 		tests/test_nonstream_disconnect_config.py \
+		tests/test_controlled_sse.py \
 		tests/test_configuration_docs.py \
 		tests/test_compliance_gate_config.py \
 		tests/test_production_egress_controls_docs.py \

@@ -224,6 +224,7 @@ class StreamingResponseRestorer:
         self._sequence_offset = 0
         self._last_sequence = -1
         self.restored_fields = 0
+        self.terminated = False
 
     def _push(self, key: tuple, text: str, *, arguments=False) -> str:
         if arguments:
@@ -311,6 +312,7 @@ class StreamingResponseRestorer:
                     self._push(key, get_field(target, field), arguments=arguments),
                 )
             if get_field(choice, "finish_reason") is not None:
+                self.terminated = True
                 for key in list(self._templates):
                     if key[:2] != ("chat", index):
                         continue
@@ -514,6 +516,7 @@ class StreamingResponseRestorer:
                 summary=summary,
             )
         elif kind in self._TERMINAL_EVENTS:
+            self.terminated = True
             output.extend(self._flush_responses(lambda _key: True))
             for item in get_field(get_field(event, "response"), "output") or []:
                 self._restore_item(item)
@@ -529,20 +532,8 @@ class StreamingResponseRestorer:
         return [event]
 
     def finish(self) -> list[Any]:
-        output = self._flush_responses(lambda _key: True)
-        for key in list(self._templates):
-            template = self._templates.pop(key)
-            text = self._flush(key)
-            if not text:
-                continue
-            delta = litellm.Delta()
-            target, field = self._chat_target(delta, key)
-            set_field(target, field, text)
-            choice = litellm.StreamingChoices(index=key[1], delta=delta)
-            set_field(
-                template,
-                "choices",
-                [choice.model_dump() if isinstance(template, dict) else choice],
-            )
-            output.append(template)
-        return output
+        # Native done/terminal events flush their fields. Bare EOF is not one.
+        self._text._pending.clear()
+        self._json.clear()
+        self._templates.clear()
+        return []

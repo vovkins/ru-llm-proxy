@@ -204,6 +204,13 @@ LiteLLM создаёт отдельные экземпляры защитног�
 штатной `general_settings.cancel_on_disconnect`; сетевой посредник может
 задержать обнаружение обрыва. [Проверка и ограничения](research/nonstream-disconnect.md).
 
+При EOF потока без завершающего события защитный слой регистрирует
+`pii_guardrail_stream_incomplete` и `ru_pii_guardrail_post_calls_total{result="incomplete"}`.
+Ошибка закрытия отмечается как `pii_guardrail_stream_close_failed`, ошибка
+удаления — как `pii_guardrail_cleanup_failed`. Это не полная проверка обрывов:
+если LiteLLM сама создала `stop`, обработчик видит уже завершённый поток.
+[Сетевые сценарии и ограничение платформы](research/stream-disconnect.md).
+
 Для растущей истории сравнивайте `result="hit"` и `result="miss"` у
 `ru_pii_guardrail_analysis_cache_requests_total`. `bypass` означает отсутствие
 пригодного хеша виртуального ключа или соли, `coalesced` — объединение
@@ -403,6 +410,8 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 | `pre_egress_policy_blocked` | `INFO` | Блокировка конфигурации или журнала |
 | `final_payload_leak_check_blocked` | `INFO` | Блокировка итоговой нагрузки |
 | `pii_guardrail_restored`, `pii_guardrail_stream_restored` | `INFO` | Восстановление ответа |
+| `pii_guardrail_stream_incomplete` | `INFO` | EOF без завершающего события; незавершённый буфер отброшен |
+| `pii_guardrail_stream_close_failed` | `WARNING` | Ошибка или тайм-аут закрытия исходящего потока; удаление сопоставления всё равно выполняется |
 | `pii_guardrail_unsupported_response` | `WARNING` | Неизвестный непотоковый формат ответа; сопоставление удаляется без восстановления |
 | `pii_guardrail_cleanup_failed` | `WARNING` | Redis не удалил сопоставление; запись ограничена настроенным TTL |
 | `pii_guardrail_failure_cleanup` | `INFO` | Удаление сопоставления после ошибки или обнаруженного отключения клиента |

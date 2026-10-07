@@ -15,6 +15,7 @@ from contextvars import ContextVar
 from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
+import anyio
 import httpx
 import litellm
 from litellm.integrations.custom_guardrail import CustomGuardrail
@@ -4065,6 +4066,7 @@ class RuPIIGuardrail(CustomGuardrail):
         request_id = self._get_response_request_id(request_data)
         iterator = response.__aiter__()
         restorer = None
+        cleanup_mapping = bool(request_id)
         try:
             if not request_id:
                 PII_POST_CALLS.labels(result="skipped").inc()
@@ -4078,6 +4080,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     if mapping:
                         restorer = StreamingResponseRestorer(mapping)
                     else:
+                        cleanup_mapping = False
                         PII_POST_CALLS.labels(result="no_mapping").inc()
                         _safe_log(
                             logging.INFO,
@@ -4093,6 +4096,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     yield item
         finally:
             if restorer:
+                restorer.finish()
                 self._mark_streaming_restoration_done(request_data)
             try:
                 close = getattr(iterator, "aclose", None)
@@ -4102,9 +4106,11 @@ class RuPIIGuardrail(CustomGuardrail):
                     if isinstance(http_response, httpx.Response):
                         close = http_response.aclose
                 if callable(close):
-                    result = close()
-                    if inspect.isawaitable(result):
-                        await result
+                    # Starlette's cancelled scope would cancel every cleanup await.
+                    with anyio.fail_after(2, shield=True):
+                        result = close()
+                        if inspect.isawaitable(result):
+                            await result
             except Exception as e:
                 _safe_log(
                     logging.WARNING,
@@ -4113,9 +4119,10 @@ class RuPIIGuardrail(CustomGuardrail):
                     error_type=type(e).__name__,
                 )
             finally:
-                if restorer:
+                if cleanup_mapping:
                     try:
-                        await self._delete_mapping(request_id)
+                        with anyio.fail_after(2, shield=True):
+                            await self._delete_mapping(request_id)
                     except Exception as e:
                         PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
                         _safe_log(
@@ -4128,12 +4135,15 @@ class RuPIIGuardrail(CustomGuardrail):
         if restorer is None:
             return
 
-        PII_POST_CALLS.labels(
-            result="restored" if restorer.restored_fields else "no_placeholders"
-        ).inc()
+        result = (
+            "incomplete" if not restorer.terminated
+            else "restored" if restorer.restored_fields else "no_placeholders"
+        )
+        PII_POST_CALLS.labels(result=result).inc()
         _safe_log(
             logging.INFO,
-            "pii_guardrail_stream_restored",
+            "pii_guardrail_stream_restored" if restorer.terminated
+            else "pii_guardrail_stream_incomplete",
             request_id=request_id,
             mapping_size=len(restorer.mapping),
             restored_fields=restorer.restored_fields,

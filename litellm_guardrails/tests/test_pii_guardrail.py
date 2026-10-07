@@ -6248,7 +6248,7 @@ class TestStreamingPostCallHook:
         _yielded, content, _reasoning = await _collect_stream_text(result_stream)
 
         assert content == "<PHONE_NUMBER_1>"
-        guardrail._redis.delete.assert_not_called()
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
     @pytest.mark.asyncio
     async def test_streaming_mapping_load_error_fails_closed(self):
@@ -6277,7 +6277,7 @@ class TestStreamingPostCallHook:
 
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers == {"Retry-After": "1"}
-        guardrail._redis.delete.assert_not_called()
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
     @pytest.mark.asyncio
     async def test_streaming_deletes_mapping_when_upstream_iterator_fails(

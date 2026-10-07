@@ -309,7 +309,11 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._read_json()
             case_id = payload.get("id", "")
             phase = payload.get("phase", "provider")
-            if not re.fullmatch(r"[a-f0-9]{16}", case_id) or phase not in {"provider", "analyzer"}:
+            if not re.fullmatch(r"[a-f0-9]{16}", case_id) or phase not in {
+                "provider", "analyzer", "stream_first", "stream_text",
+                "stream_placeholder", "stream_arguments", "stream_escape",
+                "stream_partial", "stream_terminal",
+            }:
                 self._write_json(400, {"error": "invalid synthetic control id"})
                 return
             with CAPTURE_LOCK:
@@ -391,6 +395,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
             if not self._controlled_wait(payload):
+                return
+            if payload.get("stream") is True and _text_contains(payload, "SSE_CONTROLLED"):
+                from controlled_sse import write_stream
+
+                write_stream(self, payload, _text_contains)
                 return
             failure_mode = _failure_mode(payload)
             if failure_mode == "429":
@@ -521,6 +530,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/responses":
             _record_provider_payload(self.path, payload)
             if not self._controlled_wait(payload):
+                return
+            if payload.get("stream") is True and _text_contains(payload, "SSE_CONTROLLED"):
+                from controlled_sse import write_stream
+
+                write_stream(self, payload, _text_contains)
                 return
             failure_mode = _failure_mode(payload)
             if failure_mode == "429":

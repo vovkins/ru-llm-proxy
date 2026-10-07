@@ -13,7 +13,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for cancellation in false true; do
+variants=(false true)
+case "${1:-}" in
+    "") ;;
+    --stream-only) variants=(true) ;;
+    *) echo "Usage: $0 [--stream-only]" >&2; exit 2 ;;
+esac
+for cancellation in "${variants[@]}"; do
     python3 - "$DISCONNECT_CONFIG" "$cancellation" <<'PY'
 import json
 import pathlib
@@ -55,15 +61,22 @@ PY
     if [ "$cancellation" = false ]; then
         "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py --baseline
     else
-        "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py
+        if [ "${1:-}" != --stream-only ]; then
+            "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py
+        fi
+        stream_status=0
+        "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_stream_disconnect.py || stream_status=$?
     fi
     "${COMPOSE[@]}" logs litellm > "$TEMP_DIR/litellm.log"
     if grep -Fq '+79031234567' "$TEMP_DIR/litellm.log"; then
         echo "Sensitive value in proxy logs" >&2
         exit 1
     fi
-    if [ "$cancellation" = true ]; then
+    if [ "$cancellation" = true ] && [ "${1:-}" != --stream-only ]; then
         grep -Fq 'pii_guardrail_failure_cleanup_failed' "$TEMP_DIR/litellm.log"
+    fi
+    if [ "${stream_status:-0}" != 0 ]; then
+        exit "$stream_status"
     fi
     "${COMPOSE[@]}" down -v --remove-orphans
 done
