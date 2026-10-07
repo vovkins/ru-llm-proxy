@@ -55,6 +55,7 @@ presidio/evaluation/data/*
 !presidio/evaluation/data/person_organization_regressions.jsonl
 !presidio/evaluation/data/name_context_regressions.jsonl
 !presidio/evaluation/data/name_field_holdout.jsonl
+!presidio/evaluation/data/name_field_header_control.jsonl
 !presidio/evaluation/data/deterministic_rules_review.jsonl
 pgdata/
 cache/

@@ -28,11 +28,9 @@ NAME_EXACT_LIMITATIONS = {
 CONTEXT_EXACT_LIMITATIONS = {
     "client_uppercase": (["PERSON"], ["ORGANIZATION"]),
 }
-# An untouched control exposed a label-plus-delimiter span. Keep this visible
-# rather than using the control to tune production or changing its annotation.
-FIELD_HOLDOUT_EXACT_LIMITATIONS = {
-    "field_person_dotted": ([], ["PERSON"]),
-}
+# The original control exposed a header boundary regression. Its annotation is
+# unchanged and must now pass exactly; it is no longer an independent control.
+FIELD_HOLDOUT_EXACT_LIMITATIONS = {}
 
 
 def _name_cases():
@@ -260,6 +258,8 @@ def check_names(
     filters = flows = blocked = 0
     for case in cases:
         results = predictions[case.case_id]
+        if not case.expected:
+            assert not results, f"{case.case_id}: unexpected masking of negative name case"
         for expected in case.expected:
             assert any(
                 result["start"] <= expected.start and result["end"] >= expected.end

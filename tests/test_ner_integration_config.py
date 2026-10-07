@@ -106,6 +106,8 @@ def test_proxy_script_proves_mask_restore_and_block_non_egress():
 def test_name_corpora_gate_requires_complete_critical_spans_and_filter_agreement():
     script = _read(ROOT / "tests/e2e/ner_instruction_checks.py")
     assert "name_field_holdout.jsonl" in script
+    assert "FIELD_HOLDOUT_EXACT_LIMITATIONS = {}" in script
+    assert "unexpected masking of negative name case" in script
     assert 'assert metrics["aggregate"]["critical_coverage_recall"] == 1.0' in script
     assert "no complete sensitive span" in script
     assert "combined name filter differs from full scan" in script

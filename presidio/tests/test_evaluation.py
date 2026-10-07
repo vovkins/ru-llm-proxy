@@ -150,6 +150,22 @@ def test_name_field_holdout_is_separate_and_checks_positive_and_negative_cases()
     assert all(case.score_threshold == 0.35 for case in cases)
 
 
+def test_field_header_control_is_separate_from_known_boundary_regression():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_field_header_control.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 8
+    assert all("holdout" in case.tags for case in cases)
+    assert sum(case.critical for case in cases) == 4
+    assert sum("negative" in case.tags for case in cases) == 4
+    assert {"whitespace", "multiline", "unicode", "initials", "counterexample"} <= {
+        tag for case in cases for tag in case.tags
+    }
+    assert all(case.score_threshold == 0.35 for case in cases)
+    assert all("МАРИЯ ИВАНОВА" not in case.text for case in cases)
+
+
 @pytest.mark.parametrize("required", [frozenset(), frozenset({"UNKNOWN"})])
 def test_corpus_rejects_invalid_required_types(required):
     with pytest.raises(ValueError, match="non-empty target subset"):

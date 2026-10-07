@@ -96,7 +96,8 @@ _LEGAL_FORM_RE = re.compile(r"(?:ООО|АО|ПАО|ОАО|ЗАО)", re.IGNORECA
 _NAME_WORDS_RE = re.compile(r"[А-Яа-яЁё]+(?:[- \t\u00a0][А-Яа-яЁё]+){1,2}")
 _PERSON_FIELD_RE = re.compile(r"(?i)(?<!\w)(?:фио|ф\.и\.о\.)\s*[:=]\s*$")
 _PERSON_LABEL_RE = re.compile(
-    r"(?i)(?<!\w)(?P<label>фио|ф\.и\.о\.)[ \t\u00a0]{0,16}[:=]"
+    r"(?im)(?:^|(?<=[;\r]))[ \t\u00a0]{0,16}"
+    r"(?P<label>фио|ф\.и\.о\.)[ \t\u00a0]{0,16}[:=][ \t\u00a0]{0,16}"
 )
 _NAME_WORD = r"[А-ЯЁ][А-Яа-яЁё]{1,39}(?:-[А-ЯЁ][А-Яа-яЁё]{1,39})?"
 _NAME_VALUE = rf"{_NAME_WORD}(?:[ \t\u00a0]{{1,16}}{_NAME_WORD}){{1,2}}"
@@ -541,13 +542,19 @@ def _refine_explicit_name_values(
         for r in results
     ):
         return results, decisions
-    label_spans = {match.span("label") for match in _PERSON_LABEL_RE.finditer(text)}
+    # Only a separate field header may be discarded, never its value or a
+    # similarly named organization in prose. BIO may include the separator.
+    label_spans = {
+        match.start("label"): (match.end("label"), match.end())
+        for match in _PERSON_LABEL_RE.finditer(text)
+    }
     retained = []
     for result in results:
         if (
             detection_source(result) == SOURCE_NER
             and result.entity_type in _NAME_TYPES
-            and (result.start, result.end) in label_spans
+            and (bounds := label_spans.get(result.start)) is not None
+            and bounds[0] <= result.end <= bounds[1]
         ):
             decisions.append(MergeDecision("name_field_label", SOURCE_NONE, SOURCE_NER))
         else:

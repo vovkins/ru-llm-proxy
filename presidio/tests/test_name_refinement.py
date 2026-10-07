@@ -236,6 +236,87 @@ def test_exact_person_field_label_is_not_a_name(label, separator, value):
     assert [d.reason for d in outcome.decisions] == ["name_field_label"]
 
 
+@pytest.mark.parametrize("label", ["ФИО", "Ф.И.О.", "фио", "ф.и.о."])
+@pytest.mark.parametrize("separator", [":", "=", " =", "\t:\t", "\u00a0=\u00a0"])
+@pytest.mark.parametrize("entity_type", ["PERSON", "ORGANIZATION"])
+def test_field_header_suppression_is_independent_of_bio_separator_boundary(
+    label, separator, entity_type
+):
+    text = label + separator + " МАРИЯ ИВАНОВА."
+    start = len(label)
+    end = len(label + separator + " ")
+    for boundary in range(start, end + 1):
+        header = result(text, text[:boundary], entity_type)
+        name = result(text, "МАРИЯ ИВАНОВА", "PERSON")
+        for order in ([header, name], [name, header]):
+            outcome = merge_results(text, order)
+            assert summary(text, outcome) == [("PERSON", "МАРИЯ ИВАНОВА", 0.8)]
+            assert [d.reason for d in outcome.decisions].count("name_field_label") == 1
+
+
+@pytest.mark.parametrize("prefix", [
+    "", "  ", "\t", "\u00a0", "Анкета:\n", "Анкета:\r\n",
+    "Анкета:\r", "Возраст: 30; ",
+])
+@pytest.mark.parametrize("entities", [
+    None, ["PERSON"], ["ORGANIZATION"], ["PERSON", "ORGANIZATION"],
+])
+def test_standalone_field_header_uses_original_offsets_before_type_filter(prefix, entities):
+    text = prefix + "Ф.И.О. = МАРИЯ ИВАНОВА."
+    name = result(text, "МАРИЯ ИВАНОВА", "PERSON")
+    outcome = merge_results(
+        text, [result(text, "Ф.И.О. =", "PERSON"), name], requested_entities=entities
+    )
+    assert summary(text, outcome) == (
+        [] if entities == ["ORGANIZATION"] else [("PERSON", "МАРИЯ ИВАНОВА", 0.8)]
+    )
+    if outcome.results:
+        assert (outcome.results[0].start, outcome.results[0].end) == (name.start, name.end)
+
+
+@pytest.mark.parametrize("value", ["", "не заполнено.", "пока не указано."])
+def test_header_with_separator_and_no_sensitive_value_is_not_a_name(value):
+    text = "Ф.И.О. = " + value
+    outcome = merge_results(text, [result(text, "Ф.И.О. =", "PERSON")])
+    assert not outcome.results
+    assert [d.reason for d in outcome.decisions] == ["name_field_label"]
+
+
+@pytest.mark.parametrize("text,value", [
+    ("ФИО: МАРИЯ ИВАНОВА", "ФИО: МАРИЯ ИВАНОВА"),
+    ("Ф.И.О. = МАРИЯ ИВАНОВА", "Ф.И.О. = МАРИЯ"),
+    ("Компания ФИО: направьте письмо.", "ФИО"),
+    ("Организация Ф.И.О.: письмо", "Ф.И.О."),
+    ("ООО ФИО: направьте письмо.", "ФИО"),
+    ("ООО «ФИО»: направьте письмо.", "ФИО"),
+    ("Иван Петров: согласовано.", "Иван Петров"),
+    ("Получатель: Мария Иванова", "Получатель"),
+    ("ФИО\n= Мария Иванова", "ФИО"),
+    ("ФИО" + " " * 17 + "= Мария Иванова", "ФИО"),
+    ("ФИО_КЛИЕНТА = Мария Иванова", "ФИО"),
+])
+def test_header_rule_does_not_expand_to_names_values_prose_or_other_labels(text, value):
+    outcome = merge_results(text, [result(text, value, "PERSON")])
+    assert summary(text, outcome) == [("PERSON", value, 0.8)]
+    assert "name_field_label" not in [d.reason for d in outcome.decisions]
+
+
+@pytest.mark.parametrize("source,entity_type", [
+    ("structural", "PERSON"), ("structural", "ORGANIZATION"),
+    ("native_credential", "LOGIN"), ("native_credential", "SECRET_KEY"),
+    ("ner", "LOGIN"), ("ner", "AUTH_TOKEN"),
+])
+def test_header_rule_preserves_independent_sensitive_types_and_sources(source, entity_type):
+    text = "Ф.И.О. = МАРИЯ ИВАНОВА"
+    outcome = merge_results(text, [
+        result(text, "Ф.И.О. =", entity_type, source=source),
+        result(text, "МАРИЯ ИВАНОВА", "PERSON"),
+    ])
+    assert (entity_type, "Ф.И.О. =", 0.8) in summary(text, outcome)
+    assert ("PERSON", "МАРИЯ ИВАНОВА", 0.8) in summary(text, outcome)
+    assert "name_field_label" not in [d.reason for d in outcome.decisions]
+
+
 @pytest.mark.parametrize("text,value", [
     ("Подписал Петров Ф. И. О.", "Петров Ф. И. О."),
     ("Ф.И.О. подписал документ", "Ф.И.О."),
