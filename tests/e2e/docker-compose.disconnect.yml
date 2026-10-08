@@ -1,0 +1,19 @@
+services:
+  mock-upstream:
+    environment:
+      MOCK_ECHO_CHAT_CONTENT: "true"
+      MOCK_ECHO_RESPONSES_CONTENT: "true"
+
+  litellm:
+    environment:
+      PYTHONPATH: /app:/workspace/tests/e2e
+    volumes:
+      - ../..:/workspace:ro
+      - ${DISCONNECT_CONFIG:?temporary test config required}:/app/config.yaml:ro
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ../../nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - litellm

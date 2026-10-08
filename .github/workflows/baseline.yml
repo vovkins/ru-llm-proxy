@@ -34,6 +34,7 @@ jobs:
           bash -n tests/e2e/test_ner_proxy_flow.sh
           bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
           bash -n tests/e2e/test_final_leak_proxy_non_egress.sh
+          bash -n tests/e2e/test_nonstream_disconnect.sh
           bash -n tests/load/run.sh
           bash -n tests/load/run_matrix.sh
           bash -n tests/test_litellm_ca_image.sh
@@ -49,6 +50,7 @@ jobs:
               "docker-compose.yml",
               "tests/e2e/litellm-config.pre-egress-proxy.yaml",
               "tests/e2e/docker-compose.pre-egress-proxy.yml",
+              "tests/e2e/docker-compose.disconnect.yml",
               "tests/e2e/litellm-config.ner-proxy.yaml",
               "tests/e2e/docker-compose.ner-proxy.yml",
               "tests/load/litellm-config.yaml",
@@ -107,6 +109,9 @@ jobs:
 
       - name: Run LiteLLM guardrail unit tests
         run: make test-guardrail
+
+      - name: Run deterministic masking and restoration round trips
+        run: make test-flow
 
   recognizer-api:
     runs-on: ubuntu-latest

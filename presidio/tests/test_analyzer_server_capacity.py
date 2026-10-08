@@ -990,6 +990,22 @@ def test_analysis_signature_is_stable_and_tracks_detection_configuration(
     assert analyzer_server._build_analysis_signature() != baseline
 
 
+def test_analysis_signature_tracks_registry_source_changes(monkeypatch):
+    source = Path(analyzer_server.__file__).resolve()
+    assert source in analyzer_server._analysis_source_files()
+    baseline = analyzer_server._build_analysis_signature()
+    read_bytes = Path.read_bytes
+
+    def changed_registry(path):
+        content = read_bytes(path)
+        return (
+            content + b"\n# changed registry contract\n" if path == source else content
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_registry)
+    assert analyzer_server._build_analysis_signature() != baseline
+
+
 def test_lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog):
     asyncio.run(_lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog))
 

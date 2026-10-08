@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Iterable
 
 from presidio_analyzer import RecognizerResult
@@ -89,6 +91,32 @@ _EXPLICIT_CONTRACT_NUMBER_RE = re.compile(
 _DATE_LIKE_RE = re.compile(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}")
 _DOTTED_VERSION_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){1,3}")
 _SENTENCE_BOUNDARIES = frozenset(".!?;。！？")
+_NAME_TYPES = frozenset({"PERSON", "ORGANIZATION"})
+_LEGAL_FORM_RE = re.compile(r"(?:ООО|АО|ПАО|ОАО|ЗАО)", re.IGNORECASE)
+_NAME_WORDS_RE = re.compile(r"[А-Яа-яЁё]+(?:[- \t\u00a0][А-Яа-яЁё]+){1,2}")
+_PERSON_FIELD_RE = re.compile(r"(?i)(?<!\w)(?:фио|ф\.и\.о\.)\s*[:=]\s*$")
+_PERSON_LABEL_RE = re.compile(
+    r"(?im)(?:^|(?<=[;\r]))[ \t\u00a0]{0,16}"
+    r"(?P<label>фио|ф\.и\.о\.)[ \t\u00a0]{0,16}[:=][ \t\u00a0]{0,16}"
+)
+_NAME_WORD = r"[А-ЯЁ][А-Яа-яЁё]{1,39}(?:-[А-ЯЁ][А-Яа-яЁё]{1,39})?"
+_NAME_VALUE = rf"{_NAME_WORD}(?:[ \t\u00a0]{{1,16}}{_NAME_WORD}){{1,2}}"
+_EXPLICIT_NAME_RE = re.compile(
+    rf"(?<!\w)(?:"
+    rf"(?P<person>(?i:фио|ф\.и\.о\.))[ \t\u00a0]{{0,16}}[:=]|"
+    rf"(?P<organization>(?i:название организации))[ \t\u00a0]{{0,16}}[:=]|"
+    rf"(?P<legal>(?i:ООО|АО|ПАО|ОАО|ЗАО))"
+    rf")[ \t\u00a0]{{1,16}}(?P<value>{_NAME_VALUE})(?![\w-])"
+)
+_COMPANY_NAME_RE = re.compile(
+    rf"(?<!\w)(?i:компания)[ \t\u00a0]{{1,16}}"
+    rf"(?P<value>{_NAME_VALUE})(?![\w-])"
+)
+_NAME_FRAGMENT_TYPES = _NAME_TYPES | {"LOGIN"}
+_SERVICE_NUMBER_RE = re.compile(
+    r"(?i)(?<!\w)(?:номер|идентификатор)\s+"
+    r"(?:заявки|заказа|строки)\s*[:=#№]?\s*$"
+)
 
 
 @dataclass(frozen=True)
@@ -106,6 +134,47 @@ class MergeOutcome:
 
     results: tuple[RecognizerResult, ...]
     decisions: tuple[MergeDecision, ...]
+
+
+@dataclass(frozen=True)
+class NameContext:
+    """Bounded grammar evidence; never sufficient for a new detection alone."""
+
+    entity_type: str
+    start: int
+    end: int
+    legal_form_end: int | None = None
+
+
+def name_context_evidence(text: str) -> tuple[NameContext, ...]:
+    contexts = []
+    for pattern in (_EXPLICIT_NAME_RE, _COMPANY_NAME_RE):
+        for match in pattern.finditer(text):
+            start, end = match.span("value")
+            # Never interpret a truncated three-word prefix of a longer name.
+            tail = text[end : end + 18]
+            if re.match(r"[ \t\u00a0]{1,16}[А-ЯЁ]", tail):
+                continue
+            if pattern is _COMPANY_NAME_RE:
+                prefix = text[max(0, match.start() - 64) : match.start()].rstrip(" \t\u00a0")
+                if not prefix and match.start() > 64:
+                    continue
+                if prefix and prefix[-1] not in ".!?;\r\n":
+                    continue
+                entity_type = "ORGANIZATION"
+                legal_end = None
+            else:
+                entity_type = "PERSON" if match.group("person") else "ORGANIZATION"
+                legal_end = match.end("legal") if match.group("legal") else None
+                if entity_type == "PERSON" and any(
+                    _LEGAL_FORM_RE.fullmatch(word) for word in text[start:end].split()
+                ):
+                    continue
+                if legal_end is not None:
+                    start = match.start("legal")
+            if end - start <= 128:
+                contexts.append(NameContext(entity_type, start, end, legal_end))
+    return tuple(dict.fromkeys(contexts))
 
 
 def detection_source(result: RecognizerResult) -> str:
@@ -168,8 +237,11 @@ def merge_results(
     *,
     requested_entities: Iterable[str] | None = None,
     score_threshold: float = 0.0,
+    sentence_starts: Iterable[int] = (),
 ) -> MergeOutcome:
     """Merge overlapping results using source and entity specificity."""
+    if requested_entities is not None:
+        requested_entities = tuple(requested_entities)
     decisions = []
     valid_results = []
     contract_evidence = contract_context_evidence(text)
@@ -253,6 +325,13 @@ def merge_results(
                 )
             )
 
+    valid_results, name_decisions = _refine_names(
+        text, valid_results, frozenset(sentence_starts), score_threshold
+    )
+    decisions.extend(name_decisions)
+    if requested_entities:
+        requested = frozenset(requested_entities)
+        valid_results = [r for r in valid_results if r.entity_type in requested]
     ordered = sorted(valid_results, key=_priority_key)
     kept: list[RecognizerResult] = []
     for candidate in ordered:
@@ -283,6 +362,270 @@ def merge_results(
 
     kept.sort(key=lambda result: (result.start, result.end, result.entity_type))
     return MergeOutcome(tuple(kept), tuple(decisions))
+
+
+def _copy_name(
+    result: RecognizerResult,
+    *,
+    entity_type: str | None = None,
+    start: int | None = None,
+    end: int | None = None,
+    score: float | None = None,
+) -> RecognizerResult:
+    return RecognizerResult(
+        entity_type=entity_type or result.entity_type,
+        start=result.start if start is None else start,
+        end=result.end if end is None else end,
+        score=result.score if score is None else score,
+        analysis_explanation=result.analysis_explanation,
+        recognition_metadata=dict(result.recognition_metadata or {}),
+    )
+
+
+@lru_cache(maxsize=1)
+def _russian_morphology():
+    # Already installed by the Russian spaCy model; no second NER inference.
+    import pymorphy3
+
+    return pymorphy3.MorphAnalyzer()
+
+
+def _is_unambiguous_imperative(word: str) -> bool:
+    if not re.fullmatch(r"[А-Яа-яЁё]{2,32}", word):
+        return False
+    parses = _russian_morphology().parse(word)
+    return bool(parses) and all("impr" in parse.tag for parse in parses)
+
+
+def _refine_names(
+    text: str,
+    results: list[RecognizerResult],
+    sentence_starts: frozenset[int],
+    score_threshold: float,
+) -> tuple[list[RecognizerResult], list[MergeDecision]]:
+    decisions = []
+    boundaries = sorted(sentence_starts)
+    unique_names = {}
+    retained = []
+    for result in results:
+        if (
+            detection_source(result) != SOURCE_NER
+            or result.entity_type not in _NAME_TYPES
+        ):
+            retained.append(result)
+            continue
+        key = (result.entity_type, result.start, result.end)
+        previous = unique_names.get(key)
+        if previous is not None:
+            decisions.append(MergeDecision("exact_duplicate", SOURCE_NER, SOURCE_NER))
+        if previous is None or _priority_key(result) < _priority_key(previous):
+            unique_names[key] = result
+    results = [*retained, *unique_names.values()]
+    results, context_decisions = _refine_explicit_name_values(
+        text, results, score_threshold
+    )
+    decisions.extend(context_decisions)
+    refined = []
+    for result in results:
+        if (
+            detection_source(result) != SOURCE_NER
+            or result.entity_type not in _NAME_TYPES
+        ):
+            refined.append(result)
+            continue
+        value = text[result.start : result.end]
+        if value.isdecimal():
+            start = result.start
+            lower_bound = max(0, start - 64)
+            while start > lower_bound and text[start - 1].isdecimal():
+                start -= 1
+            complete_prefix = not start or not text[start - 1].isdecimal()
+            if complete_prefix and _SERVICE_NUMBER_RE.search(
+                text[max(0, start - 64) : start]
+            ):
+                decisions.append(
+                    MergeDecision(
+                        "name_service_number_suppressed", SOURCE_NONE, SOURCE_NER
+                    )
+                )
+                continue
+        if result.entity_type == "ORGANIZATION":
+            if (
+                _PERSON_FIELD_RE.search(text[max(0, result.start - 32) : result.start])
+                and _NAME_WORDS_RE.fullmatch(value)
+                and not any(_LEGAL_FORM_RE.fullmatch(word) for word in value.split())
+            ):
+                result = _copy_name(result, entity_type="PERSON")
+                decisions.append(
+                    MergeDecision("name_person_field", SOURCE_NER, SOURCE_NER)
+                )
+            elif _LEGAL_FORM_RE.fullmatch(value.split()[0] if value.split() else ""):
+                # A period alone is not a boundary: require spaCy's sentence
+                # start and an unambiguous dictionary imperative in the tail.
+                for boundary in boundaries[
+                    bisect_right(boundaries, result.start) : bisect_right(
+                        boundaries, result.end - 1
+                    )
+                ]:
+                    before = text[result.start : boundary].rstrip()
+                    if not before.endswith("."):
+                        continue
+                    tail = text[boundary : result.end].strip()
+                    if not _is_unambiguous_imperative(tail):
+                        continue
+                    end = result.start + len(before) - 1
+                    while end > result.start and text[end - 1].isspace():
+                        end -= 1
+                    if len(text[result.start : end].split()) < 2 or any(
+                        other is not result
+                        and other.entity_type != "ORGANIZATION"
+                        and _spans_overlap(boundary, result.end, other.start, other.end)
+                        for other in results
+                    ):
+                        continue
+                    result = _copy_name(result, end=end)
+                    decisions.append(
+                        MergeDecision("name_instruction_tail", SOURCE_NER, SOURCE_NER)
+                    )
+                    break
+        refined.append(result)
+
+    names = sorted(
+        (
+            r
+            for r in refined
+            if detection_source(r) == SOURCE_NER and r.entity_type in _NAME_TYPES
+        ),
+        key=lambda r: (r.start, r.end, -r.score),
+    )
+    removed = set()
+    replacements = {}
+    for left, right in zip(names, names[1:]):
+        if id(left) in removed or id(right) in removed:
+            continue
+        if not (
+            left.entity_type == "ORGANIZATION"
+            and _LEGAL_FORM_RE.fullmatch(text[left.start : left.end])
+            and right.entity_type == "PERSON"
+            and left.end < right.start
+            and right.start - left.end <= 16
+            and text[left.end : right.start].isspace()
+            and not any(c in "\r\n" for c in text[left.end : right.start])
+            and right.end - right.start <= 128
+            and _NAME_WORDS_RE.fullmatch(text[right.start : right.end])
+        ):
+            continue
+        # Do not bridge another sensitive category or steal its protected span.
+        if any(
+            other is not left
+            and other is not right
+            and _spans_overlap(left.start, right.end, other.start, other.end)
+            for other in refined
+        ):
+            continue
+        replacements[id(left)] = _copy_name(
+            left, end=right.end, score=min(left.score, right.score)
+        )
+        removed.add(id(right))
+        decisions.append(MergeDecision("name_legal_form_join", SOURCE_NER, SOURCE_NER))
+    return [
+        replacements.get(id(r), r) for r in refined if id(r) not in removed
+    ], decisions
+
+
+def _refine_explicit_name_values(
+    text: str, results: list[RecognizerResult], score_threshold: float
+) -> tuple[list[RecognizerResult], list[MergeDecision]]:
+    decisions = []
+    if not any(
+        detection_source(r) == SOURCE_NER and r.entity_type in _NAME_TYPES
+        for r in results
+    ):
+        return results, decisions
+    # Only a separate field header may be discarded, never its value or a
+    # similarly named organization in prose. BIO may include the separator.
+    label_spans = {
+        match.start("label"): (match.end("label"), match.end())
+        for match in _PERSON_LABEL_RE.finditer(text)
+    }
+    retained = []
+    for result in results:
+        if (
+            detection_source(result) == SOURCE_NER
+            and result.entity_type in _NAME_TYPES
+            and (bounds := label_spans.get(result.start)) is not None
+            and bounds[0] <= result.end <= bounds[1]
+        ):
+            decisions.append(MergeDecision("name_field_label", SOURCE_NONE, SOURCE_NER))
+        else:
+            retained.append(result)
+    ordered = sorted(retained, key=lambda r: (r.start, r.end))
+    starts = [r.start for r in ordered]
+    max_ends = []
+    for r in ordered:
+        max_ends.append(max(r.end, max_ends[-1] if max_ends else 0))
+    removed = set()
+    replacements = []
+    previous_end = -1
+    for context in sorted(name_context_evidence(text), key=lambda c: (c.start, -c.end)):
+        if context.start < previous_end:
+            continue
+        previous_end = context.end
+        overlapping = [
+            r for r in ordered[
+                bisect_right(max_ends, context.start) : bisect_left(starts, context.end)
+            ]
+            if _spans_overlap(context.start, context.end, r.start, r.end)
+        ]
+        fragments = [
+            r for r in overlapping
+            if detection_source(r) == SOURCE_NER
+            and r.entity_type in _NAME_FRAGMENT_TYPES
+            and r.score >= score_threshold
+            and context.start <= r.start < r.end <= context.end
+        ]
+        if not fragments or not any(r.entity_type in _NAME_TYPES for r in fragments):
+            continue
+        legal_prefix = [
+            r for r in fragments
+            if r.entity_type == "ORGANIZATION"
+            and r.start == context.start and r.end == context.legal_form_end
+        ]
+        removable_location = [
+            r for r in overlapping
+            if legal_prefix and r.entity_type == "LOCATION"
+            and detection_source(r) == SOURCE_STRUCTURAL
+            and r.start == context.start and r.end == context.legal_form_end
+        ]
+        consumed = {id(r) for r in [*fragments, *removable_location]}
+        if any(id(r) not in consumed for r in overlapping):
+            continue
+        # All letters must already be accepted NER evidence. Only whitespace
+        # may be bridged, and a competing native credential always vetoes this.
+        covered = bytearray(context.end - context.start)
+        for fragment in fragments:
+            covered[fragment.start - context.start : fragment.end - context.start] = (
+                b"\x01" * (fragment.end - fragment.start)
+            )
+        if any(
+            not covered[index] and not character.isspace()
+            for index, character in enumerate(text[context.start : context.end])
+        ):
+            continue
+        anchor = min(legal_prefix or fragments, key=_priority_key)
+        merged = _copy_name(
+            anchor, entity_type=context.entity_type,
+            start=context.start, end=context.end,
+            score=min(r.score for r in fragments),
+        )
+        removed.update(consumed)
+        replacements.append(merged)
+        if removable_location:
+            decisions.append(
+                MergeDecision("name_legal_prefix", SOURCE_NER, SOURCE_STRUCTURAL)
+            )
+        decisions.append(MergeDecision("name_explicit_value", SOURCE_NER, SOURCE_NER))
+    return [r for r in retained if id(r) not in removed] + replacements, decisions
 
 
 def _valid_span(result: RecognizerResult, text_length: int) -> bool:

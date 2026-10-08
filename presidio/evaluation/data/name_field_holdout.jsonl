@@ -1,0 +1,12 @@
+{"id":"field_person_caps","annotated_text":"ФИО: {{PERSON:ПЕТР СМИРНОВ}}.","critical":true,"tags":["positive","person_field","uppercase","holdout"]}
+{"id":"field_person_dotted","annotated_text":"Ф.И.О. = {{PERSON:МАРИЯ ИВАНОВА}}.","critical":true,"tags":["positive","person_field","uppercase","holdout"]}
+{"id":"field_person_mixed","annotated_text":"ФИО: {{PERSON:Николай Васильев}}.","critical":true,"tags":["positive","person_field","holdout"]}
+{"id":"field_legal_person","annotated_text":"Получатель: {{ORGANIZATION:ПАО Елена Попова}}.","critical":true,"tags":["positive","legal_form","holdout"]}
+{"id":"field_org_person_name","annotated_text":"Название организации: {{ORGANIZATION:Сергей Орлов}}.","critical":true,"tags":["positive","organization_field","holdout"]}
+{"id":"field_company_caps","annotated_text":"Компания {{ORGANIZATION:МАРИЯ ИВАНОВА}} получила уведомление.","critical":true,"tags":["positive","organization_context","uppercase","holdout"]}
+{"id":"field_empty_colon","annotated_text":"Ф.И.О.:","tags":["negative","person_field","holdout"]}
+{"id":"field_empty_equals","annotated_text":"ФИО =","tags":["negative","person_field","holdout"]}
+{"id":"field_unknown_person","annotated_text":"Ф.И.О.: пока не указано.","tags":["negative","person_field","holdout"]}
+{"id":"field_prose_label","annotated_text":"Поле ФИО описано в инструкции.","tags":["negative","person_field","counterexample","holdout"]}
+{"id":"field_org_unknown","annotated_text":"Название организации: не указано.","tags":["negative","organization_field","holdout"]}
+{"id":"field_service_number","annotated_text":"Идентификатор строки: 99887766 принят в обработку.","tags":["negative","service_number","holdout"]}

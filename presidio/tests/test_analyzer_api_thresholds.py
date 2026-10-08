@@ -44,6 +44,7 @@ from result_merging import (
     SOURCE_NER,
     SOURCE_STRUCTURAL,
 )
+from presidio.evaluation.corpus import load_corpus
 
 
 def _build_analyzer(*recognizers):
@@ -66,6 +67,72 @@ def _stub_loaded_ner(monkeypatch):
         "analyze",
         lambda *_args, **_kwargs: [],
     )
+
+
+def test_default_registry_delegates_person_and_organization_to_bert():
+    spacy_recognizers = [
+        recognizer
+        for recognizer in analyzer_server.analyzer.registry.recognizers
+        if recognizer.name == "SpacyRecognizer"
+    ]
+    assert spacy_recognizers
+    for recognizer in spacy_recognizers:
+        assert {"PERSON", "ORGANIZATION"}.isdisjoint(recognizer.supported_entities)
+        assert "LOCATION" in recognizer.supported_entities
+    assert analyzer_server.nlp_engine.is_loaded()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        case
+        for case in load_corpus(
+            Path(__file__).resolve().parents[1]
+            / "evaluation/data/instruction_regressions.jsonl"
+        )
+        if "negative" in case.tags and "holdout" not in case.tags
+    ],
+    ids=lambda case: case.case_id,
+)
+def test_default_registry_does_not_mask_instructions(monkeypatch, case):
+    _stub_loaded_ner(monkeypatch)
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": case.text, "score_threshold": case.score_threshold},
+    )
+    assert response.status_code == 200
+    assert response.json()["entities"] == []
+
+
+@pytest.mark.parametrize(
+    "entity_type,value", [("PERSON", "Иван Петров"), ("ORGANIZATION", "ООО Вектор")]
+)
+def test_default_registry_keeps_bert_entities_inside_instructions(
+    monkeypatch, entity_type, value
+):
+    text = "Верни ровно " + value + "."
+    start = text.index(value)
+    _stub_loaded_ner(monkeypatch)
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer,
+        "analyze",
+        lambda *_args, **_kwargs: [
+            _sourced_result(entity_type, start, start + len(value), 0.7, SOURCE_NER)
+        ],
+    )
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze", json={"text": text, "score_threshold": 0.35}
+    )
+    assert response.status_code == 200
+    assert response.json()["entities"] == [
+        {
+            "entity_type": entity_type,
+            "start": start,
+            "end": start + len(value),
+            "score": 0.7,
+            "text": value,
+        }
+    ]
 
 
 def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
@@ -91,6 +158,9 @@ def _entity_texts(entities, entity_type):
 
 
 class _EmptyAnalyzer:
+    def get_supported_entities(self, language=None):
+        return []
+
     def analyze(self, **_kwargs):
         return []
 

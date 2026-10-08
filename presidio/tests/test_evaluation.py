@@ -92,6 +92,86 @@ def test_default_corpus_covers_all_target_types_and_risk_classes():
     )
 
 
+def test_instruction_corpus_separates_originals_pairs_and_holdouts():
+    cases = load_corpus(DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl"))
+    assert len(cases) == 43
+    assert sum("original" in case.tags for case in cases) == 8
+    assert sum("holdout" in case.tags for case in cases) == 14
+    assert sum("negative" in case.tags for case in cases) == 28
+    assert sum(case.critical for case in cases) == 15
+    assert {"PERSON", "ORGANIZATION"} <= {
+        entity.entity_type
+        for case in cases
+        if "uppercase" in case.tags
+        for entity in case.expected
+    }
+
+
+def test_name_corpus_has_explicit_scope_and_untuned_holdout():
+    path = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
+    with pytest.raises(ValueError, match="does not cover target"):
+        load_corpus(path)
+    cases = load_corpus(path, required_entity_types=frozenset({"PERSON", "ORGANIZATION"}))
+    assert len(cases) == 36
+    assert sum("holdout" in case.tags for case in cases) == 10
+    assert sum("negative" in case.tags for case in cases) == 10
+    assert all(case.score_threshold == 0.35 for case in cases)
+    assert {"quotes", "initials", "uppercase", "unicode", "token_window", "outer_chunk"} <= {
+        tag for case in cases for tag in case.tags
+    }
+
+def test_name_context_corpus_keeps_pairs_and_separate_holdout():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_context_regressions.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 32
+    assert sum("holdout" in case.tags for case in cases) == 10
+    assert sum("negative" in case.tags for case in cases) == 9
+    assert {
+        "legal_form",
+        "sentence_boundary",
+        "service_number",
+        "person_field",
+        "counterexample",
+    } <= {tag for case in cases for tag in case.tags}
+    assert all(case.score_threshold == 0.35 for case in cases)
+
+
+def test_name_field_holdout_is_separate_and_checks_positive_and_negative_cases():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_field_holdout.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 12
+    assert all("holdout" in case.tags for case in cases)
+    assert sum(case.critical for case in cases) == 6
+    assert sum("negative" in case.tags for case in cases) == 6
+    assert all(case.score_threshold == 0.35 for case in cases)
+
+
+def test_field_header_control_is_separate_from_known_boundary_regression():
+    cases = load_corpus(
+        DEFAULT_CORPUS_PATH.with_name("name_field_header_control.jsonl"),
+        required_entity_types=frozenset({"PERSON", "ORGANIZATION"}),
+    )
+    assert len(cases) == 8
+    assert all("holdout" in case.tags for case in cases)
+    assert sum(case.critical for case in cases) == 4
+    assert sum("negative" in case.tags for case in cases) == 4
+    assert {"whitespace", "multiline", "unicode", "initials", "counterexample"} <= {
+        tag for case in cases for tag in case.tags
+    }
+    assert all(case.score_threshold == 0.35 for case in cases)
+    assert all("МАРИЯ ИВАНОВА" not in case.text for case in cases)
+
+
+@pytest.mark.parametrize("required", [frozenset(), frozenset({"UNKNOWN"})])
+def test_corpus_rejects_invalid_required_types(required):
+    with pytest.raises(ValueError, match="non-empty target subset"):
+        load_corpus(required_entity_types=required)
+
+
 def test_load_corpus_rejects_duplicate_ids(tmp_path):
     record = {
         "id": "duplicate",

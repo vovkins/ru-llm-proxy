@@ -1,0 +1,8 @@
+{"id":"header_control_equals","annotated_text":"ФИО\t=\t{{PERSON:Сергей Кузнецов}}.","critical":true,"tags":["positive","person_field","whitespace","holdout"]}
+{"id":"header_control_newline","annotated_text":"Анкета:\nФ.И.О.: {{PERSON:Елена Морозова}}.","critical":true,"tags":["positive","person_field","multiline","holdout"]}
+{"id":"header_control_nbsp","annotated_text":"ФИО\u00a0:\u00a0{{PERSON:ДМИТРИЙ СИДОРОВ}}.","critical":true,"tags":["positive","person_field","unicode","uppercase","holdout"]}
+{"id":"header_control_names","annotated_text":"Компания {{ORGANIZATION:ООО Север}}. Документ подписал {{PERSON:Сидоров А. Н.}}.","critical":true,"tags":["positive","counterexample","initials","organization","holdout"]}
+{"id":"header_control_empty","annotated_text":"ФИО\t=\t","tags":["negative","person_field","whitespace","holdout"]}
+{"id":"header_control_unknown","annotated_text":"Анкета:\nФ.И.О. = пока не указано.","tags":["negative","person_field","multiline","holdout"]}
+{"id":"header_control_prose","annotated_text":"В инструкции описано поле ФИО.","tags":["negative","counterexample","holdout"]}
+{"id":"header_control_fields","annotated_text":"Названия полей: ФИО, адрес, телефон.","tags":["negative","counterexample","holdout"]}

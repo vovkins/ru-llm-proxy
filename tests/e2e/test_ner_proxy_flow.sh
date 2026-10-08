@@ -16,6 +16,7 @@ PROJECT_NAME="${NER_PROXY_PROJECT:-ru-llm-proxy-ner-$$-${RANDOM}}"
 MASK_PORT="${NER_PROXY_MASK_PORT:-14010}"
 BLOCK_PORT="${NER_PROXY_BLOCK_PORT:-14011}"
 ANALYZER_PORT="${NER_PROXY_ANALYZER_PORT:-15001}"
+CAPTURE_PORT="${NER_PROXY_CAPTURE_PORT:-14012}"
 MASTER_KEY="sk-test-master"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-2}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
@@ -25,9 +26,11 @@ ORG_TEXT="Для ООО Север в Туле заданы AUTH_TOKEN=mixed-aut
 IDENTITY_VALUES=("Олег Волков" "oleg.volkov" "Mix3d-Value!" "OV-2026/81")
 ORG_VALUES=("ООО Север" "Туле" "mixed-auth-token-00073" "mixed-secret-key-00084")
 export NER_PROXY_CANARIES="Олег Волков,oleg.volkov,Mix3d-Value!,OV-2026/81,ООО Север,Туле,mixed-auth-token-00073,mixed-secret-key-00084"
+NER_PROXY_CANARIES+=",$(python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" --canaries)"
 export NER_PROXY_MASK_PORT="$MASK_PORT"
 export NER_PROXY_BLOCK_PORT="$BLOCK_PORT"
 export NER_PROXY_ANALYZER_PORT="$ANALYZER_PORT"
+export NER_PROXY_CAPTURE_PORT="$CAPTURE_PORT"
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
@@ -297,3 +300,9 @@ for forbidden in (
 PY
 
 echo "Real Analyzer proxy flow passed: mask/block and guardrail metrics verified"
+
+python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" \
+    --analyzer-url "http://127.0.0.1:${ANALYZER_PORT}" \
+    --proxy-url "http://127.0.0.1:${MASK_PORT}" \
+    --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
+    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"

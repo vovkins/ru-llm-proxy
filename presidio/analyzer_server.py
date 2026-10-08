@@ -19,8 +19,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
+from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
 from capacity import CapacityRejected, build_limiter_from_env
+from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
 from result_merging import MergeDecision, merge_results
 from text_chunking import TextChunk, plan_text_chunks
@@ -292,6 +294,8 @@ ANALYSIS_SIGNATURE_ENV_NAMES = (
 )
 ANALYSIS_SIGNATURE_DISTRIBUTIONS = (
     "presidio-analyzer",
+    "pymorphy3",
+    "pymorphy3-dicts-ru",
     "ru-core-news-sm",
     "spacy",
     "torch",
@@ -436,6 +440,16 @@ nlp_engine_provider = NlpEngineProvider(
 )
 nlp_engine = nlp_engine_provider.create_engine()
 analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+
+# The specialized BERT owns these types: generic spaCy predictions otherwise
+# mistake instructions for names and override BERT as structural findings.
+for recognizer in analyzer.registry.recognizers:
+    if isinstance(recognizer, SpacyRecognizer):
+        recognizer.supported_entities = [
+            entity
+            for entity in recognizer.supported_entities
+            if entity not in {"PERSON", "ORGANIZATION"}
+        ]
 
 # Register custom Russian regex recognizers
 for recognizer_cls in ALL_RECOGNIZERS:
@@ -756,21 +770,62 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
     try:
         ner_recognizer.require_ready()
 
+        presidio_entities = request.entities
+        if (
+            request.entities
+            and request.language in nlp_engine.get_supported_languages()
+        ):
+            # BERT-only categories are outside Presidio's registry. Keep unknown
+            # categories in its filter so invalid requests still fail explicitly.
+            bert_only_entities = NER_ENTITY_TYPES - set(
+                analyzer.get_supported_entities(language=request.language)
+            )
+            presidio_entities = [
+                entity
+                for entity in request.entities
+                if entity not in bert_only_entities
+            ]
+
         chunks = plan_text_chunks(request.text)
         _record_text_chunk_metrics(chunks)
         results: list[RecognizerResult] = []
+        sentence_starts: set[int] = set()
+        name_context_needed = not request.entities or bool(
+            {"PERSON", "ORGANIZATION"}.intersection(request.entities)
+        )
+        ner_entities = request.entities
+        if request.entities and name_context_needed:
+            ner_entities = list(
+                dict.fromkeys([*request.entities, "PERSON", "ORGANIZATION"])
+            )
         presidio_duration = 0.0
         for chunk in chunks:
             _raise_if_cancelled(cancellation_event)
             chunk_text = request.text[chunk.start : chunk.end]
             presidio_started_at = time.perf_counter()
             try:
-                chunk_results = analyzer.analyze(
-                    text=chunk_text,
-                    language=request.language,
-                    entities=request.entities,
-                    score_threshold=request.score_threshold,
-                )
+                nlp_artifacts = None
+                if (
+                    name_context_needed
+                    and request.language in nlp_engine.get_supported_languages()
+                ):
+                    nlp_artifacts = nlp_engine.process_text(
+                        chunk_text, request.language
+                    )
+                    sentence_starts.update(
+                        chunk.start + token.idx
+                        for token in nlp_artifacts.tokens
+                        if token.is_sent_start
+                    )
+                chunk_results = []
+                if not request.entities or presidio_entities:
+                    chunk_results = analyzer.analyze(
+                        text=chunk_text,
+                        language=request.language,
+                        entities=presidio_entities,
+                        score_threshold=request.score_threshold,
+                        nlp_artifacts=nlp_artifacts,
+                    )
             except Exception:
                 presidio_duration += time.perf_counter() - presidio_started_at
                 _record_analyzer_phase("presidio", "failure", presidio_duration)
@@ -786,7 +841,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             ner_results = ner_recognizer.analyze(
                 chunk_text,
                 score_threshold=request.score_threshold,
-                entities=request.entities,
+                entities=ner_entities,
                 telemetry_callback=capture_ner_telemetry,
                 cancellation_event=cancellation_event,
             )
@@ -820,6 +875,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 results,
                 requested_entities=request.entities,
                 score_threshold=request.score_threshold,
+                sentence_starts=sentence_starts,
             )
         except Exception:
             _record_analyzer_phase(

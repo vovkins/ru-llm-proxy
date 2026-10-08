@@ -936,6 +936,32 @@ class TestAnalysisCache:
         assert "+79031234567" not in serialized
 
     @pytest.mark.asyncio
+    async def test_changed_signature_does_not_reuse_false_positive(self, guardrail):
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        source = "Верни ровно MODEL_OK."
+        old_context = self._context()
+        new_context = {**old_context, "analyzer_signature": "b" * 64}
+        old_key = guardrail._analysis_cache_key(source, old_context)
+        cached = guardrail._serialize_analysis_cache_entry(
+            source,
+            [{"entity_type": "PERSON", "start": 0, "end": 5, "score": 0.85}],
+        )
+        await guardrail._redis.setex(old_key, guardrail.mapping_ttl_seconds, cached)
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze:
+            entities = await guardrail._analyze_text_with_cache(
+                source, new_context, str(uuid.uuid4()), 1
+            )
+
+        assert entities == []
+        analyze.assert_awaited_once_with(source)
+        assert guardrail._redis.values[old_key] == cached
+        new_key = guardrail._analysis_cache_key(source, new_context)
+        assert new_key != old_key
+        assert new_key in guardrail._redis.values
+
+    @pytest.mark.asyncio
     async def test_cached_entities_still_create_request_scoped_mapping(
         self,
         guardrail,
@@ -5315,6 +5341,50 @@ class TestPreCallHook:
 
 class TestPostCallFailureHook:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [499, 429, 500, 504])
+    async def test_http_failure_and_repeated_cleanup_are_request_scoped(self, status_code):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        original = pii_guardrail.HTTPException(status_code=status_code, detail="failure")
+        data = {"metadata": {"pii_request_id": "server-generated"}}
+
+        for _ in range(2):
+            assert await guardrail.async_post_call_failure_hook(
+                data, original, MagicMock()
+            ) is None
+
+        assert guardrail._redis.delete.await_count == 2
+        assert all(call.args == ("pii_mapping:server-generated",)
+                   for call in guardrail._redis.delete.await_args_list)
+        assert original.status_code == status_code
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_is_not_transformed(self):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        original = asyncio.CancelledError()
+        assert await guardrail.async_post_call_failure_hook(
+            {"metadata": {"pii_request_id": "cancelled"}}, original, MagicMock()
+        ) is None
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:cancelled")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("dependency_error", [ConnectionError, TimeoutError])
+    async def test_redis_failure_preserves_499_and_safe_logs(self, dependency_error, caplog):
+        guardrail = RuPIIGuardrail(event_hook="pre_call")
+        guardrail._redis = _mock_redis()
+        guardrail._redis.delete.side_effect = dependency_error("RAW_SECRET_SENTINEL")
+        original = pii_guardrail.HTTPException(status_code=499, detail="disconnect")
+
+        assert await guardrail.async_post_call_failure_hook(
+            {"metadata": {"pii_request_id": "cancelled"}}, original, MagicMock()
+        ) is None
+
+        assert original.status_code == 499 and original.detail == "disconnect"
+        assert "pii_guardrail_failure_cleanup_failed" in caplog.text
+        assert "RAW_SECRET_SENTINEL" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_deletes_mapping_without_transforming_provider_error(self):
         guardrail = RuPIIGuardrail(event_hook="pre_call")
         guardrail._redis = _mock_redis()
@@ -6178,7 +6248,7 @@ class TestStreamingPostCallHook:
         _yielded, content, _reasoning = await _collect_stream_text(result_stream)
 
         assert content == "<PHONE_NUMBER_1>"
-        guardrail._redis.delete.assert_not_called()
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
     @pytest.mark.asyncio
     async def test_streaming_mapping_load_error_fails_closed(self):
@@ -6207,7 +6277,7 @@ class TestStreamingPostCallHook:
 
         assert exc_info.value.status_code == 503
         assert exc_info.value.headers == {"Retry-After": "1"}
-        guardrail._redis.delete.assert_not_called()
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:req-1")
 
     @pytest.mark.asyncio
     async def test_streaming_deletes_mapping_when_upstream_iterator_fails(

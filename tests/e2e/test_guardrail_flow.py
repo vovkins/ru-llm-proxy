@@ -1,12 +1,379 @@
 """Deterministic guardrail flow test without external LLM calls."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import litellm
 import pytest
+import pytest_asyncio
+from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
+from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+from openai import AsyncOpenAI
 
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
+from presidio.entity_types import SUPPORTED_ENTITY_TYPES
+
+
+@pytest_asyncio.fixture
+async def llm_logging_lifecycle():
+    yield
+    # Drain SDK callbacks before pytest closes this test's event loop.
+    await asyncio.sleep(0)
+    if GLOBAL_LOGGING_WORKER._queue is not None:
+        await asyncio.wait_for(GLOBAL_LOGGING_WORKER._queue.join(), timeout=5)
+    await GLOBAL_LOGGING_WORKER.stop()
+
+
+class _WireStream(httpx.AsyncByteStream):
+    def __init__(self, wire):
+        self.wire = wire
+        self.closed = False
+
+    async def __aiter__(self):
+        # Transport boundaries deliberately differ from SSE event boundaries.
+        for index in range(0, len(self.wire), 17):
+            yield self.wire[index : index + 17]
+
+    async def aclose(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("output_kind", ["text", "arguments", "code"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(
+    ("replacement", "entity_type"),
+    [
+        pytest.param("pii", entity, id=entity)
+        for entity in sorted(SUPPORTED_ENTITY_TYPES)
+    ]
+    + [pytest.param("dictionary", None, id="dictionary")],
+)
+async def test_round_trip_through_litellm_parser(
+    api, output_kind, stream, replacement, entity_type, llm_logging_lifecycle
+):
+    dictionary = replacement == "dictionary"
+    guardrail = RuPIIGuardrail(
+        dictionary_substitutions_enabled=dictionary,
+        dictionary_substitutions_file="",
+        dictionary_substitutions_json=(
+            json.dumps(
+                {
+                    "substitutions": [
+                        {
+                            "id": "test-bank",
+                            "source": "Т-Банк",
+                            "replacement": "Зетта Групп",
+                            "restore": True,
+                        }
+                    ],
+                }
+            )
+            if dictionary
+            else ""
+        ),
+    )
+    store = {}
+    redis = AsyncMock()
+
+    async def setex(key, ttl, value):
+        store[key] = value
+
+    async def delete(key):
+        store.pop(key, None)
+
+    redis.setex.side_effect = setex
+    redis.get.side_effect = store.get
+    redis.delete.side_effect = delete
+    guardrail._redis = redis
+    original = "Т-Банк" if dictionary else 'Москва "центр"\nC:\\work\\main.py\t😀'
+    expected = original
+    if output_kind == "code":
+        original = "Т-Банк" if dictionary else "Москва"
+        expected = f'let city = "{original}"\nlet path = "C:\\work"\nprint(city)\n'
+    prompt = "Верни без изменений: " + expected
+    data = (
+        {"messages": [{"role": "user", "content": prompt}]}
+        if api == "chat"
+        else {"input": prompt}
+    )
+    data["stream"] = stream
+    with patch.object(
+        guardrail,
+        "_analyze_text",
+        return_value=[] if dictionary else [_entity(prompt, original, entity_type)],
+    ):
+        masked = await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+    provider_value = "Зетта Групп" if dictionary else f"<{entity_type}_1>"
+    mapping_id = masked["metadata"]["pii_request_id"]
+    assert json.loads(store[f"pii_mapping:{mapping_id}"]) == {provider_value: original}
+    upstream_text = expected.replace(original, provider_value)
+    upstream_output = (
+        json.dumps({"city": upstream_text})
+        if output_kind == "arguments"
+        else upstream_text
+    )
+    pieces = [
+        upstream_output[index : index + 3]
+        for index in range(0, len(upstream_output), 3)
+    ]
+    events = []
+    if api == "chat":
+        for index, piece in enumerate(pieces):
+            delta = {"content": piece}
+            if output_kind == "arguments":
+                delta = {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "type": "function",
+                            "function": {"arguments": piece},
+                        }
+                    ]
+                }
+                if index == 0:
+                    delta["tool_calls"][0].update(id="call-wire")
+                    delta["tool_calls"][0]["function"]["name"] = "get_city_code"
+            events.append(
+                {
+                    "id": "chat-wire",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "gpt-4o-mini",
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+                }
+            )
+        events.append(
+            {
+                "id": "chat-wire",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": "gpt-4o-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": (
+                            "tool_calls" if output_kind == "arguments" else "stop"
+                        ),
+                    }
+                ],
+            }
+        )
+    else:
+        kind = (
+            "response.function_call_arguments"
+            if output_kind == "arguments"
+            else "response.output_text"
+        )
+        for index, piece in enumerate(pieces):
+            event = {
+                "type": kind + ".delta",
+                "item_id": "item-wire",
+                "output_index": 0,
+                "sequence_number": index,
+                "delta": piece,
+            }
+            if output_kind != "arguments":
+                event.update(content_index=0, logprobs=[])
+            events.append(event)
+        done = {
+            "type": kind + ".done",
+            "item_id": "item-wire",
+            "output_index": 0,
+            "sequence_number": len(events),
+        }
+        if output_kind == "arguments":
+            done.update(arguments=upstream_output, name="get_city_code")
+            item = {
+                "type": "function_call",
+                "id": "item-wire",
+                "call_id": "call-wire",
+                "name": "get_city_code",
+                "arguments": upstream_output,
+                "status": "completed",
+            }
+        else:
+            done.update(text=upstream_output, content_index=0, logprobs=[])
+            item = {
+                "type": "message",
+                "id": "item-wire",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {"type": "output_text", "text": upstream_output, "annotations": []}
+                ],
+            }
+        events.append(done)
+        events.append(
+            {
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": len(events),
+                "item": item,
+            }
+        )
+        events.append(
+            {
+                "type": "response.completed",
+                "sequence_number": len(events),
+                "response": {
+                    "id": "resp-wire",
+                    "object": "response",
+                    "created_at": 1,
+                    "model": "gpt-4o-mini",
+                    "status": "completed",
+                    "output": [item],
+                    "parallel_tool_calls": True,
+                    "tool_choice": "auto",
+                    "tools": [],
+                },
+            }
+        )
+    wire = "".join("data: " + json.dumps(event) + "\n\n" for event in events)
+    if api == "chat":
+        wire += "data: [DONE]\n\n"
+    transport_stream = _WireStream(wire.encode())
+    requests = []
+
+    def provider(request):
+        assert request.url.path == (
+            "/v1/chat/completions" if api == "chat" else "/v1/responses"
+        )
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body.get("stream", False) is stream
+        sent = body["messages"][0]["content"] if api == "chat" else body["input"]
+        assert original not in sent
+        assert provider_value in sent
+        if not stream:
+            if api == "chat":
+                message = {"role": "assistant", "content": upstream_output}
+                if output_kind == "arguments":
+                    message.update(
+                        content=None,
+                        tool_calls=[
+                            {
+                                "id": "call-wire",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_city_code",
+                                    "arguments": upstream_output,
+                                },
+                            }
+                        ],
+                    )
+                document = {
+                    "id": "chat-wire",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "gpt-4o-mini",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": message,
+                            "finish_reason": (
+                                "tool_calls" if output_kind == "arguments" else "stop"
+                            ),
+                        }
+                    ],
+                }
+            else:
+                document = events[-1]["response"]
+            return httpx.Response(200, json=document)
+        return httpx.Response(
+            200, headers={"Content-Type": "text/event-stream"}, stream=transport_stream
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(provider)
+    ) as http_client:
+        if api == "chat":
+            client = AsyncOpenAI(
+                api_key="synthetic-test-key",
+                base_url="http://mock.invalid/v1",
+                http_client=http_client,
+            )
+            response = await litellm.acompletion(
+                model="openai/gpt-4o-mini",
+                messages=masked["messages"],
+                stream=stream,
+                client=client,
+            )
+        else:
+            client = AsyncHTTPHandler()
+            await client.client.aclose()
+            client.client = http_client
+            response = await litellm.aresponses(
+                model="openai/gpt-4o-mini",
+                input=masked["input"],
+                stream=stream,
+                api_key="synthetic-test-key",
+                api_base="http://mock.invalid/v1",
+                client=client,
+            )
+        if stream:
+            restored = [
+                event
+                async for event in guardrail.async_post_call_streaming_iterator_hook(
+                    MagicMock(), response, masked
+                )
+            ]
+        else:
+            await guardrail.async_post_call_success_hook(masked, MagicMock(), response)
+            restored = [response]
+
+    assert len(requests) == 1
+    if stream:
+        assert transport_stream.closed
+    assert not store
+    redis.delete.assert_awaited_once_with(f"pii_mapping:{mapping_id}")
+    if api == "chat":
+        if output_kind == "arguments":
+            output = "".join(
+                call.function.arguments or ""
+                for event in restored
+                for choice in event.choices
+                for call in (choice.delta if stream else choice.message).tool_calls
+                or []
+            )
+            assert json.loads(output) == {"city": expected}
+        else:
+            output = "".join(
+                (choice.delta if stream else choice.message).content or ""
+                for event in restored
+                for choice in event.choices
+            )
+            assert output.encode() == expected.encode()
+        assert [
+            choice.finish_reason
+            for event in restored
+            for choice in event.choices
+            if choice.finish_reason
+        ] == ["tool_calls" if output_kind == "arguments" else "stop"]
+    else:
+        documents = [event.model_dump() for event in restored]
+        final_response = documents[-1]["response"] if stream else documents[0]
+        final_item = final_response["output"][0]
+        output = (
+            "".join(event.get("delta", "") for event in documents)
+            if stream
+            else (
+                final_item["arguments"]
+                if output_kind == "arguments"
+                else final_item["content"][0]["text"]
+            )
+        )
+        if output_kind == "arguments":
+            assert json.loads(output) == {"city": expected}
+            assert json.loads(final_item["arguments"]) == json.loads(output)
+        else:
+            assert output.encode() == expected.encode()
+            assert final_item["content"][0]["text"] == output
+        assert final_response["status"] == "completed"
 
 
 def _entity(text, value, entity_type):
@@ -217,10 +584,7 @@ async def test_block_mode_rejects_extended_recognizer_values_before_provider():
     guardrail = RuPIIGuardrail(pii_mode="block")
     redis = AsyncMock()
     guardrail._redis = redis
-    user_text = (
-        "Паспорт 45 12 №678901, пользователь ci_runner_12, "
-        "хост app-prod-01"
-    )
+    user_text = "Паспорт 45 12 №678901, пользователь ci_runner_12, " "хост app-prod-01"
     data = {"messages": [{"role": "user", "content": user_text}]}
     analyzer_results = [
         _entity(user_text, "45 12 №678901", "RU_PASSPORT"),

@@ -303,8 +303,7 @@ def run_protocol_case(
     restored = output_text == marker
     masked_only = bool(PII_PLACEHOLDER.fullmatch(output_text))
     if expect_success:
-        safe_result = restored or (api == "responses" and stream and masked_only)
-        if result.status != 200 or not safe_result:
+        if result.status != 200 or not restored:
             raise AssertionError(
                 f"{api} stream={stream} success path failed: status={result.status}"
             )

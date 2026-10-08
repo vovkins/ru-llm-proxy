@@ -1,0 +1,43 @@
+{"id":"instruction_model_original","annotated_text":"Верни ровно MODEL_OK.","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_one","annotated_text":"Верни ровно PX_PAR_1_0_0_9c592004","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_two_first","annotated_text":"Верни ровно PX_PAR_2_0_1_14958070","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_two_second","annotated_text":"Верни ровно PX_PAR_2_0_0_ec285b57","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_four_first","annotated_text":"Верни ровно PX_PAR_4_0_1_7b62da61","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_four_second","annotated_text":"Верни ровно PX_PAR_4_0_0_91f02b14","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_four_third","annotated_text":"Верни ровно PX_PAR_4_0_2_432775fc","tags":["negative","instruction","original"]}
+{"id":"instruction_parallel_four_fourth","annotated_text":"Верни ровно PX_PAR_4_0_3_1c7b9cd4","tags":["negative","instruction","original"]}
+{"id":"instruction_english_marker","annotated_text":"Return exactly BUILD_READY without explanation.","tags":["negative","instruction","en"]}
+{"id":"instruction_russian_marker","annotated_text":"Напиши только RESULT_READY без пояснений.","tags":["negative","instruction","ru"]}
+{"id":"instruction_model_glm","annotated_text":"Используй модель glm-5.2 для ответа.","tags":["negative","model","ru"]}
+{"id":"instruction_model_luna","annotated_text":"Модель gpt-5.6-luna выбрана для проверки.","tags":["negative","model","ru"]}
+{"id":"instruction_model_sol","annotated_text":"The selected model is gpt-5.6-sol.","tags":["negative","model","en"]}
+{"id":"instruction_json_keys","annotated_text":"Объясни поля JSON: model, stream, max_tokens, organization_id.","tags":["negative","identifier","ru"]}
+{"id":"instruction_json_object","annotated_text":"{\"model\":\"gpt-5.6-luna\",\"stream\":true,\"max_tokens\":2048}","tags":["negative","json","en"]}
+{"id":"instruction_code_python","annotated_text":"def build_result():\n    return {\"status\": \"BUILD_READY\"}","tags":["negative","code","en"]}
+{"id":"instruction_code_swift","annotated_text":"let result = \"RESULT_READY\"\nprint(result)","tags":["negative","code","en"]}
+{"id":"instruction_identifiers","annotated_text":"Поля request_id и output_index должны сохраняться.","tags":["negative","identifier","ru"]}
+{"id":"instruction_person_pair","annotated_text":"Верни ровно {{PERSON:Иван Петров}}.","critical":true,"tags":["positive","instruction","person"]}
+{"id":"instruction_person_uppercase","annotated_text":"Клиент {{PERSON:ИВАН ПЕТРОВ}} подтвердил заявку.","critical":true,"tags":["positive","instruction","person","uppercase"]}
+{"id":"instruction_person_english","annotated_text":"Return the account owner {{PERSON:John Michael Smith}} unchanged.","critical":true,"tags":["positive","instruction","person","en"]}
+{"id":"instruction_person_unicode","annotated_text":"Верни имя клиента: {{PERSON:Ива\u0301н Петров}}.","critical":true,"tags":["positive","instruction","person","unicode"]}
+{"id":"instruction_org_pair","annotated_text":"Верни ровно {{ORGANIZATION:ООО Вектор}}.","critical":true,"tags":["positive","instruction","organization"]}
+{"id":"instruction_org_uppercase","annotated_text":"Получатель: {{ORGANIZATION:ООО ВЕКТОР}}.","critical":true,"tags":["positive","instruction","organization","uppercase"]}
+{"id":"instruction_org_english","annotated_text":"The contract was signed by {{ORGANIZATION:Northwind Research Ltd}}.","critical":true,"tags":["positive","instruction","organization","en"]}
+{"id":"instruction_password_pair","annotated_text":"Верни ровно password={{PASSWORD:S3cure-Value42}}.","critical":true,"tags":["positive","instruction","password"]}
+{"id":"instruction_login_pair","annotated_text":"Верни login={{LOGIN:ivan.petrov}} без изменений.","critical":true,"tags":["positive","instruction","login"]}
+{"id":"instruction_location_pair","annotated_text":"Встреча состоится в {{LOCATION:Москве}} завтра. Верни город.","critical":true,"tags":["positive","instruction","location"]}
+{"id":"instruction_contract_pair","annotated_text":"Договор № {{CONTRACT_NUMBER:AB-2026/0042}} вступает в силу завтра. Верни номер.","critical":true,"tags":["positive","instruction","contract_number"]}
+{"id":"instruction_holdout_json_keys","annotated_text":"{\"response_id\":null,\"content_index\":0,\"entity_type\":\"PERSON\"}","tags":["negative","json","holdout"]}
+{"id":"instruction_holdout_russian_command","annotated_text":"Покажи только CHECK_COMPLETE без комментариев.","tags":["negative","instruction","holdout"]}
+{"id":"instruction_holdout_english_command","annotated_text":"Reply with TASK_FINISHED and nothing else.","tags":["negative","instruction","holdout"]}
+{"id":"instruction_holdout_model","annotated_text":"Проверь доступность модели glm-5.1.","tags":["negative","model","holdout"]}
+{"id":"instruction_holdout_model_family","annotated_text":"Compare gpt-5.6-luna and gpt-5.6-sol.","tags":["negative","model","holdout"]}
+{"id":"instruction_holdout_code","annotated_text":"const response = {stream: false, model: \"glm-5.2\"};","tags":["negative","code","holdout"]}
+{"id":"instruction_holdout_identifier","annotated_text":"Значение build-result-ready является идентификатором результата.","tags":["negative","identifier","holdout"]}
+{"id":"instruction_holdout_empty_person","annotated_text":"Верни пустой список PERSON, если имена не указаны.","tags":["negative","instruction","holdout"]}
+{"id":"instruction_holdout_enum","annotated_text":"Перечисление статусов: TASK_READY, TASK_RUNNING, TASK_FINISHED.","tags":["negative","identifier","holdout"]}
+{"id":"instruction_holdout_plain_command","annotated_text":"Прочитай код и объясни результат без изменений.","tags":["negative","instruction","holdout"]}
+{"id":"instruction_holdout_person","annotated_text":"Ответственный: {{PERSON:Анна Соколова}}. Верни только имя.","critical":true,"tags":["positive","person","holdout"]}
+{"id":"instruction_holdout_org","annotated_text":"Платёж подготовлен для {{ORGANIZATION:Альфа-Банка}}. Верни получателя.","critical":true,"tags":["positive","organization","holdout"]}
+{"id":"instruction_holdout_auth_token","annotated_text":"Верни AUTH_TOKEN={{AUTH_TOKEN:synthetic-session-token-2031}} без пояснений.","critical":true,"tags":["positive","auth_token","holdout"]}
+{"id":"instruction_holdout_secret_key","annotated_text":"Верни SECRET_KEY={{SECRET_KEY:synthetic-key-material-2031}} без изменений.","critical":true,"tags":["positive","secret_key","holdout"]}

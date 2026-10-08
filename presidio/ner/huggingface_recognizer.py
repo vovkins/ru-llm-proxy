@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from contextlib import nullcontext
@@ -17,6 +18,7 @@ from result_merging import (
     DETECTION_SOURCE_METADATA_KEY,
     NER_MODEL_METADATA_KEY,
     SOURCE_NER,
+    name_context_evidence,
 )
 
 try:
@@ -367,6 +369,7 @@ def _filter_window_predictions(
     *,
     score_threshold: float,
     requested_entities: Optional[set[str]],
+    supporting_name_spans: tuple[tuple[int, int], ...] = (),
 ) -> list[WindowEntityPrediction]:
     return [
         prediction
@@ -375,6 +378,14 @@ def _filter_window_predictions(
         and (
             requested_entities is None
             or prediction.entity.entity_type in requested_entities
+            or (
+                prediction.entity.entity_type == "LOGIN"
+                and not prediction.touches_internal_boundary
+                and any(
+                    start <= prediction.entity.start < prediction.entity.end <= end
+                    for start, end in supporting_name_spans
+                )
+            )
         )
     ]
 
@@ -452,6 +463,79 @@ def merge_window_predictions(
 
     return sorted(
         merged,
+        key=lambda entity: (entity.start, entity.end, entity.entity_type),
+    )
+
+
+_ORGANIZATION_QUOTES_RE = re.compile(
+    r'«[^«»"„“”\r\n]{1,256}»|'
+    r'"[^«»"„“”\r\n]{1,256}"|'
+    r'„[^«»"„“”\r\n]{1,256}“|'
+    r'“[^«»"„“”\r\n]{1,256}”'
+)
+_LEGAL_FORMS = frozenset({"ООО", "АО", "ПАО", "ОАО", "ЗАО"})
+
+
+def refine_organization_quotes(
+    text: str,
+    predictions: list[EntityPrediction],
+    *,
+    conflicting_predictions: tuple[EntityPrediction, ...] = (),
+) -> list[EntityPrediction]:
+    """Complete paired quotes, never adding undetected name characters."""
+    ordered = sorted(
+        list(enumerate(predictions)) + [(-1, entity) for entity in conflicting_predictions],
+        key=lambda item: (item[1].start, item[1].end),
+    )
+    active: list[tuple[int, EntityPrediction]] = []
+    consumed: set[int] = set()
+    replacements: list[EntityPrediction] = []
+    cursor = 0
+    for quote in _ORGANIZATION_QUOTES_RE.finditer(text):
+        active = [
+            (index, entity) for index, entity in active
+            if entity.end > quote.start()
+        ]
+        while cursor < len(ordered) and ordered[cursor][1].start < quote.end():
+            index, entity = ordered[cursor]
+            if entity.end > quote.start():
+                active.append((index, entity))
+            cursor += 1
+        if not active or any(
+            entity.entity_type != "ORGANIZATION" for _, entity in active
+        ):
+            continue
+        start = min(entity.start for _, entity in active)
+        end = max(entity.end for _, entity in active)
+        if end > quote.end() or (
+            start < quote.start()
+            and text[start:quote.start()].strip().upper() not in _LEGAL_FORMS
+        ):
+            continue
+        inner_start, inner_end = quote.start() + 1, quote.end() - 1
+        if not any(character.isalpha() for character in text[inner_start:inner_end]):
+            continue
+        covered_end = inner_start
+        for _, entity in active:
+            gap_end = min(entity.start, inner_end)
+            if gap_end > covered_end and text[covered_end:gap_end].strip():
+                break
+            covered_end = max(covered_end, entity.end)
+        else:
+            if covered_end < inner_end and text[covered_end:inner_end].strip():
+                continue
+            consumed.update(index for index, _ in active)
+            replacements.append(
+                EntityPrediction(
+                    "ORGANIZATION",
+                    min(start, quote.start()),
+                    quote.end(),
+                    min(entity.score for _, entity in active),
+                )
+            )
+    return sorted(
+        [entity for index, entity in enumerate(predictions) if index not in consumed]
+        + replacements,
         key=lambda entity: (entity.start, entity.end, entity.entity_type),
     )
 
@@ -997,10 +1081,16 @@ class HuggingFaceNERRecognizer:
             )
             raise error from exc
         requested_entities = _normalize_requested_entities(entities)
+        supporting_name_spans = (
+            tuple((context.start, context.end) for context in name_context_evidence(normalized.text))
+            if requested_entities and requested_entities & {"PERSON", "ORGANIZATION"}
+            else ()
+        )
         filtered_predictions = _filter_window_predictions(
             window_predictions,
             score_threshold=score_threshold,
             requested_entities=requested_entities,
+            supporting_name_spans=supporting_name_spans,
         )
         try:
             entity_predictions = merge_window_predictions(filtered_predictions)
@@ -1036,6 +1126,7 @@ class HuggingFaceNERRecognizer:
                 recovery_predictions,
                 score_threshold=score_threshold,
                 requested_entities=requested_entities,
+                supporting_name_spans=supporting_name_spans,
             )
             selected_recovery_predictions = _select_boundary_recovery_predictions(
                 filtered_recovery_predictions,
@@ -1069,6 +1160,24 @@ class HuggingFaceNERRecognizer:
             self._mark_failed_if_service_wide(error)
             raise error from exc
 
+        # Window completeness and thresholds are checked before adding punctuation.
+        try:
+            entity_predictions = refine_organization_quotes(
+                normalized.text,
+                entity_predictions,
+                conflicting_predictions=tuple(
+                    prediction.entity
+                    for prediction in window_predictions
+                    if prediction.entity.entity_type != "ORGANIZATION"
+                    and prediction.entity.score >= score_threshold
+                ),
+            )
+        except Exception as exc:
+            raise NERProcessingError(
+                phase="decoding",
+                failure_class="bio_decoding_failed",
+                windows_processed=windows_processed,
+            ) from exc
         results: list[RecognizerResult] = []
         for entity in entity_predictions:
             try:

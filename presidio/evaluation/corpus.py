@@ -189,7 +189,11 @@ def _parse_record(record: Any, *, line_number: int) -> CorpusCase:
     )
 
 
-def validate_corpus(cases: Iterable[CorpusCase]) -> tuple[CorpusCase, ...]:
+def validate_corpus(
+    cases: Iterable[CorpusCase],
+    *,
+    required_entity_types: frozenset[str] = TARGET_ENTITY_TYPES,
+) -> tuple[CorpusCase, ...]:
     """Validate collection-wide corpus invariants."""
     normalized = tuple(cases)
     if not normalized:
@@ -204,7 +208,9 @@ def validate_corpus(cases: Iterable[CorpusCase]) -> tuple[CorpusCase, ...]:
         for case in normalized
         for entity in case.expected
     }
-    missing_types = TARGET_ENTITY_TYPES - covered_types
+    if not required_entity_types or not required_entity_types <= TARGET_ENTITY_TYPES:
+        raise ValueError("required entity types must be a non-empty target subset")
+    missing_types = required_entity_types - covered_types
     if missing_types:
         missing = ", ".join(sorted(missing_types))
         raise ValueError(f"corpus does not cover target entity types: {missing}")
@@ -221,7 +227,11 @@ def validate_corpus(cases: Iterable[CorpusCase]) -> tuple[CorpusCase, ...]:
     return normalized
 
 
-def load_corpus(path: Path | str = DEFAULT_CORPUS_PATH) -> tuple[CorpusCase, ...]:
+def load_corpus(
+    path: Path | str = DEFAULT_CORPUS_PATH,
+    *,
+    required_entity_types: frozenset[str] = TARGET_ENTITY_TYPES,
+) -> tuple[CorpusCase, ...]:
     """Load a JSONL corpus and validate all records."""
     corpus_path = Path(path)
     cases: list[CorpusCase] = []
@@ -234,4 +244,4 @@ def load_corpus(path: Path | str = DEFAULT_CORPUS_PATH) -> tuple[CorpusCase, ...
                 cases.append(_parse_record(record, line_number=line_number))
             except (json.JSONDecodeError, ValueError) as exc:
                 raise ValueError(f"invalid corpus at line {line_number}: {exc}") from exc
-    return validate_corpus(cases)
+    return validate_corpus(cases, required_entity_types=required_entity_types)

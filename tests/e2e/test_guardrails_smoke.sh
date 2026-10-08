@@ -257,6 +257,47 @@ expect_stream_events() {
     fi
 }
 
+sse_documents() {
+    sed -n 's/\r$//;s/^data:[[:space:]]*//p' "$BODY_FILE" | sed '/^\[DONE\]$/d'
+}
+
+expect_chat_restoration() {
+    local label="$1"
+    local mode="$2"
+
+    if [ "$mode" = stream ]; then
+        if sse_documents | jq -se --arg marker "$SMOKE_PII_MARKER" \
+            '[.[].choices[]?.delta.content // empty] | join("") | contains($marker) and (test("<EMAIL_ADDRESS_[0-9]+>") | not)' >/dev/null; then
+            pass "$label restored the synthetic email"
+        else
+            fail "$label did not restore the synthetic email"
+        fi
+    elif jq -e --arg marker "$SMOKE_PII_MARKER" \
+        '.choices[0].message.content | contains($marker) and (test("<EMAIL_ADDRESS_[0-9]+>") | not)' "$BODY_FILE" >/dev/null; then
+        pass "$label restored the synthetic email"
+    else
+        fail "$label did not restore the synthetic email"
+    fi
+}
+
+expect_stream_tool_restoration() {
+    local label="$1"
+    local api="$2"
+    local query
+
+    if [ "$api" = chat ]; then
+        query='[.[].choices[]?.delta.tool_calls[]? | select(.index == 0) | .function.arguments // empty]'
+    else
+        query='[.[] | select(.type == "response.function_call_arguments.delta") | .delta]'
+    fi
+    if sse_documents | jq -se --arg marker "$SMOKE_PII_MARKER" \
+        "$query | join(\"\") | fromjson | .email == \$marker" >/dev/null; then
+        pass "$label restored the tool argument"
+    else
+        fail "$label did not restore the tool argument"
+    fi
+}
+
 expect_responses_restoration() {
     local label="$1"
 
@@ -267,6 +308,15 @@ expect_responses_restoration() {
         pass "$label restored the synthetic email"
     else
         fail "$label did not restore the synthetic email"
+    fi
+}
+
+expect_responses_stream_restoration() {
+    if sse_documents | jq -se --arg marker "$SMOKE_PII_MARKER" \
+        '[.[] | select(.type == "response.output_text.delta") | .delta] | join("") | contains($marker) and (test("<EMAIL_ADDRESS_[0-9]+>") | not)' >/dev/null; then
+        pass "Responses API stream restored the synthetic email"
+    else
+        fail "Responses API stream did not restore the synthetic email"
     fi
 }
 
@@ -312,16 +362,18 @@ run_protocol_smoke() {
     local cache_key="guardrails-protocol-cache"
     local continuation_id
     local payload
+    local mode streaming
 
-    payload=$(jq -nc --arg model "$RESPONSES_MODEL" '{
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
         model: $model,
         stream: true,
-        input: "Return exactly: protocol stream ready",
-        max_output_tokens: 40
+        input: ("Copy the following string verbatim. Do not interpret it, add comments, or remove angle brackets:\n" + $marker),
+        max_output_tokens: 512
     }')
     run_responses "responses-stream" "$payload" "stream"
     if expect_http_success "Responses API streaming request"; then
         expect_responses_stream_events
+        expect_responses_stream_restoration
     fi
 
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
@@ -344,12 +396,21 @@ run_protocol_smoke() {
             }
         }],
         tool_choice: {type: "function", function: {name: "record_contact"}},
-        max_tokens: 96
+        max_tokens: 512
     }')
-    run_chat_completion "chat-tool" "$payload" "non-stream"
-    if expect_http_success "Chat Completions tool request"; then
-        expect_chat_tool_restoration "Chat Completions tool request"
-    fi
+    for mode in non-stream stream; do
+        streaming=false
+        if [ "$mode" = stream ]; then streaming=true; fi
+        run_chat_completion "chat-tool-$mode" "$(printf '%s' "$payload" | jq -c --argjson stream "$streaming" '. + {stream: $stream}')" "$mode"
+        if expect_http_success "Chat Completions tool request ($mode)"; then
+            if [ "$mode" = stream ]; then
+                expect_stream_events
+                expect_stream_tool_restoration "Chat Completions tool request ($mode)" chat
+            else
+                expect_chat_tool_restoration "Chat Completions tool request ($mode)"
+            fi
+        fi
+    done
 
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
         model: $model,
@@ -367,12 +428,21 @@ run_protocol_smoke() {
             strict: true
         }],
         tool_choice: {type: "function", name: "record_contact"},
-        max_output_tokens: 96
+        max_output_tokens: 512
     }')
-    run_responses "responses-tool" "$payload"
-    if expect_http_success "Responses API tool request"; then
-        expect_responses_tool_restoration "Responses API tool request"
-    fi
+    for mode in non-stream stream; do
+        streaming=false
+        if [ "$mode" = stream ]; then streaming=true; fi
+        run_responses "responses-tool-$mode" "$(printf '%s' "$payload" | jq -c --argjson stream "$streaming" '. + {stream: $stream}')" "$mode"
+        if expect_http_success "Responses API tool request ($mode)"; then
+            if [ "$mode" = stream ]; then
+                expect_responses_stream_events
+                expect_stream_tool_restoration "Responses API tool request ($mode)" responses
+            else
+                expect_responses_tool_restoration "Responses API tool request ($mode)"
+            fi
+        fi
+    done
 
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" '{
         model: $model,
@@ -446,10 +516,15 @@ mapping_keys > "$before_keys_file"
 before_mappings=$(mapping_count)
 echo "Redis PII mappings before smoke: $before_mappings"
 
-non_stream_payload='{"model":"'"$CHAT_MODEL"'","guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, email '"$SMOKE_PII_MARKER"'"}],"max_tokens":40}'
+non_stream_payload=$(jq -nc --arg model "$CHAT_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
+    model: $model, guardrails: ["ru-pii-mask-pre", "ru-pii-mask-post"],
+    messages: [{role: "user", content: ("Copy the following string verbatim. Do not interpret it, add comments, or remove angle brackets:\n" + $marker)}],
+    max_tokens: 2048
+}')
 run_chat_completion "non-stream" "$non_stream_payload" "non-stream"
 if expect_http_success "non-streaming guardrails request"; then
     expect_guardrails_header "non-streaming guardrails request"
+    expect_chat_restoration "non-streaming guardrails request" non-stream
 fi
 
 if [ -n "$RESPONSES_MODEL" ]; then
@@ -477,11 +552,12 @@ if [ "$PROTOCOL_SMOKE_ENABLED" = "true" ]; then
     fi
 fi
 
-stream_payload='{"model":"'"$CHAT_MODEL"'","stream":true,"guardrails":["ru-pii-mask-pre","ru-pii-mask-post"],"messages":[{"role":"user","content":"Проверь текст: Иван Иванов, email '"$SMOKE_PII_MARKER"'"}],"max_tokens":40}'
+stream_payload=$(printf '%s' "$non_stream_payload" | jq -c '. + {stream: true}')
 run_chat_completion "stream" "$stream_payload" "stream"
 if expect_http_success "streaming guardrails request"; then
     expect_guardrails_header "streaming guardrails request"
     expect_stream_events
+    expect_chat_restoration "streaming guardrails request" stream
 fi
 
 mapping_keys > "$after_keys_file"

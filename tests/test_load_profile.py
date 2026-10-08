@@ -41,6 +41,35 @@ def _whitespace_units(value: object) -> int:
     return 0
 
 
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("restored", [False, True])
+def test_protocol_success_requires_restored_value(monkeypatch, api, stream, restored):
+    monkeypatch.setattr(
+        stateful_checks,
+        "http_request",
+        lambda *args, **kwargs: stateful_checks.HTTPResult(200, {}, b""),
+    )
+    monkeypatch.setattr(
+        stateful_checks,
+        "response_text",
+        lambda *args: "synthetic-city" if restored else "<LOCATION_1>",
+    )
+    kwargs = {
+        "base_url": "http://mock.invalid",
+        "master_key": "synthetic-key",
+        "api": api,
+        "stream": stream,
+        "marker": "synthetic-city",
+        "expect_success": True,
+    }
+    if restored:
+        assert stateful_checks.run_protocol_case(**kwargs)["validation_result"] == "restored"
+    else:
+        with pytest.raises(AssertionError, match="success path failed"):
+            stateful_checks.run_protocol_case(**kwargs)
+
+
 def test_context_sizes_are_bounded_unique_and_ordered():
     assert load_support.parse_context_sizes("1000,8000,50000,1000000") == (
         1_000,

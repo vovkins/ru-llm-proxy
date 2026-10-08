@@ -164,6 +164,8 @@ test-static: test-routing-diagnostics
 		tests/test_guardrail_dependency_config.py \
 		tests/test_pre_egress_policy_config.py \
 		tests/test_final_payload_leak_check_config.py \
+		tests/test_nonstream_disconnect_config.py \
+		tests/test_controlled_sse.py \
 		tests/test_configuration_docs.py \
 		tests/test_compliance_gate_config.py \
 		tests/test_production_egress_controls_docs.py \
@@ -245,6 +247,7 @@ test-pre-egress-proxy:
 test-final-leak-proxy:
 	@echo "🧪 Final payload leak-check proxy non-egress smoke"
 	bash tests/e2e/test_final_leak_proxy_non_egress.sh
+	bash tests/e2e/test_nonstream_disconnect.sh
 
 test-egress-security:
 	@echo "🧪 Egress-security gate: mock provider capture/no-egress"
