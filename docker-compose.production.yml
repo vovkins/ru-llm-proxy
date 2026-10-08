@@ -1,0 +1,43 @@
+services:
+  nginx:
+    cpus: ${NGINX_CPUS:-1.0}
+    mem_limit: ${NGINX_MEMORY:-256m}
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+      - "5001:5001"
+    volumes:
+      - ./nginx/conf.d/production.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      ru-llm-proxy.topology: production
+
+  litellm:
+    container_name: !reset null
+    ports: !reset []
+    scale: ${LITELLM_REPLICAS:-2}
+    cpus: ${LITELLM_CPUS:-2.0}
+    mem_limit: ${LITELLM_MEMORY:-4g}
+    environment:
+      PRESIDIO_ANALYZER_URL: http://nginx:5001
+    labels:
+      ru-llm-proxy.topology: production
+
+  presidio-analyzer:
+    container_name: !reset null
+    ports: !reset []
+    scale: ${ANALYZER_REPLICAS:-4}
+    cpus: ${ANALYZER_CPUS:-4.0}
+    mem_limit: ${ANALYZER_MEMORY:-8g}
+    labels:
+      ru-llm-proxy.topology: production
+
+  db:
+    cpus: ${DB_CPUS:-2.0}
+    mem_limit: ${DB_MEMORY:-4g}
+    labels:
+      ru-llm-proxy.topology: production
+
+  redis:
+    cpus: ${REDIS_CPUS:-1.0}
+    mem_limit: ${REDIS_MEMORY:-2g}
+    labels:
+      ru-llm-proxy.topology: production

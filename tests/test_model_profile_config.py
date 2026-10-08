@@ -96,7 +96,10 @@ def test_metrics_endpoint_is_public_and_monitoring_targets_follow_redirects():
     monitoring = (ROOT / "docs" / "monitoring.md").read_text(encoding="utf-8")
 
     assert "require_auth_for_metrics_endpoint: false" in config
-    assert "curl -L -sf http://localhost:4000/metrics" in makefile
-    assert "Presidio Analyzer metrics exposed" in makefile
+    assert "$(DEPLOY) metrics" in makefile
+    deployment = (ROOT / "scripts/deployment.py").read_text(encoding="utf-8")
+    assert "/metrics" in deployment and '"docker", "exec"' in deployment
+    assert 'service not in {"litellm", "presidio-analyzer"}' in deployment
+    assert 'port = 4000 if service == "litellm" else 5001' in deployment
     assert "открыт без ключа LiteLLM API" in readme
     assert "require_auth_for_metrics_endpoint: false" in monitoring

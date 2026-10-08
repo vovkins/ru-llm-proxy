@@ -8,6 +8,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE = (ROOT / "Makefile").read_text(encoding="utf-8")
@@ -59,8 +61,10 @@ def test_build_is_common_but_up_never_builds_implicitly():
         assert service in build_section
     assert "--no-build" in up_section
     assert " build" not in up_section
-    assert 'scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)"' in up_section
-    assert '"$(STACK_START_TIMEOUT)"' in up_section
+    assert "$(DEPLOY) start" in up_section
+    deployment = (ROOT / "scripts/deployment.py").read_text()
+    assert 'os.getenv("STACK_START_TIMEOUT", "180")' in deployment
+    assert "self.health(timeout)" in deployment
     assert "sleep 5" not in up_section
 
 
@@ -71,23 +75,40 @@ def test_restart_recreates_selected_stack_and_rereads_env():
 
     assert "--force-recreate" in section
     assert "--no-build" in section
-    assert '"$(STACK_START_TIMEOUT)"' in section
+    assert "$(DEPLOY) start" in section
     assert "docker compose restart" not in section
 
 
-def test_make_rejects_runtime_command_without_stack():
+@pytest.mark.parametrize(
+    "inherited_flags",
+    ["", " -- STACK=litellm-presidio-codex-lb TOPOLOGY=production"],
+)
+def test_make_rejects_runtime_command_without_stack(tmp_path, monkeypatch, inherited_flags):
+    for key in ("MAKEFLAGS", "MAKEOVERRIDES", "MFLAGS", "GNUMAKEFLAGS"):
+        monkeypatch.setenv(key, inherited_flags)
+    monkeypatch.setenv("STACK", "litellm-presidio-codex-lb")
+    docker_called = tmp_path / "docker-called"
+    docker = tmp_path / "docker"
+    docker.write_text(f"#!/bin/sh\ntouch '{docker_called}'\nexit 99\n", encoding="utf-8")
+    docker.chmod(0o755)
+    # A nested Make inherits command-line variables through flags, not just STACK.
+    excluded = {"STACK", "MAKEFLAGS", "MAKEOVERRIDES", "MFLAGS", "GNUMAKEFLAGS", "MAKELEVEL"}
+    environment = {key: value for key, value in os.environ.items() if key not in excluded}
+    environment["PATH"] = f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}"
     result = subprocess.run(
-        ["make", "up"],
+        ["make", "up", f"DOCKER_DESKTOP_BIN={tmp_path}"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
-        env={key: value for key, value in os.environ.items() if key != "STACK"},
+        env=environment,
+        timeout=10,
     )
 
     assert result.returncode == 2
     assert "Укажите STACK=litellm-presidio" in result.stdout
     assert "docker compose" not in result.stdout
+    assert not docker_called.exists(), "The negative lifecycle test invoked Docker"
 
 
 def test_setup_env_keeps_codex_lb_secrets_out_of_core_stack(tmp_path):

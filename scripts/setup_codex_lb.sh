@@ -18,10 +18,8 @@ port="$(get_env_value CODEX_LB_PORT || true)"
 port="${port:-2455}"
 base_url="http://127.0.0.1:${port}"
 compose=(
-    docker compose
-    --env-file "$env_file"
-    -f docker-compose.yml
-    -f docker-compose.codex-lb.yml
+    "${PYTHON_LOCAL:-python3}" scripts/deployment.py
+    --stack litellm-presidio-codex-lb --env-file "$env_file" compose
 )
 
 echo "🚀 Запуск компонентов первичной настройки codex-lb"

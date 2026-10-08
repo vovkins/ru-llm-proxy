@@ -1,0 +1,11 @@
+services:
+  codex-lb:
+    cpus: ${CODEX_LB_CPUS:-2.0}
+    mem_limit: ${CODEX_LB_MEMORY:-4g}
+    labels:
+      ru-llm-proxy.topology: production
+  codex-lb-db:
+    cpus: ${CODEX_LB_DB_CPUS:-1.0}
+    mem_limit: ${CODEX_LB_DB_MEMORY:-2g}
+    labels:
+      ru-llm-proxy.topology: production

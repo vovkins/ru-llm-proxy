@@ -25,7 +25,8 @@ class RoutingSmokeMakefileTest(unittest.TestCase):
         self.assertIn("returned HTTP $$status", self.recipe)
 
     def test_completion_requests_use_versioned_chat_endpoint(self):
-        self.assertIn("http://localhost:4000/v1/chat/completions", self.recipe)
+        self.assertIn('"$$LITELLM_URL/v1/chat/completions"', self.recipe)
+        self.assertIn("$(DEPLOY) url", self.recipe)
         self.assertNotIn("http://localhost:4000/chat/completions", self.recipe)
 
     def test_default_routing_model_is_glm_52(self):

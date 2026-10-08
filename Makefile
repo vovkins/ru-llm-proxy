@@ -1,4 +1,4 @@
-.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack require-analyzer-profile
+.PHONY: setup build up down restart logs test test-unit test-static test-recognizers test-recognizer-api test-ner-evaluation test-hf-model test-hf-model-run test-ner-proxy test-ner-integration ner-evaluate test-guardrail test-flow test-routing-diagnostics test-e2e test-pre-egress-proxy test-final-leak-proxy test-egress-security test-observability-gates virtual-key-create client-auth-smoke guardrails-list guardrails-smoke routing-smoke metrics monitor-smoke update-litellm health clean help require-stack require-analyzer-profile require-deployment
 
 # Docker Desktop stores its credential helper outside the default non-interactive
 # PATH on macOS. Export it once for every recipe and recursive make invocation.
@@ -32,12 +32,14 @@ STACK_LITELLM_PRESIDIO := litellm-presidio
 STACK_CODEX_LB := litellm-presidio-codex-lb
 STACK_START_TIMEOUT ?= 180
 ENV_FILE ?= .env
+TOPOLOGY ?= functional
+PII_MODE_ORIGIN := $(origin PII_GUARDRAIL_MODE)
+export STACK ENV_FILE TOPOLOGY TOPOLOGY_ENV ANALYZER_PROFILE STACK_START_TIMEOUT PII_MODE_ORIGIN
+DEPLOY = $(PYTHON_LOCAL) scripts/deployment.py
 BUILD_ENV_FILE := $(shell if [ -f "$(ENV_FILE)" ]; then printf "%s" "$(ENV_FILE)"; else printf "%s" ".env.example"; fi)
-BASE_COMPOSE = docker compose --env-file $(ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE)
-CODEX_LB_COMPOSE = $(BASE_COMPOSE) -f docker-compose.codex-lb.yml
-COMPOSE = $(if $(filter $(STACK_CODEX_LB),$(STACK)),$(CODEX_LB_COMPOSE),$(BASE_COMPOSE))
-BUILD_COMPOSE = CODEX_LB_POSTGRES_PASSWORD=build-only CODEX_LB_API_KEY=build-only docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE) -f docker-compose.codex-lb.yml --profile test
-CLEAN_CODEX_LB_COMPOSE = docker compose --env-file $(BUILD_ENV_FILE) -f docker-compose.yml $(ANALYZER_COMPOSE_FILE) -f docker-compose.codex-lb.yml
+BASE_COMPOSE = docker compose --env-file "$(ENV_FILE)" -f docker-compose.yml $(ANALYZER_COMPOSE_FILE)
+COMPOSE = $(DEPLOY) compose
+BUILD_COMPOSE = CODEX_LB_POSTGRES_PASSWORD=build-only CODEX_LB_API_KEY=build-only docker compose --env-file "$(BUILD_ENV_FILE)" -f docker-compose.yml $(ANALYZER_COMPOSE_FILE) -f docker-compose.codex-lb.yml --profile test
 
 # Default target
 help:
@@ -48,6 +50,10 @@ help:
 	@echo "  STACK=$(STACK_CODEX_LB)"
 	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU)  — Analyzer на CPU (по умолчанию)"
 	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)  — Analyzer на одной NVIDIA GPU"
+	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 4 Analyzer"
+	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
+	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
+	@echo "  Приоритет режима: параметр make, окружение, ENV_FILE, mask"
 	@echo ""
 	@echo "Жизненный цикл:"
 	@echo "  make build ANALYZER_PROFILE=<профиль> — собрать и загрузить образы обоих составов"
@@ -100,13 +106,11 @@ require-analyzer-profile:
 	esac
 
 # === Setup ===
-setup: require-stack require-analyzer-profile
-	bash scripts/setup_env.sh "$(ENV_FILE)" .env.example "$(STACK)"
-	@if [ "$(STACK)" = "$(STACK_CODEX_LB)" ]; then \
-		bash scripts/setup_codex_lb.sh "$(ENV_FILE)"; \
-	else \
-		echo "✅ Базовый состав настроен. Следующий шаг: make up STACK=$(STACK_LITELLM_PRESIDIO)"; \
-	fi
+require-deployment:
+	@$(DEPLOY) validate
+
+setup: require-stack require-analyzer-profile require-deployment
+	@$(DEPLOY) setup
 
 # === Build ===
 build: require-analyzer-profile
@@ -116,28 +120,21 @@ build: require-analyzer-profile
 	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer codex-lb guardrail-tests presidio-analyzer-tests
 
 # === Up ===
-up: require-stack require-analyzer-profile
-	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
-	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
-	$(COMPOSE) up -d --no-build
-	@echo ""
-	@echo "⏳ Ожидание запуска сервисов..."
-	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
+up: require-stack require-analyzer-profile require-deployment
+	@$(DEPLOY) start --no-build
 
 # === Down ===
-down: require-stack require-analyzer-profile
+down: require-stack require-analyzer-profile require-deployment
 	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
 	$(COMPOSE) down
 
 # === Restart (recreate containers and reread configuration) ===
-restart: require-stack require-analyzer-profile
-	bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"
-	bash scripts/stack_guard.sh preflight "$(STACK)" "$(ENV_FILE)"
-	$(COMPOSE) up -d --no-build --force-recreate
-	@bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)" "$(STACK_START_TIMEOUT)"
+restart: require-stack require-analyzer-profile require-deployment
+	@$(DEPLOY) start --no-build --force-recreate
 
 # === Logs ===
-logs: require-stack require-analyzer-profile
+logs: require-stack require-analyzer-profile require-deployment
+	@$(DEPLOY) guard mutation
 	$(COMPOSE) logs -f --tail=50
 
 # === Test ===
@@ -158,6 +155,7 @@ test-static: test-routing-diagnostics
 		tests/test_codex_lb_compose_config.py \
 		tests/test_codex_lb_litellm_config.py \
 		tests/test_stack_lifecycle.py \
+		tests/test_deployment_topologies.py \
 		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
@@ -213,18 +211,28 @@ test-hf-model-run: require-analyzer-profile
 test-ner-proxy:
 	@echo "🧪 Real Analyzer proxy mask/block flow with mock provider"
 	bash tests/e2e/test_ner_proxy_flow.sh
+	@if [ "$(ANALYZER_PROFILE)" = cpu ]; then \
+		$(BUILD_COMPOSE) build litellm codex-lb && \
+		$(PYTHON_LOCAL) tests/e2e/deployment_topology_gate.py; \
+	fi
 
 test-ner-integration: require-analyzer-profile
 	@echo "🧪 Full pinned NER integration gate"
 	@$(MAKE) test-hf-model ANALYZER_PROFILE="$(ANALYZER_PROFILE)"
-	@ANALYZER_PROFILE="$(ANALYZER_PROFILE)" bash tests/e2e/test_ner_proxy_flow.sh
+	@$(MAKE) test-ner-proxy ANALYZER_PROFILE="$(ANALYZER_PROFILE)"
 
-ner-evaluate: require-stack
+ner-evaluate: require-stack require-deployment
+	@$(DEPLOY) guard mutation
 	@echo "📊 NER evaluation via $(ANALYZER_URL)"
+	@runtime="$(NER_EVALUATION_RUNTIME_CONTAINER)"; \
+		if [ "$(TOPOLOGY)" = production ] && [ "$$runtime" = presidio-analyzer ]; then \
+			runtime=$$($(COMPOSE) ps -q presidio-analyzer | head -n 1); \
+			if [ -z "$$runtime" ]; then echo "Analyzer не запущен"; exit 1; fi; \
+		fi; \
 	$(PYTHON_LOCAL) -m presidio.evaluation.run_baseline \
 		--analyzer-url "$(ANALYZER_URL)" \
 		--system "$(NER_EVALUATION_SYSTEM)" \
-		--runtime-container "$(NER_EVALUATION_RUNTIME_CONTAINER)" \
+		--runtime-container "$$runtime" \
 		--model-artifact-sha256 "$(NER_EVALUATION_MODEL_SHA256)" \
 		--model-checksum-enforced \
 		--json-output "$(NER_EVALUATION_JSON)" \
@@ -264,7 +272,7 @@ test-routing-diagnostics:
 	$(PYTHON_LOCAL) tests/test_makefile_guardrails_smoke.py
 
 # === Health check ===
-health: require-stack require-analyzer-profile
+health: require-stack require-analyzer-profile require-deployment
 	bash scripts/stack_health.sh "$(STACK)" "$(ENV_FILE)"
 
 # === Clean ===
@@ -273,13 +281,14 @@ clean:
 		"$(STACK_LITELLM_PRESIDIO)"|"$(STACK_CODEX_LB)"|all) ;; \
 		*) echo "❌ Укажите STACK=$(STACK_LITELLM_PRESIDIO), STACK=$(STACK_CODEX_LB) или STACK=all"; exit 2 ;; \
 	esac
+	@STACK=$(if $(filter all,$(STACK)),$(STACK_CODEX_LB),$(STACK)) $(DEPLOY) validate
 	@if [ "$(STACK)" != "all" ]; then bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"; fi
 	@echo "⚠️  Это удалит все данные (БД, Redis, Docker-образы)"
 	@read -p "Продолжить? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	@if [ "$(STACK)" = "all" ] || [ "$(STACK)" = "$(STACK_CODEX_LB)" ]; then \
-		$(CLEAN_CODEX_LB_COMPOSE) down -v --rmi local --remove-orphans; \
+		STACK=$(STACK_CODEX_LB) $(DEPLOY) --env-file "$(BUILD_ENV_FILE)" compose down -v --rmi local --remove-orphans; \
 	else \
-		$(BASE_COMPOSE) down -v --rmi local --remove-orphans; \
+		$(COMPOSE) down -v --rmi local --remove-orphans; \
 	fi
 	@echo "✅ Очищено"
 
@@ -292,19 +301,21 @@ test-unit:
 	@echo "✅ Unit suite completed"
 
 # === Live smoke test (requires running services) ===
-test-e2e: require-stack
+test-e2e: require-stack require-deployment
+	@$(DEPLOY) guard mutation
 	@echo "🧪 Live smoke test (требуются запущенные сервисы и LLM provider key)"
-	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
+	@if [ ! -f "$(ENV_FILE)" ]; then echo "❌ ENV_FILE not found"; exit 1; fi
 	@RU_LLM_PROXY_TOKEN=$$(bash scripts/create_virtual_key.sh \
 			--alias "e2e-$$(date +%Y%m%d%H%M%S)" \
+			--env-file "$(ENV_FILE)" --base-url "$$( $(DEPLOY) url )" \
 			--models standard,zai \
 			--duration 30m | awk -F= '$$1 == "RU_LLM_PROXY_TOKEN" {print $$2; exit}'); \
 		if [ -z "$$RU_LLM_PROXY_TOKEN" ]; then echo "❌ failed to create e2e virtual key"; exit 1; fi; \
 		export RU_LLM_PROXY_TOKEN; \
-		bash tests/e2e/test_e2e.sh
+		$(DEPLOY) exec bash tests/e2e/test_e2e.sh
 
 # === Client access ===
-virtual-key-create: require-stack
+virtual-key-create: require-stack require-deployment
 	@KEY_ALIAS="$(KEY_ALIAS)" \
 		MODELS="$(MODELS)" \
 		DURATION="$(DURATION)" \
@@ -315,27 +326,30 @@ virtual-key-create: require-stack
 		USER_ID="$(USER_ID)" \
 		TEAM_ID="$(TEAM_ID)" \
 		METADATA_JSON='$(METADATA_JSON)' \
-		bash scripts/create_virtual_key.sh
+		$(DEPLOY) exec bash scripts/create_virtual_key.sh
 
-client-auth-smoke: require-stack
-	@bash tests/e2e/test_client_auth.sh
+client-auth-smoke: require-stack require-deployment
+	@$(DEPLOY) exec bash tests/e2e/test_client_auth.sh
 
 # === Guardrails diagnostics ===
-guardrails-list: require-stack
+guardrails-list: require-stack require-deployment
+	@$(DEPLOY) guard mutation
 	@echo "🛡️  LiteLLM registered guardrails"
-	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
-	@eval "$$(grep LITELLM_MASTER_KEY .env | sed 's/^/export /')" && \
-		response=$$(curl -sS -H "Authorization: Bearer $$LITELLM_MASTER_KEY" http://localhost:4000/guardrails/list); \
+	@if [ ! -f "$(ENV_FILE)" ]; then echo "❌ ENV_FILE not found"; exit 1; fi
+	@eval "$$(grep '^LITELLM_MASTER_KEY=' "$(ENV_FILE)" | sed 's/^/export /')" && \
+		response=$$(curl -fsS -H "Authorization: Bearer $$LITELLM_MASTER_KEY" "$$( $(DEPLOY) url )/guardrails/list"); \
 		if command -v jq >/dev/null 2>&1; then printf "%s\n" "$$response" | jq .; else printf "%s\n" "$$response"; fi
 
-guardrails-smoke: require-stack
-	@bash tests/e2e/test_guardrails_smoke.sh
+guardrails-smoke: require-stack require-deployment
+	@$(DEPLOY) exec bash tests/e2e/test_guardrails_smoke.sh
 
 # === Routing diagnostics ===
-routing-smoke: require-stack
+routing-smoke: require-stack require-deployment
+	@$(DEPLOY) guard mutation
 	@echo "🧭 LiteLLM sticky routing smoke"
-	@if [ ! -f .env ]; then echo "❌ .env not found"; exit 1; fi
-	@eval "$$(grep -E '^(LITELLM_MASTER_KEY|LITELLM_ROUTING_TEST_KEY)=' .env | sed 's/^/export /')" && \
+	@if [ ! -f "$(ENV_FILE)" ]; then echo "❌ ENV_FILE not found"; exit 1; fi
+	@export LITELLM_URL="$$( $(DEPLOY) url )" && \
+		eval "$$(grep -E '^(LITELLM_MASTER_KEY|LITELLM_ROUTING_TEST_KEY)=' "$(ENV_FILE)" | sed 's/^/export /')" && \
 		token="$${LITELLM_ROUTING_TEST_KEY:-$$LITELLM_MASTER_KEY}" && \
 		if [ -z "$$token" ]; then echo "❌ LITELLM_MASTER_KEY or LITELLM_ROUTING_TEST_KEY is required"; exit 1; fi && \
 		first_headers=$$(mktemp) && second_headers=$$(mktemp) && first_body=$$(mktemp) && second_body=$$(mktemp) && \
@@ -343,7 +357,7 @@ routing-smoke: require-stack
 		run_completion() { \
 			label="$$1"; headers_file="$$2"; body_file="$$3"; payload="$$4"; \
 			error_file=$$(mktemp); \
-			status=$$(curl -sS -D "$$headers_file" -o "$$body_file" -w "%{http_code}" http://localhost:4000/v1/chat/completions \
+			status=$$(curl -sS -D "$$headers_file" -o "$$body_file" -w "%{http_code}" "$$LITELLM_URL/v1/chat/completions" \
 				-H "Authorization: Bearer $$token" \
 				-H "Content-Type: application/json" \
 				-d "$$payload" 2>"$$error_file"); \
@@ -378,32 +392,18 @@ routing-smoke: require-stack
 		if [ "$$first_model" = "$$second_model" ]; then echo "✅ Same key stayed on one deployment"; else echo "❌ Deployment changed for the same key"; exit 1; fi
 
 # === Monitoring diagnostics ===
-metrics: require-stack
-	@echo "📈 LiteLLM /metrics"
-	@tmp=$$(mktemp) && \
-		curl -L -sf http://localhost:4000/metrics > "$$tmp" && \
-		sed -n '1,120p' "$$tmp"; \
-		status=$$?; rm -f "$$tmp"; exit $$status
+metrics: require-stack require-deployment
+	@$(DEPLOY) metrics
 
-monitor-smoke: require-stack
+monitor-smoke: require-stack require-deployment
 	@echo "📈 Monitoring smoke check"
 	@$(MAKE) health STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
 	@$(MAKE) guardrails-list STACK="$(STACK)" ENV_FILE="$(ENV_FILE)"
-	@analyzer_health=$$(curl -sf http://localhost:5001/api/v1/health); \
-		if printf "%s" "$$analyzer_health" | grep -q '"ner_state":"ready"' && printf "%s" "$$analyzer_health" | grep -q '"ner_warmed_up":true'; then echo "✅ Pinned Hugging Face NER ready"; else echo "❌ Pinned Hugging Face NER is not ready"; printf "%s\n" "$$analyzer_health"; exit 1; fi
-	@tmp=$$(mktemp) && \
-		if ! curl -L -sf http://localhost:4000/metrics > "$$tmp"; then echo "❌ LiteLLM metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
-		if grep -q "litellm_" "$$tmp"; then echo "✅ LiteLLM metrics exposed"; else echo "❌ LiteLLM metrics not found"; rm -f "$$tmp"; exit 1; fi; \
-		if grep -q "ru_pii_guardrail_" "$$tmp"; then echo "✅ PII guardrail metrics exposed"; else echo "⚠️  PII guardrail metrics not emitted yet; run a PII request and retry"; fi; \
-		rm -f "$$tmp"
-	@tmp=$$(mktemp) && \
-		if ! curl -sf http://localhost:5001/metrics > "$$tmp"; then echo "❌ Presidio Analyzer metrics endpoint is not reachable"; rm -f "$$tmp"; exit 1; fi; \
-		if grep -q "ru_presidio_analyzer_" "$$tmp"; then echo "✅ Presidio Analyzer metrics exposed"; else echo "❌ Presidio Analyzer metrics not found"; rm -f "$$tmp"; exit 1; fi; \
-		rm -f "$$tmp"
+	@$(DEPLOY) metrics
 
 # === LiteLLM update ===
-update-litellm: require-stack
+update-litellm: require-stack require-deployment
 	@echo "⬇️  Rebuilding LiteLLM from the latest configured base image"
 	$(COMPOSE) build --pull litellm
-	$(COMPOSE) up -d --force-recreate --no-deps litellm
+	@$(DEPLOY) start --no-build --force-recreate --only-litellm
 	@echo "✅ LiteLLM image updated and proxy container recreated"
