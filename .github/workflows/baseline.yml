@@ -28,6 +28,9 @@ jobs:
         run: |
           bash -n scripts/setup_env.sh
           bash -n scripts/create_virtual_key.sh
+          bash -n scripts/setup_codex_lb.sh
+          bash -n scripts/stack_guard.sh
+          bash -n scripts/stack_health.sh
           bash -n tests/e2e/test_client_auth.sh
           bash -n tests/e2e/test_e2e.sh
           bash -n tests/e2e/test_guardrails_smoke.sh
@@ -52,6 +55,7 @@ jobs:
               "tests/e2e/docker-compose.pre-egress-proxy.yml",
               "tests/e2e/docker-compose.disconnect.yml",
               "tests/e2e/litellm-config.ner-proxy.yaml",
+              "tests/e2e/litellm-config.topologies.yaml",
               "tests/e2e/docker-compose.ner-proxy.yml",
               "tests/load/litellm-config.yaml",
               "tests/load/docker-compose.yml",
@@ -64,7 +68,19 @@ jobs:
           PY
 
       - name: Compile Python sources
-        run: python -m compileall litellm_guardrails presidio tests
+        run: python -m compileall scripts litellm_guardrails presidio tests
+
+      - name: Validate deployment compositions without secrets
+        env:
+          CODEX_LB_POSTGRES_PASSWORD: validation-only
+          CODEX_LB_API_KEY: validation-only
+        run: |
+          for stack in litellm-presidio litellm-presidio-codex-lb; do
+            for topology in functional production; do
+              STACK="$stack" TOPOLOGY="$topology" ENV_FILE=.env.example \
+                python scripts/deployment.py compose config --quiet
+            done
+          done
 
       - name: Check whitespace-sensitive diff issues
         run: |

@@ -53,7 +53,7 @@ LiteLLM с назначенными моделями, бюджетами и ог
 
 ## Быстрый старт
 
-Требуются Docker с Compose, GNU Make и два ключа Z.AI Coding Plan.
+Требуются Docker с Compose 2.24+, Python 3.9+, GNU Make и два ключа Z.AI Coding Plan.
 
 ```bash
 git clone https://github.com/vovkins/ru-llm-proxy.git
@@ -73,6 +73,11 @@ make build
 make up STACK=litellm-presidio
 make health STACK=litellm-presidio
 ```
+
+По умолчанию запускается `TOPOLOGY=functional`: один LiteLLM и один Analyzer.
+`TOPOLOGY=production` включает CPU-пул из двух LiteLLM и четырёх Analyzer через
+тот же Nginx. Выбор BLOCK/MASK, ресурсы и переключение описаны в
+[руководстве по развёртыванию](docs/deployment.md).
 
 Первая сборка скачивает `ru_core_news_sm` и закреплённую ревизию
 `fef2/ner_rus_bert-secret_detection`; веса BERT занимают около 709 МБ. Во время
@@ -145,6 +150,7 @@ curl http://localhost:4000/v1/chat/completions \
 | Задача | Документ |
 | --- | --- |
 | Понять компоненты и поток запроса | [Архитектура](docs/architecture.md) |
+| Выбрать топологию, ресурсы и BLOCK/MASK | [Развёртывание](docs/deployment.md) |
 | Настроить окружение | [Конфигурация](docs/configuration.md) |
 | Выполнить и проверить запросы | [Примеры API](docs/examples.md) |
 | Выдать ключи и разграничить доступ | [Администрирование](docs/admin-access.md) |

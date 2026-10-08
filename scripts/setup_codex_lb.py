@@ -8,6 +8,7 @@ import getpass
 import http.cookiejar
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -90,32 +91,35 @@ def read_env_value(path: Path, key: str) -> str:
     return ""
 
 
-def update_env_value(path: Path, key: str, value: str) -> None:
+def update_env_value(path: Path, key: str, value: str, *, preserve_permissions: bool = False) -> None:
     if "\n" in value or "\r" in value:
         raise CodexLBError(f"Значение {key} содержит перевод строки")
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    prefix = f"{key}="
-    replacement = f"{key}={value}\n"
+    with path.open(encoding="utf-8", newline="") as source:
+        lines = source.readlines()
+    ending = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
+    replacement = f"{key}={value}{ending}"
     replaced = False
     updated: List[str] = []
 
     for line in lines:
-        if line.startswith(prefix):
-            updated.append(replacement)
+        if re.match(r"^\s*(?:export\s+)?" + re.escape(key) + r"\s*=", line):
+            if not replaced:
+                updated.append(replacement)
             replaced = True
         else:
             updated.append(line)
 
     if not replaced:
         if updated and not updated[-1].endswith("\n"):
-            updated[-1] += "\n"
+            updated[-1] += ending
         updated.append(replacement)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
-        os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
-        with os.fdopen(fd, "w", encoding="utf-8") as temporary:
+        permissions = stat.S_IMODE(path.stat().st_mode) if preserve_permissions else stat.S_IRUSR | stat.S_IWUSR
+        os.fchmod(fd, permissions)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as temporary:
             temporary.writelines(updated)
             temporary.flush()
             os.fsync(temporary.fileno())

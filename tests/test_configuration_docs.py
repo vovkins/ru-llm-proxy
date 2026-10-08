@@ -286,8 +286,10 @@ def test_analyzer_pins_huggingface_model_and_transformers_runtime():
     assert "test-hf-model" in makefile
     assert "ner-migration-candidate" in makefile
     assert "ner-migration-baseline.md" not in makefile
-    assert '"ner_state":"ready"' in makefile
-    assert '"ner_warmed_up":true' in makefile
+    deployment = _read("scripts/deployment.py")
+    assert 'data.get("ner_state") == "ready"' in deployment
+    assert 'data.get("ner_warmed_up") is True' in deployment
+    assert 'context.health(' in deployment
     assert '"ner_state":"ready"' in e2e
     assert '"ner_warmed_up":true' in e2e
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
-ENV_FILE=".env"
+ENV_FILE="${ENV_FILE:-.env}"
 KEY_ALIAS="${KEY_ALIAS:-client-local}"
 MODELS="${MODELS:-standard}"
 DURATION="${DURATION:-}"
