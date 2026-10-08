@@ -47,10 +47,12 @@ def release(case_id, phase="provider", *, once=False):
     control("/control/release", {"id": case_id, "phase": phase, "once": once})
 
 
-def begin(host, path, extra="", model="mock-chat", *, stream=False):
+def begin(host, path, extra="", model="mock-chat", *, stream=False, pii=True, choices=1):
     case_id = uuid.uuid4().hex[:16]
-    content = f"DISCONNECT_CASE_{case_id} {extra} phone {RAW_PHONE}"
+    content = f"DISCONNECT_CASE_{case_id} {extra}" + (f" phone {RAW_PHONE}" if pii else " safe content")
     payload = {"model": model, "stream": stream}
+    if choices != 1:
+        payload["n"] = choices
     if path.endswith("completions"):
         payload["messages"] = [{"role": "user", "content": content}]
     else:

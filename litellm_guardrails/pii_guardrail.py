@@ -12,7 +12,7 @@ import re
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Any, Coroutine, Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
 import anyio
@@ -33,6 +33,8 @@ from litellm_guardrails.streaming_restoration import (
     restore_arguments,
     restore_text,
 )
+from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
+from litellm_guardrails.upstream_stream import TRANSPORT_ID, assert_request_stream_valid, close_request_streams
 from litellm_guardrails.metrics import (
     DICTIONARY_SUBSTITUTION_MAPPING_SIZE,
     DICTIONARY_SUBSTITUTIONS_APPLIED,
@@ -690,27 +692,6 @@ def _safe_log(level: int, event: str, **fields) -> None:
 def _latency_ms(started_at: float) -> float:
     """Return elapsed milliseconds rounded for stable structured logs."""
     return round((time.perf_counter() - started_at) * 1000, 3)
-
-
-async def _finish_stream_cleanup(cleanup: Coroutine[Any, Any, None]) -> None:
-    # AnyIO shields its scopes, but direct Task.cancel() can interrupt them.
-    task = asyncio.create_task(cleanup, name="ru-pii-stream-cleanup")
-    interruption = None
-    with anyio.CancelScope(shield=True):
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError as error:
-                if task.cancelled():
-                    raise
-                interruption = error
-            except Exception:
-                break
-        try:
-            task.result()
-        finally:
-            if interruption is not None:
-                raise interruption
 
 
 class RuPIIGuardrail(CustomGuardrail):
@@ -3146,6 +3127,9 @@ class RuPIIGuardrail(CustomGuardrail):
     @staticmethod
     def _clear_inbound_pii_metadata(data: dict) -> None:
         """Remove caller-supplied guardrail-internal metadata from a new request."""
+        transport_metadata = data.get("litellm_metadata")
+        if isinstance(transport_metadata, dict):
+            transport_metadata.pop(TRANSPORT_ID, None)
         metadata = data.get("metadata")
         if not isinstance(metadata, dict):
             return
@@ -3533,6 +3517,10 @@ class RuPIIGuardrail(CustomGuardrail):
         self._clear_inbound_pii_metadata(data)
         request_targets = self._iter_request_text_targets(data)
         request_id = self._get_request_id(data)
+        if data.get("stream") is True:
+            if not isinstance(data.get("litellm_metadata"), dict):
+                data["litellm_metadata"] = {}
+            data["litellm_metadata"][TRANSPORT_ID] = request_id
         self._log_gateway_request_shape(
             request_id=request_id,
             data=data,
@@ -4051,6 +4039,8 @@ class RuPIIGuardrail(CustomGuardrail):
         if self.event_hook not in (None, "pre_call"):
             return None
 
+        await _finish_stream_cleanup(close_request_streams(request_data))
+
         request_id = self._get_response_request_id(request_data)
         if not request_id:
             return None
@@ -4110,8 +4100,10 @@ class RuPIIGuardrail(CustomGuardrail):
                         )
                         self._mark_streaming_restoration_done(request_data)
             async for item in iterator:
+                assert_request_stream_valid(request_data)
                 for restored_item in restorer.process(item) if restorer else [item]:
                     yield restored_item
+            assert_request_stream_valid(request_data)
             if restorer:
                 for item in restorer.finish():
                     yield item
@@ -4119,9 +4111,12 @@ class RuPIIGuardrail(CustomGuardrail):
             if restorer:
                 restorer.finish()
                 self._mark_streaming_restoration_done(request_data)
-            await _finish_stream_cleanup(
-                self._cleanup_stream(iterator, request_id, cleanup_mapping)
-            )
+            async def cleanup():
+                try:
+                    await close_request_streams(request_data)
+                finally:
+                    await self._cleanup_stream(iterator, request_id, cleanup_mapping)
+            await _finish_stream_cleanup(cleanup())
 
         if restorer is None:
             return

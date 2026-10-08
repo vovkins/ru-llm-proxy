@@ -43,6 +43,7 @@ config = {
     "general_settings": {"master_key": "os.environ/LITELLM_MASTER_KEY",
                          "cancel_on_disconnect": enabled == "true"},
     "router_settings": {"num_retries": 1, "retry_after": 0, "timeout": 30},
+    "litellm_settings": {"callbacks": ["litellm_guardrails.upstream_stream_adapter"]},
 }
 pathlib.Path(output).write_text(json.dumps(config))
 PY
@@ -61,11 +62,13 @@ PY
     if [ "$cancellation" = false ]; then
         "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py --baseline
     else
+        "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_upstream_transport.py
         if [ "${1:-}" != --stream-only ]; then
             "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py
         fi
         stream_status=0
         "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_stream_disconnect.py || stream_status=$?
+        "${COMPOSE[@]}" stop -t 15 litellm
     fi
     "${COMPOSE[@]}" logs litellm > "$TEMP_DIR/litellm.log"
     if grep -Fq '+79031234567' "$TEMP_DIR/litellm.log"; then
@@ -74,6 +77,9 @@ PY
     fi
     if [ "$cancellation" = true ] && [ "${1:-}" != --stream-only ]; then
         grep -Fq 'pii_guardrail_failure_cleanup_failed' "$TEMP_DIR/litellm.log"
+    fi
+    if [ "$cancellation" = true ]; then
+        grep -Fq 'upstream_http_pool_closed' "$TEMP_DIR/litellm.log"
     fi
     if [ "${stream_status:-0}" != 0 ]; then
         exit "$stream_status"

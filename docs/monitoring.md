@@ -166,6 +166,8 @@ make monitor-smoke STACK=litellm-presidio
 | --- | --- | --- |
 | `ru_pii_guardrail_pre_calls_total` | `result` | Итог проверок до провайдера |
 | `ru_pii_guardrail_post_calls_total` | `result` | Итог восстановления или очистки сопоставления после ошибки провайдера |
+| `ru_upstream_streams_total` | `api`, `outcome` | Итог каждой исходящей SSE-попытки, включая запросы без замен |
+| `ru_upstream_stream_cleanup_errors_total` | `api` | Ошибки и тайм-ауты закрытия принадлежащих запросу HTTP-ответов |
 | `ru_pii_guardrail_entities_detected_total` | `entity_type` | Найденные сущности |
 | `ru_pii_guardrail_blocked_total` | `entity_type` | Блокировки PII |
 | `ru_pii_guardrail_fail_open_total` | `operation` | Небезопасное продолжение после ошибки |
@@ -204,15 +206,24 @@ LiteLLM создаёт отдельные экземпляры защитног�
 штатной `general_settings.cancel_on_disconnect`; сетевой посредник может
 задержать обнаружение обрыва. [Проверка и ограничения](research/nonstream-disconnect.md).
 
-При EOF потока без завершающего события защитный слой регистрирует
-`pii_guardrail_stream_incomplete` и `ru_pii_guardrail_post_calls_total{result="incomplete"}`.
-Ошибка закрытия отмечается как `pii_guardrail_stream_close_failed`, ошибка
-удаления — как `pii_guardrail_cleanup_failed`. Это не полная проверка обрывов:
-если LiteLLM сама создала `stop`, обработчик видит уже завершённый поток.
-Также отсутствие ошибки закрытия не доказывает освобождение исходного
-соединения: Router 1.98.0 может успешно закрыть незапущенную обёртку,
-не закрыв поток провайдера. Сопоставление Redis при этом удаляется.
-[Сетевые сценарии и ограничение платформы](research/stream-disconnect.md).
+На маршрутах `openai/...` наш SSE-адаптер проверяет завершение до обработки SDK.
+`ru_upstream_streams_total{api="chat"|"responses",outcome="incomplete"}` означает
+EOF без завершающего события, повреждённую или слишком большую запись;
+`complete` — настоящее завершение, `provider_incomplete` — штатный
+`response.incomplete`, `provider_error` — ошибка провайдера или транспорта,
+`cancelled` — закрытие ещё не завершённой попытки. Это счётчик попыток, не
+число клиентских запросов; ранний HTTP-отказ до открытия SSE сюда не входит.
+Причину протокольного отказа смотрите в `upstream_stream_result`: например,
+`missing_terminal`, `truncated_record`, `done_without_terminal`, `event_too_large`.
+Если заголовки уже переданы клиенту, HTTP 200 сам по себе не доказывает успех.
+
+Ошибка закрытия HTTP отмечается `upstream_stream_close_failed` и счётчиком
+`ru_upstream_stream_cleanup_errors_total`; ошибка закрытия итератора —
+`pii_guardrail_stream_close_failed`, удаления записи — `pii_guardrail_cleanup_failed`.
+После штатной остановки процесса ожидается `upstream_http_pool_closed`.
+На других протоколах `pii_guardrail_stream_incomplete` отражает лишь
+незавершённость, видимую обработчику восстановления, а не независимую проверку
+исходного SSE. [Сетевые проверки и границы защиты](research/stream-disconnect.md).
 
 Для растущей истории сравнивайте `result="hit"` и `result="miss"` у
 `ru_pii_guardrail_analysis_cache_requests_total`. `bypass` означает отсутствие
@@ -415,6 +426,9 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 | `pii_guardrail_restored`, `pii_guardrail_stream_restored` | `INFO` | Восстановление ответа |
 | `pii_guardrail_stream_incomplete` | `INFO` | EOF без завершающего события; незавершённый буфер отброшен |
 | `pii_guardrail_stream_close_failed` | `WARNING` | Ошибка или тайм-аут закрытия исходящего потока; удаление сопоставления всё равно выполняется |
+| `upstream_stream_result` | `INFO` | API, итог попытки и ограниченная причина протокольного отказа, без содержимого SSE |
+| `upstream_stream_close_failed`, `upstream_http_pool_close_failed` | `WARNING` | Ошибка или тайм-аут закрытия HTTP-ресурса |
+| `upstream_http_pool_closed` | `INFO` | Общие HTTP-пулы процесса закрыты |
 | `pii_guardrail_unsupported_response` | `WARNING` | Неизвестный непотоковый формат ответа; сопоставление удаляется без восстановления |
 | `pii_guardrail_cleanup_failed` | `WARNING` | Redis не удалил сопоставление; запись ограничена настроенным TTL |
 | `pii_guardrail_failure_cleanup` | `INFO` | Удаление сопоставления после ошибки или обнаруженного отключения клиента |

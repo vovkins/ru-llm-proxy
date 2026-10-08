@@ -6,7 +6,7 @@ import time
 from check_nonstream_disconnect import (
     REDIS, RAW_PHONE, accepted, begin, cancelled, disconnect, mappings, release, state, wait_for,
 )
-from controlled_sse import OPAQUE, PHASES_TEXT, PHASES_TOOL
+from controlled_sse import OPAQUE, PHASES_TEXT, PHASES_TOOL, TEXT
 
 
 MEASUREMENTS = []
@@ -222,6 +222,64 @@ def check_early_race(host, path, tool):
         release(case_id, "stream_first")
 
 
+def check_clean_stream(host, path, mode):
+    extra = "SSE_EOF_STREAM_PARTIAL" if mode == "eof" else ""
+    case_id, connection, before, _ = begin(host, path, "SSE_CONTROLLED " + extra, stream=True, pii=False)
+    try:
+        upstream = wait_for(lambda: state(case_id), "clean upstream accepted")
+        assert not upstream["saw_raw_phone"] and not upstream["saw_placeholder"]
+        assert mappings() == before, "Clean streams must not create PII mappings"
+        if mode == "before-headers":
+            disconnect(connection)
+            wait_for(lambda: state(case_id).get("closed_at"), "clean upstream HTTP close", 5)
+        else:
+            release(case_id)
+            wait_for(lambda: state(case_id, "stream_first"), "clean SSE headers")
+            if mode == "cancel":
+                disconnect(connection)
+                wait_for(lambda: state(case_id, "stream_first").get("closed_at"), "clean early SSE close", 5)
+            else:
+                for phase in PHASES_TEXT:
+                    wait_for(lambda: state(case_id, phase), "clean provider phase " + phase)
+                    release(case_id, phase)
+                    if mode == "eof" and phase == "stream_partial":
+                        break
+                values = events(connection.getresponse())
+                assert terminal_success(values) is (mode == "success")
+                if mode == "success":
+                    # With no mapping, a provider's literal placeholder stays literal.
+                    assert restored(values, path, False) == TEXT
+        assert mappings() == before
+    finally:
+        connection.close()
+        release(case_id)
+        for phase in PHASES_TEXT:
+            release(case_id, phase)
+
+
+def check_missing_choice(host, pii):
+    case_id, connection, before, _ = begin(host, "/v1/chat/completions", "SSE_CONTROLLED",
+                                         stream=True, pii=pii, choices=2)
+    try:
+        key = accepted(case_id, before) if pii else None
+        if not pii:
+            wait_for(lambda: state(case_id), "clean multi-choice request accepted")
+        release(case_id)
+        finish(case_id, PHASES_TEXT)
+        values = events(connection.getresponse())
+        assert any(isinstance(value, dict) and "error" in value for value in values), "SDK swallowed incomplete choice error"
+        assert not any(choice.get("index") == 1 and choice.get("finish_reason")
+                       for value in values if isinstance(value, dict) for choice in value.get("choices", []))
+        if key:
+            wait_for(lambda: not REDIS.exists(key), "multi-choice mapping cleanup", 5)
+        assert mappings() == before
+    finally:
+        connection.close()
+        release(case_id)
+        for phase in PHASES_TEXT:
+            release(case_id, phase)
+
+
 
 def run_case(label, operation):
     global CHECKS
@@ -265,6 +323,10 @@ def run():
                     wait_for(lambda: not REDIS.exists(key), "terminal/cancel race cleanup", 5)
                 run_case(label + f" race {repeat}", race)
             run_case(label + " next success", lambda: check_provider(host, path, False))
+            for mode in ("before-headers", "cancel", "eof", "success"):
+                run_case(label + " clean " + mode, lambda: check_clean_stream(host, path, mode))
+        for pii in (False, True):
+            run_case(host + " chat missing choice pii=" + str(pii), lambda: check_missing_choice(host, pii))
     print(json.dumps({"checks": CHECKS, "failures": FAILURES, "measurements": MEASUREMENTS,
                       "leftover_mappings": len(mappings() - initial_mappings),
                       "preserved_initial_mappings": len(mappings() & initial_mappings)}, indent=2), flush=True)

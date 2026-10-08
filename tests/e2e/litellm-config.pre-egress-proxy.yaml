@@ -25,3 +25,7 @@ guardrails:
 general_settings:
   cancel_on_disconnect: true
   master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  callbacks:
+    - litellm_guardrails.upstream_stream_adapter

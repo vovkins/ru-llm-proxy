@@ -55,6 +55,12 @@ PII_POST_CALLS = _build_metric(
     "PII guardrail post-call requests.",
     ["result"],
 )
+UPSTREAM_STREAMS = _build_metric(
+    Counter, "ru_upstream_streams", "Verified upstream streams by API and outcome.", ["api", "outcome"],
+)
+UPSTREAM_STREAM_CLEANUP_ERRORS = _build_metric(
+    Counter, "ru_upstream_stream_cleanup_errors", "Upstream response close failures.", ["api"],
+)
 PII_ENTITIES_DETECTED = _build_metric(
     Counter,
     "ru_pii_guardrail_entities_detected",
@@ -150,6 +156,8 @@ DICTIONARY_SUBSTITUTION_MAPPING_SIZE = _build_metric(
 
 
 __all__ = [
+    "UPSTREAM_STREAMS",
+    "UPSTREAM_STREAM_CLEANUP_ERRORS",
     "DICTIONARY_SUBSTITUTION_MAPPING_SIZE",
     "DICTIONARY_SUBSTITUTIONS_APPLIED",
     "FINAL_PAYLOAD_LEAK_CHECK_BLOCKED",
