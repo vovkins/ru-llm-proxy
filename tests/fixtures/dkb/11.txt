@@ -1,0 +1,11 @@
+curl --silent --location --request POST 'https://test-app.bigbank.ru/mobile/welcome/api/v1/user-relations/internal/relation-products' \
+--header 'Authorization: Basic ZXh1ZXJuYWw6NXN4QjQyTjI0MzcyUDlk0DY82eA==' \
+--header 'Content-Type: application/json' \
+--data '{
+"ownerId": "User123",
+"recipientId": "User321",
+"productType": "INVITATION",
+"state": "AWAITING",
+"sourceSystem": "TAKSA",
+"eventCreatedAt": "2025-03-15T16:45:00.000+0400"
+}'

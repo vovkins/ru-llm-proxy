@@ -1,0 +1,63 @@
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
+import org.glassfish.jersey.internal.util.Base64;
+import java.io.IOException;
+/**
+* Created by U_M0G97 on 13.02.2015.
+*/
+public class SimpleRestClient {
+    private String username = "usssr55_1";
+    private String pwd = "secre11093";
+    private String stashApplicationURL = "http://039512:7990/stash";
+    private String stashProjectsRestServiceURL = "/rest/api/1.0/projects";
+    public void createProject(String projectKey, String projectName, String projectDescription) throws IOException {
+        String userpass = this.username + ":" + this.pwd;
+        String basicAuth = new String( (new Base64()).encode(userpass.getBytes()) );
+        HttpClient httpClient = new DefaultHttpClient();
+        try {
+            HttpPost requestPost = new HttpPost(stashApplicationURL+stashProjectsRestServiceURL);
+            requestPost.addHeader("Authorization","Basic " + basicAuth);
+            requestPost.setHeader("content-type", "application/json");
+            requestPost.setHeader("Accept", "application/json");
+            /**
+             * Далее формируется JSON-строка, передающая следующие параметры:
+             {
+             "key": "PRJ",
+             "name": "My Cool Project",
+             "description": "The description for my cool project.",
+             }
+             *
+             */
+            StringEntity requestParams = new StringEntity("{\"key\":" + "\"" + projectKey+ "\"" +   ",\"name\":" + "\"" +  projectName + "\"" +  ",\"description\":" + "\"" +  projectDescription + "\""  + "}");
+            System.out.println("request params: " + requestParams);
+            requestPost.setEntity(requestParams);
+            HttpResponse response = httpClient.execute(requestPost);
+            System.out.println( "Response:" + response.getStatusLine() );
+            System.out.println(EntityUtils.toString(response.getEntity()));
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            httpClient.getConnectionManager().shutdown();
+        }
+    }
+    public void getProjects() throws IOException {
+        String userpass = this.username + ":" + this.pwd;
+        String basicAuth = new String( (new Base64()).encode(userpass.getBytes()) );
+        HttpClient httpClient = new DefaultHttpClient();
+        try {
+            HttpGet requestGet = new HttpGet(stashApplicationURL+stashProjectsRestServiceURL);
+            requestGet.addHeader("Authorization","Basic" + basicAuth);
+            HttpResponse response = httpClient.execute(requestGet);
+            System.out.println( "Response:" + response.getStatusLine() + response.getEntity().toString() );
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            httpClient.getConnectionManager().shutdown();
+        }
+    }
+}

@@ -306,3 +306,9 @@ python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" \
     --proxy-url "http://127.0.0.1:${MASK_PORT}" \
     --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
     --capture-url "http://127.0.0.1:${CAPTURE_PORT}"
+
+python3 "$ROOT_DIR/tests/e2e/dkb_corpus_checks.py" \
+    --analyzer-url "http://127.0.0.1:${ANALYZER_PORT}" \
+    --proxy-url "http://127.0.0.1:${MASK_PORT}" \
+    --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
+    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"

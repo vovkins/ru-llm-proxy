@@ -1,0 +1,30 @@
+import requests  
+import psycopg2
+# Утечка учётных данных базы данных  
+DB_HOST = "db.internal.c"  
+DB_PORT = "5432"  
+DB_NAME = "db"  
+DB_USER = "admin"  
+DB_PASSWORD = "123456"
+def connect_to_database():  
+    conn = psycopg2.connect(  
+        host=DB_HOST,  
+        port=DB_PORT,  
+        dbname=DB_NAME,  
+        user=DB_USER,  
+        password=DB_PASSWORD  
+    )  
+    return conn
+# Утечка API-ключа облачного сервиса  
+API_KEY = "AKIA3EEXAMPLE7KEY33333212"  
+API_SECRET = "wJalrUtnFEMI/K44MDENG/fiCYEXAMPLEKEY"
+def fetch_external_data():  
+    headers = {  
+        "Authorization": f"Bearer {API_KEY}",  
+        "X-Secret": API_SECRET  
+    }  
+    response = requests.get(  
+        "[https://api.cloud-service.example/v1/data](https://api.cloud-service.example/v1/data)",  
+        headers=headers  
+    )  
+    return response.json()

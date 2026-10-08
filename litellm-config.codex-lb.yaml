@@ -127,7 +127,7 @@ guardrails:
             RU_SNILS, RU_PASSPORT, CREDIT_CARD, RU_ADDRESS, CONTRACT_NUMBER;
             инфраструктура, секреты и учётные данные: INTERNAL_IP,
             INTERNAL_DOMAIN, HOSTNAME, DB_URL, JWT, BEARER_TOKEN, PRIVATE_KEY,
-            API_KEY, SECRET_KEY, AUTH_TOKEN, LOGIN, PASSWORD.
+            API_KEY, SECRET_KEY, AUTH_TOKEN, LOGIN, PASSWORD, BASE64_DATA.
         - name: "mapping_store"
           type: "string"
           description: "Redis хранит временное сопоставление pii_mapping:<pii_request_id> и HMAC-кэш координат сущностей с общим временем жизни PII_MAPPING_TTL_SECONDS; исходный текст в кэш анализа не записывается."

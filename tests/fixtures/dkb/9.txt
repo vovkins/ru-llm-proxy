@@ -1,0 +1,7 @@
+INSERT INTO users (
+    username,
+    password_hash
+) VALUES (
+    'ivanov',
+    '12c18f9642947bb56ca779b5cbb33ebb'
+);

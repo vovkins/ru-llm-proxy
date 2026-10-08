@@ -195,6 +195,7 @@ CONTEXT_CASES = (
         "synthetic-auth-token-12345",
     ),
     ContextCase("login", "PGUSER=analytics", "LOGIN", "analytics"),
+    ContextCase("base64", "Base64: dGVzdA==", "BASE64_DATA", "dGVzdA=="),
     ContextCase(
         "password", "PASSWORD=SyntheticPass42!", "PASSWORD", "SyntheticPass42!"
     ),

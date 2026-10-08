@@ -31,7 +31,7 @@ def test_public_entity_contract_combines_deterministic_and_ner_types():
     assert SUPPORTED_ENTITY_TYPES == (
         DETERMINISTIC_ENTITY_TYPES | NER_ENTITY_TYPES
     )
-    assert len(SUPPORTED_ENTITY_TYPES) == 29
+    assert len(SUPPORTED_ENTITY_TYPES) == 30
 
 
 def test_guardrail_metadata_lists_complete_entity_contract_once():

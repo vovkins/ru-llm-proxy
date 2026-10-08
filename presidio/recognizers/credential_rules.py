@@ -92,11 +92,11 @@ _ASSIGNMENT_VALUE = (
     r"System\.getenv\([^\r\n]+\)|"
     r"[A-Za-z_$][\w$]*\[[\"'][^\r\n]+[\"']\]|"
     r"(?:config|settings|env|process\.env)(?:\.[A-Za-z_$][\w$]*)+|"
-    r'"[^"\r\n]{1,256}"|'
-    r"'[^'\r\n]{1,256}'|"
-    r"«[^»\r\n]{1,256}»|"
-    r"“[^”\r\n]{1,256}”|"
-    r"[^\s,;&}\]\r\n]{1,256}"
+    r'"[^"\r\n]+"|'
+    r"'[^'\r\n]+'|"
+    r"«[^»\r\n]+»|"
+    r"“[^”\r\n]+”|"
+    r"[^\s,;&}\]\r\n\"']+"
     r")"
 )
 
@@ -122,7 +122,7 @@ def _assignment_rule(rule_id: str, key_regex: str, score: float) -> _CredentialR
         rule_id=rule_id,
         regex=re.compile(
             rf"(?<![\w.-])[\"']?(?:{key_regex})[\"']?"
-            rf"(?:\s*[:=]\s*|\s+[—–]\s+)"
+            rf"(?:[ \t]*[:=][ \t]*|[ \t]+[—–][ \t]+)"
             rf"{_ASSIGNMENT_VALUE}",
             re.IGNORECASE | re.MULTILINE,
         ),
@@ -218,10 +218,14 @@ class _CapturedCredentialRecognizer(EntityRecognizer):
         if entities and entity_type not in entities:
             return []
         results = []
+        defined_symbols = _defined_code_symbols(text)
         for rule in self.RULES:
             for match in rule.regex.finditer(text):
                 start, end = match.span("value")
+                quoted = text[start] in _QUOTE_PAIRS
                 start, end, value = _strip_value_wrapper(text, start, end)
+                if not quoted and value in defined_symbols:
+                    continue
                 if start >= end or not self._accept_value(value, rule.rule_id):
                     continue
                 results.append(
@@ -240,6 +244,17 @@ class _CapturedCredentialRecognizer(EntityRecognizer):
 
 
 _ENV_PREFIX = r"(?:[A-Za-z][A-Za-z0-9]{0,31}[._]){0,3}"
+_DEFINED_SYMBOL_RE = re.compile(r"(?m)^[ \t]*(?:const[ \t]+)?([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)[ \t]*=")
+_CODE_CONTEXT_RE = re.compile(
+    r"(?m)^[ \t]*(?:import[ \t]+[A-Za-z_]|from[ \t]+[A-Za-z_]|"
+    r"def[ \t]+\w+[ \t]*\(|(?:export[ \t]+)?const[ \t]+\w+[ \t]*=|"
+    r"(?:public[ \t]+)?class[ \t]+\w+)"
+)
+
+
+def _defined_code_symbols(text):
+    # Bare values in .env are literals, not Python/JavaScript references.
+    return set(_DEFINED_SYMBOL_RE.findall(text)) if _CODE_CONTEXT_RE.search(text) else set()
 
 
 class LoginRecognizer(_CapturedCredentialRecognizer):
@@ -317,7 +332,8 @@ class PasswordRecognizer(_CapturedCredentialRecognizer):
     RULES = (
         _assignment_rule(
             "credential.kv.password",
-            rf"(?:{_ENV_PREFIX}(?:PASSWORD|PASSWD|PWD)|PGPASSWORD|пароль)",
+            rf"(?:{_ENV_PREFIX}(?:PASSWORD_HASH|PASSWORDHASH|PASS_HASH|PWD_HASH|"
+            rf"PASSWORD|PASSWD|PWD|PASS)|PGPASSWORD|пароль)",
             0.9,
         ),
     )
@@ -335,7 +351,7 @@ class PasswordRecognizer(_CapturedCredentialRecognizer):
         )
 
     def _accept_value(self, value: str, rule_id: str) -> bool:
-        return not _is_inert_credential_value(value) and 4 <= len(value) <= 256
+        return not _is_inert_credential_value(value) and len(value) >= 4
 
 
 class SecretKeyRecognizer(_CapturedCredentialRecognizer):
@@ -344,9 +360,10 @@ class SecretKeyRecognizer(_CapturedCredentialRecognizer):
     RULES = (
         _assignment_rule(
             "credential.kv.secret-key",
-            rf"{_ENV_PREFIX}(?:API_KEY|CLIENT_SECRET|SECRET_KEY|PRIVATE_KEY|"
-            rf"SIGNING_KEY|ENCRYPTION_KEY|APIKEY|CLIENTSECRET|SECRETKEY)"
-            rf"(?:_\d+)?|SECRET|секретный\s+ключ(?:\s+сервиса)?",
+            rf"{_ENV_PREFIX}(?:API_KEY|API_SECRET|CLIENT_SECRET|SECRET_KEY|PRIVATE_KEY|"
+            rf"SIGNING_KEY|ENCRYPTION_KEY|APIKEY|APISECRET|CLIENTSECRET|SECRETKEY|PRIVATEKEY)"
+            rf"(?:_\d+)?|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|X-API-KEY|"
+            rf"SECRET|секретный\s+ключ(?:\s+сервиса)?",
             0.9,
         ),
         _value_rule(
@@ -385,9 +402,11 @@ class SecretKeyRecognizer(_CapturedCredentialRecognizer):
     def _accept_value(self, value: str, rule_id: str) -> bool:
         if rule_id != "credential.kv.secret-key":
             return True
+        if re.search(r"-----BEGIN .*PRIVATE KEY", value):
+            return False
         return (
             not _is_inert_credential_value(value)
-            and 8 <= len(value) <= 256
+            and len(value) >= 8
             and not value.isdigit()
         )
 
@@ -398,11 +417,24 @@ class AuthTokenRecognizer(_CapturedCredentialRecognizer):
     RULES = (
         _assignment_rule(
             "credential.kv.auth-token",
-            rf"{_ENV_PREFIX}(?:ACCESS_TOKEN|REFRESH_TOKEN|AUTH_TOKEN|ID_TOKEN|"
+            rf"{_ENV_PREFIX}(?:ACCESS_TOKEN|REFRESH_TOKEN|AUTH_TOKEN|API_TOKEN|ID_TOKEN|"
             rf"BEARER_TOKEN|JWT_TOKEN|ACCESSTOKEN|REFRESHTOKEN|AUTHTOKEN|"
             rf"IDTOKEN|BEARERTOKEN|JWTTOKEN)|X-AUTH-TOKEN|"
             rf"токен(?:\s+авторизации)?",
             0.9,
+        ),
+        _assignment_rule(
+            "credential.kv.basic-credentials",
+            rf"{_ENV_PREFIX}(?:CREDENTIALS|BASIC_AUTH|BASICAUTH)",
+            0.95,
+        ),
+        _CredentialRule(
+            "credential.context.authorization-basic",
+            re.compile(
+                r"(?i)(?<![\w.-])[\"']?Authorization[\"']?\s*[:=]\s*[\"']?"
+                r"Basic[ \t]+(?P<value>[^\s\"',;}\]]{4,})"
+            ),
+            0.95,
         ),
         _CredentialRule(
             "credential.context.authorization-bearer",
@@ -463,16 +495,18 @@ class AuthTokenRecognizer(_CapturedCredentialRecognizer):
         )
 
     def _accept_value(self, value: str, rule_id: str) -> bool:
+        if rule_id == "credential.kv.basic-credentials":
+            return not _is_inert_credential_value(value) and len(value) >= 4
         if rule_id != "credential.kv.auth-token":
             return True
         return (
             not _is_inert_credential_value(value)
-            and 8 <= len(value) <= 256
+            and len(value) >= 8
             and not value.isdigit()
         )
 
 
-_SHELL_SEGMENT_RE = re.compile(r"[^;&|\r\n]+")
+_SHELL_SEGMENT_RE = re.compile(r"(?:\\[ \t]*\r?\n|[^;&|\r\n])+")
 _SHELL_TOKEN_RE = re.compile(r'''"(?:\\.|[^"\\])*"|'[^']*'|[^\s]+''')
 _SHELL_WRAPPERS = frozenset({"command", "env", "sudo", "xargs"})
 _ENV_ASSIGNMENT_RE = re.compile(r"[A-Za-z_]\w*=.*", re.DOTALL)
@@ -482,6 +516,8 @@ def _shell_tokens(text: str, segment_start: int, segment_end: int) -> list[_Shel
     tokens = []
     segment = text[segment_start:segment_end]
     for match in _SHELL_TOKEN_RE.finditer(segment):
+        if re.fullmatch(r"\\[ \t]*", match.group()):
+            continue
         start = segment_start + match.start()
         end = segment_start + match.end()
         value_start, value_end, value = _strip_value_wrapper(text, start, end)
@@ -692,3 +728,18 @@ def accepted_rule_ids() -> tuple[str, ...]:
     native_ids = {rule.rule_id for rule in recognizer_rules}
     native_ids.update({"curl-auth-header", "curl-auth-user"})
     return tuple(sorted(native_ids))
+
+
+def credential_reference_spans(text):
+    """Return bare uppercase variable references, never quoted literal values."""
+    spans = []
+    defined_symbols = _defined_code_symbols(text)
+    for cls in (LoginRecognizer, PasswordRecognizer, SecretKeyRecognizer, AuthTokenRecognizer):
+        for rule in cls.RULES:
+            for match in rule.regex.finditer(text):
+                start, end = match.span("value")
+                quoted = text[start] in _QUOTE_PAIRS
+                start, end, value = _strip_value_wrapper(text, start, end)
+                if not quoted and value in defined_symbols:
+                    spans.append((start, end))
+    return spans

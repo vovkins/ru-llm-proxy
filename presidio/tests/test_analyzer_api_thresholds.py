@@ -1,5 +1,6 @@
 """API-level regression tests for Analyzer threshold-sensitive recognizers."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -36,6 +37,8 @@ from recognizers.credential_rules import (
     CommandLineCredentialRecognizer,
     SecretKeyRecognizer,
 )
+from recognizers.base64_data import Base64DataRecognizer
+from recognizers.json_strings import JsonStringRecognizer, decoded_string_offsets
 from recognizers.ru_address import RuAddressRecognizer
 from recognizers.ru_inn import RuInnRecognizer
 from result_merging import (
@@ -155,6 +158,47 @@ def _api_entities(monkeypatch, analyzer, text, score_threshold=0.35):
 
 def _entity_texts(entities, entity_type):
     return [entity["text"] for entity in entities if entity["entity_type"] == entity_type]
+
+
+@pytest.mark.parametrize("key,requested,value", [
+    ("Base64", "BASE64_DATA", "dGVzdA=="),
+    ("password_base64", "PASSWORD", "broken@encoding"),
+    ("credentials_b64", "AUTH_TOKEN", "dGVzdA=="),
+])
+def test_encoded_values_respect_api_entity_filters(monkeypatch, key, requested, value):
+    analyzer = _build_analyzer(Base64DataRecognizer())
+    monkeypatch.setattr(analyzer_server, "analyzer", analyzer)
+    _stub_loaded_ner(monkeypatch)
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze",
+        json={"text": f'{key}: "{value}"', "entities": [requested], "score_threshold": 0.35},
+    )
+    assert response.status_code == 200
+    assert [(r["entity_type"], r["text"]) for r in response.json()["entities"]] == [(requested, value)]
+
+
+_DKB_CORPUS = Path(__file__).resolve().parents[2] / "tests/fixtures/dkb"
+
+
+@pytest.mark.parametrize(
+    "case",
+    json.loads((_DKB_CORPUS / "manifest.json").read_text()),
+    ids=lambda case: case["file"],
+)
+def test_json_corpus_detections_survive_presidio_registry(monkeypatch, case):
+    source = (_DKB_CORPUS / case["file"]).read_bytes().decode("utf-8")
+    text = json.dumps({"source": source}, ensure_ascii=False)
+    _, offsets = decoded_string_offsets(text, text.index(": ") + 2, len(text) - 1)
+    entities = _api_entities(monkeypatch, _build_analyzer(JsonStringRecognizer()), text)
+    for expected in case["expected"]:
+        if not expected["deterministic"]:
+            continue
+        assert any(
+            entity["start"] <= offsets[expected["start"]]
+            and entity["end"] >= offsets[expected["end"]]
+            and entity["entity_type"] in expected["entities"]
+            for entity in entities
+        ), (case["file"], expected["start"])
 
 
 class _EmptyAnalyzer:
