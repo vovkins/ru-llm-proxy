@@ -55,6 +55,7 @@ PII_PLACEHOLDER_PATTERN = re.compile(r"<[A-Z][A-Z0-9_]*_[1-9][0-9]*>")
 SYNTHETIC_MARKER_PATTERN = re.compile(
     r"(?:loaduser[0-9]{4}|state(?:chat|responses|failure|timeout|stream|cancel))[a-z0-9-]*@example\.test"
 )
+BASE64_BOUNDARY_PATTERN = re.compile(r"A{64}|B{64}")
 ANALYZER_SIGNATURE = "0" * 64
 
 CAPTURE = {
@@ -64,6 +65,7 @@ CAPTURE = {
     "analyzer_saw_canary": False,
     "provider_saw_canary": False,
     "provider_saw_dkb_canary": False,
+    "provider_saw_base64_boundary_value": False,
     "provider_saw_private_key_marker": False,
     "provider_saw_raw_phone": False,
     "provider_saw_phone_placeholder": False,
@@ -189,6 +191,7 @@ def _record_provider_payload(path, payload):
     saw_phone_placeholder = _text_contains(payload, PHONE_PLACEHOLDER)
     saw_pii_placeholder = _text_matches(payload, PII_PLACEHOLDER_PATTERN)
     saw_synthetic_marker = _text_matches(payload, SYNTHETIC_MARKER_PATTERN)
+    saw_base64_boundary_value = _text_matches(payload, BASE64_BOUNDARY_PATTERN)
     strings = list(_iter_strings(payload))
     for value in tuple(strings):
         if value.lstrip().startswith(("{", "[")):
@@ -202,6 +205,7 @@ def _record_provider_payload(path, payload):
         CAPTURE["provider_request_paths"].append(path)
         CAPTURE["provider_saw_canary"] |= saw_canary
         CAPTURE["provider_saw_dkb_canary"] |= saw_dkb_canary
+        CAPTURE["provider_saw_base64_boundary_value"] |= saw_base64_boundary_value
         CAPTURE["provider_saw_private_key_marker"] |= saw_private_key
         CAPTURE["provider_saw_raw_phone"] |= saw_raw_phone
         CAPTURE["provider_saw_phone_placeholder"] |= saw_phone_placeholder

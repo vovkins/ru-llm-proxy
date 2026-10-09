@@ -48,6 +48,7 @@ from result_merging import (
     SOURCE_STRUCTURAL,
 )
 from presidio.evaluation.corpus import load_corpus
+from text_chunking import plan_text_chunks
 
 
 def _build_analyzer(*recognizers):
@@ -175,6 +176,103 @@ def test_encoded_values_respect_api_entity_filters(monkeypatch, key, requested, 
     )
     assert response.status_code == 200
     assert [(r["entity_type"], r["text"]) for r in response.json()["entities"]] == [(requested, value)]
+
+
+def _small_outer_chunks(text):
+    return plan_text_chunks(
+        text, max_chunk_characters=256, overlap_characters=32,
+        boundary_search_characters=0,
+    )
+
+
+@pytest.mark.parametrize("key,entity", [
+    ("Base64", "BASE64_DATA"), ("b64", "BASE64_DATA"),
+    ("payload_b64", "BASE64_DATA"), ("password_base64", "PASSWORD"),
+    ("credentials_b64", "AUTH_TOKEN"), ("login_b64", "LOGIN"),
+    ("api_key_base64", "SECRET_KEY"),
+])
+@pytest.mark.parametrize("form", ["bare", "quoted", "multiline", "offset"])
+def test_declared_base64_survives_outer_chunk_boundaries(monkeypatch, key, entity, form):
+    value = "A" * 700
+    prefix = ""
+    if form == "multiline":
+        value = "A" * 250 + "\n    " + "B" * 450
+    if form == "offset":
+        prefix, value = " " * 220, "A" * 150
+    text = prefix + f'{key}: "{value}"' if form == "quoted" else prefix + f"{key}: {value}"
+    text += "\nordinary"
+    analyzer = _build_analyzer(Base64DataRecognizer())
+    monkeypatch.setattr(analyzer_server, "analyzer", analyzer)
+    monkeypatch.setattr(analyzer_server, "plan_text_chunks", _small_outer_chunks)
+    _stub_loaded_ner(monkeypatch)
+    ner_calls = []
+    monkeypatch.setattr(
+        analyzer_server.ner_recognizer, "analyze",
+        lambda chunk_text, **_kwargs: ner_calls.append(chunk_text) or [],
+    )
+    response = TestClient(analyzer_server.app).post(
+        "/api/v1/analyze", json={"text": text, "entities": [entity]},
+    )
+    assert response.status_code == 200
+    assert response.json()["entities"] == [{
+        "entity_type": entity, "start": text.index(value),
+        "end": text.index(value) + len(value), "score": 0.95, "text": value,
+    }]
+    assert ner_calls == [text[chunk.start:chunk.end] for chunk in _small_outer_chunks(text)]
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+def test_declared_base64_larger_than_real_outer_chunk(monkeypatch, quoted):
+    value = "A" * 140000
+    text = f'Base64: "{value}"' if quoted else "Base64: " + value
+    entities = _api_entities(monkeypatch, _build_analyzer(Base64DataRecognizer()), text)
+    assert [(r["entity_type"], r["start"], r["end"], r["text"]) for r in entities] == [
+        ("BASE64_DATA", text.index(value), text.index(value) + len(value), value),
+    ]
+
+
+@pytest.mark.parametrize("requested,threshold,expected", [
+    (["PASSWORD"], 0.95, "PASSWORD"),
+    (["PASSWORD"], 0.950001, None),
+    (["BASE64_DATA"], 0.35, None),
+    (["PERSON"], 0.35, None),
+    (None, 0.35, "PASSWORD"),
+    ([], 0.35, "PASSWORD"),
+])
+def test_document_base64_preserves_threshold_and_entity_filter(monkeypatch, requested, threshold, expected):
+    # A later chunk starts with a valid encoding of a password. It must not
+    # reinterpret a declared PASSWORD container as untyped BASE64_DATA.
+    import base64
+    tail = base64.b64encode(b'password="synthetic-password-2026"').decode()
+    prefix = 'password_b64: "'
+    value = "A" * (224 - len(prefix)) + " " + tail
+    text = prefix + value + '"'
+    monkeypatch.setattr(analyzer_server, "analyzer", _build_analyzer(Base64DataRecognizer()))
+    monkeypatch.setattr(analyzer_server, "plan_text_chunks", _small_outer_chunks)
+    _stub_loaded_ner(monkeypatch)
+    response = TestClient(analyzer_server.app).post("/api/v1/analyze", json={
+        "text": text, "entities": requested, "score_threshold": threshold,
+    })
+    assert response.status_code == 200
+    entities = response.json()["entities"]
+    if expected is None:
+        assert entities == []
+    else:
+        assert [(r["entity_type"], r["text"]) for r in entities] == [(expected, value)]
+
+
+def test_document_base64_keeps_full_container_over_inner_credential(monkeypatch):
+    value = "A" * 240 + " PASSWORD=Synthetic-Password-2026 " + "B" * 300
+    text = f'Base64: "{value}"'
+    monkeypatch.setattr(analyzer_server, "plan_text_chunks", _small_outer_chunks)
+    entities = _api_entities(monkeypatch, _build_analyzer(Base64DataRecognizer(), PasswordRecognizer()), text)
+    assert [(r["entity_type"], r["text"]) for r in entities] == [("BASE64_DATA", value)]
+
+
+def test_document_base64_does_not_add_an_unregistered_recognizer(monkeypatch):
+    monkeypatch.setattr(analyzer_server, "plan_text_chunks", _small_outer_chunks)
+    entities = _api_entities(monkeypatch, _EmptyAnalyzer(), "Base64: " + "A" * 700)
+    assert entities == []
 
 
 _DKB_CORPUS = Path(__file__).resolve().parents[2] / "tests/fixtures/dkb"

@@ -43,6 +43,58 @@ def payload_for(text, api, stream, arguments):
     return payload
 
 
+def check_chunk_boundaries(analyzer_url, proxy_url, block_proxy_url, capture_url):
+    cases = [
+        ("long", "Base64", "BASE64_DATA", "", "A" * 140000, False),
+        ("offset", "payload_b64", "BASE64_DATA", " " * 115000, "A" * 20000, False),
+        ("multiline", "password_b64", "PASSWORD", " " * 115000,
+         "A" * 10000 + "\n    " + "B" * 10000, True),
+    ]
+    flows = blocked = 0
+    for case_id, key, entity, prefix, value, quoted in cases:
+        text = prefix + (f'{key}: "{value}"' if quoted else f"{key}: {value}")
+        arguments_text = json.dumps({"ordinary": prefix, key: value})
+        encoded_value = json.dumps(value)[1:-1]
+        for source, expected_value in ((text, value), (arguments_text, encoded_value)):
+            entities = _request(analyzer_url, "/api/v1/analyze", {
+                "text": source, "score_threshold": 0.35,
+            }, timeout=180)["entities"]
+            start = source.index(expected_value)
+            assert any(
+                r["entity_type"] == entity and r["start"] == start
+                and r["end"] == start + len(expected_value)
+                for r in entities
+            ), (case_id, "complete source span missing")
+        for api in ("chat/completions", "responses"):
+            for stream in (False, True):
+                for arguments in (False, True):
+                    context = (case_id, api, stream, arguments)
+                    payload = payload_for(text, api, stream, arguments)
+                    if arguments:
+                        if api == "chat/completions":
+                            payload["messages"][1]["tool_calls"][0]["function"]["arguments"] = arguments_text
+                        else:
+                            payload["input"][1]["arguments"] = arguments_text
+                    reset(capture_url)
+                    response = _request(proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
+                    assert _restored_text(response, api, stream) == text, (context, "restoration")
+                    captured = capture(capture_url)
+                    assert captured["provider_requests"] == 1, context
+                    assert captured["provider_saw_pii_placeholder"], context
+                    assert not captured["provider_saw_base64_boundary_value"], (context, "partial or full sensitive egress")
+                    flows += 1
+                    reset(capture_url)
+                    try:
+                        _request(block_proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 422, (context, error.code)
+                    else:
+                        raise AssertionError((context, "block request succeeded"))
+                    assert capture(capture_url)["provider_requests"] == 0, context
+                    blocked += 1
+    print(json.dumps({"status": "ok", "base64_boundary_cases": len(cases), "echo_flows": flows, "blocked_flows": blocked}))
+
+
 def check(analyzer_url, proxy_url, block_proxy_url, capture_url):
     cases = json.loads((CORPUS / "manifest.json").read_text())
     flows = blocked = annotations = json_annotations = final_blocked = 0
@@ -109,6 +161,7 @@ def check(analyzer_url, proxy_url, block_proxy_url, capture_url):
                     assert capture(capture_url)["provider_requests"] == 0, context
                     blocked += 1
     print(json.dumps({"status": "ok", "dkb_files": len(cases), "annotations": annotations, "json_annotations": json_annotations, "echo_flows": flows, "blocked_flows": blocked, "final_blocked_flows": final_blocked}))
+    check_chunk_boundaries(analyzer_url, proxy_url, block_proxy_url, capture_url)
 
 
 if __name__ == "__main__":

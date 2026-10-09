@@ -55,6 +55,8 @@ class _WireStream(httpx.AsyncByteStream):
         for entity in sorted(SUPPORTED_ENTITY_TYPES)
     ]
     + [pytest.param("dictionary", None, id="dictionary")]
+    + [pytest.param("long-base64", "BASE64_DATA", id="long-base64")]
+    + [pytest.param("long-base64", "PASSWORD", id="long-password-base64")]
     + [pytest.param("dkb", case, id="dkb-" + case["file"]) for case in DKB_CASES],
 )
 async def test_round_trip_through_litellm_parser(
@@ -100,9 +102,11 @@ async def test_round_trip_through_litellm_parser(
     original = "Т-Банк" if dictionary else 'Москва "центр"\nC:\\work\\main.py\t😀'
     if corpus_case:
         original = (DKB_CORPUS / corpus_case["file"]).read_bytes().decode("utf-8")
+    if replacement == "long-base64":
+        original = "A" * 70000 + "\n    " + "B" * 70000
     expected = original
     if output_kind == "code":
-        if not corpus_case:
+        if not corpus_case and replacement != "long-base64":
             original = "Т-Банк" if dictionary else "Москва"
         expected = f'let city = "{original}"\nlet path = "C:\\work"\nprint(city)\n'
     prompt = "Верни без изменений: " + expected

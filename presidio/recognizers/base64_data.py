@@ -72,26 +72,9 @@ class Base64DataRecognizer(EntityRecognizer):
 
     def analyze(self, text, entities, nlp_artifacts=None):
         requested = set(entities or self.supported_entities)
-        results = []
-        declared = []
-        for match in _CONTEXT.finditer(text):
-            start, end = match.span("value")
-            if text[start] in "\"'":
-                start, end = start + 1, end - 1
-            while start < end and text[start].isspace():
-                start += 1
-            while end > start and text[end - 1].isspace():
-                end -= 1
-            if start < end:
-                declared.append((start, end))
-                key = re.sub(r"[_-](?:base64|b64)$", "", match.group("key"), flags=re.I)
-                entity_type = "BASE64_DATA"
-                for recognizer in self._typed_recognizers:
-                    if recognizer.analyze(f'{key}="synthetic-value-123"', recognizer.supported_entities):
-                        entity_type = recognizer.supported_entities[0]
-                        break
-                if entity_type in requested:
-                    results.append(self._result(start, end, "base64.declared", entity_type))
+        declared_results = self.analyze_declared(text, self.supported_entities)
+        results = [r for r in declared_results if r.entity_type in requested]
+        declared = [(r.start, r.end) for r in declared_results]
 
         attempts = 0
         decoded_bytes = 0
@@ -119,6 +102,29 @@ class Base64DataRecognizer(EntityRecognizer):
             if self._has_sensitive_content(inner):
                 results.append(self._result(match.start(), match.end(), "base64.sensitive-content"))
         return EntityRecognizer.remove_duplicates(results)
+
+    def analyze_declared(self, text, entities):
+        """Find complete declared values without decoding or running content rules."""
+        requested = set(entities or self.supported_entities)
+        results = []
+        for match in _CONTEXT.finditer(text):
+            start, end = match.span("value")
+            if text[start] in "\"'":
+                start, end = start + 1, end - 1
+            while start < end and text[start].isspace():
+                start += 1
+            while end > start and text[end - 1].isspace():
+                end -= 1
+            if start < end:
+                key = re.sub(r"[_-](?:base64|b64)$", "", match.group("key"), flags=re.I)
+                entity_type = "BASE64_DATA"
+                for recognizer in self._typed_recognizers:
+                    if recognizer.analyze(f'{key}="synthetic-value-123"', recognizer.supported_entities):
+                        entity_type = recognizer.supported_entities[0]
+                        break
+                if entity_type in requested:
+                    results.append(self._result(start, end, "base64.declared", entity_type))
+        return results
 
     def _has_sensitive_content(self, text):
         for recognizer in self._content_recognizers:

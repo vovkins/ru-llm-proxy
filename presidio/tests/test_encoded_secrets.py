@@ -110,6 +110,23 @@ def test_decode_budget_never_affects_later_declared_fields():
     assert [text[r.start:r.end] for r in results] == ["test"]
 
 
+def test_document_declarations_never_decode_or_inspect_contents(monkeypatch):
+    import recognizers.base64_data as module
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("document declarations must not inspect encoded content")
+
+    recognizer = Base64DataRecognizer()
+    monkeypatch.setattr(module, "decode_candidate", forbidden)
+    monkeypatch.setattr(recognizer, "_has_sensitive_content", forbidden)
+    value = "A" * 140000
+    text = f'password_base64="{value}"'
+    results = recognizer.analyze_declared(text, ["PASSWORD"])
+    assert [(r.entity_type, text[r.start:r.end]) for r in results] == [("PASSWORD", value)]
+    assert recognizer.analyze_declared(text, ["BASE64_DATA"]) == []
+    assert recognizer.analyze_declared(value, ["BASE64_DATA"]) == []
+
+
 def test_no_recursive_decode_and_entity_filter_is_respected():
     inner = base64.b64encode(b'password="Synthetic-Pass-2026"')
     value = base64.b64encode(inner).decode()

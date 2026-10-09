@@ -60,7 +60,7 @@ def _canary_values(cases):
     )
 
 
-def _request(base_url, path, payload, *, stream=False):
+def _request(base_url, path, payload, *, stream=False, timeout=60):
     request = urllib.request.Request(
         base_url + path,
         data=json.dumps(payload, ensure_ascii=False).encode(),
@@ -69,7 +69,7 @@ def _request(base_url, path, payload, *, stream=False):
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         if not stream:
             return json.load(response)
         assert response.headers.get_content_type() == "text/event-stream"

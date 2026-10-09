@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import uuid
+from bisect import bisect_left
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
@@ -24,6 +25,7 @@ from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 from capacity import CapacityRejected, build_limiter_from_env
 from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
+from recognizers.base64_data import Base64DataRecognizer
 from result_merging import MergeDecision, merge_results
 from text_chunking import TextChunk, plan_text_chunks
 from ner import (
@@ -789,6 +791,27 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         chunks = plan_text_chunks(request.text)
         _record_text_chunk_metrics(chunks)
         results: list[RecognizerResult] = []
+        presidio_duration = 0.0
+        declared_starts: list[int] = []
+        declared_ends: list[int] = []
+        if len(chunks) > 1:
+            # A declared container can be longer than a chunk or its overlap.
+            # Resolve its complete source span before processing local findings.
+            declared_started_at = time.perf_counter()
+            try:
+                _raise_if_cancelled(cancellation_event)
+                results = _analyze_document_base64(request)
+                _raise_if_cancelled(cancellation_event)
+            except Exception:
+                _record_analyzer_phase(
+                    "presidio", "failure", time.perf_counter() - declared_started_at,
+                )
+                raise
+            presidio_duration = time.perf_counter() - declared_started_at
+            for start, end in sorted((r.start, r.end) for r in results):
+                declared_starts.append(start)
+                declared_ends.append(max(end, declared_ends[-1] if declared_ends else 0))
+            results = [r for r in results if r.score >= request.score_threshold]
         sentence_starts: set[int] = set()
         name_context_needed = not request.entities or bool(
             {"PERSON", "ORGANIZATION"}.intersection(request.entities)
@@ -798,7 +821,6 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             ner_entities = list(
                 dict.fromkeys([*request.entities, "PERSON", "ORGANIZATION"])
             )
-        presidio_duration = 0.0
         for chunk in chunks:
             _raise_if_cancelled(cancellation_event)
             chunk_text = request.text[chunk.start : chunk.end]
@@ -835,6 +857,9 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 _shift_recognizer_result(result, chunk.start)
                 for result in chunk_results
                 if _is_complete_chunk_result(result, chunk, len(request.text))
+                and not _is_document_base64_fragment(
+                    result, chunk.start, declared_starts, declared_ends,
+                )
             )
 
             _raise_if_cancelled(cancellation_event)
@@ -941,6 +966,38 @@ def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
     """Stop bounded worker work at the next safe chunk or batch boundary."""
     if cancellation_event is not None and cancellation_event.is_set():
         raise AnalyzerWorkCancelled("Analyzer request was cancelled")
+
+
+def _analyze_document_base64(request: AnalyzeRequest) -> list[RecognizerResult]:
+    """Resolve declared spans only through the configured language registry."""
+    results = []
+    registry = getattr(analyzer, "registry", None)
+    for recognizer in getattr(registry, "recognizers", ()):
+        if (
+            isinstance(recognizer, Base64DataRecognizer)
+            and recognizer.supported_language == request.language
+            and (not request.entities or set(request.entities).intersection(recognizer.supported_entities))
+        ):
+            # Keep excluded typed spans until merge applies the request filter;
+            # their fragments must not be reinterpreted as untyped Base64.
+            results.extend(recognizer.analyze_declared(request.text, recognizer.supported_entities))
+    return results
+
+
+def _is_document_base64_fragment(
+    result: RecognizerResult,
+    offset: int,
+    declared_starts: list[int],
+    declared_ends: list[int],
+) -> bool:
+    """Suppress local Base64 interpretations overlapping a declared container."""
+    if not declared_starts:
+        return False
+    metadata = result.recognition_metadata or {}
+    if metadata.get(RecognizerResult.RECOGNIZER_NAME_KEY) != "Base64DataRecognizer":
+        return False
+    index = bisect_left(declared_starts, offset + result.end) - 1
+    return index >= 0 and declared_ends[index] > offset + result.start
 
 
 def _shift_recognizer_result(
