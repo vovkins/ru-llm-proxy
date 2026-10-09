@@ -32,7 +32,7 @@ _KNOWN_SOURCES = frozenset(
     }
 )
 _STRUCTURED_CONTAINER_TYPES = frozenset(
-    {"PRIVATE_KEY", "DB_URL", "JWT", "API_KEY"}
+    {"PRIVATE_KEY", "DB_URL", "JWT", "API_KEY", "BASE64_DATA"}
 )
 _CREDENTIAL_ENTITY_TYPES = frozenset(
     {"LOGIN", "PASSWORD", "AUTH_TOKEN", "SECRET_KEY"}
@@ -57,8 +57,9 @@ _ENTITY_SPECIFICITY = {
     "PRIVATE_KEY": 0,
     "DB_URL": 1,
     "JWT": 2,
-    "API_KEY": 3,
-    "BEARER_TOKEN": 4,
+    "BASE64_DATA": 3,
+    "API_KEY": 4,
+    "BEARER_TOKEN": 5,
     "SECRET_KEY": 5,
     "AUTH_TOKEN": 6,
 }
@@ -103,10 +104,11 @@ _NAME_WORD = r"[А-ЯЁ][А-Яа-яЁё]{1,39}(?:-[А-ЯЁ][А-Яа-яЁё]{1,39
 _NAME_VALUE = rf"{_NAME_WORD}(?:[ \t\u00a0]{{1,16}}{_NAME_WORD}){{1,2}}"
 _EXPLICIT_NAME_RE = re.compile(
     rf"(?<!\w)(?:"
-    rf"(?P<person>(?i:фио|ф\.и\.о\.))[ \t\u00a0]{{0,16}}[:=]|"
+    rf"(?P<person>(?i:фио|ф\.и\.о\.|full_name|полное имя|пользователь))"
+    rf"[\"']?[ \t\u00a0]{{0,16}}[:=](?:[ \t\u00a0]{{0,16}}[\"'])?|"
     rf"(?P<organization>(?i:название организации))[ \t\u00a0]{{0,16}}[:=]|"
-    rf"(?P<legal>(?i:ООО|АО|ПАО|ОАО|ЗАО))"
-    rf")[ \t\u00a0]{{1,16}}(?P<value>{_NAME_VALUE})(?![\w-])"
+    rf"(?P<legal>(?i:ООО|АО|ПАО|ОАО|ЗАО))[ \t\u00a0]{{1,16}}"
+    rf")(?(legal)|[ \t\u00a0]{{0,16}})(?P<value>{_NAME_VALUE})(?![\w-])"
 )
 _COMPANY_NAME_RE = re.compile(
     rf"(?<!\w)(?i:компания)[ \t\u00a0]{{1,16}}"
@@ -245,6 +247,11 @@ def merge_results(
     decisions = []
     valid_results = []
     contract_evidence = contract_context_evidence(text)
+    reference_spans = []
+    results = list(results)
+    if any(detection_source(r) == SOURCE_NER and r.entity_type in _CREDENTIAL_ENTITY_TYPES for r in results):
+        from recognizers.credential_rules import credential_reference_spans
+        reference_spans = credential_reference_spans(text)
 
     for result in results:
         source = detection_source(result)
@@ -252,6 +259,13 @@ def merge_results(
             decisions.append(
                 MergeDecision("invalid_span", SOURCE_NONE, source)
             )
+            continue
+        if (
+            source == SOURCE_NER
+            and result.entity_type in _CREDENTIAL_ENTITY_TYPES
+            and any(start <= result.start < result.end <= end for start, end in reference_spans)
+        ):
+            decisions.append(MergeDecision("credential_reference_suppressed", SOURCE_NONE, SOURCE_NER))
             continue
         if (
             source == SOURCE_NER
@@ -332,6 +346,29 @@ def merge_results(
     if requested_entities:
         requested = frozenset(requested_entities)
         valid_results = [r for r in valid_results if r.entity_type in requested]
+    # A declared encoded value owns its full span, including inner detections.
+    containers = sorted(
+        (r.start, r.end) for r in valid_results
+        if (r.recognition_metadata or {}).get("encoded_container") is True
+    )
+    container_starts = [start for start, _ in containers]
+    container_ends = []
+    for _, end in containers:
+        container_ends.append(max(end, container_ends[-1] if container_ends else 0))
+    retained = []
+    for result in valid_results:
+        index = bisect_right(container_starts, result.start) - 1
+        if (
+            index >= 0
+            and result.end <= container_ends[index]
+            and (result.recognition_metadata or {}).get("encoded_container") is not True
+        ):
+            decisions.append(MergeDecision(
+                "overlap_preferred_source", SOURCE_STRUCTURAL, detection_source(result)
+            ))
+        else:
+            retained.append(result)
+    valid_results = retained
     ordered = sorted(valid_results, key=_priority_key)
     kept: list[RecognizerResult] = []
     for candidate in ordered:
@@ -538,7 +575,7 @@ def _refine_explicit_name_values(
 ) -> tuple[list[RecognizerResult], list[MergeDecision]]:
     decisions = []
     if not any(
-        detection_source(r) == SOURCE_NER and r.entity_type in _NAME_TYPES
+        detection_source(r) == SOURCE_NER and r.entity_type in _NAME_FRAGMENT_TYPES
         for r in results
     ):
         return results, decisions
@@ -584,7 +621,10 @@ def _refine_explicit_name_values(
             and r.score >= score_threshold
             and context.start <= r.start < r.end <= context.end
         ]
-        if not fragments or not any(r.entity_type in _NAME_TYPES for r in fragments):
+        if not fragments or not (
+            context.entity_type == "PERSON"
+            or any(r.entity_type in _NAME_TYPES for r in fragments)
+        ):
             continue
         legal_prefix = [
             r for r in fragments
@@ -654,7 +694,10 @@ def _with_detection_source(
 
 def _source_rank(result: RecognizerResult) -> int:
     source = detection_source(result)
-    if source == SOURCE_STRUCTURAL and result.entity_type in _STRUCTURED_CONTAINER_TYPES:
+    if source == SOURCE_STRUCTURAL and (
+        result.entity_type in _STRUCTURED_CONTAINER_TYPES
+        or (result.recognition_metadata or {}).get("encoded_container") is True
+    ):
         return 0
     if source == SOURCE_NATIVE_CREDENTIAL:
         return 1
@@ -668,6 +711,8 @@ def _priority_key(result: RecognizerResult) -> tuple:
     source_rank = _source_rank(result)
     specificity = _ENTITY_SPECIFICITY.get(result.entity_type, 50)
     metadata = result.recognition_metadata or {}
+    if metadata.get("encoded_container") is True:
+        specificity = _ENTITY_SPECIFICITY["BASE64_DATA"]
     recognizer_name = str(
         metadata.get(RecognizerResult.RECOGNIZER_NAME_KEY, "")
     )
@@ -684,6 +729,7 @@ def _priority_key(result: RecognizerResult) -> tuple:
     span_priority = span_length if source == SOURCE_NATIVE_CREDENTIAL else -span_length
     return (
         source_rank,
+        0 if metadata.get("json_string_projection") is True else 1,
         *within_source_priority,
         span_priority,
         result.start,

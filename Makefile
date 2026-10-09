@@ -188,6 +188,7 @@ test-recognizer-api:
 		$(PYTEST) \
 		presidio/tests/test_result_merging.py \
 		presidio/tests/test_credential_rules.py \
+		presidio/tests/test_encoded_secrets.py \
 		presidio/tests/test_analyzer_api_thresholds.py
 
 test-ner-evaluation:

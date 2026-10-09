@@ -1,0 +1,7 @@
+INSERT INTO users (
+    username,
+    password_hash
+) VALUES (
+    'volkov',
+    '0770d1e0b310a8ae30999a2dd1498c7ee862716ccc4e33cf61383c5da7d78235'
+);

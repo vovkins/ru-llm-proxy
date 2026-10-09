@@ -115,6 +115,14 @@ def test_name_corpora_gate_requires_complete_critical_spans_and_filter_agreement
     assert '"holdout_legal_person": (["ORGANIZATION"]' not in script
 
 
+def test_dkb_corpus_is_part_of_real_analyzer_gate():
+    workflow = _read(WORKFLOW)
+    assert workflow.count('"tests/e2e/dkb_corpus_checks.py"') == 2
+    assert workflow.count('"tests/fixtures/dkb/**"') == 2
+    assert "dkb_corpus_checks.py" in _read(SCRIPT)
+    assert "MOCK_DKB_CORPUS=true" in _read(COMPOSE)
+
+
 def test_baseline_validates_new_workflow_and_shell_assets():
     baseline = _read(ROOT / ".github" / "workflows" / "baseline.yml")
 

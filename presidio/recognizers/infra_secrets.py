@@ -249,9 +249,10 @@ class HostnameRecognizer(EntityRecognizer):
         (
             "hostname_key_value",
             re.compile(
-                r"(?i)(?<![\w.-])(?:host(?:name)?|server|node|service|"
+                r"(?i)(?<![\w.-])(?:[A-Za-z][A-Za-z0-9]{0,31}[._]){0,3}"
+                r"(?:host(?:name)?|server|node|service|"
                 r"endpoint|хост|сервер|узел|сервис|имя[ \t]+хоста)"
-                rf"\s*[:=]\s*[\"']?(?P<value>{_HOST_LABEL})[\"']?"
+                rf"\s*[:=]\s*[\"']?(?P<value>{_HOST_LABEL}(?:\.{_HOST_LABEL})*)[\"']?"
                 r"(?![A-Za-z0-9-]|\.[A-Za-z0-9])"
             ),
             0.75,
@@ -325,9 +326,11 @@ class HostnameRecognizer(EntityRecognizer):
         if normalized in _COMMON_NON_HOST_VALUES:
             return False
         return (
-            normalized == "localhost"
+            len(value) <= 253
+            and (normalized == "localhost"
+            or "." in value
             or "-" in value
-            or any(char.isdigit() for char in value)
+            or any(char.isdigit() for char in value))
         )
 
 
@@ -470,6 +473,26 @@ class PrivateKeyRecognizer(PatternRecognizer):
                 r"-----BEGIN (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY(?:[ \t]+BLOCK)?-----"
                 r"[\s\S]{0,4096}?"
                 r"-----END (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY(?:[ \t]+BLOCK)?-----"
+            ),
+            score=0.95,
+        ),
+        Pattern(
+            name="private_key_literal_fragments",
+            regex=(
+                r"-----BEGIN (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY-----"
+                r"(?:\\[rn]|[ \t\r\n])*"
+                r"(?:[\"'][ \t\r\n]*\+[ \t\r\n]*[\"']"
+                r"[A-Za-z0-9+/=]{16,4096}){1,16}"
+                r"(?=[\"'](?![ \t\r\n]*\+))"
+            ),
+            score=0.95,
+        ),
+        Pattern(
+            name="private_key_literal_truncated",
+            regex=(
+                r"-----BEGIN (?:[A-Z0-9]+[ \t]+)*PRIVATE KEY-----"
+                r"(?:\\[rn]|[ \t])*[A-Za-z0-9+/=]{16,4096}"
+                r"(?=[\"'](?![ \t\r\n]*\+))"
             ),
             score=0.95,
         ),

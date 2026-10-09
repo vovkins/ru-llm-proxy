@@ -304,6 +304,11 @@ class RuSettlementAccountRecognizer(_RuBankAccountRecognizer):
 
     PATTERNS = [
         Pattern(
+            name="ru_settlement_account_flexible_spaces",
+            regex=r"(?<!\d)(?:\d[ \t\u00a0]{0,3}){19}\d(?![ \t\u00a0]*\d)",
+            score=0.2,
+        ),
+        Pattern(
             name="ru_settlement_account_20digit",
             regex=rf"(?<!\d)\d{{5}}{_DIGIT_GROUP_SEPARATOR}\d{{3}}"
             rf"{_DIGIT_GROUP_SEPARATOR}\d{{1}}{_DIGIT_GROUP_SEPARATOR}\d{{4}}"
@@ -313,6 +318,8 @@ class RuSettlementAccountRecognizer(_RuBankAccountRecognizer):
     ]
 
     CONTEXT = [
+        "номер счета",
+        "номер счёта",
         "расчетный счет",
         "расчётный счёт",
         "р/с",
@@ -325,6 +332,7 @@ class RuSettlementAccountRecognizer(_RuBankAccountRecognizer):
     ]
     _required_context_re = re.compile(
         r"(?i)(?:"
+        r"номер\s+сч[её]та|"
         r"расч[её]тн\w*\s+сч[её]т\w*|"
         r"\bр\s*/\s*с\b|"
         r"\bр\s*\.?\s*с\.?\b|"

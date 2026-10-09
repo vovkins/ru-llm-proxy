@@ -61,8 +61,8 @@ curl -sS "$API_URL/v1/chat/completions" \
 ```
 
 В потоке восстанавливаются `delta.content` и `delta.reasoning_content`, включая
-служебные метки, разорванные между фрагментами. Аргументы вызовов инструментов в
-потоковых дельтах пока не восстанавливаются.
+служебные метки, разорванные между фрагментами. JSON-аргументы вызовов инструментов
+также восстанавливаются, с сохранением экранирования строк.
 
 ## Дополнительный пример OpenAI Responses API
 
@@ -131,7 +131,7 @@ curl -s http://localhost:5001/api/v1/analyze \
 | --- | --- |
 | Персональные данные и документы | `PERSON`, `LOCATION`, `ORGANIZATION`, `PHONE_NUMBER`, `EMAIL_ADDRESS`, `RU_INN`, `RU_KPP`, `RU_OGRN`, `RU_OGRNIP`, `RU_SNILS`, `RU_PASSPORT`, `CREDIT_CARD`, `RU_ADDRESS`, `CONTRACT_NUMBER` |
 | Банковские реквизиты | `RU_BIK`, `RU_SETTLEMENT_ACCOUNT`, `RU_CORRESPONDENT_ACCOUNT` |
-| Инфраструктура и секреты | `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `SECRET_KEY`, `AUTH_TOKEN`, `LOGIN`, `PASSWORD` |
+| Инфраструктура и секреты | `INTERNAL_IP`, `INTERNAL_DOMAIN`, `HOSTNAME`, `DB_URL`, `JWT`, `BEARER_TOKEN`, `PRIVATE_KEY`, `API_KEY`, `SECRET_KEY`, `AUTH_TOKEN`, `LOGIN`, `PASSWORD`, `BASE64_DATA` |
 
 `RU_KPP`, `RU_BIK`, `RU_SETTLEMENT_ACCOUNT` и `RU_CORRESPONDENT_ACCOUNT`
 требуют контекст. `RU_OGRN` и `RU_OGRNIP` проходят проверку контрольной суммы.
@@ -182,6 +182,12 @@ curl -s http://localhost:5001/api/v1/analyze \
     "entities": ["RU_INN"]
   }' | jq
 ```
+
+`Base64: dGVzdA==` заменяется целиком как `BASE64_DATA` по явной подписи.
+`Authorization: Basic ...` относится к `AUTH_TOKEN`; поля паролей и хешей
+паролей сохраняют класс `PASSWORD`. Без контекста Base64 защищается только
+после подтверждения чувствительного содержимого, а не по одному алфавиту.
+Ограничения и тестовый корпус: [детекция по корпусу ДКБ](research/dkb-corpus.md).
 
 NER поддерживает `PERSON`, `LOCATION`, `ORGANIZATION`, `LOGIN`, `PASSWORD`,
 `AUTH_TOKEN`, `SECRET_KEY` и `CONTRACT_NUMBER`. Номер договора требует контекст

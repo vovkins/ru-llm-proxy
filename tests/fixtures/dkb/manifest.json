@@ -1,0 +1,559 @@
+[
+  {
+    "file": "1.txt",
+    "sha256": "ac4c829a0f9ab773405924b414140e0903fca8062c715f5b6bda893f288c9249",
+    "expected": [
+      {
+        "start": 86,
+        "end": 99,
+        "entities": [
+          "HOSTNAME"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 153,
+        "end": 158,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 178,
+        "end": 184,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 460,
+        "end": 485,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 504,
+        "end": 540,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": "final_payload_leak_check_blocked"
+  },
+  {
+    "file": "2.txt",
+    "sha256": "b87876e86d78ea1bcb26115901da755cf63d50b781f091875a0e46fb2570896d",
+    "expected": [
+      {
+        "start": 157,
+        "end": 172,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 283,
+        "end": 296,
+        "entities": [
+          "HOSTNAME"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 344,
+        "end": 351,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 554,
+        "end": 568,
+        "entities": [
+          "AUTH_TOKEN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 677,
+        "end": 779,
+        "entities": [
+          "PRIVATE_KEY"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "3.txt",
+    "sha256": "6ab36ef1704b5fad828af4a3931badb2065276f98237d3c816148333d9de8710",
+    "expected": [
+      {
+        "start": 126,
+        "end": 151,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 179,
+        "end": 220,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 335,
+        "end": 355,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 407,
+        "end": 427,
+        "entities": [
+          "INTERNAL_DOMAIN",
+          "HOSTNAME"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 442,
+        "end": 456,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 471,
+        "end": 488,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": "final_payload_leak_check_blocked"
+  },
+  {
+    "file": "4.txt",
+    "sha256": "866dcabe7c2ef04f32182b29ed21b93d880f13198179ba59ae202ece6850f6e4",
+    "expected": [
+      {
+        "start": 44,
+        "end": 52,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 70,
+        "end": 108,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 257,
+        "end": 298,
+        "entities": [
+          "API_KEY",
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 421,
+        "end": 453,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 495,
+        "end": 531,
+        "entities": [
+          "AUTH_TOKEN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 332,
+        "end": 352,
+        "entities": [
+          "PERSON"
+        ],
+        "deterministic": false
+      },
+      {
+        "start": 200,
+        "end": 235,
+        "entities": [
+          "AUTH_TOKEN",
+          "BEARER_TOKEN"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": "final_payload_leak_check_blocked"
+  },
+  {
+    "file": "5.txt",
+    "sha256": "fd6f7d9a41af19969f8593bc846407f25ba2fd93d72724607339c7e45633e70b",
+    "expected": [
+      {
+        "start": 0,
+        "end": 1727,
+        "entities": [
+          "PRIVATE_KEY"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "6.txt",
+    "sha256": "0de72df7d31f6c3030cd63a08ca0e53fdfdc542fd723173f5132d87d11e08312",
+    "expected": [
+      {
+        "start": 18,
+        "end": 26,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 48,
+        "end": 96,
+        "entities": [
+          "AUTH_TOKEN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 126,
+        "end": 174,
+        "entities": [
+          "AUTH_TOKEN",
+          "BEARER_TOKEN"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "7.txt",
+    "sha256": "47dece9ea003363a7b2d63acdf795206d57b263ebb1c63dd358c7b839547905d",
+    "expected": [
+      {
+        "start": 16,
+        "end": 74,
+        "entities": [
+          "DB_URL"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 98,
+        "end": 118,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 146,
+        "end": 187,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 203,
+        "end": 244,
+        "entities": [
+          "API_KEY",
+          "AUTH_TOKEN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 346,
+        "end": 371,
+        "entities": [
+          "SECRET_KEY"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 289,
+        "end": 324,
+        "entities": [
+          "AUTH_TOKEN",
+          "BEARER_TOKEN"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": "final_payload_leak_check_blocked"
+  },
+  {
+    "file": "8.txt",
+    "sha256": "eea3b3e780c848faa6cb6da425c1ab525354002077b601df65403f9db0bef8cd",
+    "expected": [
+      {
+        "start": 14,
+        "end": 41,
+        "entities": [
+          "PERSON"
+        ],
+        "deterministic": false
+      },
+      {
+        "start": 50,
+        "end": 69,
+        "entities": [
+          "EMAIL_ADDRESS"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 80,
+        "end": 96,
+        "entities": [
+          "PHONE_NUMBER"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 111,
+        "end": 130,
+        "entities": [
+          "CREDIT_CARD"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 177,
+        "end": 204,
+        "entities": [
+          "RU_SETTLEMENT_ACCOUNT"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "9.txt",
+    "sha256": "2c08d99d157de8455179373fa7fe22f4768f921d1fdea59995962decddd43e2d",
+    "expected": [
+      {
+        "start": 72,
+        "end": 78,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 87,
+        "end": 119,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "10.txt",
+    "sha256": "c0f801a856eca4255a0c35ea15b7e265b8519062606848c783318e4a3cfec6c4",
+    "expected": [
+      {
+        "start": 72,
+        "end": 78,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 87,
+        "end": 151,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "11.txt",
+    "sha256": "478ec51eacf139349b75249116cf576e753eec64922e8b71dcbe720ad4701494",
+    "expected": [
+      {
+        "start": 168,
+        "end": 209,
+        "entities": [
+          "AUTH_TOKEN",
+          "BEARER_TOKEN"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "12.txt",
+    "sha256": "4c53b87a13dd7385070769dcfda989a584aa3a40c94611f31c2e1442fad8f0c0",
+    "expected": [
+      {
+        "start": 510,
+        "end": 519,
+        "entities": [
+          "LOGIN"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 549,
+        "end": 559,
+        "entities": [
+          "PASSWORD"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "13.txt",
+    "sha256": "cac7c051d5c502effc3c731bafa1bccaad8b6d1489f729ce426f9e88449f0c0c",
+    "expected": [
+      {
+        "start": 8,
+        "end": 36,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 46,
+        "end": 82,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "14.txt",
+    "sha256": "82f2192342cf64d5df54e419c8482523e6e5bc6fcf66582c7b5b21d8c854ff70",
+    "expected": [
+      {
+        "start": 8,
+        "end": 20,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      },
+      {
+        "start": 32,
+        "end": 48,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "15.txt",
+    "sha256": "36be10a605652e68fef4769d30a7a84d0215c272d5892ad268178e065cfcdb35",
+    "expected": [
+      {
+        "start": 8,
+        "end": 32,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "16.txt",
+    "sha256": "08587dfe8b86785ef313c17697a765336e556f5c7616fc9d8a06519b8fa794b6",
+    "expected": [
+      {
+        "start": 8,
+        "end": 53,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "17.txt",
+    "sha256": "5be7684be98593085af6723a662533c5ff02803b0d88a7cc0d46f47d79b75c2c",
+    "expected": [
+      {
+        "start": 8,
+        "end": 52,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  },
+  {
+    "file": "18.txt",
+    "sha256": "74d06b246620e2241fb2d0ddcd75d30902fe1c470c64aa04e883b4a48028587b",
+    "expected": [
+      {
+        "start": 8,
+        "end": 52,
+        "entities": [
+          "BASE64_DATA"
+        ],
+        "deterministic": true
+      }
+    ],
+    "mask_block_code": null
+  }
+]

@@ -1,0 +1,20 @@
+import requests
+import hashlib
+DB_USER = "app_user"
+DB_PASSWORD = "YXBwX3V2ZXI6UzNjdXJlX3B3X27533X0RCIQ=="
+API_URL = "https://api.example.test/v1/users"
+headers = {
+    "Authorization": "Bearer eyJhbGci0iJIUzI1NiJ3.test.signature",
+    "X-API-Key": "sk-test-54f8c2a29461e4b61a1f0c8d2e7b9a4c6"
+}
+user = {
+    "full_name": "Иванов Иван Иванович",
+    "card_number": "2200 1588 3231 2881",
+    "password_hash": "5f4dcc3b2aa765d61d4621deb882cf99"
+}
+# Basic credentials:
+basic_auth = "YXBwX3VzZXI6UzNjdXJlX3B3X470X2RCIQ=="
+response = requests.get(
+    API_URL,
+    headers=headers
+)

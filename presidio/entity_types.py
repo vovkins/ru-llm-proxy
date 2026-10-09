@@ -22,6 +22,7 @@ DETERMINISTIC_ENTITY_TYPES = frozenset(
         "JWT",
         "BEARER_TOKEN",
         "PRIVATE_KEY",
+        "BASE64_DATA",
         "API_KEY",
         "SECRET_KEY",
         "AUTH_TOKEN",

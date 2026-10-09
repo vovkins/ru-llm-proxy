@@ -32,8 +32,11 @@ from recognizers.credential_rules import (
     PasswordRecognizer,
     SecretKeyRecognizer,
 )
+from recognizers.sql_credentials import SqlCredentialRecognizer
+from recognizers.base64_data import Base64DataRecognizer
+from recognizers.json_strings import JsonStringRecognizer
 
-ALL_RECOGNIZERS = [
+PLAIN_RECOGNIZERS = [
     RuPhoneRecognizer,
     RuEmailRecognizer,
     RuInnRecognizer,
@@ -60,4 +63,7 @@ ALL_RECOGNIZERS = [
     CommandLineCredentialRecognizer,
     LoginRecognizer,
     PasswordRecognizer,
+    SqlCredentialRecognizer,
 ]
+
+ALL_RECOGNIZERS = [*PLAIN_RECOGNIZERS, Base64DataRecognizer, JsonStringRecognizer]

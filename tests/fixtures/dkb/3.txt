@@ -1,0 +1,25 @@
+#!/bin/bash  
+# backup_script.sh — Скрипт резервного копирования
+# Утечка учётных данных S3-хранилища  
+AWS_ACCESS_KEY_ID="AKIA3EEXAMPLE700000345678"  
+AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K99MDENG/bPxRfiCYEXAMPLEKEY"  
+S3_BUCKET="s3://company-backups-prod"
+# Утечка пароля для шифрования резервных копий  
+ENCRYPTION_PASSWORD="B@ckup3ncryp7!000293"
+# Утечка учётных данных FTP-сервера  
+FTP_HOST="ftp.archive.internal"  
+FTP_USER="backup_service"  
+FTP_PASS="FtpS235rv1c3P@ss!"
+# Создание зашифрованного архива  
+tar czf - /data/important | \  
+    openssl enc -aes-25356-cbc -salt \  
+    -pass pass:$ENCRYPTION_PASSWORD \  
+    -out /tmp/backup_encrypted.tar.gz
+# Загрузка в облачное хранилище  
+aws s3 cp /tmp/backup_encrypted.tar.gz \  
+    $S3_BUCKET/$(date +%Y%m%d)/
+# Копирование на FTP-сервер  
+curl -T /tmp/backup_encrypted.tar.gz \  
+    ftp://$FTP_USER:$FTP_PASS@$FTP_HOST/backups/
+# Очистка временных файлов  
+rm -f /tmp/backup_encrypted.tar.gz   

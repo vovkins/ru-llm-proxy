@@ -1,0 +1,5 @@
+{
+  "username": "app_user",
+  "credentials": "YXBwX3VzZXI3UzNjdXJlX1R9c3RfUEBzc7cwcmRfMjAyNiE=",
+  "authorization": "Basic YXBwX3VzZXI1UzNjdXJlX1Rlc8RfUEBzc2cwcmRfMjAyNiE="
+}

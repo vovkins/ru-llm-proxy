@@ -1,0 +1,25 @@
+// config.js — Утечка секретов в конфигурационном файле
+const config = {  
+    // Утечка JWT-секрета для подписи токенов  
+    jwt: {  
+        secret: "my-super-secret",  
+        expiresIn: "24h"  
+    },
+    // Утечка учётных данных Redis  
+    redis: {  
+        host: "redis.cache.i",  
+        port: 6379,  
+        password: "pass123"  
+    },
+    // Утечка токена стороннего сервиса уведомлений  
+    notifications: {  
+        serviceUrl: "[https://notify.example.com/api](https://notify.example.com/api)",  
+        authToken: "token-99999999"  
+    },
+    // Утечка приватного SSH-ключа (обрезано для примера)  
+    ssh: {  
+        privateKey: "-----BEGIN RSA PRIVATE KEY-----\n" +  
+            "MIIEpAIBKCAQEAo29333VS5JJcds3xfn/ygWyF8PbnGy0AHB7"  
+    }  
+};
+module.exports = config;  

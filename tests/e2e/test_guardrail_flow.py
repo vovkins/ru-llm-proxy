@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -14,6 +15,9 @@ from openai import AsyncOpenAI
 
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
 from presidio.entity_types import SUPPORTED_ENTITY_TYPES
+
+DKB_CORPUS = Path(__file__).resolve().parents[1] / "fixtures/dkb"
+DKB_CASES = json.loads((DKB_CORPUS / "manifest.json").read_text())
 
 
 @pytest_asyncio.fixture
@@ -50,13 +54,19 @@ class _WireStream(httpx.AsyncByteStream):
         pytest.param("pii", entity, id=entity)
         for entity in sorted(SUPPORTED_ENTITY_TYPES)
     ]
-    + [pytest.param("dictionary", None, id="dictionary")],
+    + [pytest.param("dictionary", None, id="dictionary")]
+    + [pytest.param("long-base64", "BASE64_DATA", id="long-base64")]
+    + [pytest.param("long-base64", "PASSWORD", id="long-password-base64")]
+    + [pytest.param("dkb", case, id="dkb-" + case["file"]) for case in DKB_CASES],
 )
 async def test_round_trip_through_litellm_parser(
     api, output_kind, stream, replacement, entity_type, llm_logging_lifecycle
 ):
     dictionary = replacement == "dictionary"
+    corpus_case = entity_type if replacement == "dkb" else None
     guardrail = RuPIIGuardrail(
+        pre_egress_policy_mode="off" if corpus_case else None,
+        final_payload_leak_check_mode="off" if corpus_case else None,
         dictionary_substitutions_enabled=dictionary,
         dictionary_substitutions_file="",
         dictionary_substitutions_json=(
@@ -90,9 +100,14 @@ async def test_round_trip_through_litellm_parser(
     redis.delete.side_effect = delete
     guardrail._redis = redis
     original = "Т-Банк" if dictionary else 'Москва "центр"\nC:\\work\\main.py\t😀'
+    if corpus_case:
+        original = (DKB_CORPUS / corpus_case["file"]).read_bytes().decode("utf-8")
+    if replacement == "long-base64":
+        original = "A" * 70000 + "\n    " + "B" * 70000
     expected = original
     if output_kind == "code":
-        original = "Т-Банк" if dictionary else "Москва"
+        if not corpus_case and replacement != "long-base64":
+            original = "Т-Банк" if dictionary else "Москва"
         expected = f'let city = "{original}"\nlet path = "C:\\work"\nprint(city)\n'
     prompt = "Верни без изменений: " + expected
     data = (
@@ -101,16 +116,30 @@ async def test_round_trip_through_litellm_parser(
         else {"input": prompt}
     )
     data["stream"] = stream
+    entities = [] if dictionary else [_entity(prompt, original, entity_type)]
+    if corpus_case:
+        offset = prompt.index(original)
+        entities = [
+            {"entity_type": span["entities"][0], "start": offset + span["start"], "end": offset + span["end"], "score": 1.0}
+            for span in corpus_case["expected"]
+        ]
     with patch.object(
         guardrail,
         "_analyze_text",
-        return_value=[] if dictionary else [_entity(prompt, original, entity_type)],
+        return_value=entities,
     ):
         masked = await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
     provider_value = "Зетта Групп" if dictionary else f"<{entity_type}_1>"
     mapping_id = masked["metadata"]["pii_request_id"]
-    assert json.loads(store[f"pii_mapping:{mapping_id}"]) == {provider_value: original}
-    upstream_text = expected.replace(original, provider_value)
+    mapping = json.loads(store[f"pii_mapping:{mapping_id}"])
+    if corpus_case:
+        assert set(mapping.values()) == {original[span["start"]:span["end"]] for span in corpus_case["expected"]}
+        provider_value = next(iter(mapping))
+        provider_text = masked["messages"][0]["content"] if api == "chat" else masked["input"]
+        upstream_text = provider_text[len("Верни без изменений: "):]
+    else:
+        assert mapping == {provider_value: original}
+        upstream_text = expected.replace(original, provider_value)
     upstream_output = (
         json.dumps({"city": upstream_text})
         if output_kind == "arguments"
@@ -249,6 +278,8 @@ async def test_round_trip_through_litellm_parser(
         sent = body["messages"][0]["content"] if api == "chat" else body["input"]
         assert original not in sent
         assert provider_value in sent
+        if corpus_case:
+            assert all(value not in sent for value in mapping.values())
         if not stream:
             if api == "chat":
                 message = {"role": "assistant", "content": upstream_output}

@@ -1,0 +1,8 @@
+DATABASE_URL = "postgresql://admin_user:Sec_pw_DB!@db093.internal:5432/app"
+AWS_ACCESS_KEY_ID = "AK1AIOSFODNN4EXAMPLE"
+AWS_SECRET_ACCESS_KEY = "wJal2rXUtnFEMI/KMDEN4G/bPxRfiCYEXAMPLEKEY"
+API_TOKEN = "sk-test-041f8c2a4d91e1b63a1f0c8d2e7b9a4c6"
+headers = {
+    "Authorization": "Bearer eyJhbGci0iJIUzI1NiJ1.test.signature",
+    "X-API-Key": "test-api-key-91f82a1c6d2e"
+}
