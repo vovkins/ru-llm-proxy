@@ -382,7 +382,7 @@ routing-smoke: require-stack require-deployment
 					;; \
 			esac; \
 		}; \
-		routing_model="$${ROUTING_SMOKE_MODEL:-glm-5.2}" && \
+		routing_model="$${ROUTING_SMOKE_MODEL:-glm-5.3-flash}" && \
 		run_completion "first" "$$first_headers" "$$first_body" "{\"model\":\"$$routing_model\",\"messages\":[{\"role\":\"user\",\"content\":\"Коротко ответь: routing smoke 1\"}],\"max_tokens\":16}" && \
 		run_completion "second" "$$second_headers" "$$second_body" "{\"model\":\"$$routing_model\",\"messages\":[{\"role\":\"user\",\"content\":\"Коротко ответь: routing smoke 2\"}],\"max_tokens\":16}" && \
 		first_model=$$(awk 'tolower($$0) ~ /^x-litellm-model-id:/ {sub(/^[^:]*:[[:space:]]*/, "", $$0); gsub(/\r/, "", $$0); print $$0; exit}' "$$first_headers") && \

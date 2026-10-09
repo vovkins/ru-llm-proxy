@@ -108,7 +108,7 @@ curl -fsS http://localhost/health/liveliness
 curl -fsS http://localhost/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"glm-5.2","messages":[{"role":"user","content":"ping"}],"max_tokens":8}'
+  -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"ping"}],"max_tokens":8}'
 ```
 
 После запуска выполните проверки защитного слоя:

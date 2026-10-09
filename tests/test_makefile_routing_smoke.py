@@ -29,8 +29,8 @@ class RoutingSmokeMakefileTest(unittest.TestCase):
         self.assertIn("$(DEPLOY) url", self.recipe)
         self.assertNotIn("http://localhost:4000/chat/completions", self.recipe)
 
-    def test_default_routing_model_is_glm_52(self):
-        self.assertIn("ROUTING_SMOKE_MODEL:-glm-5.2", self.recipe)
+    def test_default_routing_model_is_glm_53_flash(self):
+        self.assertIn("ROUTING_SMOKE_MODEL:-glm-5.3-flash", self.recipe)
         self.assertIn('\\"model\\":\\"$$routing_model\\"', self.recipe)
 
     def test_failure_output_does_not_print_proxy_token(self):

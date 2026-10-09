@@ -20,7 +20,7 @@ Codex. В обычном режиме они остаются на сервер�
 
 ```toml
 model_provider = "ru_llm_proxy"
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 
 [model_providers.ru_llm_proxy]
 name = "ru-llm-proxy"
@@ -33,7 +33,7 @@ wire_api = "responses"
 из
 [`examples/litellm-config.optional-providers.yaml`](../../examples/litellm-config.optional-providers.yaml)
 и замените `model` в примере. Расширенный состав с `codex-lb` уже публикует
-`gpt-5.6-luna` и другие проверенные имена; порядок запуска приведён в
+`gpt-6-luna` и другие проверенные имена; порядок запуска приведён в
 [`docs/codex-lb.md`](../codex-lb.md).
 
 Для Codex App, который не наследует окружение оболочки, сохраните токен в
@@ -54,7 +54,7 @@ RU_LLM_PROXY_TOKEN=sk-...
 ## Проверка
 
 ```bash
-RESPONSES_MODEL=gpt-5.6-luna \
+RESPONSES_MODEL=gpt-6-luna \
   make client-auth-smoke STACK=litellm-presidio-codex-lb
 ```
 

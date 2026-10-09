@@ -123,15 +123,26 @@ curl -fsS http://localhost:2455/health/ready
 curl -fsS http://localhost:4000/v1/models \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN"
 
-CHAT_MODEL=gpt-5.6-luna RESPONSES_MODEL=gpt-5.6-luna \
+CHAT_MODEL=gpt-6-luna RESPONSES_MODEL=gpt-6-luna \
   PROTOCOL_SMOKE_ENABLED=true \
   make guardrails-smoke STACK=litellm-presidio-codex-lb
 ```
 
-Проверенная конфигурация публикует `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`,
-`gpt-5.6-luna`, `gpt-5.6-sol` и `gpt-5.6-terra`. Доступность зависит от
+Конфигурация публикует `gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra` и
+`gpt-6.1-sol`; лёгкая модель для примеров и проверок — `gpt-6-luna`.
+Доступность зависит от
 подписки и выпуска `codex-lb`; перед изменением списка сверяйтесь с живым
 `GET /v1/models`.
+
+Для инструментов используйте Responses API. Официальный Chat Completions API
+у Luna/Sol поддерживает инструменты только с `reasoning_effort=none`, а у
+Astra/6.1 Sol — не поддерживает. Прокси не понижает уровень рассуждений
+автоматически. Возможности OAuth-пула проверяются отдельно от платного API
+([совместимость моделей](https://developers.openai.com/api/docs/guides/latest-model)).
+
+Старые имена GLM и GPT не перенаправляются на новые. При обновлении замените
+имена в клиентских настройках и явных списках разрешённых моделей ключей;
+исторические журналы и результаты измерений сохраняют исходные имена.
 
 ## Администрирование
 

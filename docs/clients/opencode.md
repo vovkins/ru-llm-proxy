@@ -8,7 +8,7 @@ OpenCode использует пользовательского провайд�
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "ru-llm-proxy/glm-5.2",
+  "model": "ru-llm-proxy/glm-5.3-flash",
   "provider": {
     "ru-llm-proxy": {
       "npm": "@ai-sdk/openai-compatible",
@@ -18,8 +18,8 @@ OpenCode использует пользовательского провайд�
         "apiKey": "{env:RU_LLM_PROXY_TOKEN}"
       },
       "models": {
-        "glm-5.2": {"name": "GLM-5.2"},
-        "glm-5.1": {"name": "GLM-5.1"}
+        "glm-5.3-flash": {"name": "GLM-5.3-Flash"},
+        "glm-5.3": {"name": "GLM-5.3"}
       }
     }
   }

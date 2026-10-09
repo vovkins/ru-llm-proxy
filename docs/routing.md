@@ -37,7 +37,7 @@ LiteLLM использует `user_api_key_hash`, поэтому исходны�
 
 ## Порядок выбора
 
-1. Клиент запрашивает публичную модель, например `glm-5.2`.
+1. Клиент запрашивает публичную модель, например `glm-5.3-flash`.
 2. LiteLLM получает доступных провайдеров этой группы.
 3. `deployment_affinity` ищет ранее сохранённый `model_info.id` по хэшу ключа.
 4. Доступный закреплённый провайдер получает запрос.
@@ -59,24 +59,24 @@ Redis проекта. Подробности: [codex-lb.md](codex-lb.md).
 
 ```yaml
 model_list:
-  - model_name: glm-5.2
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: glm-5-2-zai-coding-primary
+      id: glm-5-3-flash-zai-coding-primary
 
-  - model_name: glm-5.2
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: glm-5-2-zai-coding-secondary
+      id: glm-5-3-flash-zai-coding-secondary
 ```
 
 Не меняйте `model_info.id` без миграционной причины: старые привязки и ряды
 метрик потеряют смысл. Тот же принцип применяется к внутреннему или другому
-внешнему провайдеру. `glm-5.1` остаётся отдельным публичным именем.
+внешнему провайдеру. `glm-5.3` остаётся отдельным публичным именем.
 
 ## Проверка
 
@@ -96,7 +96,7 @@ LITELLM_ROUTING_TEST_KEY=sk-...
 заголовка, но не само закрепление между несколькими вариантами.
 
 Для пула OpenAI дополнительно проверяйте запросы через
-`gpt-5.6-luna`, журнал выбора учётной записи и распределение запросов в
+`gpt-6-luna`, журнал выбора учётной записи и распределение запросов в
 административном интерфейсе `codex-lb`.
 
 ## Наблюдаемость

@@ -28,7 +28,7 @@ general_settings:
 curl "$RU_LLM_PROXY_URL/v1/chat/completions" \
   -H "Authorization: Bearer $OIDC_JWT" \
   -H "Content-Type: application/json" \
-  -d '{"model":"glm-5.2","messages":[{"role":"user","content":"Привет"}]}'
+  -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"Привет"}]}'
 ```
 
 ## Сопоставление с пользовательским ключом
