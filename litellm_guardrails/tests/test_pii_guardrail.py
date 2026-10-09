@@ -750,6 +750,116 @@ class TestAnalyzeText:
 # === analysis cache ===
 
 
+class TestPreprocessingBudget:
+    @pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan"), 0.0, -1.0])
+    def test_time_budget_cannot_be_infinite(self, value):
+        assert pii_guardrail._normalize_positive_float("synthetic-timeout", value, 30.0) == 30.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("api", ["chat", "responses"])
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("failure_mode", ["fail_open", "fail_closed"])
+    async def test_all_fields_share_one_budget(self, guardrail, monkeypatch, api, stream, failure_mode):
+        monkeypatch.setattr(pii_guardrail, "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS", 0.06)
+        guardrail.failure_mode = failure_mode
+        fields = [{"role": "user", "content": "field " + str(i)} for i in range(4)]
+        data = {"model": "mock-chat", "stream": stream,
+                "messages" if api == "chat" else "input": fields}
+        stopped = asyncio.Event()
+
+        async def analyze(_text):
+            try:
+                await asyncio.sleep(0.04)
+                return []
+            finally:
+                stopped.set()
+
+        with patch.object(guardrail, "_analyze_text", side_effect=analyze) as work:
+            with pytest.raises(ProxyException) as error:
+                await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+        assert error.value.status_code == 503
+        assert error.value.type == "pii_preprocessing_timeout"
+        assert error.value.param["preprocessing"]["details"]["retryable"] is False
+        assert not getattr(error.value, "headers", {}).get("Retry-After")
+        assert work.await_count < len(fields)
+        assert stopped.is_set()
+        assert [item["content"] for item in fields] == ["field " + str(i) for i in range(4)]
+        guardrail._redis.setex.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_timeout_cleans_mapping_created_during_save(self, guardrail, monkeypatch):
+        monkeypatch.setattr(pii_guardrail, "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS", 0.03)
+        source = "Телефон +79031234567"
+        data = {"model": "mock-chat", "messages": [{"role": "user", "content": source}]}
+        stored = asyncio.Event()
+
+        async def slow_save(_request_id, _mapping):
+            stored.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(guardrail, "_get_request_id", return_value="server-budget-id"),
+            patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[_entity(source, "+79031234567")])),
+            patch.object(guardrail, "_save_mapping", side_effect=slow_save),
+        ):
+            with pytest.raises(ProxyException):
+                await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+        assert stored.is_set()
+        assert data["messages"][0]["content"] == source
+        assert guardrail._get_response_request_id(data) is None
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:server-budget-id")
+
+    @pytest.mark.asyncio
+    async def test_cancel_during_save_cleans_only_owned_mapping(self, guardrail):
+        stored = asyncio.Event()
+        source = "Телефон +79031234567"
+        data = {"model": "mock-chat", "metadata": {"pii_request_id": "forged-neighbour"},
+                "messages": [{"role": "user", "content": source}]}
+
+        async def slow_save(_request_id, _mapping):
+            stored.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(guardrail, "_get_request_id", return_value="server-budget-id"),
+            patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[_entity(source, "+79031234567")])),
+            patch.object(guardrail, "_save_mapping", side_effect=slow_save),
+        ):
+            task = asyncio.create_task(guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data))
+            await stored.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert data["messages"][0]["content"] == source
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:server-budget-id")
+
+    @pytest.mark.asyncio
+    async def test_synchronous_overrun_never_returns_allowed_data(self, guardrail, monkeypatch):
+        elapsed = [0.0]
+        monkeypatch.setattr(pii_guardrail.time, "perf_counter", lambda: elapsed[0])
+
+        async def overrun(*_args):
+            elapsed[0] = pii_guardrail.PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS + 1
+            return {"model": "mock-chat"}
+
+        with patch.object(guardrail, "_pre_call_with_budget", side_effect=overrun):
+            with pytest.raises(ProxyException) as error:
+                await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), {"model": "mock-chat"})
+        assert error.value.type == "pii_preprocessing_timeout"
+
+    @pytest.mark.asyncio
+    async def test_slow_history_lookup_uses_same_budget(self, guardrail, monkeypatch):
+        monkeypatch.setattr(pii_guardrail, "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS", 0.03)
+
+        async def slow_history(*_args):
+            await asyncio.Event().wait()
+
+        with patch.object(guardrail, "_prepare_responses_state", side_effect=slow_history):
+            with pytest.raises(ProxyException) as error:
+                await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), {"model": "mock-chat"})
+        assert error.value.type == "pii_preprocessing_timeout"
+
+
 class TestAnalysisCache:
     SIGNATURE = "a" * 64
 
@@ -1168,6 +1278,133 @@ class TestAnalysisCache:
             assert await asyncio.gather(first, second) == [[], []]
 
         assert analyze.await_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cancel_all", [False, True])
+    async def test_shared_analysis_lives_only_while_someone_waits(self, guardrail, cancel_all):
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        began, release, stopped = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def work(_text):
+            began.set()
+            try:
+                await release.wait()
+                return []
+            finally:
+                stopped.set()
+
+        async def request():
+            return await guardrail._analyze_text_with_cache("shared text", self._context(), str(uuid.uuid4()), 1)
+
+        with patch.object(guardrail, "_analyze_text", side_effect=work) as analyze:
+            first = asyncio.create_task(request())
+            await began.wait()
+            second = asyncio.create_task(request())
+            for _ in range(100):
+                if next(iter(pii_guardrail._get_analysis_cache_inflight().values())).waiters == 2:
+                    break
+                await asyncio.sleep(0)
+            else:
+                pytest.fail("second waiter did not join")
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            assert not stopped.is_set()
+            if cancel_all:
+                second.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await second
+                assert stopped.is_set()
+                assert not guardrail._redis.values
+            else:
+                release.set()
+                assert await second == []
+            assert analyze.await_count == 1
+        assert not pii_guardrail._get_analysis_cache_inflight()
+
+    @pytest.mark.asyncio
+    async def test_last_waiter_cancel_allows_a_fresh_attempt(self, guardrail):
+        self._enable(guardrail)
+        began, stopped = asyncio.Event(), asyncio.Event()
+
+        async def work(_text):
+            began.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+        with patch.object(guardrail, "_analyze_text", side_effect=work):
+            task = asyncio.create_task(guardrail._analyze_text_with_cache(
+                "same text", self._context(), str(uuid.uuid4()), 1))
+            await began.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert stopped.is_set()
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as fresh:
+            assert await guardrail._analyze_text_with_cache(
+                "same text", self._context(), str(uuid.uuid4()), 1) == []
+            fresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_drains_pending_analysis(self, guardrail):
+        self._enable(guardrail)
+        began, stopped = asyncio.Event(), asyncio.Event()
+
+        async def work(_text):
+            began.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+        with patch.object(guardrail, "_analyze_text", side_effect=work):
+            task = asyncio.create_task(guardrail._analyze_text_with_cache(
+                "same text", self._context(), str(uuid.uuid4()), 1))
+            await began.wait()
+            await pii_guardrail.close_guardrail_dependency_clients()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert stopped.is_set()
+
+    @pytest.mark.asyncio
+    async def test_expiring_request_does_not_cancel_later_shared_waiter(self, guardrail, monkeypatch):
+        monkeypatch.setattr(pii_guardrail, "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS", 0.3)
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        began, release, stopped = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def work(_text):
+            began.set()
+            try:
+                await release.wait()
+                return []
+            finally:
+                stopped.set()
+
+        async def request():
+            auth = MagicMock(token="hashed-virtual-key")
+            data = {"model": "mock-chat", "messages": [{"role": "user", "content": "shared text"}]}
+            return await guardrail.async_pre_call_hook(auth, MagicMock(), data)
+
+        with (
+            patch.object(guardrail, "_get_analyzer_signature", AsyncMock(return_value=self.SIGNATURE)),
+            patch.object(guardrail, "_analyze_text", side_effect=work) as analyze,
+        ):
+            first = asyncio.create_task(request())
+            await began.wait()
+            await asyncio.sleep(0.15)
+            second = asyncio.create_task(request())
+            with pytest.raises(ProxyException) as error:
+                await first
+            assert error.value.type == "pii_preprocessing_timeout"
+            assert not stopped.is_set()
+            release.set()
+            assert (await second)["messages"][0]["content"] == "shared text"
+            assert analyze.await_count == 1
+        assert stopped.is_set()
 
     @pytest.mark.asyncio
     async def test_growing_history_analyzes_only_new_text_field(self, guardrail):

@@ -7,6 +7,7 @@ services:
   litellm:
     environment:
       PYTHONPATH: /app:/workspace/tests/e2e
+      PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS: "3"
     volumes:
       - ../..:/workspace:ro
       - ${DISCONNECT_CONFIG:?temporary test config required}:/app/config.yaml:ro

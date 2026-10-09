@@ -33,6 +33,7 @@ from ner import (
     MODEL_REVISION,
     HuggingFaceNERRecognizer,
     NERBackendError,
+    NERInferenceCancelled,
     NERInferenceTelemetry,
     NERProcessingError,
 )
@@ -727,7 +728,7 @@ async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             if task.done():
                 break
             continue
-        except AnalyzerWorkCancelled:
+        except (AnalyzerWorkCancelled, NERInferenceCancelled):
             if cancelled:
                 raise asyncio.CancelledError from None
             raise
@@ -747,7 +748,7 @@ async def _run_blocking_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     if task.done():
         try:
             task.result()
-        except AnalyzerWorkCancelled:
+        except (AnalyzerWorkCancelled, NERInferenceCancelled):
             pass
         except Exception as e:
             logger.error(

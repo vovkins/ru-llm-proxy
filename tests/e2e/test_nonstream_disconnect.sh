@@ -62,6 +62,7 @@ PY
     if [ "$cancellation" = false ]; then
         "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py --baseline
     else
+        "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_preprocessing_budget.py
         "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_upstream_transport.py
         if [ "${1:-}" != --stream-only ]; then
             "${COMPOSE[@]}" exec -T litellm python /workspace/tests/e2e/check_nonstream_disconnect.py

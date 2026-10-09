@@ -20,6 +20,11 @@
 `presidio_ner_inference`. Проверочные адреса электронной почты размещаются в
 начале, середине, около шага BERT-окон и в конце текста.
 
+Необязательный `--tokenizer-encoding o200k_base` добавляет `text_token_count`
+по явно выбранной кодировке tiktoken. Это число токенов текстовых полей, не
+полная стоимость запроса и не подтверждение кодировки любой модели. Обёртки
+сообщений, инструменты и непрозрачное состояние Responses здесь не учитываются.
+
 ## Уровни
 
 ### Analyzer
@@ -104,7 +109,7 @@ python scripts/benchmark_long_context.py \
   --url http://127.0.0.1:4000 \
   --profile growing-history \
   --api responses \
-  --model gpt-5.6-luna \
+  --model gpt-6-luna \
   --api-key-env LITELLM_BENCHMARK_API_KEY \
   --sizes 1000,8000 \
   --stream \

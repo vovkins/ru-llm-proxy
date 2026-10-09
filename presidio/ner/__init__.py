@@ -10,6 +10,7 @@ __all__ = [
     "HuggingFaceNERRecognizer",
     "NERBackendError",
     "NERConfigurationError",
+    "NERInferenceCancelled",
     "NERInferenceTelemetry",
     "NERProcessingError",
     "NERUnavailableError",

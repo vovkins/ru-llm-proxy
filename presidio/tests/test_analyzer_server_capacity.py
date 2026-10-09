@@ -822,18 +822,20 @@ async def _disconnected_client_cancels_worker_and_releases_capacity(monkeypatch)
     assert limiter.snapshot()["active"] == 0
 
 
-def test_blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog):
-    asyncio.run(_blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog))
+@pytest.mark.parametrize("error_type", [RuntimeError, analyzer_server.AnalyzerWorkCancelled,
+                                       analyzer_server.NERInferenceCancelled])
+def test_blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog, error_type):
+    asyncio.run(_blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog, error_type))
 
 
-async def _blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog):
+async def _blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, caplog, error_type):
     started = threading.Event()
     finish = threading.Event()
 
     def blocking_analyze_sync(_request):
         started.set()
         finish.wait(timeout=1)
-        raise RuntimeError("raw +79031234567 should not be logged")
+        raise error_type("raw +79031234567 should not be logged")
 
     monkeypatch.setattr(analyzer_server, "_analyze_sync", blocking_analyze_sync)
 
@@ -853,7 +855,10 @@ async def _blocking_analyze_cancelled_error_log_uses_error_type(monkeypatch, cap
                 task.cancel()
 
     logs = "\n".join(record.getMessage() for record in caplog.records)
-    assert "error_type=RuntimeError" in logs
+    if error_type is RuntimeError:
+        assert "error_type=RuntimeError" in logs
+    else:
+        assert not any(record.levelno >= logging.ERROR for record in caplog.records)
     assert "+79031234567" not in logs
     assert "raw" not in logs
 

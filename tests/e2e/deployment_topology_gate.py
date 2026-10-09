@@ -116,8 +116,21 @@ class Gate:
         return ctx
 
     def url(self, ctx, service, port):
-        address = ctx.compose("port", service, str(port), capture=True).strip().splitlines()[0]
-        return "http://" + address
+        for item in ctx.containers():
+            if not item["State"].get("Running") or item["Config"]["Labels"].get("com.docker.compose.service") != service:
+                continue
+            for binding in item["NetworkSettings"]["Ports"].get(f"{port}/tcp") or []:
+                host = binding.get("HostIp") or ""
+                if host in {"", "0.0.0.0", "127.0.0.1"}:
+                    local = "127.0.0.1"
+                elif host in {"::", "::1"}:
+                    local = "[::1]"
+                else:
+                    continue
+                published = binding.get("HostPort", "")
+                if isinstance(published, str) and published.isascii() and published.isdecimal() and 1 <= int(published) <= 65535:
+                    return f"http://{local}:{int(published)}"
+        raise RuntimeError(f"No local published TCP port for {service}:{port}")
 
     def sample_memory(self):
         while not self.stop.is_set():

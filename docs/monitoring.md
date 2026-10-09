@@ -182,6 +182,7 @@ make monitor-smoke STACK=litellm-presidio
 | `ru_pii_guardrail_fail_open_total` | `operation` | Небезопасное продолжение после ошибки |
 | `ru_pii_guardrail_fail_closed_total` | `operation` | Остановленные после ошибки запросы |
 | `ru_pii_guardrail_analyzer_latency_seconds_*` | нет | HTTP-задержка Analyzer |
+| `ru_pii_guardrail_preprocessing_duration_seconds_*` | `outcome` | Суммарное время до провайдера: `success`, `failure`, `timeout`, `cancelled`; включает очистку при отмене. |
 | `ru_pii_guardrail_analysis_cache_requests_total` | `result` | Попадания, промахи, обходы, ошибки и объединённые запросы |
 | `ru_pii_guardrail_analysis_cache_latency_seconds_*` | `operation` | Время health, чтения и записи кэша анализа |
 | `ru_pii_guardrail_redis_latency_seconds_*` | `operation` | Задержка Redis |
@@ -209,6 +210,15 @@ LiteLLM создаёт отдельные экземпляры защитног�
 а защитный слой удалил временное
 `pii_mapping:*` немедленно, не дожидаясь его срока жизни. Рост ошибок удаления
 отражается в `ru_pii_guardrail_fail_open_total{operation="mapping_delete"}`.
+
+`ru_pii_guardrail_fail_closed_total{operation="preprocessing_timeout"}` и
+код `pii_preprocessing_timeout` означают исчерпание общего бюджета проверки,
+не неисправность NER. Безусловные повторы такого ввода не рекомендуются.
+Отмена одного ожидающего общего анализа не прерывает соседей; после отмены
+последнего ожидающего исходящее соединение анализа закрывается. Штатный монитор
+LiteLLM 1.98.0 начинает обнаруживать отключение HTTP-клиента после guardrails:
+обрыв во время предварительного анализа пока ограничен общим бюджетом, а не
+немедленной отменой. Перед увеличением бюджета учитывайте это ограничение.
 
 При `stream=false` обнаруженное отключение клиента регистрируется LiteLLM как
 `499`. Сам по себе этот статус не означает отказ модели. Отмена включена
