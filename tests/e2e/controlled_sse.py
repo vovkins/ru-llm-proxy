@@ -2,6 +2,7 @@
 
 import json
 import time
+import uuid
 
 
 PLACEHOLDER = "<PHONE_NUMBER_1>"
@@ -20,6 +21,7 @@ class Events:
         self.tool = tool
         self.sequence = 0
         self.created = int(time.time())
+        self.response_id = "resp_" + uuid.uuid4().hex
 
     def event(self, kind, **fields):
         value = {"type": kind, "sequence_number": self.sequence, **fields}
@@ -55,7 +57,7 @@ class Events:
                 if completed else []}
 
     def response(self, completed=False):
-        return {"id": "resp_sse_test", "object": "response", "created_at": self.created,
+        return {"id": self.response_id, "object": "response", "created_at": self.created,
                 "model": "mock-chat", "status": "completed" if completed else "in_progress",
                 "output": [self.item(True), {"id": "rs_test", "type": "reasoning",
                            "summary": [], "encrypted_content": OPAQUE}] if completed else [],

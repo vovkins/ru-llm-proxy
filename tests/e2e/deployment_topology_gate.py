@@ -164,12 +164,12 @@ class Gate:
                 assert item["HostConfig"]["Memory"] == int(configured["mem_limit"]), f"{service}: memory {item['HostConfig']['Memory']} != {configured['mem_limit']}"
                 assert item["HostConfig"]["NanoCpus"] == int(float(configured["cpus"]) * 1e9), f"{service}: CPU {item['HostConfig']['NanoCpus']} != {configured['cpus']}"
 
-    def replica_request(self, ctx, item, payload, token):
+    def replica_request(self, ctx, item, payload, token, api="chat/completions"):
         mock = next(entry for entry in ctx.containers() if entry["Config"]["Labels"].get("com.docker.compose.service") == "mock-upstream")
         shared = set(item["NetworkSettings"]["Networks"]) & set(mock["NetworkSettings"]["Networks"])
         address = item["NetworkSettings"]["Networks"][next(iter(shared))]["IPAddress"]
         code = "import json,sys,urllib.request,urllib.error; data=json.load(sys.stdin); req=urllib.request.Request(data['url'], data=json.dumps(data['payload']).encode(), headers={'Authorization':'Bearer '+data['token'],'Content-Type':'application/json'});\ntry:\n r=urllib.request.urlopen(req,timeout=30); print(json.dumps({'status':r.status,'body':r.read().decode()}))\nexcept urllib.error.HTTPError as e:\n print(json.dumps({'status':e.code,'body':e.read().decode()}))"
-        result = subprocess.run(["docker", "exec", "-i", mock["Id"], "python", "-c", code], input=json.dumps({"url": f"http://{address}:4000/v1/chat/completions", "payload": payload, "token": token}), text=True, capture_output=True)
+        result = subprocess.run(["docker", "exec", "-i", mock["Id"], "python", "-c", code], input=json.dumps({"url": f"http://{address}:4000/v1/{api}", "payload": payload, "token": token}), text=True, capture_output=True)
         if result.returncode:
             raise RuntimeError(f"Per-replica test connection failed: {result.stderr[-500:]}")
         return json.loads(result.stdout)
@@ -180,6 +180,30 @@ class Gate:
     def cache_hits(self, item):
         prefix = 'ru_pii_guardrail_analysis_cache_requests_total{result="hit"} '
         return sum(float(line[len(prefix):]) for line in self.metrics(item, 4000).splitlines() if line.startswith(prefix))
+
+    def responses_history(self, ctx, token):
+        from check_responses_history import decode
+
+        replicas = [item for item in ctx.containers() if item["Config"]["Labels"].get("com.docker.compose.service") == "litellm"]
+        assert len(replicas) >= 2
+        for stream in (False, True):
+            previous = None
+            for index, (text, expected) in enumerate([
+                (PHONE, [PHONE]), (OTHER_PHONE, [PHONE, OTHER_PHONE]),
+                ("Repeat both phones", [PHONE, OTHER_PHONE]),
+            ]):
+                payload = {"model": "mock-responses", "input": text, "stream": stream,
+                           "metadata": {"test_history": "STATEFUL_HISTORY"}}
+                if previous:
+                    payload["previous_response_id"] = previous
+                result = self.replica_request(ctx, replicas[index % 2], payload, token, "responses")
+                assert result["status"] == 200, result
+                previous, restored = decode(result["body"], stream)
+                assert all(value in restored for value in expected), restored
+                assert "<PHONE_NUMBER_" not in restored, restored
+        self.result["checks"].append(
+            f"{ctx.stack}: Responses history restored across two LiteLLM processes, both stream modes"
+        )
 
     def exercise(self, ctx, token, other_token):
         url = self.url(ctx, "nginx", 80)
@@ -197,6 +221,8 @@ class Gate:
                 futures = [pool.submit(assert_request, url, "mask", "responses", True, key, phone) for key, phone in ((token, PHONE), (other_token, OTHER_PHONE))]
                 for future in futures:
                     future.result()
+            if ctx.topology == "production":
+                self.responses_history(ctx, token)
         payload = {"model": "mock-chat", "messages": [{"role": "user", "content": f"Телефон клиента {PHONE}."}]}
         assert self.redis(ctx, "KEYS", "pii_analysis_cache:v1:*")
         for item in ctx.containers():

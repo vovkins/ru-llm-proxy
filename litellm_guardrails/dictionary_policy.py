@@ -164,7 +164,9 @@ class DictionarySubstitutionPolicy:
             ) from exc
         return cls.from_json_text(raw_config)
 
-    def apply(self, text: str) -> DictionarySubstitutionResult:
+    def apply(
+        self, text: str, existing_mapping: dict[str, str] | None = None,
+    ) -> DictionarySubstitutionResult:
         """Return substituted text, restore mapping, and replacement spans."""
         if not text or not self.rules:
             return DictionarySubstitutionResult(text, {}, (), {})
@@ -173,7 +175,7 @@ class DictionarySubstitutionPolicy:
         if not matches:
             return DictionarySubstitutionResult(text, {}, (), {})
 
-        self._raise_if_ambiguous_original_replacement(text, matches)
+        self._raise_if_ambiguous_original_replacement(text, matches, existing_mapping)
 
         parts: list[str] = []
         mapping: dict[str, str] = {}
@@ -181,19 +183,30 @@ class DictionarySubstitutionPolicy:
         rule_counts: dict[str, int] = {}
         last_end = 0
         output_length = 0
+        occupied = dict(existing_mapping or {})
 
         for match in sorted(matches, key=lambda item: item.start):
             unchanged = text[last_end:match.start]
             parts.append(unchanged)
             output_length += len(unchanged)
             replacement_start = output_length
-            parts.append(match.rule.replacement)
-            replacement_end = replacement_start + len(match.rule.replacement)
+            replacement = match.rule.replacement
+            if match.rule.restore and existing_mapping is not None:
+                if replacement in occupied and occupied[replacement] != match.original:
+                    rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
+                    index = 1
+                    replacement = f"<DICT_{rule_name}_{index}>"
+                    while replacement in occupied or replacement in text:
+                        index += 1
+                        replacement = f"<DICT_{rule_name}_{index}>"
+                occupied[replacement] = match.original
+            parts.append(replacement)
+            replacement_end = replacement_start + len(replacement)
             output_length = replacement_end
             replacement_spans.append((replacement_start, replacement_end))
 
             if match.rule.restore:
-                mapping[match.rule.replacement] = match.original
+                mapping[replacement] = match.original
             rule_counts[match.rule.rule_id] = rule_counts.get(match.rule.rule_id, 0) + 1
             last_end = match.end
 
@@ -231,12 +244,13 @@ class DictionarySubstitutionPolicy:
     def _raise_if_ambiguous_original_replacement(
         text: str,
         matches: list[_RuleMatch],
+        existing_mapping: dict[str, str] | None = None,
     ) -> None:
         """Reject requests where replacement text already appears before mutation."""
         for match in matches:
             if not match.rule.restore:
                 continue
-            if match.rule.replacement in text:
+            if match.rule.replacement in text and match.rule.replacement not in (existing_mapping or {}):
                 raise DictionaryPolicyAmbiguousRequestError(
                     f"replacement already present for rule {match.rule.rule_id}"
                 )

@@ -20,7 +20,7 @@
 | `codex-lb` | OAuth-подписки ChatGPT, каталог моделей, квоты, выбор учётной записи и привязка по диалогу/кэшу |
 | PostgreSQL LiteLLM | Пользователи, ключи, бюджеты и состояние LiteLLM |
 | PostgreSQL `codex-lb` | Учётные записи, настройки, маршрутизация и журналы `codex-lb` |
-| Redis | Временные `pii_mapping:*` и привязки LiteLLM для моделей, обслуживаемых напрямую |
+| Redis | Временные `pii_mapping:*`, ограниченное состояние Responses и привязки LiteLLM для моделей, обслуживаемых напрямую |
 
 ```text
 Клиент -> LiteLLM -> PII Guardrail -> Presidio Analyzer

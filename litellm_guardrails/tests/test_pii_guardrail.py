@@ -285,7 +285,10 @@ async def test_request_shape_event_is_safe_and_precedes_analyzer(caplog, guardra
         return []
 
     caplog.set_level(logging.INFO)
-    with patch.object(guardrail, "_analyze_text", side_effect=analyze_after_shape_event):
+    with (
+        patch.object(guardrail, "_analyze_text", side_effect=analyze_after_shape_event),
+        patch.object(guardrail, "_prepare_responses_state", return_value={}),
+    ):
         await guardrail.async_pre_call_hook(
             user_api_key_dict=MagicMock(),
             cache=MagicMock(),
