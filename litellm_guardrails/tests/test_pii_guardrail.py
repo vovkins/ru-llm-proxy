@@ -1552,7 +1552,7 @@ class TestDependencyClients:
         kwargs = async_client.call_args.kwargs
         assert isinstance(kwargs["timeout"], httpx.Timeout)
         assert kwargs["timeout"].connect == 5.0
-        assert kwargs["timeout"].read == 30.0
+        assert kwargs["timeout"].read == 240.0
         assert isinstance(kwargs["limits"], httpx.Limits)
         assert kwargs["limits"].max_connections == 20
         assert kwargs["limits"].max_keepalive_connections == 10
@@ -1638,7 +1638,7 @@ class TestDependencyClients:
             == 1.0
         )
         assert pii_guardrail.PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS == 2.0
-        assert pii_guardrail.PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS == 30.0
+        assert pii_guardrail.PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS == 240.0
         assert pii_guardrail.PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS == 5.0
         assert pii_guardrail.PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS == 20
         assert pii_guardrail.PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS == 10

@@ -62,10 +62,12 @@ LOAD_CONTEXT_MODE=one-shot tests/load/run.sh context
 | `LOAD_ANALYZER_PROFILE` | `cpu` | `cpu` или `gpu`; GPU подключает отдельный Compose-файл и требует NVIDIA Container Toolkit |
 | `LOAD_ANALYZER_REPLICAS` | `1` | Число экземпляров Analyzer в испытательном контуре |
 | `LOAD_LITELLM_REPLICAS` | `1` | Число экземпляров LiteLLM в испытательном контуре |
-| `LOAD_ANALYZER_CPUS`, `LOAD_ANALYZER_MEMORY` | `4`, `4g` | Ограничения одного экземпляра Analyzer |
+| `LOAD_ANALYZER_CPUS`, `LOAD_ANALYZER_MEMORY` | `4`, `4g`; CPU `8` для `context` | Ограничения одного экземпляра Analyzer; явные значения сохраняются |
 | `LOAD_LITELLM_CPUS`, `LOAD_LITELLM_MEMORY` | `2`, `2g` | Ограничения одного экземпляра LiteLLM |
 | `LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS` | `20` | Пул HTTP-соединений к Analyzer на экземпляр LiteLLM |
 | `LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS` | `20` | Пул Redis-соединений защитного слоя на экземпляр LiteLLM |
+| `LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS` | `240`; `1200` для `context` | Общий бюджет предварительной проверки; `stateful`/`resilience` сохраняют испытательные 90 секунд |
+| `LOAD_READ_TIMEOUT_SECONDS`, `LOAD_STOP_TIMEOUT_SECONDS` | `1500`, `1500` для `context` | Ожидание HTTP-ответа и завершения нагрузки большого ввода; это не бюджет Analyzer |
 | `LOAD_STATEFUL_CHURN_DURATION_SECONDS` | `120` | Продолжительность параллельного создания, чтения, применения и удаления ключей в профиле `stateful` |
 | `LOAD_STATEFUL_CHURN_CONCURRENCY` | `4` | Число одновременных административных циклов в профиле `stateful` |
 | `LOAD_STATEFUL_REVOCATION_TIMEOUT_SECONDS` | `8` | Предельное ожидание отзыва ключа с учётом локального кэша реплик LiteLLM |

@@ -247,6 +247,17 @@ def test_production_proxy_does_not_retry_sent_model_posts():
     assert "server presidio-analyzer:5001 resolve;" in config
 
 
+@pytest.mark.parametrize("name,routes", [("default.conf", 1), ("production.conf", 2)])
+def test_nginx_waits_for_large_preprocessing_without_changing_codex_route(name, routes):
+    config = (ROOT / "nginx/conf.d" / name).read_text()
+    preprocessing_routes, codex_route = config.split("listen 2455;", 1)
+    assert preprocessing_routes.count("proxy_read_timeout 1500s;") == routes
+    assert preprocessing_routes.count("proxy_send_timeout 1500s;") == routes
+    assert "proxy_read_timeout 600s;" in codex_route
+    assert "proxy_send_timeout 600s;" in codex_route
+    assert "proxy_buffering off;" in preprocessing_routes
+
+
 def test_production_metrics_are_scraped_per_container():
     source = (ROOT / "scripts/deployment.py").read_text()
     assert '["docker", "exec", item["Id"], "python", "-c", code]' in source
