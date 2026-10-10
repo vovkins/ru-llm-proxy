@@ -8,7 +8,7 @@ set -euo pipefail
 BASE_URL="${LITELLM_URL:-http://localhost:4000}"
 ANALYZER_URL="${ANALYZER_URL:-http://localhost:5001}"
 API_KEY="${RU_LLM_PROXY_TOKEN:-}"
-CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"
+CHAT_MODEL="${CHAT_MODEL:-glm-5.3-flash}"
 
 if ! command -v jq &>/dev/null; then
     echo "❌ jq is required: apt install jq"

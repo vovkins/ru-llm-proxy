@@ -9,12 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE_CONFIG_PATH = ROOT / "litellm-config.yaml"
 CODEX_LB_CONFIG_PATH = ROOT / "litellm-config.codex-lb.yaml"
 PUBLIC_OPENAI_MODELS = (
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.5",
-    "gpt-5.6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
+    "gpt-6-luna",
+    "gpt-6-sol",
+    "gpt-6-astra",
+    "gpt-6.1-sol",
 )
 
 
@@ -51,6 +49,9 @@ def test_codex_lb_profile_adds_explicit_openai_compatible_public_models():
             "api_key": "os.environ/CODEX_LB_API_KEY",
         }
         assert deployment["model_info"]["base_model"] == model_name
+        assert deployment["model_info"]["id"] == (
+            f"openai-{model_name.replace('.', '-')}-codex-lb"
+        )
         assert deployment["model_info"]["access_groups"] == [
             "openai",
             "standard",
@@ -62,6 +63,26 @@ def test_codex_lb_profile_does_not_publish_internal_or_temporary_models():
 
     assert "codex-auto-review" not in config
     assert "codex-lb-smoke" not in config
+
+
+def test_codex_lb_profile_does_not_silently_redirect_old_model_names():
+    config = _load(CODEX_LB_CONFIG_PATH)
+    deployments = config["model_list"]
+
+    assert not any(item["model_name"].startswith("gpt-5.") for item in deployments)
+    assert len({item["model_info"]["id"] for item in deployments}) == len(deployments)
+    assert "model_group_alias" not in config["router_settings"]
+    assert "fallbacks" not in config["router_settings"]
+
+
+def test_codex_client_and_live_test_examples_use_luna_default():
+    client = (ROOT / "docs/clients/codex.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs/codex-lb.md").read_text(encoding="utf-8")
+
+    assert 'model = "gpt-6-luna"' in client
+    assert "CHAT_MODEL=gpt-6-luna RESPONSES_MODEL=gpt-6-luna" in runbook
+    for model in PUBLIC_OPENAI_MODELS:
+        assert f"`{model}`" in runbook
 
 
 def test_base_profile_has_no_codex_lb_dependency_or_openai_catalog():

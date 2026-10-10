@@ -49,6 +49,8 @@ services:
     volumes:
       - ./litellm-config.pre-egress-proxy.yaml:/app/config.yaml:ro
       - ../../litellm_guardrails:/app/litellm_guardrails:ro
+      - ./check_responses_history.py:/workspace/tests/e2e/check_responses_history.py:ro
+      - ./check_responses_state_redis.py:/workspace/tests/e2e/check_responses_state_redis.py:ro
     depends_on:
       redis:
         condition: service_healthy

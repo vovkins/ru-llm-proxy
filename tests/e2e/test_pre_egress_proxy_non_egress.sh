@@ -558,4 +558,21 @@ run_clean_case \
     '{"model":"mock-chat","messages":[{"role":"user","content":"Capacity recovery probe."}]}' \
     '["/v1/chat/completions"]'
 
+reset_capture
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T litellm \
+    python /workspace/tests/e2e/check_responses_state_redis.py redis://redis:6379
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T litellm \
+    python /workspace/tests/e2e/check_responses_history.py
+capture_counts "$tmp_dir/history-capture.json"
+expect_json_value "$tmp_dir/history-capture.json" "provider_requests" "12"
+expect_json_value "$tmp_dir/history-capture.json" "provider_saw_synthetic_marker" "false"
+expect_json_value "$tmp_dir/history-capture.json" "provider_saw_pii_placeholder" "true"
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T litellm \
+    python -c 'import asyncio, redis.asyncio as r; client=r.from_url("redis://redis:6379"); print(asyncio.run(client.keys("pii_mapping:*")))' \
+    > "$tmp_dir/history-cleanup.txt"
+if [ "$(cat "$tmp_dir/history-cleanup.txt")" != "[]" ]; then
+    echo "Responses history left temporary mappings" >&2
+    exit 1
+fi
+
 echo "pre-egress proxy non-egress smoke passed"

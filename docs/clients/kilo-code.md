@@ -12,14 +12,14 @@ Kilo Code подключается как клиент, совместимый �
 | API Provider | `OpenAI Compatible` |
 | Base URL | `http://localhost:4000/v1` |
 | API Key | Пользовательский ключ LiteLLM |
-| Model | `glm-5.2` |
+| Model | `glm-5.3-flash` |
 
 ## CLI
 
 ```jsonc
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "model": "openai-compatible/glm-5.2",
+  "model": "openai-compatible/glm-5.3-flash",
   "provider": {
     "openai-compatible": {
       "options": {
@@ -28,8 +28,8 @@ Kilo Code подключается как клиент, совместимый �
         "timeout": 300000
       },
       "models": {
-        "glm-5.2": {"name": "GLM-5.2", "tool_call": true},
-        "glm-5.1": {"name": "GLM-5.1", "tool_call": true}
+        "glm-5.3-flash": {"name": "GLM-5.3-Flash", "tool_call": true},
+        "glm-5.3": {"name": "GLM-5.3", "tool_call": true}
       }
     }
   }

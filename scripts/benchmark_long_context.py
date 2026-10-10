@@ -31,7 +31,7 @@ SAFE_ENTITY_TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 SAFE_METADATA_KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 SAFE_CONTAINER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 SAFE_ERROR_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-SAFE_FAILURE_REASONS = frozenset({"queue_full", "queue_timeout"})
+SAFE_FAILURE_REASONS = frozenset({"queue_full", "queue_timeout", "time_budget_exceeded"})
 SENSITIVE_METADATA_KEY = re.compile(
     r"(?:auth|credential|key|password|secret|token)",
     re.IGNORECASE,
@@ -616,7 +616,7 @@ def _safe_nested_overload_reason(payload: object) -> str | None:
         value, depth = pending.pop()
         visited += 1
         if isinstance(value, dict):
-            if value.get("code") == "analyzer_overloaded":
+            if value.get("code") in ("analyzer_overloaded", "pii_preprocessing_timeout"):
                 reason = value.get("reason")
                 if isinstance(reason, str) and reason in SAFE_FAILURE_REASONS:
                     return reason
@@ -863,6 +863,7 @@ def build_report(
             "timeout_seconds": args.timeout,
             "canaries_enabled": not args.no_canaries,
             "generator_unit": "whitespace_token",
+            "text_token_encoding": args.tokenizer_encoding,
             "window_stride_hint": args.window_stride,
             "repeated_field_tokens": (
                 args.repeated_field_tokens
@@ -916,6 +917,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Append a safe synthetic suffix to each repetition to bypass analysis cache",
     )
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--tokenizer-encoding", choices=("o200k_base", "cl100k_base"), default=None,
+        help="Count text tokens with an explicit tiktoken encoding, not model context usage",
+    )
     parser.add_argument("--stream", action="store_true")
     parser.add_argument("--no-canaries", action="store_true")
     parser.add_argument("--window-stride", type=int, default=320)
@@ -975,6 +980,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         window_stride=args.window_stride,
         repeated_field_tokens=args.repeated_field_tokens,
     )
+    encoding = None
+    if args.tokenizer_encoding:
+        import tiktoken
+
+        encoding = tiktoken.get_encoding(args.tokenizer_encoding)
+        for payload in payloads:
+            payload["text_token_count"] = len(encoding.encode(_analyzer_text(payload["request_value"])))
     measurements: list[dict[str, Any]] = []
     workloads: list[dict[str, Any]] = []
 
@@ -1031,20 +1043,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         next(request_indexes),
                     )
                 if args.layer == "analyzer":
-                    return _analyzer_measurement(
+                    result = _analyzer_measurement(
                         client,
                         args.url,
                         _analyzer_text(request_value),
                     )
-                return _proxy_measurement(
-                    client,
-                    url=args.url,
-                    api=args.api,
-                    model=args.model,
-                    api_key=api_key,
-                    request_value=request_value,
-                    stream=args.stream,
-                )
+                else:
+                    result = _proxy_measurement(
+                        client,
+                        url=args.url,
+                        api=args.api,
+                        model=args.model,
+                        api_key=api_key,
+                        request_value=request_value,
+                        stream=args.stream,
+                    )
+                if encoding is not None:
+                    result["text_token_count"] = len(encoding.encode(_analyzer_text(request_value)))
+                return result
 
             with DockerResourceSampler(
                 args.docker_containers,

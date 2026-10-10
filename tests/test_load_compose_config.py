@@ -90,6 +90,8 @@ def test_load_balancers_refresh_scaled_services_and_expire_idle_upstreams():
         assert " resolve;" in config
         assert "proxy_next_upstream_tries 2;" in config
         assert "keepalive_timeout 4s;" in config
+        assert "proxy_read_timeout 1500s;" in config
+        assert "proxy_send_timeout 1500s;" in config
 
     analyzer = (ROOT / "tests" / "load" / "nginx" / "analyzer.conf").read_text(
         encoding="utf-8"
@@ -99,6 +101,18 @@ def test_load_balancers_refresh_scaled_services_and_expire_idle_upstreams():
     )
     assert "proxy_next_upstream error timeout http_502 http_503 non_idempotent;" in analyzer
     assert "proxy_next_upstream error timeout;" in litellm
+
+
+def test_load_context_budget_matches_approved_large_input_profile():
+    services = _compose()["services"]
+    assert services["load-litellm"]["environment"]["PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS"] == (
+        "${LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-240}"
+    )
+    script = (ROOT / "tests/load/run.sh").read_text()
+    assert "LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:-1200" in script
+    assert "LOAD_READ_TIMEOUT_SECONDS:-1500" in script
+    assert "LOAD_STOP_TIMEOUT_SECONDS:-1500" in script
+    assert 'if [ -z "$LOAD_ANALYZER_CPUS_WAS_SET" ]; then LOAD_ANALYZER_CPUS=8.0; fi' in script
 
 
 def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():

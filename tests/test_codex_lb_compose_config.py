@@ -308,7 +308,7 @@ def test_codex_lb_runbook_covers_the_operational_contract():
         "chatgpt.com:443",
         "auth.openai.com:443",
         "Порт обратного вызова `1455`",
-        "gpt-5.6-luna",
+        "gpt-6-luna",
         "encrypted_content",
     ):
         assert required in runbook

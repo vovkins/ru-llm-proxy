@@ -2,29 +2,43 @@
 
 from pathlib import Path
 
+import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_default_litellm_config_uses_glm_52_two_deployment_pool():
-    config = (ROOT / "litellm-config.yaml").read_text(encoding="utf-8")
+@pytest.mark.parametrize("model", ("glm-5.3-flash", "glm-5.3"))
+def test_glm_models_each_use_two_coding_plan_credentials(model):
+    config = yaml.safe_load((ROOT / "litellm-config.yaml").read_text(encoding="utf-8"))
+    deployments = [item for item in config["model_list"] if item["model_name"] == model]
 
-    assert config.count("model_name: glm-5.2") == 2
-    assert config.count("model: openai/glm-5.2") == 2
-    assert "api_base: https://api.z.ai/api/coding/paas/v4" in config
-    assert "api_key: os.environ/ZAI_API_KEY" in config
-    assert "api_key: os.environ/ZAI_API_KEY_2" in config
-    assert "id: glm-5-2-zai-coding-primary" in config
-    assert "id: glm-5-2-zai-coding-secondary" in config
+    assert len(deployments) == 2
+    for deployment, key, suffix in zip(
+        deployments, ("ZAI_API_KEY", "ZAI_API_KEY_2"), ("primary", "secondary")
+    ):
+        assert deployment["litellm_params"] == {
+            "model": f"openai/{model}",
+            "api_base": "https://api.z.ai/api/coding/paas/v4",
+            "api_key": f"os.environ/{key}",
+        }
+        assert deployment["model_info"] == {
+            "id": f"{model.replace('.', '-')}-zai-coding-{suffix}",
+            "base_model": model,
+            "access_groups": ["zai", "standard"],
+        }
 
 
-def test_litellm_config_keeps_glm_51_as_additional_alias():
-    config = (ROOT / "litellm-config.yaml").read_text(encoding="utf-8")
+def test_default_catalog_has_only_current_models_and_unique_provider_ids():
+    config = yaml.safe_load((ROOT / "litellm-config.yaml").read_text(encoding="utf-8"))
+    deployments = config["model_list"]
 
-    assert config.count("model_name: glm-5.1") == 2
-    assert config.count("model: openai/glm-5.1") == 2
-    assert "id: glm-5-1-zai-coding-primary" in config
-    assert "id: glm-5-1-zai-coding-secondary" in config
+    assert [item["model_name"] for item in deployments] == [
+        "glm-5.3-flash", "glm-5.3-flash", "glm-5.3", "glm-5.3"
+    ]
+    assert len({item["model_info"]["id"] for item in deployments}) == len(deployments)
+    assert "model_group_alias" not in config["router_settings"]
+    assert "fallbacks" not in config["router_settings"]
 
 
 def test_default_litellm_config_does_not_activate_optional_providers():
@@ -53,7 +67,7 @@ def test_optional_provider_examples_are_separate_from_default_config():
     assert "`ANTHROPIC_API_KEY` | Пусто" in configuration
 
 
-def test_smoke_defaults_use_glm_52():
+def test_smoke_defaults_use_glm_53_flash():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     e2e = (ROOT / "tests" / "e2e" / "test_e2e.sh").read_text(encoding="utf-8")
     client_auth = (
@@ -63,12 +77,12 @@ def test_smoke_defaults_use_glm_52():
         ROOT / "tests" / "e2e" / "test_guardrails_smoke.sh"
     ).read_text(encoding="utf-8")
 
-    assert "ROUTING_SMOKE_MODEL:-glm-5.2" in makefile
-    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"' in e2e
-    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"' in client_auth
-    assert 'DENIED_MODEL="${DENIED_MODEL:-glm-5.2}"' in client_auth
+    assert "ROUTING_SMOKE_MODEL:-glm-5.3-flash" in makefile
+    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.3-flash}"' in e2e
+    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.3-flash}"' in client_auth
+    assert 'DENIED_MODEL="${DENIED_MODEL:-glm-5.3-flash}"' in client_auth
     assert "ZAI_API_KEY and ZAI_API_KEY_2" in client_auth
-    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.2}"' in guardrails
+    assert 'CHAT_MODEL="${CHAT_MODEL:-glm-5.3-flash}"' in guardrails
 
 
 def test_env_and_setup_treat_second_zai_key_as_required_default():

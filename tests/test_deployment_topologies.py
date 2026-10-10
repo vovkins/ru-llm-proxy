@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -246,6 +247,17 @@ def test_production_proxy_does_not_retry_sent_model_posts():
     assert "server presidio-analyzer:5001 resolve;" in config
 
 
+@pytest.mark.parametrize("name,routes", [("default.conf", 1), ("production.conf", 2)])
+def test_nginx_waits_for_large_preprocessing_without_changing_codex_route(name, routes):
+    config = (ROOT / "nginx/conf.d" / name).read_text()
+    preprocessing_routes, codex_route = config.split("listen 2455;", 1)
+    assert preprocessing_routes.count("proxy_read_timeout 1500s;") == routes
+    assert preprocessing_routes.count("proxy_send_timeout 1500s;") == routes
+    assert "proxy_read_timeout 600s;" in codex_route
+    assert "proxy_send_timeout 600s;" in codex_route
+    assert "proxy_buffering off;" in preprocessing_routes
+
+
 def test_production_metrics_are_scraped_per_container():
     source = (ROOT / "scripts/deployment.py").read_text()
     assert '["docker", "exec", item["Id"], "python", "-c", code]' in source
@@ -427,3 +439,46 @@ def test_documentation_and_mock_gate_cover_context_contract():
     assert "deployment_affinity" in config["router_settings"]["optional_pre_call_checks"]
     makefile = (ROOT / "Makefile").read_text()
     assert "tests/e2e/deployment_topology_gate.py" in makefile.split("test-ner-proxy:", 1)[1].split("test-ner-integration:", 1)[0]
+
+
+@pytest.fixture
+def topology_gate():
+    module_spec = importlib.util.spec_from_file_location(
+        "deployment_topology_gate", ROOT / "tests/e2e/deployment_topology_gate.py",
+    )
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    return module.Gate
+
+
+def gate_container(host="127.0.0.1", published="54321", *, running=True, service="nginx"):
+    return {"State": {"Running": running},
+            "Config": {"Labels": {"com.docker.compose.service": service}},
+            "NetworkSettings": {"Ports": {"80/tcp": [{"HostIp": host, "HostPort": published}]}}}
+
+
+@pytest.mark.parametrize("host,expected", [
+    ("127.0.0.1", "127.0.0.1"), ("0.0.0.0", "127.0.0.1"),
+    ("", "127.0.0.1"), (None, "127.0.0.1"), ("::", "[::1]"), ("::1", "[::1]"),
+])
+def test_local_gate_url_uses_inspected_binding_without_compose_port(topology_gate, host, expected):
+    context = MagicMock()
+    context.containers.return_value = [gate_container(host)]
+    assert topology_gate.url(None, context, "nginx", 80) == f"http://{expected}:54321"
+    context.compose.assert_not_called()
+
+
+def test_local_gate_url_skips_stopped_or_different_services(topology_gate):
+    context = MagicMock()
+    context.containers.return_value = [gate_container(published="1", running=False),
+                                       gate_container(published="2", service="litellm"), gate_container()]
+    assert topology_gate.url(None, context, "nginx", 80) == "http://127.0.0.1:54321"
+
+
+@pytest.mark.parametrize("binding", [gate_container("invalid IP"), gate_container(published="0"),
+                                      gate_container(published="65536"), gate_container(published="not-a-port")])
+def test_invalid_local_gate_binding_fails_explicitly(topology_gate, binding):
+    context = MagicMock()
+    context.containers.return_value = [binding]
+    with pytest.raises(RuntimeError, match="No local published TCP port"):
+        topology_gate.url(None, context, "nginx", 80)

@@ -125,7 +125,7 @@ fi
 
 echo ""
 echo "✅ ${ENV_FILE} готов"
-echo "⚠️  Заполните Z.AI Coding Plan ключи для дефолтного пула glm-5.2 в ${ENV_FILE}:"
+echo "⚠️  Заполните Z.AI Coding Plan ключи для дефолтного пула glm-5.3-flash в ${ENV_FILE}:"
 echo "   ZAI_API_KEY=***"
 echo "   ZAI_API_KEY_2=***"
 echo ""

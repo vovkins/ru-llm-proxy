@@ -34,6 +34,7 @@ def test_dynamic_guardrail_loads_share_registered_metrics(caplog):
         "PII_PRE_CALLS",
         "PII_POST_CALLS",
         "PII_ANALYZER_LATENCY",
+        "PII_PREPROCESSING_LATENCY",
         "PII_ANALYSIS_CACHE_REQUESTS",
         "PII_ANALYSIS_CACHE_LATENCY",
     )
@@ -47,6 +48,10 @@ def test_dynamic_guardrail_loads_share_registered_metrics(caplog):
     post_before = _sample_value("ru_pii_guardrail_post_calls_total", post_labels)
     latency_before = _sample_value(
         "ru_pii_guardrail_analyzer_latency_seconds_count"
+    )
+    preprocessing_labels = {"outcome": "timeout"}
+    preprocessing_before = _sample_value(
+        "ru_pii_guardrail_preprocessing_duration_seconds_count", preprocessing_labels,
     )
     cache_hit_labels = {"result": "hit"}
     cache_latency_labels = {"operation": "load"}
@@ -62,6 +67,7 @@ def test_dynamic_guardrail_loads_share_registered_metrics(caplog):
     first_globals["PII_PRE_CALLS"].labels(**pre_labels).inc()
     second_globals["PII_POST_CALLS"].labels(**post_labels).inc()
     first_globals["PII_ANALYZER_LATENCY"].observe(0.01)
+    second_globals["PII_PREPROCESSING_LATENCY"].labels(**preprocessing_labels).observe(30)
     first_globals["PII_ANALYSIS_CACHE_REQUESTS"].labels(
         **cache_hit_labels
     ).inc()
@@ -78,6 +84,9 @@ def test_dynamic_guardrail_loads_share_registered_metrics(caplog):
     assert _sample_value(
         "ru_pii_guardrail_analyzer_latency_seconds_count"
     ) == pytest.approx(latency_before + 1)
+    assert _sample_value(
+        "ru_pii_guardrail_preprocessing_duration_seconds_count", preprocessing_labels,
+    ) == pytest.approx(preprocessing_before + 1)
     assert _sample_value(
         "ru_pii_guardrail_analysis_cache_requests_total",
         cache_hit_labels,

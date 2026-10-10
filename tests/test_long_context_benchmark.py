@@ -129,6 +129,33 @@ def test_report_schema_never_contains_generated_request_data():
     assert "request_value" not in serialized
 
 
+def test_explicit_encoding_counts_text_without_claiming_model_usage(monkeypatch):
+    encoding = MagicMock()
+    encoding.encode.side_effect = lambda text: text.split()
+    module = MagicMock()
+    module.get_encoding.return_value = encoding
+    monkeypatch.setitem(sys.modules, "tiktoken", module)
+    args = benchmark.build_parser().parse_args([
+        "--layer", "analyzer", "--url", "http://test.invalid",
+        "--profile", "one-shot", "--sizes", "1000", "--dry-run",
+        "--tokenizer-encoding", "o200k_base",
+    ])
+    report = benchmark.run(args)
+    module.get_encoding.assert_called_once_with("o200k_base")
+    assert report["measurements"][0]["text_token_count"] == 1000
+    assert report["parameters"]["text_token_encoding"] == "o200k_base"
+    assert "usage" not in report["measurements"][0]
+
+
+def test_preprocessing_budget_reason_is_bounded_in_report():
+    payload = {"error": {"type": "pii_preprocessing_timeout", "param": {
+        "preprocessing": {"code": "pii_preprocessing_timeout", "details": {
+            "reason": "time_budget_exceeded", "retryable": False,
+        }},
+    }}}
+    assert benchmark._safe_error_fields_from_payload(payload)["failure_reason"] == "time_budget_exceeded"
+
+
 def test_unique_request_suffix_copies_generated_payload_and_bypasses_cache_key():
     source = [{"role": "user", "content": "synthetic payload"}]
 

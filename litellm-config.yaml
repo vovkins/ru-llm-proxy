@@ -1,43 +1,43 @@
 model_list:
   # Публичный GLM-профиль по умолчанию. Оба провайдера модели используют ключи
-  # Z.AI Coding Plan и доступны клиентам как одна группа моделей: glm-5.2.
-  - model_name: glm-5.2
+  # Z.AI Coding Plan и доступны клиентам как одна группа моделей: glm-5.3-flash.
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: glm-5-2-zai-coding-primary
-      base_model: glm-5.2
+      id: glm-5-3-flash-zai-coding-primary
+      base_model: glm-5.3-flash
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.2
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: glm-5-2-zai-coding-secondary
-      base_model: glm-5.2
+      id: glm-5-3-flash-zai-coding-secondary
+      base_model: glm-5.3-flash
       access_groups: ["zai", "standard"]
 
-  # Дополнительное публичное имя GLM для инсталляций, которым ещё нужна GLM-5.1.
-  - model_name: glm-5.1
+  # Дополнительная GLM-5.3 использует тот же пул из двух подписок.
+  - model_name: glm-5.3
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.3
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: glm-5-1-zai-coding-primary
-      base_model: glm-5.1
+      id: glm-5-3-zai-coding-primary
+      base_model: glm-5.3
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.1
+  - model_name: glm-5.3
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.3
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: glm-5-1-zai-coding-secondary
-      base_model: glm-5.1
+      id: glm-5-3-zai-coding-secondary
+      base_model: glm-5.3
       access_groups: ["zai", "standard"]
 
 router_settings:

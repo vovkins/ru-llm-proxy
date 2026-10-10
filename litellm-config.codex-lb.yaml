@@ -1,100 +1,82 @@
 model_list:
   # Публичный GLM-профиль по умолчанию. Оба провайдера модели используют ключи
-  # Z.AI Coding Plan и доступны клиентам как одна группа моделей: glm-5.2.
-  - model_name: glm-5.2
+  # Z.AI Coding Plan и доступны клиентам как одна группа моделей: glm-5.3-flash.
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: glm-5-2-zai-coding-primary
-      base_model: glm-5.2
+      id: glm-5-3-flash-zai-coding-primary
+      base_model: glm-5.3-flash
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.2
+  - model_name: glm-5.3-flash
     litellm_params:
-      model: openai/glm-5.2
+      model: openai/glm-5.3-flash
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: glm-5-2-zai-coding-secondary
-      base_model: glm-5.2
+      id: glm-5-3-flash-zai-coding-secondary
+      base_model: glm-5.3-flash
       access_groups: ["zai", "standard"]
 
-  # Дополнительное публичное имя GLM для инсталляций, которым ещё нужна GLM-5.1.
-  - model_name: glm-5.1
+  # Дополнительная GLM-5.3 использует тот же пул из двух подписок.
+  - model_name: glm-5.3
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.3
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY
     model_info:
-      id: glm-5-1-zai-coding-primary
-      base_model: glm-5.1
+      id: glm-5-3-zai-coding-primary
+      base_model: glm-5.3
       access_groups: ["zai", "standard"]
-  - model_name: glm-5.1
+  - model_name: glm-5.3
     litellm_params:
-      model: openai/glm-5.1
+      model: openai/glm-5.3
       api_base: https://api.z.ai/api/coding/paas/v4
       api_key: os.environ/ZAI_API_KEY_2
     model_info:
-      id: glm-5-1-zai-coding-secondary
-      base_model: glm-5.1
+      id: glm-5-3-zai-coding-secondary
+      base_model: glm-5.3
       access_groups: ["zai", "standard"]
 
   # Публичные имена OpenAI-моделей скрывают внутренние OAuth-подписки.
   # Выбор подписки, привязка диалога и учёт квот выполняются в codex-lb.
-  - model_name: gpt-5.4
+  - model_name: gpt-6-luna
     litellm_params:
-      model: openai/gpt-5.4
+      model: openai/gpt-6-luna
       api_base: http://codex-lb:2455/v1
       api_key: os.environ/CODEX_LB_API_KEY
     model_info:
-      id: openai-gpt-5-4-codex-lb
-      base_model: gpt-5.4
+      id: openai-gpt-6-luna-codex-lb
+      base_model: gpt-6-luna
       access_groups: ["openai", "standard"]
-  - model_name: gpt-5.4-mini
+  - model_name: gpt-6-sol
     litellm_params:
-      model: openai/gpt-5.4-mini
+      model: openai/gpt-6-sol
       api_base: http://codex-lb:2455/v1
       api_key: os.environ/CODEX_LB_API_KEY
     model_info:
-      id: openai-gpt-5-4-mini-codex-lb
-      base_model: gpt-5.4-mini
+      id: openai-gpt-6-sol-codex-lb
+      base_model: gpt-6-sol
       access_groups: ["openai", "standard"]
-  - model_name: gpt-5.5
+  - model_name: gpt-6-astra
     litellm_params:
-      model: openai/gpt-5.5
+      model: openai/gpt-6-astra
       api_base: http://codex-lb:2455/v1
       api_key: os.environ/CODEX_LB_API_KEY
     model_info:
-      id: openai-gpt-5-5-codex-lb
-      base_model: gpt-5.5
+      id: openai-gpt-6-astra-codex-lb
+      base_model: gpt-6-astra
       access_groups: ["openai", "standard"]
-  - model_name: gpt-5.6-luna
+  - model_name: gpt-6.1-sol
     litellm_params:
-      model: openai/gpt-5.6-luna
+      model: openai/gpt-6.1-sol
       api_base: http://codex-lb:2455/v1
       api_key: os.environ/CODEX_LB_API_KEY
     model_info:
-      id: openai-gpt-5-6-luna-codex-lb
-      base_model: gpt-5.6-luna
-      access_groups: ["openai", "standard"]
-  - model_name: gpt-5.6-sol
-    litellm_params:
-      model: openai/gpt-5.6-sol
-      api_base: http://codex-lb:2455/v1
-      api_key: os.environ/CODEX_LB_API_KEY
-    model_info:
-      id: openai-gpt-5-6-sol-codex-lb
-      base_model: gpt-5.6-sol
-      access_groups: ["openai", "standard"]
-  - model_name: gpt-5.6-terra
-    litellm_params:
-      model: openai/gpt-5.6-terra
-      api_base: http://codex-lb:2455/v1
-      api_key: os.environ/CODEX_LB_API_KEY
-    model_info:
-      id: openai-gpt-5-6-terra-codex-lb
-      base_model: gpt-5.6-terra
+      id: openai-gpt-6-1-sol-codex-lb
+      base_model: gpt-6.1-sol
       access_groups: ["openai", "standard"]
 
 router_settings:

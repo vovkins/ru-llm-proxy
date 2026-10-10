@@ -12,6 +12,7 @@ import re
 import time
 import uuid
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
 
@@ -34,6 +35,14 @@ from litellm_guardrails.streaming_restoration import (
     restore_text,
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
+from litellm_guardrails.responses_state import (
+    STATE_METADATA_KEY,
+    ResponsesStateError,
+    ResponsesStateStore,
+    missing_state,
+    unavailable_state,
+    placeholder_counters,
+)
 from litellm_guardrails.upstream_stream import TRANSPORT_ID, assert_request_stream_valid, close_request_streams
 from litellm_guardrails.metrics import (
     DICTIONARY_SUBSTITUTION_MAPPING_SIZE,
@@ -49,6 +58,7 @@ from litellm_guardrails.metrics import (
     PII_MAPPING_SIZE,
     PII_POST_CALLS,
     PII_PRE_CALLS,
+    PII_PREPROCESSING_LATENCY,
     PII_REDIS_LATENCY,
     PRE_EGRESS_POLICY_BLOCKED,
     REGULATED_TOPIC_POLICY_BLOCKED,
@@ -480,8 +490,8 @@ def _get_float_env(name: str, default: float) -> float:
 
 
 def _normalize_positive_float(name: str, value: float, default: float) -> float:
-    """Return value when positive, otherwise log and return default."""
-    if value > 0:
+    """Return a finite positive limit, otherwise log and return default."""
+    if math.isfinite(value) and value > 0:
         return value
     logger.warning("Invalid %s=%r, falling back to %s", name, value, default)
     return default
@@ -503,7 +513,7 @@ PII_GUARDRAIL_REDIS_SOCKET_TIMEOUT_SECONDS = _get_float_env(
 )
 PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS = _get_float_env(
     "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS",
-    30.0,
+    240.0,
 )
 PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS = _get_float_env(
     "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS",
@@ -540,6 +550,12 @@ FINAL_PAYLOAD_LEAK_CHECK_CANARIES = tuple(
 _REDIS_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYZER_HTTP_CLIENTS_BY_LOOP = WeakKeyDictionary()
 _ANALYSIS_CACHE_INFLIGHT_BY_LOOP = WeakKeyDictionary()
+
+
+@dataclass
+class _AnalysisCacheFlight:
+    task: asyncio.Task
+    waiters: int = 0
 
 
 def _unique_clients(clients: list[Any]) -> list[Any]:
@@ -596,7 +612,7 @@ def _get_shared_analyzer_http_client() -> httpx.AsyncClient:
     return client
 
 
-def _get_analysis_cache_inflight() -> dict[str, asyncio.Task]:
+def _get_analysis_cache_inflight() -> dict[str, _AnalysisCacheFlight]:
     """Return in-flight field analyses shared by guardrails in one event loop."""
     loop = asyncio.get_running_loop()
     tasks = _ANALYSIS_CACHE_INFLIGHT_BY_LOOP.get(loop)
@@ -664,6 +680,12 @@ async def close_guardrail_dependency_clients() -> None:
     """Close shared guardrail dependency clients and clear process-local caches."""
     redis_clients = _unique_clients(list(_REDIS_CLIENTS_BY_LOOP.values()))
     analyzer_clients = _unique_clients(list(_ANALYZER_HTTP_CLIENTS_BY_LOOP.values()))
+    flights = _ANALYSIS_CACHE_INFLIGHT_BY_LOOP.get(asyncio.get_running_loop(), {})
+    pending = [flight.task for flight in flights.values() if not flight.task.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
     _REDIS_CLIENTS_BY_LOOP.clear()
     _ANALYZER_HTTP_CLIENTS_BY_LOOP.clear()
     _ANALYSIS_CACHE_INFLIGHT_BY_LOOP.clear()
@@ -2641,34 +2663,48 @@ class RuPIIGuardrail(CustomGuardrail):
             return cached
 
         inflight = _get_analysis_cache_inflight()
-        task = inflight.get(cache_key)
-        if task is not None:
+        flight = inflight.get(cache_key)
+        if flight is not None:
             PII_ANALYSIS_CACHE_REQUESTS.labels(result="coalesced").inc()
             self._log_analysis_cache_result(
                 request_id,
                 text_field_index,
                 "coalesced",
             )
-            return list(await asyncio.shield(task))
-
-        task = asyncio.create_task(
-            self._analyze_and_cache(
-                text,
-                cache_key,
-                request_id,
-                text_field_index,
+        else:
+            task = asyncio.create_task(
+                self._analyze_and_cache(
+                    text,
+                    cache_key,
+                    request_id,
+                    text_field_index,
+                )
             )
-        )
-        inflight[cache_key] = task
+            flight = _AnalysisCacheFlight(task)
+            inflight[cache_key] = flight
 
-        def remove_finished(finished: asyncio.Task) -> None:
-            if inflight.get(cache_key) is finished:
-                inflight.pop(cache_key, None)
-            if not finished.cancelled():
-                finished.exception()
+            def remove_finished(finished: asyncio.Task) -> None:
+                if inflight.get(cache_key) is flight:
+                    inflight.pop(cache_key, None)
+                if not finished.cancelled():
+                    finished.exception()
 
-        task.add_done_callback(remove_finished)
-        return list(await asyncio.shield(task))
+            task.add_done_callback(remove_finished)
+
+        flight.waiters += 1
+        try:
+            return list(await asyncio.shield(flight.task))
+        finally:
+            flight.waiters -= 1
+            if flight.waiters == 0 and not flight.task.done():
+                if inflight.get(cache_key) is flight:
+                    inflight.pop(cache_key, None)
+                flight.task.cancel()
+
+                async def drain():
+                    await asyncio.gather(flight.task, return_exceptions=True)
+
+                await _finish_stream_cleanup(drain())
 
     async def _analyze_text(self, text: str) -> list[dict]:
         """Send text to Presidio Analyzer for PII detection."""
@@ -2977,6 +3013,7 @@ class RuPIIGuardrail(CustomGuardrail):
     def _apply_dictionary_substitutions(
         self,
         text: str,
+        existing_mapping: Optional[dict[str, str]] = None,
     ) -> DictionarySubstitutionResult:
         """Apply reversible dictionary policy to one provider-bound text field."""
         if (
@@ -2984,7 +3021,7 @@ class RuPIIGuardrail(CustomGuardrail):
             or not self.dictionary_substitution_policy.rules
         ):
             return DictionarySubstitutionResult(text, {}, (), {})
-        return self.dictionary_substitution_policy.apply(text)
+        return self.dictionary_substitution_policy.apply(text, existing_mapping)
 
     @staticmethod
     def _merge_dictionary_rule_counts(
@@ -3093,6 +3130,98 @@ class RuPIIGuardrail(CustomGuardrail):
                 time.perf_counter() - started_at
             )
 
+    async def _responses_state_store(self) -> ResponsesStateStore:
+        try:
+            return ResponsesStateStore(
+                await self._get_redis(), LITELLM_SALT_KEY.encode(),
+                self.mapping_ttl_seconds,
+            )
+        except ResponsesStateError:
+            raise
+        except Exception:
+            raise unavailable_state() from None
+
+    @staticmethod
+    def _raise_responses_state_error(error: ResponsesStateError) -> None:
+        _safe_log(logging.WARNING, "pii_history_error", code=error.code)
+        raise HTTPException(status_code=error.status, detail={
+            "error": {"message": str(error), "type": "pii_history_error", "code": error.code},
+        }) from None
+
+    @staticmethod
+    def _responses_state_context(data: dict) -> Optional[dict]:
+        metadata = data.get("litellm_metadata")
+        return metadata.get(STATE_METADATA_KEY) if isinstance(metadata, dict) else None
+
+    @staticmethod
+    def _canonical_responses_id(response_id: str) -> str:
+        if not isinstance(response_id, str) or not response_id or len(response_id) > 4096:
+            raise missing_state()
+        if response_id.startswith("resp_"):
+            try:
+                from litellm.proxy.hooks.responses_id_security import ResponsesIDSecurity
+            except ImportError:
+                # Standalone library tests need no proxy dependencies. The pinned
+                # production image provides this native ID-security hook.
+                return response_id
+            try:
+                security = ResponsesIDSecurity()
+                if security._is_encrypted_response_id(response_id):
+                    return security._decrypt_response_id(response_id)[0]
+            except Exception:
+                raise missing_state() from None
+        return response_id
+
+    async def _prepare_responses_state(
+        self, data: dict, auth: UserAPIKeyAuth, call_type: Optional[str],
+    ) -> dict[str, str]:
+        is_responses = call_type in ("responses", "aresponses") or (
+            "input" in data and "messages" not in data
+        )
+        if not is_responses:
+            return {}
+        identity = self._analysis_cache_scope(auth)
+        previous = data.get("previous_response_id")
+        # Direct library hooks without proxy authentication keep their stateless
+        # behaviour. A continuation can never use that compatibility path.
+        if not identity:
+            if previous:
+                raise missing_state()
+            return {}
+        if not LITELLM_SALT_KEY:
+            raise unavailable_state()
+        model = data.get("model")
+        if not isinstance(model, str) or not model or len(model) > 256:
+            raise unavailable_state()
+        store = await self._responses_state_store()
+        owner = store.owner(identity)
+        mapping = await store.load(owner, model, self._canonical_responses_id(previous)) if previous else {}
+        data.setdefault("litellm_metadata", {})[STATE_METADATA_KEY] = {
+            "owner": owner, "model": model, "published": False,
+        }
+        return mapping
+
+    async def _publish_responses_state(
+        self, data: dict, auth: UserAPIKeyAuth, response: Any, mapping: dict[str, str],
+    ) -> None:
+        context = self._responses_state_context(data)
+        if not context or context.get("published"):
+            return
+        if self._get_container_field(response, "status") != "completed":
+            return
+        try:
+            store = await self._responses_state_store()
+            identity = self._analysis_cache_scope(auth)
+            if not identity or store.owner(identity) != context["owner"]:
+                raise missing_state()
+            await store.save(
+                context["owner"], context["model"],
+                self._canonical_responses_id(self._get_container_field(response, "id")), mapping,
+            )
+            context["published"] = True
+        except ResponsesStateError as error:
+            self._raise_responses_state_error(error)
+
     def _get_request_id(self, data: dict) -> str:
         """Generate a server-side mapping ID for request-scoped PII."""
         return str(uuid.uuid4())
@@ -3130,11 +3259,13 @@ class RuPIIGuardrail(CustomGuardrail):
         transport_metadata = data.get("litellm_metadata")
         if isinstance(transport_metadata, dict):
             transport_metadata.pop(TRANSPORT_ID, None)
+            transport_metadata.pop(STATE_METADATA_KEY, None)
         metadata = data.get("metadata")
         if not isinstance(metadata, dict):
             return
         metadata.pop(PII_REQUEST_ID_METADATA_KEY, None)
         metadata.pop(PII_STREAMING_RESTORATION_DONE_METADATA_KEY, None)
+        metadata.pop(STATE_METADATA_KEY, None)
 
     @staticmethod
     def _entity_counts_from_mapping(mapping: dict[str, str]) -> dict[str, int]:
@@ -3512,11 +3643,82 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         call_type: Optional[str] = None,
     ) -> Optional[Union[Exception, str, dict]]:
-        """Apply request-time PII policy before sending to LLM."""
+        """Bound all pre-provider work, not just each individual HTTP read."""
         started_at = time.perf_counter()
         self._clear_inbound_pii_metadata(data)
-        request_targets = self._iter_request_text_targets(data)
         request_id = self._get_request_id(data)
+        request_targets = self._iter_request_text_targets(data)
+        originals = [
+            (target, field, target[field]) for target, field in request_targets
+        ]
+        outcome = "failure"
+        try:
+            with anyio.fail_after(PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS):
+                result = await self._pre_call_with_budget(
+                    user_api_key_dict, cache, data, call_type, started_at,
+                    request_id, request_targets,
+                )
+                # Synchronous masking/policy work can overrun without a checkpoint.
+                if time.perf_counter() - started_at >= PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:
+                    raise TimeoutError
+            outcome = "success"
+            return result
+        except TimeoutError:
+            outcome = "timeout"
+            await _finish_stream_cleanup(
+                self._abort_preprocessing(data, originals, request_id)
+            )
+            PII_PRE_CALLS.labels(result="error").inc()
+            PII_FAIL_CLOSED.labels(operation="preprocessing_timeout").inc()
+            self._log_gateway_audit(
+                request_id=request_id, data=data, started_at=started_at,
+                status="blocked", policy_result="preprocessing_timeout",
+                call_type=call_type, block_reason="preprocessing_timeout",
+                error_code="pii_preprocessing_timeout", failure_operation="preprocessing",
+            )
+            # A larger budget or smaller input is needed; a blind retry cannot fix it.
+            exc = ProxyException(
+                message="PII preprocessing time budget exceeded. Reduce new input or increase the configured budget.",
+                type="pii_preprocessing_timeout", code=503,
+                param={"preprocessing": {"code": "pii_preprocessing_timeout",
+                                         "details": {"reason": "time_budget_exceeded", "retryable": False}}},
+            )
+            exc.status_code = 503
+            raise exc from None
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            await _finish_stream_cleanup(
+                self._abort_preprocessing(data, originals, request_id)
+            )
+            raise
+        finally:
+            PII_PREPROCESSING_LATENCY.labels(outcome=outcome).observe(time.perf_counter() - started_at)
+
+    async def _abort_preprocessing(self, data: dict, originals: list, request_id: str) -> None:
+        for target, field, original in originals:
+            target[field] = original
+        self._clear_inbound_pii_metadata(data)
+        try:
+            await self._delete_mapping(request_id)
+        except Exception as error:
+            _safe_log(
+                logging.WARNING, "pii_guardrail_cleanup_failed",
+                request_id=request_id, error_type=type(error).__name__,
+            )
+
+    async def _pre_call_with_budget(
+        self, user_api_key_dict: UserAPIKeyAuth, cache: DualCache, data: dict,
+        call_type: Optional[str], started_at: float, request_id: str,
+        request_targets: list,
+    ) -> Optional[Union[Exception, str, dict]]:
+        """Apply request-time PII policy before sending to LLM."""
+        try:
+            inherited_mapping = await self._prepare_responses_state(
+                data, user_api_key_dict, call_type,
+            )
+        except ResponsesStateError as error:
+            self._raise_responses_state_error(error)
+        stateful = self._responses_state_context(data) is not None
         if data.get("stream") is True:
             if not isinstance(data.get("litellm_metadata"), dict):
                 data["litellm_metadata"] = {}
@@ -3529,6 +3731,14 @@ class RuPIIGuardrail(CustomGuardrail):
             call_type=call_type,
         )
         if not request_targets:
+            if inherited_mapping:
+                try:
+                    await self._save_mapping(request_id, inherited_mapping)
+                except Exception:
+                    self._raise_responses_state_error(unavailable_state())
+                if not isinstance(data.get("metadata"), dict):
+                    data["metadata"] = {}
+                data["metadata"][PII_REQUEST_ID_METADATA_KEY] = request_id
             self._run_final_payload_leak_check(
                 data,
                 request_targets,
@@ -3571,11 +3781,11 @@ class RuPIIGuardrail(CustomGuardrail):
                     call_type=call_type,
                 )
 
-        full_mapping: dict[str, str] = {}
+        full_mapping: dict[str, str] = dict(inherited_mapping)
         pii_mapping: dict[str, str] = {}
         dictionary_mapping: dict[str, str] = {}
         dictionary_rule_counts: dict[str, int] = {}
-        entity_counts: dict[str, int] = {}
+        entity_counts: dict[str, int] = placeholder_counters(inherited_mapping)
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
@@ -3589,7 +3799,11 @@ class RuPIIGuardrail(CustomGuardrail):
                 continue
 
             try:
-                dictionary_result = self._apply_dictionary_substitutions(content)
+                dictionary_result = self._apply_dictionary_substitutions(
+                    content,
+                    {**full_mapping, **dictionary_mapping, **pii_mapping}
+                    if stateful else None,
+                )
                 provider_content = dictionary_result.text
                 if dictionary_result.rule_counts:
                     self._merge_dictionary_rule_counts(
@@ -3598,6 +3812,9 @@ class RuPIIGuardrail(CustomGuardrail):
                     )
                 if dictionary_result.mapping:
                     dictionary_mapping.update(dictionary_result.mapping)
+                    if stateful:
+                        for entity, index in placeholder_counters(dictionary_mapping).items():
+                            entity_counts[entity] = max(entity_counts.get(entity, 0), index)
 
                 analyzer_call_index += 1
                 analyzer_context_token = _ANALYZER_CALL_CONTEXT.set(
@@ -3670,6 +3887,11 @@ class RuPIIGuardrail(CustomGuardrail):
                     pending_updates.append((target, field, content, provider_content))
 
             except DictionaryPolicyAmbiguousRequestError as e:
+                if stateful:
+                    self._raise_responses_state_error(ResponsesStateError(
+                        "pii_history_ambiguous", 409,
+                        "Ambiguous dictionary substitution. Start a new request with the full history.",
+                    ))
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
@@ -3723,6 +3945,11 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 self._raise_analyzer_unavailable(e)
             except Exception as e:
+                if stateful:
+                    self._raise_responses_state_error(ResponsesStateError(
+                        "pii_history_processing_failed", 503,
+                        "Sensitive history processing failed. Retry later.",
+                    ))
                 if self.pii_mode == "block" and blocked_entity_counts:
                     self._raise_blocked_request(
                         data,
@@ -3769,6 +3996,11 @@ class RuPIIGuardrail(CustomGuardrail):
 
         full_mapping.update(dictionary_mapping)
         full_mapping.update(pii_mapping)
+        if stateful:
+            try:
+                ResponsesStateStore.serialize(full_mapping)
+            except ResponsesStateError as error:
+                self._raise_responses_state_error(error)
 
         if synthetic_allowlist_findings:
             self._emit_synthetic_pii_allowlist_applied(
@@ -3815,6 +4047,8 @@ class RuPIIGuardrail(CustomGuardrail):
             except Exception as e:
                 for target, field, original_text, _ in pending_updates:
                     target[field] = original_text
+                if stateful:
+                    self._raise_responses_state_error(unavailable_state())
                 self._run_final_payload_leak_check(
                     data,
                     request_targets,
@@ -3887,6 +4121,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 else "masked"
                 if pii_mapping
                 else "dictionary_substituted"
+                if dictionary_mapping
+                else "history_inherited"
             )
             PII_PRE_CALLS.labels(result=policy_result).inc()
             self._log_gateway_audit(
@@ -3944,6 +4180,7 @@ class RuPIIGuardrail(CustomGuardrail):
 
         request_id = self._get_response_request_id(data)
         if not request_id:
+            await self._publish_responses_state(data, user_api_key_dict, response, {})
             PII_POST_CALLS.labels(result="skipped").inc()
             return
 
@@ -3952,10 +4189,14 @@ class RuPIIGuardrail(CustomGuardrail):
             mapping = await self._load_mapping(request_id)
         except Exception as e:
             PII_POST_CALLS.labels(result="error").inc()
+            if self._responses_state_context(data):
+                self._raise_responses_state_error(unavailable_state())
             self._handle_failure("mapping load", e, data)
             return
 
         if not mapping:
+            if self._responses_state_context(data):
+                self._raise_responses_state_error(unavailable_state())
             PII_POST_CALLS.labels(result="no_mapping").inc()
             _safe_log(
                 logging.INFO,
@@ -3998,6 +4239,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 if restored_value != original_value:
                     restored_fields += 1
                     self._set_container_field(target, field, restored_value)
+            await self._publish_responses_state(data, user_api_key_dict, response, mapping)
         finally:
             try:
                 await self._delete_mapping(request_id)
@@ -4077,6 +4319,7 @@ class RuPIIGuardrail(CustomGuardrail):
         request_id = self._get_response_request_id(request_data)
         iterator = response.__aiter__()
         restorer = None
+        mapping = {}
         cleanup_mapping = bool(request_id)
         try:
             if not request_id:
@@ -4086,11 +4329,15 @@ class RuPIIGuardrail(CustomGuardrail):
                     mapping = await self._load_mapping(request_id)
                 except Exception as e:
                     PII_POST_CALLS.labels(result="error").inc()
+                    if self._responses_state_context(request_data):
+                        self._raise_responses_state_error(unavailable_state())
                     self._handle_failure("stream mapping load", e, request_data)
                 else:
                     if mapping:
                         restorer = StreamingResponseRestorer(mapping)
                     else:
+                        if self._responses_state_context(request_data):
+                            self._raise_responses_state_error(unavailable_state())
                         cleanup_mapping = False
                         PII_POST_CALLS.labels(result="no_mapping").inc()
                         _safe_log(
@@ -4102,6 +4349,17 @@ class RuPIIGuardrail(CustomGuardrail):
             async for item in iterator:
                 assert_request_stream_valid(request_data)
                 for restored_item in restorer.process(item) if restorer else [item]:
+                    if self._get_container_field(restored_item, "type") == "response.completed":
+                        completed = self._get_container_field(restored_item, "response")
+                        if self._responses_state_context(request_data) and self._get_container_field(completed, "status") != "completed":
+                            self._raise_responses_state_error(ResponsesStateError(
+                                "pii_history_processing_failed", 503,
+                                "Response completion could not be confirmed.",
+                            ))
+                        await self._publish_responses_state(
+                            request_data, user_api_key_dict,
+                            completed, mapping,
+                        )
                     yield restored_item
             assert_request_stream_valid(request_data)
             if restorer:

@@ -83,7 +83,14 @@ PII_ANALYZER_LATENCY = _build_metric(
     Histogram,
     "ru_pii_guardrail_analyzer_latency_seconds",
     "Latency of Presidio Analyzer calls made by the PII guardrail.",
-    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1020, 1200, 1500),
+)
+PII_PREPROCESSING_LATENCY = _build_metric(
+    Histogram,
+    "ru_pii_guardrail_preprocessing_duration_seconds",
+    "Wall time of all pre-provider guardrail work, including cleanup on abort.",
+    ["outcome"],
+    buckets=(0.01, 0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600, 1020, 1200, 1500),
 )
 PII_ANALYSIS_CACHE_REQUESTS = _build_metric(
     Counter,

@@ -21,10 +21,10 @@ ZCode получает только токен прокси. Не кладите
 | --- | --- | --- |
 | OpenAI Base URL | `http://localhost:4000/v1` | `https://<proxy-host>/v1` |
 | API Key | `$RU_LLM_PROXY_TOKEN` | Пользовательский ключ LiteLLM |
-| Model | `glm-5.2` | `glm-5.2` или разрешённая модель |
+| Model | `glm-5.3-flash` | `glm-5.3-flash` или разрешённая модель |
 
-`glm-5.1` остаётся дополнительным именем; для новых настроек используйте
-`glm-5.2`.
+`glm-5.3` доступна дополнительно; для новых настроек используйте
+`glm-5.3-flash`.
 
 ZCode вызывает маршрут прокси `/v1`, а прокси обращается к Z.AI по двум
 серверным ключам из `litellm-config.yaml`. Не указывайте адрес Z.AI и его ключи в
@@ -33,8 +33,8 @@ ZCode.
 ## Проверка
 
 ```bash
-CHAT_MODEL=glm-5.2 make client-auth-smoke STACK=litellm-presidio
-CHAT_MODEL=glm-5.2 make guardrails-smoke STACK=litellm-presidio
+CHAT_MODEL=glm-5.3-flash make client-auth-smoke STACK=litellm-presidio
+CHAT_MODEL=glm-5.3-flash make guardrails-smoke STACK=litellm-presidio
 ```
 
 Частые причины ошибок:

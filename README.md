@@ -12,7 +12,7 @@ LiteLLM с назначенными моделями, бюджетами и ог
 ✅ В текущем `main` работают:
 
 - OpenAI-совместимый шлюз и базовые текстовые запросы Anthropic Messages API;
-- `glm-5.2` по умолчанию и дополнительное имя `glm-5.1`;
+- `glm-5.3-flash` по умолчанию и дополнительное имя `glm-5.3`;
 - пул из двух подписок Z.AI Coding Plan с закреплением клиентского ключа за
   выбранным провайдером модели;
 - распознаватели на регулярных выражениях, spaCy и специализированная BERT-модель;
@@ -118,7 +118,7 @@ curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "glm-5.2",
+    "model": "glm-5.3-flash",
     "messages": [
       {"role": "user", "content": "Клиент Иванов Иван, телефон +79031234567. Составь краткое резюме."}
     ]

@@ -10,6 +10,7 @@ import select
 import socket
 import threading
 import time
+import uuid
 from pathlib import Path
 
 
@@ -77,6 +78,7 @@ CONTROL_PATTERN = re.compile(r"DISCONNECT_CASE_([a-f0-9]{16})")
 CONTROL_REQUESTS = {}
 CONTROL_RELEASES = {}
 CONTROL_ONCE_RELEASES = set()
+RESPONSES_HISTORY = {}
 
 
 def _control_id(payload):
@@ -171,17 +173,19 @@ def _analyzer_entities(payload):
     text = payload.get("text")
     if not isinstance(text, str):
         return []
-    if RAW_PHONE not in text:
-        return []
-    start = text.index(RAW_PHONE)
-    return [
-        {
+    entities = [
+        {"entity_type": "EMAIL_ADDRESS", "start": match.start(), "end": match.end(), "score": 1.0}
+        for match in SYNTHETIC_MARKER_PATTERN.finditer(text)
+    ]
+    if RAW_PHONE in text:
+        start = text.index(RAW_PHONE)
+        entities.append({
             "entity_type": "PHONE_NUMBER",
             "start": start,
             "end": start + len(RAW_PHONE),
             "score": 1.0,
-        }
-    ]
+        })
+    return entities
 
 
 def _record_provider_payload(path, payload):
@@ -589,10 +593,22 @@ class Handler(BaseHTTPRequestHandler):
             if failure_mode == "timeout":
                 time.sleep(FAILURE_DELAY_SECONDS)
             response_content = _responses_response_content(payload)
+            response_id = "resp_" + uuid.uuid4().hex
+            if _text_contains(payload, "STATEFUL_HISTORY"):
+                with CAPTURE_LOCK:
+                    previous = RESPONSES_HISTORY.get(payload.get("previous_response_id"), [])
+                    current = [m.group(0) for text in _iter_strings(payload.get("input"))
+                               for m in PII_PLACEHOLDER_PATTERN.finditer(text)]
+                    values = list(dict.fromkeys(previous + current))
+                    RESPONSES_HISTORY[response_id] = values
+                response_content = (
+                    json.dumps({"values": values}) if _text_contains(payload, "HISTORY_TOOL")
+                    else " / ".join(values) or "ok"
+                )
             if RESPONSE_DELAY_SECONDS > 0:
                 time.sleep(RESPONSE_DELAY_SECONDS)
             response = {
-                "id": f"resp_{DEPLOYMENT_ID}",
+                "id": response_id,
                 "object": "response",
                 "created_at": int(time.time()),
                 "status": "completed",
@@ -618,6 +634,11 @@ class Handler(BaseHTTPRequestHandler):
                     "total_tokens": 2,
                 },
             }
+            if _text_contains(payload, "STATEFUL_HISTORY") and _text_contains(payload, "HISTORY_TOOL"):
+                response["output"] = [{
+                    "id": "fc_mock", "type": "function_call", "call_id": "call_mock",
+                    "name": "save", "arguments": response_content, "status": "completed",
+                }]
             if payload.get("stream") is True:
                 if failure_mode == "stream_disconnect":
                     self._write_sse(
@@ -637,12 +658,13 @@ class Handler(BaseHTTPRequestHandler):
                         ]
                     )
                     return
+                delta_kind = "response.function_call_arguments.delta" if _text_contains(payload, "HISTORY_TOOL") else "response.output_text.delta"
                 self._write_sse(
                     [
                         (
-                            "response.output_text.delta",
+                            delta_kind,
                             {
-                                "type": "response.output_text.delta",
+                                "type": delta_kind,
                                 "sequence_number": 0,
                                 "item_id": "msg_mock",
                                 "output_index": 0,
