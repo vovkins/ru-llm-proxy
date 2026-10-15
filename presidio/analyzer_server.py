@@ -294,6 +294,7 @@ ANALYSIS_SIGNATURE_ENV_NAMES = (
     "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM",
     "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
     "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES",
+    "PRESIDIO_ANALYZER_BASE64_POLICY",
 )
 ANALYSIS_SIGNATURE_DISTRIBUTIONS = (
     "presidio-analyzer",
@@ -795,9 +796,10 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         presidio_duration = 0.0
         declared_starts: list[int] = []
         declared_ends: list[int] = []
-        if len(chunks) > 1:
+        if len(chunks) > 1 or _document_base64_cascade_enabled():
             # A declared container can be longer than a chunk or its overlap.
             # Resolve its complete source span before processing local findings.
+            # The logistic cascade always runs here, once per document.
             declared_started_at = time.perf_counter()
             try:
                 _raise_if_cancelled(cancellation_event)
@@ -809,7 +811,10 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 )
                 raise
             presidio_duration = time.perf_counter() - declared_started_at
-            for start, end in sorted((r.start, r.end) for r in results):
+            for start, end in sorted(
+                (r.start, r.end) for r in results
+                if (r.recognition_metadata or {}).get("encoded_container") is True
+            ):
                 declared_starts.append(start)
                 declared_ends.append(max(end, declared_ends[-1] if declared_ends else 0))
             results = [r for r in results if r.score >= request.score_threshold]
@@ -970,7 +975,7 @@ def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
 
 
 def _analyze_document_base64(request: AnalyzeRequest) -> list[RecognizerResult]:
-    """Resolve declared spans only through the configured language registry."""
+    """Resolve complete Base64 spans through the configured language registry."""
     results = []
     registry = getattr(analyzer, "registry", None)
     for recognizer in getattr(registry, "recognizers", ()):
@@ -981,8 +986,16 @@ def _analyze_document_base64(request: AnalyzeRequest) -> list[RecognizerResult]:
         ):
             # Keep excluded typed spans until merge applies the request filter;
             # their fragments must not be reinterpreted as untyped Base64.
-            results.extend(recognizer.analyze_declared(request.text, recognizer.supported_entities))
+            results.extend(recognizer.analyze_document(request.text, recognizer.supported_entities))
     return results
+
+
+def _document_base64_cascade_enabled() -> bool:
+    registry = getattr(analyzer, "registry", None)
+    return any(
+        isinstance(recognizer, Base64DataRecognizer) and recognizer.policy == "logistic"
+        for recognizer in getattr(registry, "recognizers", ())
+    )
 
 
 def _is_document_base64_fragment(

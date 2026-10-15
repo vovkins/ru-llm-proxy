@@ -143,6 +143,7 @@ CPU — положительное число, допускается дробн
 | `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1` | Положительное целое | Максимум активных запросов Analyzer внутри одного рабочего процесса. |
 | `PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8` | Ноль или положительное целое | Размер очереди ожидания свободного места для анализа. |
 | `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `1` | Ноль или положительное число | Сколько ждать свободное место перед `503 analyzer_overloaded`. |
+| `PRESIDIO_ANALYZER_BASE64_POLICY` | `content` | `content`, `logistic` | `content` сохраняет исходную политику main; `logistic` сохраняет её полностью и добавляет на уровне документа каскад с логистической регрессией (фиксированные веса), который находит Base64 по форме. Явно обозначенные Base64 и native правила сохраняются. Режим входит в analysis signature и разделяет кэш. Подробности: [Base64 Logistic](base64-logistic.md). |
 | `PRESIDIO_ANALYZER_DEVICE_PROFILE` | `cpu` | `cpu`, `gpu` | Внутренний контракт образа: устройство BERT. Задаётся выбранной целью сборки и Compose-профилем, а не вручную в `.env`. |
 | `PRESIDIO_ANALYZER_GPU_PRECISION` | `fp32` для CPU, `fp16` для GPU | `fp32`, `fp16` | Точность вычисления BERT. `fp16` разрешён только в GPU-профиле и выбран по результатам проверки качества. |
 | `PRESIDIO_ANALYZER_NER_BATCH_SIZE` | `4` для CPU, `8` для GPU | Положительное целое | Число BERT-окон в одном вызове модели. Значение задаётся профилем и обычно не переопределяется. |

@@ -1,0 +1,343 @@
+{
+ "environment": {
+  "python": "3.12.14",
+  "platform": "macOS-15.7.7-arm64-arm-64bit"
+ },
+ "seed": 20261014,
+ "corpus": {
+  "files": 618,
+  "fragments": 6408,
+  "characters": 12011420,
+  "sha256": "a38a11026efb627dad96c7d66d48c8633c3cc9e216916151d9ce61059952c181"
+ },
+ "insertions": 4000,
+ "policies": {
+  "content": {
+   "policy": "content",
+   "clean": {
+    "base64_masks": 7,
+    "categories": {
+     "binary": 3,
+     "not canonical Base64": 4
+    },
+    "top_values": [
+     [
+      "Option…(12)",
+      2
+     ],
+     [
+      "Base64…(6)",
+      1
+     ],
+     [
+      "return…(6)",
+      1
+     ],
+     [
+      "if…(2)",
+      1
+     ],
+     [
+      "data:i…(22)",
+      1
+     ],
+     [
+      "raise…(5)",
+      1
+     ]
+    ]
+   },
+   "insertions": {
+    "all": [
+     760,
+     4000
+    ],
+    "length:16+": [
+     411,
+     2573
+    ],
+    "kind:text_ru": [
+     235,
+     503
+    ],
+    "context:url": [
+     0,
+     576
+    ],
+    "kind:zero_bytes": [
+     0,
+     502
+    ],
+    "context:json": [
+     206,
+     622
+    ],
+    "length:<12": [
+     349,
+     1308
+    ],
+    "kind:digits": [
+     0,
+     468
+    ],
+    "context:ru_sentence": [
+     162,
+     547
+    ],
+    "kind:short_sensitive": [
+     349,
+     521
+    ],
+    "context:text": [
+     198,
+     584
+    ],
+    "context:quoted": [
+     194,
+     600
+    ],
+    "kind:random_bytes": [
+     0,
+     1007
+    ],
+    "kind:text_en": [
+     176,
+     518
+    ],
+    "context:key=value": [
+     0,
+     590
+    ],
+    "kind:mime": [
+     0,
+     481
+    ],
+    "context:mime": [
+     0,
+     481
+    ],
+    "length:12-15": [
+     0,
+     119
+    ]
+   },
+   "timing": {
+    "clean_50000": {
+     "median_seconds": 0.0033
+    },
+    "clean_200000": {
+     "median_seconds": 0.0185
+    },
+    "clean_400000": {
+     "median_seconds": 0.0364
+    },
+    "many_values_1000": {
+     "median_seconds": 0.0156,
+     "masked_values": 64
+    },
+    "many_values_4000": {
+     "median_seconds": 0.0533,
+     "masked_values": 127
+    },
+    "many_values_16000": {
+     "median_seconds": 0.1999,
+     "masked_values": 379
+    }
+   }
+  },
+  "logistic": {
+   "policy": "logistic",
+   "clean": {
+    "base64_masks": 8,
+    "categories": {
+     "not canonical Base64": 5,
+     "binary": 3
+    },
+    "top_values": [
+     [
+      "Option…(12)",
+      2
+     ],
+     [
+      "hf_94w…(37)",
+      1
+     ],
+     [
+      "Base64…(6)",
+      1
+     ],
+     [
+      "return…(6)",
+      1
+     ],
+     [
+      "if…(2)",
+      1
+     ],
+     [
+      "data:i…(22)",
+      1
+     ],
+     [
+      "raise…(5)",
+      1
+     ]
+    ]
+   },
+   "insertions": {
+    "all": [
+     3204,
+     4000
+    ],
+    "length:16+": [
+     2539,
+     2573
+    ],
+    "kind:text_ru": [
+     484,
+     503
+    ],
+    "context:url": [
+     411,
+     576
+    ],
+    "kind:zero_bytes": [
+     491,
+     502
+    ],
+    "context:json": [
+     506,
+     622
+    ],
+    "length:<12": [
+     665,
+     1308
+    ],
+    "kind:digits": [
+     271,
+     468
+    ],
+    "context:ru_sentence": [
+     442,
+     547
+    ],
+    "kind:short_sensitive": [
+     386,
+     521
+    ],
+    "context:text": [
+     483,
+     584
+    ],
+    "context:quoted": [
+     479,
+     600
+    ],
+    "kind:random_bytes": [
+     683,
+     1007
+    ],
+    "kind:text_en": [
+     408,
+     518
+    ],
+    "context:key=value": [
+     402,
+     590
+    ],
+    "kind:mime": [
+     481,
+     481
+    ],
+    "context:mime": [
+     481,
+     481
+    ],
+    "length:12-15": [
+     0,
+     119
+    ]
+   },
+   "timing": {
+    "clean_50000": {
+     "median_seconds": 0.0083
+    },
+    "clean_200000": {
+     "median_seconds": 0.032
+    },
+    "clean_400000": {
+     "median_seconds": 0.0642
+    },
+    "many_values_1000": {
+     "median_seconds": 0.021,
+     "masked_values": 1000
+    },
+    "many_values_1000_find_spans": {
+     "median_seconds": 0.0027
+    },
+    "many_values_4000": {
+     "median_seconds": 0.0692,
+     "masked_values": 4000
+    },
+    "many_values_4000_find_spans": {
+     "median_seconds": 0.0107
+    },
+    "many_values_16000": {
+     "median_seconds": 0.3156,
+     "masked_values": 16000
+    },
+    "many_values_16000_find_spans": {
+     "median_seconds": 0.0429
+    }
+   }
+  }
+ },
+ "reference_regexes": {
+  "regex [A-Za-z0-9+/_-]{16,}": {
+   "clean": {
+    "base64_masks": 77374
+   },
+   "insertions": {
+    "all": [
+     2092,
+     4000
+    ],
+    "length:16+": [
+     2092,
+     2573
+    ],
+    "length:<12": [
+     0,
+     1308
+    ],
+    "length:12-15": [
+     0,
+     119
+    ]
+   }
+  },
+  "regex {16,} + upper, lower, digit": {
+   "clean": {
+    "base64_masks": 3343
+   },
+   "insertions": {
+    "all": [
+     1634,
+     4000
+    ],
+    "length:16+": [
+     1634,
+     2573
+    ],
+    "length:<12": [
+     0,
+     1308
+    ],
+    "length:12-15": [
+     0,
+     119
+    ]
+   }
+  }
+ }
+}
