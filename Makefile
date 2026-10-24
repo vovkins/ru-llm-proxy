@@ -20,7 +20,9 @@ ANALYZER_IMAGE ?= ru-llm-proxy-presidio-analyzer:latest
 ANALYZER_PROFILE ?= cpu
 ANALYZER_PROFILE_CPU := cpu
 ANALYZER_PROFILE_GPU := gpu
-ANALYZER_COMPOSE_FILE = $(if $(filter $(ANALYZER_PROFILE_GPU),$(ANALYZER_PROFILE)),-f docker-compose.gpu.yml,)
+ANALYZER_PROFILE_TINY2 := tiny2
+ANALYZER_COMPOSE_FILE = $(if $(filter $(ANALYZER_PROFILE_GPU),$(ANALYZER_PROFILE)),-f docker-compose.gpu.yml,)$(if $(filter $(ANALYZER_PROFILE_TINY2),$(ANALYZER_PROFILE)),-f docker-compose.triton.yml,)
+ANALYZER_BUILD_SERVICES = $(if $(filter $(ANALYZER_PROFILE_TINY2),$(ANALYZER_PROFILE)),ner-triton,)
 ANALYZER_DOCKER_FLAGS = $(if $(filter $(ANALYZER_PROFILE_GPU),$(ANALYZER_PROFILE)),--gpus all,)
 PYTEST_DOCKER_FLAGS = --rm --no-deps --build \
 	-e PYTHONPATH=/workspace:/workspace/presidio \
@@ -50,6 +52,7 @@ help:
 	@echo "  STACK=$(STACK_CODEX_LB)"
 	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU)  — Analyzer на CPU (по умолчанию)"
 	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)  — Analyzer на одной NVIDIA GPU"
+	@echo "  ANALYZER_PROFILE=$(ANALYZER_PROFILE_TINY2) — Tiny2 через Triton на CPU, functional и production"
 	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 4 Analyzer"
 	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
 	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
@@ -101,8 +104,8 @@ require-stack:
 
 require-analyzer-profile:
 	@case "$(ANALYZER_PROFILE)" in \
-		"$(ANALYZER_PROFILE_CPU)"|"$(ANALYZER_PROFILE_GPU)") ;; \
-		*) echo "❌ Укажите ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU) или ANALYZER_PROFILE=$(ANALYZER_PROFILE_GPU)"; exit 2 ;; \
+		"$(ANALYZER_PROFILE_CPU)"|"$(ANALYZER_PROFILE_GPU)"|"$(ANALYZER_PROFILE_TINY2)") ;; \
+		*) echo "❌ Укажите ANALYZER_PROFILE=$(ANALYZER_PROFILE_CPU), $(ANALYZER_PROFILE_GPU) или $(ANALYZER_PROFILE_TINY2)"; exit 2 ;; \
 	esac
 
 # === Setup ===
@@ -117,7 +120,7 @@ build: require-analyzer-profile
 	@echo "⬇️  Загрузка готовых образов обоих составов"
 	$(BUILD_COMPOSE) pull nginx redis db codex-lb-db
 	@echo "🔨 Сборка прикладных и тестовых образов обоих составов"
-	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer codex-lb guardrail-tests presidio-analyzer-tests
+	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer $(ANALYZER_BUILD_SERVICES) codex-lb guardrail-tests presidio-analyzer-tests
 
 # === Up ===
 up: require-stack require-analyzer-profile require-deployment

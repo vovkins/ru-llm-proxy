@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "ACTIVE_PROFILE",
     "MODEL_ID",
     "MODEL_REVISION",
     "HuggingFaceNERRecognizer",

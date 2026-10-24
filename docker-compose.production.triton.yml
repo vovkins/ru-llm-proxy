@@ -1,0 +1,11 @@
+# Production resources of the shared Tiny2 Triton server (ANALYZER_PROFILE=tiny2).
+# All Analyzer replicas call one Triton service, whose dynamic batching serves
+# them together; TRITON_MODEL_INSTANCES sets its parallel CPU executions.
+services:
+  ner-triton:
+    cpus: ${TRITON_CPUS:-5.0}
+    mem_limit: ${TRITON_MEMORY:-6g}
+    environment:
+      TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-5}
+    labels:
+      ru-llm-proxy.topology: production

@@ -14,6 +14,7 @@ from presidio_analyzer import RecognizerResult  # noqa: E402
 from result_merging import (  # noqa: E402
     CONTRACT_CONTEXT_SCORE,
     DETECTION_SOURCE_METADATA_KEY,
+    NER_NAME_WORD_PIECES_KEY,
     SOURCE_NATIVE_CREDENTIAL,
     SOURCE_NER,
     SOURCE_CONTEXTUAL_CONTRACT,
@@ -621,6 +622,12 @@ def test_organization_piece_of_a_split_secret_stays_masked():
     assert set(range(start, len(text))) <= covered
 
 
+def _word_piece_result(entity_type, start, end, score):
+    result = _result(entity_type, start, end, score, SOURCE_NER)
+    result.recognition_metadata[NER_NAME_WORD_PIECES_KEY] = True
+    return result
+
+
 @pytest.mark.parametrize(
     ("text", "value"),
     [
@@ -672,6 +679,35 @@ def test_name_after_a_field_label_is_kept():
     assert _summary(merge_results(text, [label_piece, dot, name])) == [
         ("PERSON", 8, len(text), 0.99)
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "entity_type"),
+    [
+        ("user: which file contains the implementation?\nassistant: Done.", "Don", "PERSON"),
+        ("Поля ФИО и ORGANIZATION описаны в инструкции.", "ORGANIZA", "ORGANIZATION"),
+    ],
+)
+def test_profile_word_piece_name_is_suppressed(text, value, entity_type):
+    start = text.index(value)
+    piece = _word_piece_result(entity_type, start, start + len(value), 0.8)
+
+    assert merge_results(text, [piece]).results == ()
+
+
+def test_word_piece_name_is_kept_without_the_profile_flag_or_next_to_a_secret():
+    text = "assistant: Done."
+    start = text.index("Don")
+    bert_piece = _result("PERSON", start, start + 3, 0.8, SOURCE_NER)
+    assert len(merge_results(text, [bert_piece]).results) == 1
+
+    text = "token: ci_test_97"
+    login = _result("LOGIN", text.index("i_test"), len(text), 0.9, SOURCE_NER)
+    piece = _word_piece_result("PERSON", text.index("ci"), text.index("ci") + 1, 0.6)
+    covered = set()
+    for result in merge_results(text, [login, piece]).results:
+        covered.update(range(result.start, result.end))
+    assert set(range(text.index("ci"), len(text))) <= covered
 
 
 @pytest.mark.parametrize(

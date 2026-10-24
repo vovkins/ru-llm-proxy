@@ -19,9 +19,11 @@ from setup_codex_lb import update_env_value
 
 ROOT = Path(__file__).resolve().parents[1]
 STACKS = {"litellm-presidio", "litellm-presidio-codex-lb"}
-RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB")
+RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB", "TRITON")
 RESOURCE_KEYS = {f"{name}_{suffix}" for name in RESOURCE_COMPONENTS for suffix in ("CPUS", "MEMORY")}
-RESOURCE_KEYS |= {"LITELLM_REPLICAS", "ANALYZER_REPLICAS"}
+COUNT_KEYS = {"LITELLM_REPLICAS", "ANALYZER_REPLICAS", "TRITON_MODEL_INSTANCES"}
+RESOURCE_KEYS |= COUNT_KEYS
+ANALYZER_PROFILES = {"cpu", "gpu", "tiny2"}
 
 
 class DeploymentError(RuntimeError):
@@ -78,7 +80,7 @@ def resources(path: Path) -> dict[str, str]:
         if key in values:
             raise DeploymentError(f"Повторная запись {key} в {path}")
         value = setting(path, key)
-        if key.endswith("REPLICAS"):
+        if key in COUNT_KEYS:
             if not re.fullmatch(r"[1-9][0-9]*", value):
                 raise DeploymentError(f"{key}: требуется положительное целое число")
         elif key.endswith("CPUS"):
@@ -100,9 +102,9 @@ class Context:
             raise DeploymentError("Укажите STACK=litellm-presidio или STACK=litellm-presidio-codex-lb")
         if self.topology not in {"functional", "production"}:
             raise DeploymentError("TOPOLOGY должен быть functional или production")
-        if self.profile not in {"cpu", "gpu"}:
-            raise DeploymentError("ANALYZER_PROFILE должен быть cpu или gpu")
-        if self.topology == "production" and self.profile != "cpu":
+        if self.profile not in ANALYZER_PROFILES:
+            raise DeploymentError("ANALYZER_PROFILE должен быть cpu, gpu или tiny2")
+        if self.topology == "production" and self.profile == "gpu":
             raise DeploymentError("Production-профиль этой версии поддерживает только CPU")
         self.explicit_mode = os.getenv("PII_MODE_ORIGIN") == "command line"
         raw_mode = os.environ["PII_GUARDRAIL_MODE"] if "PII_GUARDRAIL_MODE" in os.environ else setting(self.env_file, "PII_GUARDRAIL_MODE", "mask")
@@ -113,13 +115,19 @@ class Context:
         self.files = ["docker-compose.yml"]
         if self.profile == "gpu":
             self.files.append("docker-compose.gpu.yml")
+        if self.profile == "tiny2":
+            self.files.append("docker-compose.triton.yml")
         if self.extended:
             self.files.append("docker-compose.codex-lb.yml")
         if self.topology == "production":
             self.values = resources(ROOT / "deploy/topologies/production.env")
+            if self.profile == "tiny2":
+                self.values.update(resources(ROOT / "deploy/topologies/production-tiny2.env"))
             if os.getenv("TOPOLOGY_ENV"):
                 self.values.update(resources(Path(os.environ["TOPOLOGY_ENV"])))
             self.files.append("docker-compose.production.yml")
+            if self.profile == "tiny2":
+                self.files.append("docker-compose.production.triton.yml")
             if self.extended:
                 self.files.append("docker-compose.production.codex-lb.yml")
         elif os.getenv("TOPOLOGY_ENV"):
@@ -143,6 +151,9 @@ class Context:
         counts = {"nginx": 1, "db": 1, "redis": 1, "litellm": 1, "presidio-analyzer": 1}
         if self.topology == "production":
             counts.update(litellm=int(self.values["LITELLM_REPLICAS"]), **{"presidio-analyzer": int(self.values["ANALYZER_REPLICAS"])})
+        if self.profile == "tiny2":
+            # One Triton server is shared by every Analyzer replica.
+            counts["ner-triton"] = 1
         if self.extended:
             counts.update({"codex-lb": 1, "codex-lb-db": 1})
         return counts
@@ -336,6 +347,10 @@ class Context:
         if not only_litellm:
             self.compose("up", "-d", "--no-build", *flags, "db", "redis")
             self.health(timeout, {"db": 1, "redis": 1})
+            if self.profile == "tiny2":
+                # Analyzer replicas start with --no-deps; their model server comes first.
+                self.compose("up", "-d", "--no-build", "--no-deps", *flags, "ner-triton")
+                self.health(timeout, {"ner-triton": 1})
         # Sequential cold starts keep checkpoint-loading peaks bounded.
         for count in ([] if only_litellm else self.start_counts(previous, "presidio-analyzer")):
             self.compose("up", "-d", "--no-build", "--no-deps", *flags, "--scale", f"presidio-analyzer={count}", "presidio-analyzer")

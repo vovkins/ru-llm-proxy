@@ -13,7 +13,8 @@
 Нужны Python 3.9+, Docker Compose 2.24+ с поддержкой `!reset`, GNU Make.
 Образы и их версии одинаковы для обеих топологий; патчей платформ нет.
 GPU-профиль остаётся доступным только для `functional` и не входит в этот
-production-пресет.
+production-пресет. Профиль `ANALYZER_PROFILE=tiny2` (CPU, Triton) доступен в
+обеих топологиях — см. [Tiny2](#tiny2).
 
 ## Первичный запуск
 
@@ -102,6 +103,31 @@ make up STACK=litellm-presidio-codex-lb TOPOLOGY=production TOPOLOGY_ENV=/secure
 Файл содержит только количества и ресурсы, не секреты и не защитные политики.
 Полный перечень параметров — в [справочнике](configuration.md#топологии-и-ресурсы).
 Для последующих команд используйте тот же файл.
+
+## Tiny2
+
+`ANALYZER_PROFILE=tiny2` заменяет BERT маленькой моделью Tiny2 на CPU через Triton:
+
+```bash
+make build ANALYZER_PROFILE=tiny2
+make up STACK=litellm-presidio ANALYZER_PROFILE=tiny2 TOPOLOGY=production
+```
+
+Перед сборкой положите файлы модели в `presidio/model-artifacts/tiny2/`
+([инструкция](../presidio/model-artifacts/tiny2/README.md)). Профиль меняет и
+очередь Analyzer: 2 процесса × 4 анализа, очередь 64, ожидание до 30 с вместо
+одного анализа с ожиданием 1 с. Одна только замена модели без новой очереди
+`503` не убирает.
+
+| Компонент, production | Экземпляров | CPU / память на экземпляр |
+| --- | ---: | --- |
+| Analyzer | 2 | 1,5 / 4 GiB |
+| Triton (общий, 5 исполнений) | 1 | 5 / 6 GiB |
+
+Это исходная оценка по одной реплике на 4 CPU. Она требует замера на целевом сервере. Остальные
+компоненты берутся из основного пресета. Запуск сначала поднимает Triton, затем
+Analyzer. Откат — `make up` с прежним `ANALYZER_PROFILE`; Redis-кэш не смешивается,
+потому что подпись анализа включает профиль и ревизию модели.
 
 ## Большой новый ввод
 

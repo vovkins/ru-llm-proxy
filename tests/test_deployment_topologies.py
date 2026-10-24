@@ -163,6 +163,77 @@ def test_functional_gpu_is_retained_but_production_gpu_is_out_of_scope(monkeypat
         deployment.Context()
 
 
+def test_tiny2_profile_adds_the_triton_backend_and_its_server(monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROFILE", "tiny2")
+    context = deployment.Context()
+    assert context.files == ["docker-compose.yml", "docker-compose.triton.yml"]
+    assert context.counts["ner-triton"] == 1
+    assert context.counts["presidio-analyzer"] == 1
+
+
+def test_tiny2_production_uses_its_ner_pool_and_one_shared_triton(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANALYZER_PROFILE", "tiny2")
+    monkeypatch.setenv("TOPOLOGY", "production")
+    context = deployment.Context()
+    assert context.files == [
+        "docker-compose.yml",
+        "docker-compose.triton.yml",
+        "docker-compose.production.yml",
+        "docker-compose.production.triton.yml",
+    ]
+    assert context.counts["presidio-analyzer"] == 2
+    assert context.counts["ner-triton"] == 1
+    assert context.values["ANALYZER_CPUS"] == "1.5"
+    assert context.values["TRITON_CPUS"] == "5.0"
+    assert context.values["TRITON_MODEL_INSTANCES"] == "5"
+    # The NER pool stays within 8 CPU.
+    assert float(context.values["ANALYZER_CPUS"]) * 2 + float(context.values["TRITON_CPUS"]) == 8.0
+    path = tmp_path / "override.env"
+    path.write_text("ANALYZER_REPLICAS=3\nTRITON_MODEL_INSTANCES=6\n")
+    monkeypatch.setenv("TOPOLOGY_ENV", str(path))
+    context = deployment.Context()
+    assert context.counts["presidio-analyzer"] == 3
+    assert context.values["TRITON_MODEL_INSTANCES"] == "6"
+
+
+@pytest.mark.parametrize("value", ["0", "2.5", "x"])
+def test_triton_instances_must_be_a_positive_count(tmp_path, monkeypatch, value):
+    path = tmp_path / "production.env"
+    path.write_text(f"TRITON_MODEL_INSTANCES={value}\n")
+    monkeypatch.setenv("ANALYZER_PROFILE", "tiny2")
+    monkeypatch.setenv("TOPOLOGY", "production")
+    monkeypatch.setenv("TOPOLOGY_ENV", str(path))
+    with pytest.raises(deployment.DeploymentError):
+        deployment.Context()
+
+
+def test_cpu_and_gpu_profiles_do_not_get_triton(monkeypatch):
+    for profile in ("cpu", "gpu"):
+        monkeypatch.setenv("ANALYZER_PROFILE", profile)
+        context = deployment.Context()
+        assert "ner-triton" not in context.counts
+        assert "docker-compose.triton.yml" not in context.files
+
+
+def test_tiny2_overlays_carry_the_validated_admission_and_triton_resources():
+    import yaml
+
+    triton = yaml.safe_load((ROOT / "docker-compose.triton.yml").read_text())
+    analyzer = triton["services"]["presidio-analyzer"]["environment"]
+    assert analyzer["PRESIDIO_ANALYZER_NER_MODEL_PROFILE"] == "tiny2"
+    assert analyzer["PRESIDIO_ANALYZER_NER_BACKEND"] == "triton"
+    assert analyzer["PRESIDIO_ANALYZER_WORKERS"] == "${TINY2_ANALYZER_WORKERS:-2}"
+    assert analyzer["PRESIDIO_ANALYZER_CONCURRENCY_LIMIT"] == "${TINY2_ANALYZER_CONCURRENCY_LIMIT:-4}"
+    assert analyzer["PRESIDIO_ANALYZER_QUEUE_LIMIT"] == "${TINY2_ANALYZER_QUEUE_LIMIT:-64}"
+    assert analyzer["PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS"] == "${TINY2_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}"
+    assert analyzer["PRESIDIO_ANALYZER_NER_BOUNDARY_RECHECK"] == "${TINY2_NER_BOUNDARY_RECHECK:-shell-prompt}"
+    assert triton["services"]["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "${TRITON_MODEL_INSTANCES:-3}"
+    production = yaml.safe_load((ROOT / "docker-compose.production.triton.yml").read_text())["services"]["ner-triton"]
+    assert production["cpus"] == "${TRITON_CPUS:-5.0}"
+    assert production["mem_limit"] == "${TRITON_MEMORY:-6g}"
+    assert production["labels"]["ru-llm-proxy.topology"] == "production"
+
+
 @pytest.mark.parametrize("target", ["setup", "up", "restart", "down", "logs", "health", "metrics", "guardrails-smoke", "client-auth-smoke", "update-litellm"])
 def test_make_invalid_mode_fails_before_any_mutation(tmp_path, target):
     path = tmp_path / ".env"

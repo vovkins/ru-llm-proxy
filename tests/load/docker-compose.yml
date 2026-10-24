@@ -107,6 +107,7 @@ services:
       target: analyzer
       args:
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+        NER_MODEL_PROFILE: ${NER_MODEL_PROFILE:-bert}
     environment:
       PRESIDIO_ANALYZER_WORKERS: ${LOAD_ANALYZER_WORKERS:-1}
       PRESIDIO_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}

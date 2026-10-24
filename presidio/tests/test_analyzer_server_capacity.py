@@ -956,6 +956,28 @@ def test_health_reports_fixed_model_identity(monkeypatch):
     asyncio.run(_health_reports_fixed_model_identity(monkeypatch))
 
 
+def test_health_checks_remote_backend_before_first_healthy_cache_signature(monkeypatch):
+    state = {'value': 'ready'}
+    original_runtime = analyzer_server.ner_recognizer.runtime_info()
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'runtime_info',
+                        lambda: {**original_runtime, 'backend': 'triton'})
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'state', lambda: state['value'])
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_loaded', lambda: True)
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_warmed_up', lambda: state['value'] == 'ready')
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'failure_phase', lambda: 'triton_readiness')
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'failure_class', lambda: 'triton_unavailable')
+    def remote_probe():
+        state['value'] = 'failed'
+        return False
+    monkeypatch.setattr(analyzer_server.ner_recognizer, 'is_ready', remote_probe)
+    response = asyncio.run(analyzer_server.health())
+    assert response.status_code == 503
+    payload = json.loads(response.body)
+    assert payload['ner_backend'] == 'triton_onnxruntime'
+    assert payload['ner_state'] == 'failed'
+    assert payload['ner_warmed_up'] is False
+
+
 async def _health_reports_fixed_model_identity(monkeypatch):
     _set_ner_state(
         monkeypatch,
@@ -1010,6 +1032,30 @@ def test_analysis_signature_tracks_registry_source_changes(monkeypatch, source_n
 
     monkeypatch.setattr(Path, "read_bytes", changed_registry)
     assert analyzer_server._build_analysis_signature() != baseline
+
+
+def test_boundary_recheck_mode_invalidates_analysis_signature(monkeypatch):
+    monkeypatch.setenv("PRESIDIO_ANALYZER_NER_BOUNDARY_RECHECK", "off")
+    before = analyzer_server._build_analysis_signature()
+    monkeypatch.setenv("PRESIDIO_ANALYZER_NER_BOUNDARY_RECHECK", "shell-prompt")
+    assert analyzer_server._build_analysis_signature() != before
+
+
+def test_boundary_recheck_receives_chunk_local_native_protection(monkeypatch):
+    text = "password=-$"
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "require_ready", lambda: None)
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "_boundary_recheck", "shell-prompt")
+    monkeypatch.setattr(analyzer_server.analyzer, "analyze", lambda **_kwargs: [
+        RecognizerResult(entity_type="PASSWORD", start=9, end=11, score=.99)
+    ])
+    seen = []
+    def analyze_ner(_text, **kwargs):
+        seen.append(kwargs["protected_spans"])
+        return []
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "analyze", analyze_ner)
+    result = analyzer_server._analyze_sync(analyzer_server.AnalyzeRequest(text=text))
+    assert seen == [((9, 11),)]
+    assert any(e["entity_type"] == "PASSWORD" for e in result.entities)
 
 
 def test_lifespan_refuses_to_start_when_required_ner_fails(monkeypatch, caplog):
@@ -1075,6 +1121,9 @@ async def _lifespan_emits_safe_ner_startup_events(monkeypatch, caplog):
             "compute_capability": "7.5",
             "cuda_version": "12.6",
             "gpu_memory_total_bytes": 16 * 1024**3,
+            "model_profile": "tiny2",
+            "o_logit_bias": 1.0,
+            "span_postprocessing": "secrets-contracts",
         },
     )
 
@@ -1104,6 +1153,9 @@ async def _lifespan_emits_safe_ner_startup_events(monkeypatch, caplog):
             "compute_capability": "7.5",
             "cuda_version": "12.6",
             "gpu_memory_total_bytes": 16 * 1024**3,
+            "model_profile": "tiny2",
+            "o_logit_bias": 1.0,
+            "span_postprocessing": "secrets-contracts",
         }
     ]
 

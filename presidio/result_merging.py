@@ -14,6 +14,8 @@ from string_spans import StringSpans
 
 DETECTION_SOURCE_METADATA_KEY = "ru_llm_detection_source"
 NER_MODEL_METADATA_KEY = "ru_llm_ner_model"
+# Set by a model profile whose subword names may stop inside a Latin word.
+NER_NAME_WORD_PIECES_KEY = "ru_llm_ner_name_word_pieces"
 
 SOURCE_NER = "ner"
 SOURCE_NATIVE_CREDENTIAL = "native_credential"
@@ -122,6 +124,7 @@ _ORG_GENERIC_LEAD_RE = re.compile(r"(?i)(?:организация|компани
 _ORG_TRAILING_PUNCTUATION = frozenset(".;,:")
 # A span that ends with an initial such as "И." keeps its period.
 _TRAILING_INITIAL_RE = re.compile(r"(?:^|(?<=[\s.]))[А-ЯЁA-Z]\.$")
+_LATIN_LETTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 # One or two Cyrillic initials right after a surname: Петров И. С.
 _TRAILING_INITIALS_RE = re.compile(r"[ \t\u00a0]+[А-ЯЁ]\.(?:[ \t\u00a0]?[А-ЯЁ]\.)?(?![А-Яа-яЁё])")
 _IDENTIFIER_CHARACTERS = frozenset(
@@ -559,6 +562,15 @@ def merge_results(
                 )
             )
             continue
+        if (
+            source == SOURCE_NER
+            and result.entity_type in _JOINED_NAME_TYPES
+            and (result.recognition_metadata or {}).get(NER_NAME_WORD_PIECES_KEY) is True
+            and _cuts_latin_word(text, result.start, result.end)
+            and not _token_has_other_detection(text, result, results)
+        ):
+            decisions.append(MergeDecision("ner_word_piece_suppressed", SOURCE_NONE, SOURCE_NER))
+            continue
         identifier = (
             _cut_code_identifier(text, result.start, result.end)
             if source == SOURCE_NER and result.entity_type == "ORGANIZATION"
@@ -833,6 +845,37 @@ def _balance_name_quotes(text: str, start: int, end: int) -> tuple[int, int]:
         elif start > 0 and text[start - 1] == '"':
             start -= 1
     return start, end
+
+
+def _cuts_latin_word(text: str, start: int, end: int) -> bool:
+    """Whether a span starts or ends between two Latin letters (``Don|e``)."""
+    return (
+        (start > 0 and text[start - 1] in _LATIN_LETTERS and text[start] in _LATIN_LETTERS)
+        or (end < len(text) and text[end - 1] in _LATIN_LETTERS and text[end] in _LATIN_LETTERS)
+    )
+
+
+def _token_has_other_detection(
+    text: str,
+    result: RecognizerResult,
+    results: list[RecognizerResult],
+) -> bool:
+    """Whether a non-name detection touches the whitespace-delimited token.
+
+    A model may cover a secret or login with name pieces next to other
+    pieces; those must stay masked.
+    """
+    start, end = result.start, result.end
+    while start > 0 and not text[start - 1].isspace():
+        start -= 1
+    while end < len(text) and not text[end].isspace():
+        end += 1
+    return any(
+        other is not result
+        and other.entity_type not in _JOINED_NAME_TYPES
+        and _spans_overlap(other.start, other.end, start, end)
+        for other in results
+    )
 
 
 def _cut_code_identifier(text: str, start: int, end: int) -> tuple[int, int] | None:

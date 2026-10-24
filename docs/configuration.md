@@ -1,5 +1,32 @@
 # Конфигурация
 
+## Дополнительный backend NER
+
+Обычный запуск использует Transformers/PyTorch. CPU Tiny2 через Triton/ONNX
+включается профилем `ANALYZER_PROFILE=tiny2` (он подключает
+`docker-compose.triton.yml`); запуск и откат — в [руководстве Triton](ner-triton.md).
+
+| Переменная | Default | Назначение |
+|---|---|---|
+| `PRESIDIO_ANALYZER_NER_BACKEND` | `transformers` | `transformers` / `triton` |
+| `PRESIDIO_ANALYZER_TRITON_URL` | `http://ner-triton:8000` | Внутренний HTTP(S) endpoint |
+| `PRESIDIO_ANALYZER_TRITON_MODEL_NAME` | `tiny2` | Имя проверенной модели |
+| `PRESIDIO_ANALYZER_TRITON_MODEL_VERSION` | `1` | Явная версия модели |
+| `PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS` | `60` | Таймаут одного вызова |
+| `TRITON_MODEL_INSTANCES` | `3` (production Tiny2 — `5`) | Параллельные CPU-исполнения модели в Triton |
+| `TINY2_ANALYZER_WORKERS` | `2` | Процессы Analyzer в контейнере профиля `tiny2` |
+| `TINY2_ANALYZER_CONCURRENCY_LIMIT` | `4` | Одновременные анализы в каждом процессе профиля `tiny2` |
+| `TINY2_ANALYZER_QUEUE_LIMIT` | `64` | Очередь каждого процесса профиля `tiny2` |
+| `TINY2_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `30` | Ожидание места в очереди до `503 analyzer_overloaded` для профиля `tiny2` |
+| `TINY2_NER_BOUNDARY_RECHECK` | `shell-prompt` | Перепроверка границы окна у `$` приглашения терминала для профиля `tiny2` |
+
+Профиль `tiny2` задаёт свои значения очереди вместо общих
+`PRESIDIO_ANALYZER_WORKERS`, `PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`,
+`PRESIDIO_ANALYZER_QUEUE_LIMIT` и `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS`: с
+одним анализом и ожиданием 1 с маленькая модель тоже отвечает `503` уже при
+нескольких одновременных запросах.
+
+
 Этот документ является единым справочником по переменным окружения проекта. `.env.example` намеренно содержит только минимальные значения для быстрого запуска; остальные настройки задаются через `docker-compose.yml`, `litellm-config.yaml`, административный интерфейс LiteLLM, параметры Makefile или переменные окружения конкретных быстрых проверок.
 
 Правило эксплуатации: секреты и локальные значения первичной настройки лежат в `.env`, публичные имена моделей, пользовательские ключи, бюджеты и доступы пользователей администрируются через административный интерфейс LiteLLM, а расширенные политики запуска меняются только осознанно и документируются в заявке на изменение.
@@ -65,6 +92,12 @@
 | `DB_CPUS`, `DB_MEMORY` | `2.0`, `4g` | CPU и память PostgreSQL LiteLLM |
 | `CODEX_LB_CPUS`, `CODEX_LB_MEMORY` | `2.0`, `4g` | CPU и память codex-lb, только расширенный состав |
 | `CODEX_LB_DB_CPUS`, `CODEX_LB_DB_MEMORY` | `1.0`, `2g` | CPU и память PostgreSQL codex-lb, только расширенный состав |
+| `TRITON_CPUS`, `TRITON_MEMORY` | `5.0`, `6g` | CPU и память общего Triton, только `ANALYZER_PROFILE=tiny2` |
+| `TRITON_MODEL_INSTANCES` | `5` | Положительное целое; параллельные исполнения модели в Triton, только `tiny2` |
+
+С `ANALYZER_PROFILE=tiny2` поверх пресета применяется
+[`production-tiny2.env`](../deploy/topologies/production-tiny2.env): 2 Analyzer по
+1,5 CPU / 4 GiB и один общий Triton на 5 CPU / 6 GiB, всего 8 CPU на NER.
 
 CPU — положительное число, допускается дробная часть. Память — положительный
 размер в байтах либо с суффиксом `k`, `m`, `g`, `t` (множитель 1024).
@@ -126,6 +159,7 @@ CPU — положительное число, допускается дробн
 | `PYTORCH_INDEX_URL` | `https://download.pytorch.org/whl/cpu` | URL индекса с `torch==2.13.0+cpu` | Отдельный источник CPU-only PyTorch. В изолированной сети должен указывать на одобренное зеркало точной версии. |
 | `PYTORCH_GPU_INDEX_URL` | `https://download.pytorch.org/whl/cu126` | URL индекса с `torch==2.13.0` для CUDA 12.6 | Источник PyTorch только для `ANALYZER_PROFILE=gpu`. В CPU-образ не попадает. |
 | `NER_MODEL_PROXY` | Пусто | URL HTTP-прокси без встроенных секретов | Переопределяет общий прокси только для загрузки закрепленных файлов NER-модели во время сборки. |
+| `NER_MODEL_PROFILE` | `bert` | `bert`, `tiny2` | Какая закреплённая NER-модель попадёт в образ Analyzer и будет обслуживать запросы. `bert` скачивается с Hugging Face; для `tiny2` файлы модели кладутся в `presidio/model-artifacts/tiny2/` до сборки. Подробности — `docs/research/ner-tiny2.md`. |
 
 Корпоративная цепочка сертификатов хранится локально в верхнеуровневых файлах
 `certs/*.crt`; это не переменные окружения и не часть репозитория. Вся
@@ -147,6 +181,9 @@ CPU — положительное число, допускается дробн
 | `PRESIDIO_ANALYZER_DEVICE_PROFILE` | `cpu` | `cpu`, `gpu` | Внутренний контракт образа: устройство BERT. Задаётся выбранной целью сборки и Compose-профилем, а не вручную в `.env`. |
 | `PRESIDIO_ANALYZER_GPU_PRECISION` | `fp32` для CPU, `fp16` для GPU | `fp32`, `fp16` | Точность вычисления BERT. `fp16` разрешён только в GPU-профиле и выбран по результатам проверки качества. |
 | `PRESIDIO_ANALYZER_NER_BATCH_SIZE` | `4` для CPU, `8` для GPU | Положительное целое | Число BERT-окон в одном вызове модели. Значение задаётся профилем и обычно не переопределяется. |
+| `PRESIDIO_ANALYZER_NER_MODEL_PROFILE` | `bert` | `bert`, `tiny2` | Профиль NER-модели. Устанавливается образом из `NER_MODEL_PROFILE` и должен совпадать с ним: сервис при старте сверяет модель в образе с манифестом профиля. Профиль `tiny2` отключает NER spaCy (и tok2vec, морфологию, parser, attribute_ruler): его веса дообучены вместо него, токенизатор и лемматизатор остаются для контекстных слов. |
+| `PRESIDIO_ANALYZER_NER_O_LOGIT_BIAS` | Профиль: `0` для `bert`, `1.0` для `tiny2` | Число от 0 до 10 | Прибавка к оценке «не сущность» перед выбором метки. Больше — меньше лишних срабатываний и больше риск пропуска. Оценка уверенности в ответе не меняется. |
+| `PRESIDIO_ANALYZER_NER_SPAN_POSTPROCESSING` | Профиль: `none` для `bert`, `secrets-contracts` для `tiny2` | `none`, `secrets`, `secrets-contracts` | Исправление границ найденных значений: склейка кусков, расширение до разделителей, срез хвостовой пунктуации. `secrets` — только учётные данные, `secrets-contracts` — ещё номера договоров. |
 
 Эффективная параллельность Analyzer: `replicas * PRESIDIO_ANALYZER_WORKERS *
 PRESIDIO_ANALYZER_CONCURRENCY_LIMIT`. Перегрузка Analyzer всегда трактуется
@@ -355,3 +392,10 @@ Python-зависимостей. CPU-цель устанавливает `2.13.0
 | Значения политик защитного слоя по умолчанию для контейнера | Значения окружения по умолчанию в `docker-compose.yml` или манифест промышленного оркестратора |
 | Публикация Kubernetes, сетевых настроек и настроек безопасности | Отдельные манифесты запуска и сетевые политики |
 | Разовые параметры быстрых проверок | Переменные окружения конкретной команды |
+## Перепроверка shell prompt на границе NER
+
+`PRESIDIO_ANALYZER_NER_BOUNDARY_RECHECK=off` сохраняет прежнее поведение.
+Режим `shell-prompt` доступен только для Tiny2 и снимает спорную пунктуационную
+находку лишь после native/context защиты и двух центральных O-подтверждений.
+Изменение настройки обновляет analysis signature. Условия, проверка и откат:
+[ner-shell-prompt-recheck.md](ner-shell-prompt-recheck.md).
