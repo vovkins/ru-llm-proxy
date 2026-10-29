@@ -7,13 +7,8 @@ if [ -x "$DOCKER_DESKTOP_BIN/docker-credential-desktop" ]; then
     export PATH="$DOCKER_DESKTOP_BIN:$PATH"
 fi
 COMPOSE_FILE="$ROOT/tests/load/docker-compose.yml"
-GPU_COMPOSE_FILE="$ROOT/tests/load/docker-compose.gpu.yml"
-LOAD_ANALYZER_PROFILE=${LOAD_ANALYZER_PROFILE:-cpu}
-case "$LOAD_ANALYZER_PROFILE" in
-    cpu) COMPOSE=(docker compose -f "$COMPOSE_FILE") ;;
-    gpu) COMPOSE=(docker compose -f "$COMPOSE_FILE" -f "$GPU_COMPOSE_FILE") ;;
-    *) echo "LOAD_ANALYZER_PROFILE must be cpu or gpu" >&2; exit 2 ;;
-esac
+PYTHONPATH="$ROOT" python3 -c 'import os; from presidio.model_contract import reject_removed_settings; reject_removed_settings(os.environ)'
+COMPOSE=(docker compose -f "$COMPOSE_FILE")
 MODE=${1:-smoke}
 LOAD_CONTOUR=${LOAD_CONTOUR:-mock}
 LOAD_KEEP_STACK=${LOAD_KEEP_STACK:-false}
@@ -43,8 +38,9 @@ LOAD_REDIS_MAX_CONNECTIONS_WAS_SET=${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS+x}
 LOAD_ANALYZER_CPUS_WAS_SET=${LOAD_ANALYZER_CPUS+x}
 LOAD_ANALYZER_REPLICAS=${LOAD_ANALYZER_REPLICAS:-1}
 LOAD_LITELLM_REPLICAS=${LOAD_LITELLM_REPLICAS:-1}
-LOAD_ANALYZER_CONCURRENCY_LIMIT=${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
-LOAD_ANALYZER_QUEUE_LIMIT=${LOAD_ANALYZER_QUEUE_LIMIT:-8}
+LOAD_TRITON_REPLICAS=${LOAD_TRITON_REPLICAS:-1}
+LOAD_ANALYZER_CONCURRENCY_LIMIT=${LOAD_ANALYZER_CONCURRENCY_LIMIT:-2}
+LOAD_ANALYZER_QUEUE_LIMIT=${LOAD_ANALYZER_QUEUE_LIMIT:-32}
 LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS=${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}
 LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS=${LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS:-10}
 LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS=${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}
@@ -101,8 +97,7 @@ Important overrides:
   LOAD_STREAM=true|false|mixed
   LOAD_INPUT_VARIATION=repeat|unique
   LOAD_ANALYZER_BACKEND=real|mock
-  LOAD_ANALYZER_PROFILE=cpu|gpu
-  LOAD_ANALYZER_REPLICAS, LOAD_LITELLM_REPLICAS
+  LOAD_ANALYZER_REPLICAS, LOAD_LITELLM_REPLICAS, LOAD_TRITON_REPLICAS
   LOAD_ANALYZER_CONCURRENCY_LIMIT, LOAD_ANALYZER_QUEUE_LIMIT
   LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS
   LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS
@@ -255,7 +250,7 @@ LOAD_STREAM=${LOAD_STREAM:-mixed}
 LOAD_MOCK_STREAM_HOLD_SECONDS=${LOAD_MOCK_STREAM_HOLD_SECONDS:-0}
 LOAD_EXIT_CODE_ON_ERROR=${LOAD_EXIT_CODE_ON_ERROR:-0}
 LOAD_STOP_TIMEOUT_SECONDS=${LOAD_STOP_TIMEOUT_SECONDS:-30}
-LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS=${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS=${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}
 LOAD_PII_MAPPING_TTL_SECONDS=${LOAD_PII_MAPPING_TTL_SECONDS:-7200}
 
 export LOAD_PROFILE LOAD_USERS LOAD_RUN_TIME LOAD_CONTEXT_SIZES
@@ -265,7 +260,8 @@ export LOAD_MASTER_KEY LOAD_VALIDATE_MAPPING
 export LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS
 export LOAD_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS LOAD_READ_TIMEOUT_SECONDS
 export LOAD_CONTOUR LOAD_INPUT_VARIATION LOAD_ANALYZER_REPLICAS LOAD_LITELLM_REPLICAS
-export LOAD_ANALYZER_BACKEND LOAD_ANALYZER_PROFILE LOAD_ANALYZER_URL
+export LOAD_TRITON_REPLICAS
+export LOAD_ANALYZER_BACKEND LOAD_ANALYZER_URL
 export LOAD_ANALYZER_CONCURRENCY_LIMIT LOAD_ANALYZER_QUEUE_LIMIT
 export LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS
 export LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS
@@ -333,6 +329,13 @@ collect_stack_artifacts() {
             "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:4000/metrics').read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('ru_pii_guardrail_', '# HELP ru_pii_guardrail_', '# TYPE ru_pii_guardrail_'))))" \
             > "$LOAD_RESULTS_DIR/guardrail-metrics-$replica.prom" 2>/dev/null || true
     done
+    replica=0
+    for container_id in $("${COMPOSE[@]}" ps -q load-ner-triton); do
+        replica=$((replica + 1))
+        docker exec "$container_id" python3 -c \
+            "import urllib.request; text=urllib.request.urlopen('http://127.0.0.1:8002/metrics',timeout=5).read().decode(); print('\n'.join(line for line in text.splitlines() if line.startswith(('nv_inference_', '# HELP nv_inference_', '# TYPE nv_inference_'))))" \
+            > "$LOAD_RESULTS_DIR/triton-metrics-$replica.prom" 2>/dev/null || true
+    done
 }
 
 cleanup() {
@@ -386,16 +389,17 @@ if [ "$LOAD_STATEFUL_CHECKS" = true ] && [ "$LOAD_RESILIENCE_CHECKS" = true ]; t
 fi
 
 if [ "$LOAD_CONTOUR" = "mock" ]; then
-    case "$LOAD_ANALYZER_REPLICAS:$LOAD_LITELLM_REPLICAS" in
-        *[!0-9:]*|0:*|*:0) echo "Replica counts must be positive integers" >&2; exit 2 ;;
+    case "$LOAD_ANALYZER_REPLICAS:$LOAD_LITELLM_REPLICAS:$LOAD_TRITON_REPLICAS" in
+        *[!0-9:]*|0:*|*:0:*|*:0) echo "Replica counts must be positive integers" >&2; exit 2 ;;
     esac
     echo "Building and starting the isolated mock-provider load contour..."
     stack_started=true
     "${COMPOSE[@]}" up -d --build \
         --scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS" \
         --scale "load-litellm=$LOAD_LITELLM_REPLICAS" \
+        --scale "load-ner-triton=$LOAD_TRITON_REPLICAS" \
         load-db load-redis load-mock-upstream load-mock-upstream-a \
-        load-mock-upstream-b load-presidio-analyzer \
+        load-mock-upstream-b load-ner-triton load-presidio-analyzer \
         load-analyzer-router load-litellm load-litellm-router
 
     keys_created=true
@@ -404,7 +408,7 @@ if [ "$LOAD_CONTOUR" = "mock" ]; then
 
     container_ids=$("${COMPOSE[@]}" ps -q \
         load-db load-redis load-mock-upstream load-mock-upstream-a \
-        load-mock-upstream-b load-presidio-analyzer \
+        load-mock-upstream-b load-ner-triton load-presidio-analyzer \
         load-analyzer-router load-litellm load-litellm-router)
     if [ -z "$container_ids" ]; then
         echo "No load-contour containers found for Docker statistics" >&2

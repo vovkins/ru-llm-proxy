@@ -1,0 +1,3419 @@
+{
+  "status": "K05_comparison_not_overall_migration_acceptance",
+  "source": {
+    "case_count": 2318,
+    "corpus_counts": {
+      "ner_migration": 77,
+      "instruction_regressions": 70,
+      "name_context_regressions": 32,
+      "name_field_header_control": 8,
+      "name_field_holdout": 12,
+      "person_dialogue_research": 46,
+      "person_organization_regressions": 36,
+      "deterministic_rules_review": 75,
+      "tiny2_component_study": 32,
+      "all_class_context": 52,
+      "value_repair": 8,
+      "dkb_plain": 18,
+      "dkb_json": 18,
+      "windows": 24,
+      "pii_entity": 910,
+      "pii_domain": 900
+    },
+    "unique_texts": 2296,
+    "duplicate_text_occurrences": 22,
+    "manifest_sha256": "5badf1c99e31d3cc92129fe22cb3284c55ad3b06ed0edfc5a78dfc0b1755ad5d",
+    "public_dataset": {
+      "repository": "hivetrace/pii-bench",
+      "revision": "cd6a18ace16daf23e79247ccf1e2b245d4054654",
+      "license": "apache-2.0",
+      "files_sha256": {
+        "entity.parquet": "6e0c77d566c2f04e7213917b26f1038336e28fc006551fac7a7f44f7627d5f96",
+        "domain.parquet": "7ef3574273c0fe3a987981e38e32cd2764031a82766ca5b235bfccd1f27058eb"
+      },
+      "type_mapping": {
+        "NAME": "PERSON",
+        "ADDRESS": "RU_ADDRESS",
+        "EMAIL": "EMAIL_ADDRESS",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "BANK_CARD_NUMBER": "CREDIT_CARD",
+        "INN": "RU_INN",
+        "KPP": "RU_KPP",
+        "OGRN": "RU_OGRN",
+        "OGRNIP": "RU_OGRNIP",
+        "SNILS": "RU_SNILS",
+        "PASSPORT_NUMBER": "RU_PASSPORT",
+        "TOKEN": "AUTH_TOKEN",
+        "CVC": "CVC_OUT_OF_SCOPE"
+      },
+      "notes": [
+        "Not proven identical to author validation (8224 rows).",
+        "Author already evaluated PII-Bench; not independent of model selection.",
+        "ADDRESS full address maps to RU_ADDRESS; LOCATION constituents may still cover characters.",
+        "TOKEN maps strictly to AUTH_TOKEN; alternate secret classes remain visible in untyped coverage.",
+        "CVC is explicitly outside approved product scope; no new detector is added.",
+        "Clean/extra character counts refer only to annotation scope, not every project class."
+      ]
+    }
+  },
+  "main_revision": "1c8c78d049a06c2de5c198cb07cb6235df494460",
+  "changed_runtime_sources": [
+    "result_merging.py"
+  ],
+  "packages_unchanged": true,
+  "after_merger_sha256": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+  "qualifications": [
+    "After uses actual Tiny2/Triton HTTP inference on the same 2318 frozen cases.",
+    "Before and main use frozen E9 inference, not new main/BERT runs.",
+    "Only result_merging.py differs among recorded candidate runtime source hashes.",
+    "Outside-gold coverage is not automatically a false mask on partially annotated data.",
+    "K05 does not accept or repair the other K/Q decisions and is not acceptance of PR109.",
+    "Ground truth and strict quality gates unchanged; their known failures are not made successful by K05."
+  ],
+  "candidate_before": {
+    "counts": {
+      "cases": 2318,
+      "gold_values_all_requests": 2104,
+      "successful_cases": 2318,
+      "negative_cases": 546,
+      "negative_cases_with_in_scope_mask": 34,
+      "negative_cases_with_any_mask": 59,
+      "cases_with_any_mask": 1732,
+      "gold_characters": 42115,
+      "covered_gold_characters": 40481,
+      "in_scope_extra_masked_characters": 4667,
+      "in_scope_clean_characters": 464676,
+      "fully_covered": 1902,
+      "partially_covered": 87,
+      "typed_fully_covered": 1748,
+      "significant_fully_covered": 1915,
+      "significant_partially_covered": 74,
+      "typed_significant_fully_covered": 1750,
+      "significant_characters": 40476,
+      "covered_significant_characters": 39105,
+      "partial_annotation_cases": 2248,
+      "complete_annotation_cases": 70,
+      "extra_masked_characters": 28,
+      "clean_characters": 2681,
+      "false_block_cases": 4,
+      "expected": 2104,
+      "predicted": 2024,
+      "true_positives": 1726,
+      "false_positives": 298,
+      "false_negatives": 378
+    },
+    "per_entity": {
+      "API_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 4,
+        "true_positives": 4,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 4,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888
+      },
+      "AUTH_TOKEN": {
+        "expected": 131,
+        "predicted": 120,
+        "true_positives": 40,
+        "false_positives": 80,
+        "false_negatives": 91,
+        "gold_values_all_requests": 131,
+        "significant_fully_covered": 122,
+        "typed_significant_fully_covered": 41,
+        "precision": 0.3333333333333333,
+        "recall": 0.3053435114503817,
+        "f1": 0.3187250996015936
+      },
+      "BASE64_DATA": {
+        "gold_values_all_requests": 17,
+        "expected": 17,
+        "predicted": 17,
+        "true_positives": 15,
+        "false_positives": 2,
+        "false_negatives": 2,
+        "significant_fully_covered": 17,
+        "typed_significant_fully_covered": 17,
+        "precision": 0.8823529411764706,
+        "recall": 0.8823529411764706,
+        "f1": 0.8823529411764706
+      },
+      "BEARER_TOKEN": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "CONTRACT_NUMBER": {
+        "expected": 31,
+        "predicted": 31,
+        "true_positives": 31,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 31,
+        "significant_fully_covered": 31,
+        "typed_significant_fully_covered": 31,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CREDIT_CARD": {
+        "gold_values_all_requests": 95,
+        "expected": 95,
+        "predicted": 95,
+        "true_positives": 95,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 95,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CVC_OUT_OF_SCOPE": {
+        "expected": 77,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 77,
+        "gold_values_all_requests": 77,
+        "significant_fully_covered": 0,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "DB_URL": {
+        "gold_values_all_requests": 4,
+        "expected": 4,
+        "predicted": 4,
+        "true_positives": 3,
+        "false_positives": 1,
+        "false_negatives": 1,
+        "significant_fully_covered": 4,
+        "typed_significant_fully_covered": 4,
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75
+      },
+      "EMAIL_ADDRESS": {
+        "expected": 184,
+        "predicted": 181,
+        "true_positives": 181,
+        "false_positives": 0,
+        "false_negatives": 3,
+        "gold_values_all_requests": 184,
+        "significant_fully_covered": 183,
+        "typed_significant_fully_covered": 181,
+        "precision": 1.0,
+        "recall": 0.9836956521739131,
+        "f1": 0.9917808219178083
+      },
+      "HOSTNAME": {
+        "expected": 6,
+        "predicted": 6,
+        "true_positives": 6,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 6,
+        "significant_fully_covered": 6,
+        "typed_significant_fully_covered": 6,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "INTERNAL_DOMAIN": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 2,
+        "true_positives": 2,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 2,
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8
+      },
+      "INTERNAL_IP": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "JWT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "LOCATION": {
+        "expected": 13,
+        "predicted": 15,
+        "true_positives": 13,
+        "false_positives": 2,
+        "false_negatives": 0,
+        "gold_values_all_requests": 13,
+        "significant_fully_covered": 13,
+        "typed_significant_fully_covered": 13,
+        "precision": 0.8666666666666667,
+        "recall": 1.0,
+        "f1": 0.9285714285714286
+      },
+      "LOGIN": {
+        "expected": 40,
+        "predicted": 63,
+        "true_positives": 39,
+        "false_positives": 24,
+        "false_negatives": 1,
+        "gold_values_all_requests": 40,
+        "significant_fully_covered": 40,
+        "typed_significant_fully_covered": 40,
+        "precision": 0.6190476190476191,
+        "recall": 0.975,
+        "f1": 0.7572815533980582
+      },
+      "ORGANIZATION": {
+        "expected": 52,
+        "predicted": 58,
+        "true_positives": 51,
+        "false_positives": 7,
+        "false_negatives": 1,
+        "gold_values_all_requests": 52,
+        "significant_fully_covered": 52,
+        "typed_significant_fully_covered": 52,
+        "precision": 0.8793103448275862,
+        "recall": 0.9807692307692307,
+        "f1": 0.9272727272727272
+      },
+      "PASSWORD": {
+        "expected": 64,
+        "predicted": 79,
+        "true_positives": 56,
+        "false_positives": 23,
+        "false_negatives": 8,
+        "gold_values_all_requests": 64,
+        "significant_fully_covered": 60,
+        "typed_significant_fully_covered": 58,
+        "precision": 0.7088607594936709,
+        "recall": 0.875,
+        "f1": 0.7832167832167832
+      },
+      "PERSON": {
+        "gold_values_all_requests": 313,
+        "expected": 313,
+        "predicted": 346,
+        "true_positives": 292,
+        "false_positives": 54,
+        "false_negatives": 21,
+        "significant_fully_covered": 309,
+        "typed_significant_fully_covered": 305,
+        "precision": 0.8439306358381503,
+        "recall": 0.9329073482428115,
+        "f1": 0.8861911987860395
+      },
+      "PHONE_NUMBER": {
+        "gold_values_all_requests": 220,
+        "expected": 220,
+        "predicted": 229,
+        "true_positives": 220,
+        "false_positives": 9,
+        "false_negatives": 0,
+        "significant_fully_covered": 220,
+        "typed_significant_fully_covered": 220,
+        "precision": 0.9606986899563319,
+        "recall": 1.0,
+        "f1": 0.9799554565701559
+      },
+      "PRIVATE_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 5,
+        "true_positives": 5,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 5,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_ADDRESS": {
+        "gold_values_all_requests": 179,
+        "expected": 179,
+        "predicted": 151,
+        "true_positives": 83,
+        "false_positives": 68,
+        "false_negatives": 96,
+        "significant_fully_covered": 105,
+        "typed_significant_fully_covered": 86,
+        "precision": 0.5496688741721855,
+        "recall": 0.46368715083798884,
+        "f1": 0.503030303030303
+      },
+      "RU_BIK": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_CORRESPONDENT_ACCOUNT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_INN": {
+        "gold_values_all_requests": 120,
+        "expected": 120,
+        "predicted": 107,
+        "true_positives": 107,
+        "false_positives": 0,
+        "false_negatives": 13,
+        "significant_fully_covered": 119,
+        "typed_significant_fully_covered": 107,
+        "precision": 1.0,
+        "recall": 0.8916666666666667,
+        "f1": 0.9427312775330396
+      },
+      "RU_KPP": {
+        "gold_values_all_requests": 96,
+        "expected": 96,
+        "predicted": 86,
+        "true_positives": 86,
+        "false_positives": 0,
+        "false_negatives": 10,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 86,
+        "precision": 1.0,
+        "recall": 0.8958333333333334,
+        "f1": 0.945054945054945
+      },
+      "RU_OGRN": {
+        "gold_values_all_requests": 94,
+        "expected": 94,
+        "predicted": 89,
+        "true_positives": 89,
+        "false_positives": 0,
+        "false_negatives": 5,
+        "significant_fully_covered": 94,
+        "typed_significant_fully_covered": 89,
+        "precision": 1.0,
+        "recall": 0.9468085106382979,
+        "f1": 0.9726775956284153
+      },
+      "RU_OGRNIP": {
+        "gold_values_all_requests": 88,
+        "expected": 88,
+        "predicted": 80,
+        "true_positives": 80,
+        "false_positives": 0,
+        "false_negatives": 8,
+        "significant_fully_covered": 88,
+        "typed_significant_fully_covered": 80,
+        "precision": 1.0,
+        "recall": 0.9090909090909091,
+        "f1": 0.9523809523809523
+      },
+      "RU_PASSPORT": {
+        "gold_values_all_requests": 124,
+        "expected": 124,
+        "predicted": 110,
+        "true_positives": 99,
+        "false_positives": 11,
+        "false_negatives": 25,
+        "significant_fully_covered": 108,
+        "typed_significant_fully_covered": 99,
+        "precision": 0.9,
+        "recall": 0.7983870967741935,
+        "f1": 0.8461538461538461
+      },
+      "RU_SETTLEMENT_ACCOUNT": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_SNILS": {
+        "gold_values_all_requests": 98,
+        "expected": 98,
+        "predicted": 87,
+        "true_positives": 87,
+        "false_positives": 0,
+        "false_negatives": 11,
+        "significant_fully_covered": 96,
+        "typed_significant_fully_covered": 87,
+        "precision": 1.0,
+        "recall": 0.8877551020408163,
+        "f1": 0.9405405405405406
+      },
+      "SECRET_KEY": {
+        "expected": 35,
+        "predicted": 50,
+        "true_positives": 33,
+        "false_positives": 17,
+        "false_negatives": 2,
+        "gold_values_all_requests": 35,
+        "significant_fully_covered": 35,
+        "typed_significant_fully_covered": 33,
+        "precision": 0.66,
+        "recall": 0.9428571428571428,
+        "f1": 0.7764705882352941
+      }
+    }
+  },
+  "candidate_after": {
+    "counts": {
+      "cases": 2318,
+      "gold_values_all_requests": 2104,
+      "successful_cases": 2318,
+      "negative_cases": 546,
+      "negative_cases_with_in_scope_mask": 34,
+      "negative_cases_with_any_mask": 59,
+      "cases_with_any_mask": 1732,
+      "gold_characters": 42115,
+      "covered_gold_characters": 40495,
+      "in_scope_extra_masked_characters": 7010,
+      "in_scope_clean_characters": 464676,
+      "fully_covered": 1903,
+      "partially_covered": 87,
+      "typed_fully_covered": 1749,
+      "significant_fully_covered": 1916,
+      "significant_partially_covered": 74,
+      "typed_significant_fully_covered": 1751,
+      "significant_characters": 40476,
+      "covered_significant_characters": 39118,
+      "partial_annotation_cases": 2248,
+      "complete_annotation_cases": 70,
+      "extra_masked_characters": 37,
+      "clean_characters": 2681,
+      "false_block_cases": 4,
+      "expected": 2104,
+      "predicted": 2040,
+      "true_positives": 1727,
+      "false_positives": 313,
+      "false_negatives": 377
+    },
+    "per_entity": {
+      "API_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 4,
+        "true_positives": 4,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 4,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888
+      },
+      "AUTH_TOKEN": {
+        "expected": 131,
+        "predicted": 124,
+        "true_positives": 40,
+        "false_positives": 84,
+        "false_negatives": 91,
+        "gold_values_all_requests": 131,
+        "significant_fully_covered": 122,
+        "typed_significant_fully_covered": 41,
+        "precision": 0.3225806451612903,
+        "recall": 0.3053435114503817,
+        "f1": 0.3137254901960784
+      },
+      "BASE64_DATA": {
+        "gold_values_all_requests": 17,
+        "expected": 17,
+        "predicted": 17,
+        "true_positives": 15,
+        "false_positives": 2,
+        "false_negatives": 2,
+        "significant_fully_covered": 17,
+        "typed_significant_fully_covered": 17,
+        "precision": 0.8823529411764706,
+        "recall": 0.8823529411764706,
+        "f1": 0.8823529411764706
+      },
+      "BEARER_TOKEN": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "CONTRACT_NUMBER": {
+        "expected": 31,
+        "predicted": 31,
+        "true_positives": 31,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 31,
+        "significant_fully_covered": 31,
+        "typed_significant_fully_covered": 31,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CREDIT_CARD": {
+        "gold_values_all_requests": 95,
+        "expected": 95,
+        "predicted": 95,
+        "true_positives": 95,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 95,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CVC_OUT_OF_SCOPE": {
+        "expected": 77,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 77,
+        "gold_values_all_requests": 77,
+        "significant_fully_covered": 0,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "DB_URL": {
+        "gold_values_all_requests": 4,
+        "expected": 4,
+        "predicted": 4,
+        "true_positives": 3,
+        "false_positives": 1,
+        "false_negatives": 1,
+        "significant_fully_covered": 4,
+        "typed_significant_fully_covered": 4,
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75
+      },
+      "EMAIL_ADDRESS": {
+        "expected": 184,
+        "predicted": 181,
+        "true_positives": 181,
+        "false_positives": 0,
+        "false_negatives": 3,
+        "gold_values_all_requests": 184,
+        "significant_fully_covered": 183,
+        "typed_significant_fully_covered": 181,
+        "precision": 1.0,
+        "recall": 0.9836956521739131,
+        "f1": 0.9917808219178083
+      },
+      "HOSTNAME": {
+        "expected": 6,
+        "predicted": 6,
+        "true_positives": 6,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 6,
+        "significant_fully_covered": 6,
+        "typed_significant_fully_covered": 6,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "INTERNAL_DOMAIN": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 2,
+        "true_positives": 2,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 2,
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8
+      },
+      "INTERNAL_IP": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "JWT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "LOCATION": {
+        "expected": 13,
+        "predicted": 15,
+        "true_positives": 13,
+        "false_positives": 2,
+        "false_negatives": 0,
+        "gold_values_all_requests": 13,
+        "significant_fully_covered": 13,
+        "typed_significant_fully_covered": 13,
+        "precision": 0.8666666666666667,
+        "recall": 1.0,
+        "f1": 0.9285714285714286
+      },
+      "LOGIN": {
+        "expected": 40,
+        "predicted": 68,
+        "true_positives": 39,
+        "false_positives": 29,
+        "false_negatives": 1,
+        "gold_values_all_requests": 40,
+        "significant_fully_covered": 40,
+        "typed_significant_fully_covered": 40,
+        "precision": 0.5735294117647058,
+        "recall": 0.975,
+        "f1": 0.7222222222222222
+      },
+      "ORGANIZATION": {
+        "expected": 52,
+        "predicted": 58,
+        "true_positives": 51,
+        "false_positives": 7,
+        "false_negatives": 1,
+        "gold_values_all_requests": 52,
+        "significant_fully_covered": 52,
+        "typed_significant_fully_covered": 52,
+        "precision": 0.8793103448275862,
+        "recall": 0.9807692307692307,
+        "f1": 0.9272727272727272
+      },
+      "PASSWORD": {
+        "expected": 64,
+        "predicted": 83,
+        "true_positives": 56,
+        "false_positives": 27,
+        "false_negatives": 8,
+        "gold_values_all_requests": 64,
+        "significant_fully_covered": 60,
+        "typed_significant_fully_covered": 58,
+        "precision": 0.6746987951807228,
+        "recall": 0.875,
+        "f1": 0.7619047619047619
+      },
+      "PERSON": {
+        "gold_values_all_requests": 313,
+        "expected": 313,
+        "predicted": 347,
+        "true_positives": 293,
+        "false_positives": 54,
+        "false_negatives": 20,
+        "significant_fully_covered": 310,
+        "typed_significant_fully_covered": 306,
+        "precision": 0.8443804034582133,
+        "recall": 0.9361022364217252,
+        "f1": 0.8878787878787879
+      },
+      "PHONE_NUMBER": {
+        "gold_values_all_requests": 220,
+        "expected": 220,
+        "predicted": 229,
+        "true_positives": 220,
+        "false_positives": 9,
+        "false_negatives": 0,
+        "significant_fully_covered": 220,
+        "typed_significant_fully_covered": 220,
+        "precision": 0.9606986899563319,
+        "recall": 1.0,
+        "f1": 0.9799554565701559
+      },
+      "PRIVATE_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 5,
+        "true_positives": 5,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 5,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_ADDRESS": {
+        "gold_values_all_requests": 179,
+        "expected": 179,
+        "predicted": 151,
+        "true_positives": 83,
+        "false_positives": 68,
+        "false_negatives": 96,
+        "significant_fully_covered": 105,
+        "typed_significant_fully_covered": 86,
+        "precision": 0.5496688741721855,
+        "recall": 0.46368715083798884,
+        "f1": 0.503030303030303
+      },
+      "RU_BIK": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_CORRESPONDENT_ACCOUNT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_INN": {
+        "gold_values_all_requests": 120,
+        "expected": 120,
+        "predicted": 107,
+        "true_positives": 107,
+        "false_positives": 0,
+        "false_negatives": 13,
+        "significant_fully_covered": 119,
+        "typed_significant_fully_covered": 107,
+        "precision": 1.0,
+        "recall": 0.8916666666666667,
+        "f1": 0.9427312775330396
+      },
+      "RU_KPP": {
+        "gold_values_all_requests": 96,
+        "expected": 96,
+        "predicted": 86,
+        "true_positives": 86,
+        "false_positives": 0,
+        "false_negatives": 10,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 86,
+        "precision": 1.0,
+        "recall": 0.8958333333333334,
+        "f1": 0.945054945054945
+      },
+      "RU_OGRN": {
+        "gold_values_all_requests": 94,
+        "expected": 94,
+        "predicted": 89,
+        "true_positives": 89,
+        "false_positives": 0,
+        "false_negatives": 5,
+        "significant_fully_covered": 94,
+        "typed_significant_fully_covered": 89,
+        "precision": 1.0,
+        "recall": 0.9468085106382979,
+        "f1": 0.9726775956284153
+      },
+      "RU_OGRNIP": {
+        "gold_values_all_requests": 88,
+        "expected": 88,
+        "predicted": 80,
+        "true_positives": 80,
+        "false_positives": 0,
+        "false_negatives": 8,
+        "significant_fully_covered": 88,
+        "typed_significant_fully_covered": 80,
+        "precision": 1.0,
+        "recall": 0.9090909090909091,
+        "f1": 0.9523809523809523
+      },
+      "RU_PASSPORT": {
+        "gold_values_all_requests": 124,
+        "expected": 124,
+        "predicted": 110,
+        "true_positives": 99,
+        "false_positives": 11,
+        "false_negatives": 25,
+        "significant_fully_covered": 108,
+        "typed_significant_fully_covered": 99,
+        "precision": 0.9,
+        "recall": 0.7983870967741935,
+        "f1": 0.8461538461538461
+      },
+      "RU_SETTLEMENT_ACCOUNT": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_SNILS": {
+        "gold_values_all_requests": 98,
+        "expected": 98,
+        "predicted": 87,
+        "true_positives": 87,
+        "false_positives": 0,
+        "false_negatives": 11,
+        "significant_fully_covered": 96,
+        "typed_significant_fully_covered": 87,
+        "precision": 1.0,
+        "recall": 0.8877551020408163,
+        "f1": 0.9405405405405406
+      },
+      "SECRET_KEY": {
+        "expected": 35,
+        "predicted": 52,
+        "true_positives": 33,
+        "false_positives": 19,
+        "false_negatives": 2,
+        "gold_values_all_requests": 35,
+        "significant_fully_covered": 35,
+        "typed_significant_fully_covered": 33,
+        "precision": 0.6346153846153846,
+        "recall": 0.9428571428571428,
+        "f1": 0.7586206896551724
+      }
+    }
+  },
+  "main_reference": {
+    "counts": {
+      "cases": 2318,
+      "gold_values_all_requests": 2104,
+      "successful_cases": 2318,
+      "negative_cases": 546,
+      "negative_cases_with_in_scope_mask": 12,
+      "negative_cases_with_any_mask": 44,
+      "cases_with_any_mask": 1704,
+      "gold_characters": 42115,
+      "covered_gold_characters": 38783,
+      "in_scope_extra_masked_characters": 452,
+      "in_scope_clean_characters": 464676,
+      "fully_covered": 1790,
+      "partially_covered": 181,
+      "typed_fully_covered": 1654,
+      "significant_fully_covered": 1866,
+      "significant_partially_covered": 105,
+      "typed_significant_fully_covered": 1656,
+      "significant_characters": 40476,
+      "covered_significant_characters": 37505,
+      "partial_annotation_cases": 2248,
+      "complete_annotation_cases": 70,
+      "extra_masked_characters": 4,
+      "clean_characters": 2681,
+      "false_block_cases": 0,
+      "expected": 2104,
+      "predicted": 1943,
+      "true_positives": 1649,
+      "false_positives": 294,
+      "false_negatives": 455
+    },
+    "per_entity": {
+      "API_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 4,
+        "true_positives": 4,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 4,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.8888888888888888
+      },
+      "AUTH_TOKEN": {
+        "expected": 131,
+        "predicted": 32,
+        "true_positives": 31,
+        "false_positives": 1,
+        "false_negatives": 100,
+        "gold_values_all_requests": 131,
+        "significant_fully_covered": 73,
+        "typed_significant_fully_covered": 31,
+        "precision": 0.96875,
+        "recall": 0.2366412213740458,
+        "f1": 0.3803680981595092
+      },
+      "BASE64_DATA": {
+        "gold_values_all_requests": 17,
+        "expected": 17,
+        "predicted": 17,
+        "true_positives": 15,
+        "false_positives": 2,
+        "false_negatives": 2,
+        "significant_fully_covered": 17,
+        "typed_significant_fully_covered": 17,
+        "precision": 0.8823529411764706,
+        "recall": 0.8823529411764706,
+        "f1": 0.8823529411764706
+      },
+      "BEARER_TOKEN": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "CONTRACT_NUMBER": {
+        "expected": 31,
+        "predicted": 31,
+        "true_positives": 31,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 31,
+        "significant_fully_covered": 31,
+        "typed_significant_fully_covered": 31,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CREDIT_CARD": {
+        "gold_values_all_requests": 95,
+        "expected": 95,
+        "predicted": 95,
+        "true_positives": 95,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 95,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "CVC_OUT_OF_SCOPE": {
+        "expected": 77,
+        "predicted": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 77,
+        "gold_values_all_requests": 77,
+        "significant_fully_covered": 6,
+        "typed_significant_fully_covered": 0,
+        "precision": null,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "DB_URL": {
+        "gold_values_all_requests": 4,
+        "expected": 4,
+        "predicted": 4,
+        "true_positives": 3,
+        "false_positives": 1,
+        "false_negatives": 1,
+        "significant_fully_covered": 4,
+        "typed_significant_fully_covered": 4,
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75
+      },
+      "EMAIL_ADDRESS": {
+        "expected": 184,
+        "predicted": 181,
+        "true_positives": 181,
+        "false_positives": 0,
+        "false_negatives": 3,
+        "gold_values_all_requests": 184,
+        "significant_fully_covered": 184,
+        "typed_significant_fully_covered": 181,
+        "precision": 1.0,
+        "recall": 0.9836956521739131,
+        "f1": 0.9917808219178083
+      },
+      "HOSTNAME": {
+        "expected": 6,
+        "predicted": 6,
+        "true_positives": 6,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 6,
+        "significant_fully_covered": 6,
+        "typed_significant_fully_covered": 6,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "INTERNAL_DOMAIN": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 2,
+        "true_positives": 2,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 2,
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8
+      },
+      "INTERNAL_IP": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "JWT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "LOCATION": {
+        "expected": 13,
+        "predicted": 13,
+        "true_positives": 13,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "gold_values_all_requests": 13,
+        "significant_fully_covered": 13,
+        "typed_significant_fully_covered": 13,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "LOGIN": {
+        "expected": 40,
+        "predicted": 57,
+        "true_positives": 40,
+        "false_positives": 17,
+        "false_negatives": 0,
+        "gold_values_all_requests": 40,
+        "significant_fully_covered": 40,
+        "typed_significant_fully_covered": 40,
+        "precision": 0.7017543859649122,
+        "recall": 1.0,
+        "f1": 0.8247422680412371
+      },
+      "ORGANIZATION": {
+        "expected": 52,
+        "predicted": 55,
+        "true_positives": 52,
+        "false_positives": 3,
+        "false_negatives": 0,
+        "gold_values_all_requests": 52,
+        "significant_fully_covered": 52,
+        "typed_significant_fully_covered": 52,
+        "precision": 0.9454545454545454,
+        "recall": 1.0,
+        "f1": 0.9719626168224299
+      },
+      "PASSWORD": {
+        "expected": 64,
+        "predicted": 76,
+        "true_positives": 57,
+        "false_positives": 19,
+        "false_negatives": 7,
+        "gold_values_all_requests": 64,
+        "significant_fully_covered": 58,
+        "typed_significant_fully_covered": 57,
+        "precision": 0.75,
+        "recall": 0.890625,
+        "f1": 0.8142857142857143
+      },
+      "PERSON": {
+        "gold_values_all_requests": 313,
+        "expected": 313,
+        "predicted": 324,
+        "true_positives": 272,
+        "false_positives": 52,
+        "false_negatives": 41,
+        "significant_fully_covered": 302,
+        "typed_significant_fully_covered": 273,
+        "precision": 0.8395061728395061,
+        "recall": 0.8690095846645367,
+        "f1": 0.8540031397174255
+      },
+      "PHONE_NUMBER": {
+        "gold_values_all_requests": 220,
+        "expected": 220,
+        "predicted": 229,
+        "true_positives": 220,
+        "false_positives": 9,
+        "false_negatives": 0,
+        "significant_fully_covered": 220,
+        "typed_significant_fully_covered": 220,
+        "precision": 0.9606986899563319,
+        "recall": 1.0,
+        "f1": 0.9799554565701559
+      },
+      "PRIVATE_KEY": {
+        "gold_values_all_requests": 5,
+        "expected": 5,
+        "predicted": 5,
+        "true_positives": 5,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 5,
+        "typed_significant_fully_covered": 5,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_ADDRESS": {
+        "gold_values_all_requests": 179,
+        "expected": 179,
+        "predicted": 209,
+        "true_positives": 33,
+        "false_positives": 176,
+        "false_negatives": 146,
+        "significant_fully_covered": 107,
+        "typed_significant_fully_covered": 36,
+        "precision": 0.15789473684210525,
+        "recall": 0.18435754189944134,
+        "f1": 0.17010309278350516
+      },
+      "RU_BIK": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_CORRESPONDENT_ACCOUNT": {
+        "gold_values_all_requests": 1,
+        "expected": 1,
+        "predicted": 1,
+        "true_positives": 1,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 1,
+        "typed_significant_fully_covered": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_INN": {
+        "gold_values_all_requests": 120,
+        "expected": 120,
+        "predicted": 107,
+        "true_positives": 107,
+        "false_positives": 0,
+        "false_negatives": 13,
+        "significant_fully_covered": 119,
+        "typed_significant_fully_covered": 107,
+        "precision": 1.0,
+        "recall": 0.8916666666666667,
+        "f1": 0.9427312775330396
+      },
+      "RU_KPP": {
+        "gold_values_all_requests": 96,
+        "expected": 96,
+        "predicted": 86,
+        "true_positives": 86,
+        "false_positives": 0,
+        "false_negatives": 10,
+        "significant_fully_covered": 95,
+        "typed_significant_fully_covered": 86,
+        "precision": 1.0,
+        "recall": 0.8958333333333334,
+        "f1": 0.945054945054945
+      },
+      "RU_OGRN": {
+        "gold_values_all_requests": 94,
+        "expected": 94,
+        "predicted": 89,
+        "true_positives": 89,
+        "false_positives": 0,
+        "false_negatives": 5,
+        "significant_fully_covered": 94,
+        "typed_significant_fully_covered": 89,
+        "precision": 1.0,
+        "recall": 0.9468085106382979,
+        "f1": 0.9726775956284153
+      },
+      "RU_OGRNIP": {
+        "gold_values_all_requests": 88,
+        "expected": 88,
+        "predicted": 80,
+        "true_positives": 80,
+        "false_positives": 0,
+        "false_negatives": 8,
+        "significant_fully_covered": 88,
+        "typed_significant_fully_covered": 80,
+        "precision": 1.0,
+        "recall": 0.9090909090909091,
+        "f1": 0.9523809523809523
+      },
+      "RU_PASSPORT": {
+        "gold_values_all_requests": 124,
+        "expected": 124,
+        "predicted": 110,
+        "true_positives": 99,
+        "false_positives": 11,
+        "false_negatives": 25,
+        "significant_fully_covered": 109,
+        "typed_significant_fully_covered": 99,
+        "precision": 0.9,
+        "recall": 0.7983870967741935,
+        "f1": 0.8461538461538461
+      },
+      "RU_SETTLEMENT_ACCOUNT": {
+        "gold_values_all_requests": 3,
+        "expected": 3,
+        "predicted": 3,
+        "true_positives": 3,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "significant_fully_covered": 3,
+        "typed_significant_fully_covered": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "RU_SNILS": {
+        "gold_values_all_requests": 98,
+        "expected": 98,
+        "predicted": 87,
+        "true_positives": 87,
+        "false_positives": 0,
+        "false_negatives": 11,
+        "significant_fully_covered": 96,
+        "typed_significant_fully_covered": 87,
+        "precision": 1.0,
+        "recall": 0.8877551020408163,
+        "f1": 0.9405405405405406
+      },
+      "SECRET_KEY": {
+        "expected": 35,
+        "predicted": 35,
+        "true_positives": 32,
+        "false_positives": 3,
+        "false_negatives": 3,
+        "gold_values_all_requests": 35,
+        "significant_fully_covered": 34,
+        "typed_significant_fully_covered": 32,
+        "precision": 0.9142857142857143,
+        "recall": 0.9142857142857143,
+        "f1": 0.9142857142857143
+      }
+    }
+  },
+  "changed_cases": [
+    {
+      "case_id": "instruction_regressions__dialogue_role_user_assignment",
+      "corpus": "instruction_regressions",
+      "complete_annotation": true,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 26,
+          "end": 40
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 52,
+          "end": 56
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 26,
+          "end": 40
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 41,
+          "end": 50
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 52,
+          "end": 56
+        }
+      ]
+    },
+    {
+      "case_id": "deterministic_rules_review__cli_curl_user",
+      "corpus": "deterministic_rules_review",
+      "complete_annotation": false,
+      "added_significant_characters": 5,
+      "before": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 13,
+          "end": 35
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 36,
+          "end": 59
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 8,
+          "end": 13
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 13,
+          "end": 35
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 36,
+          "end": 59
+        }
+      ]
+    },
+    {
+      "case_id": "deterministic_rules_review__cli_curl_user_long",
+      "corpus": "deterministic_rules_review",
+      "complete_annotation": false,
+      "added_significant_characters": 5,
+      "before": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 18,
+          "end": 40
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 42,
+          "end": 65
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 13,
+          "end": 18
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 18,
+          "end": 40
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 42,
+          "end": 65
+        }
+      ]
+    },
+    {
+      "case_id": "deterministic_rules_review__cli_wget_password",
+      "corpus": "deterministic_rules_review",
+      "complete_annotation": false,
+      "added_significant_characters": 16,
+      "before": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 21,
+          "end": 43
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 44,
+          "end": 67
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 5,
+          "end": 21
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 21,
+          "end": 43
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 44,
+          "end": 67
+        }
+      ]
+    },
+    {
+      "case_id": "deterministic_rules_review__cli_mysql_long",
+      "corpus": "deterministic_rules_review",
+      "complete_annotation": false,
+      "added_significant_characters": 11,
+      "before": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 17,
+          "end": 39
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 6,
+          "end": 17
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 17,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "case_id": "deterministic_rules_review__cli_httpie_auth",
+      "corpus": "deterministic_rules_review",
+      "complete_annotation": false,
+      "added_significant_characters": 5,
+      "before": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 17,
+          "end": 40
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 45,
+          "end": 68
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 12,
+          "end": 17
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 17,
+          "end": 40
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 45,
+          "end": 68
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__1_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 641,
+      "before": [
+        {
+          "entity_type": "HOSTNAME",
+          "start": 105,
+          "end": 118
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 118,
+          "end": 120
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 184,
+          "end": 189
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 189,
+          "end": 191
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 211,
+          "end": 213
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 213,
+          "end": 219
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 219,
+          "end": 228
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 387,
+          "end": 394
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 394,
+          "end": 395
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 418,
+          "end": 429
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 519,
+          "end": 544
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 544,
+          "end": 546
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 567,
+          "end": 603
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 603,
+          "end": 612
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 12,
+          "end": 105
+        },
+        {
+          "entity_type": "HOSTNAME",
+          "start": 105,
+          "end": 118
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 118,
+          "end": 184
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 184,
+          "end": 189
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 189,
+          "end": 210
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 211,
+          "end": 213
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 213,
+          "end": 219
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 219,
+          "end": 387
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 387,
+          "end": 394
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 394,
+          "end": 418
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 418,
+          "end": 429
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 431,
+          "end": 519
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 519,
+          "end": 544
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 544,
+          "end": 567
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 567,
+          "end": 603
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 603,
+          "end": 975
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__2_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 528,
+      "before": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 178,
+          "end": 193
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 193,
+          "end": 196
+        },
+        {
+          "entity_type": "HOSTNAME",
+          "start": 318,
+          "end": 331
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 331,
+          "end": 334
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 383,
+          "end": 385
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 385,
+          "end": 392
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 392,
+          "end": 394
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 609,
+          "end": 623
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 623,
+          "end": 625
+        },
+        {
+          "entity_type": "PRIVATE_KEY",
+          "start": 742,
+          "end": 849
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 849,
+          "end": 851
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 178
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 178,
+          "end": 193
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 193,
+          "end": 318
+        },
+        {
+          "entity_type": "HOSTNAME",
+          "start": 318,
+          "end": 331
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 331,
+          "end": 382
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 383,
+          "end": 385
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 385,
+          "end": 392
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 392,
+          "end": 609
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 609,
+          "end": 623
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 623,
+          "end": 742
+        },
+        {
+          "entity_type": "PRIVATE_KEY",
+          "start": 742,
+          "end": 849
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 849,
+          "end": 904
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__3_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 781,
+      "before": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 145,
+          "end": 170
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 170,
+          "end": 172
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 202,
+          "end": 243
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 243,
+          "end": 245
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 366,
+          "end": 368
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 368,
+          "end": 388
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 388,
+          "end": 395
+        },
+        {
+          "entity_type": "HOSTNAME",
+          "start": 446,
+          "end": 466
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 466,
+          "end": 468
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 485,
+          "end": 499
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 499,
+          "end": 501
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 516,
+          "end": 518
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 518,
+          "end": 535
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 535,
+          "end": 542
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 12,
+          "end": 145
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 145,
+          "end": 170
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 170,
+          "end": 202
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 202,
+          "end": 243
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 243,
+          "end": 366
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 366,
+          "end": 368
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 368,
+          "end": 388
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 388,
+          "end": 446
+        },
+        {
+          "entity_type": "HOSTNAME",
+          "start": 446,
+          "end": 466
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 466,
+          "end": 485
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 485,
+          "end": 499
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 499,
+          "end": 516
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 516,
+          "end": 518
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 518,
+          "end": 535
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 535,
+          "end": 1067
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__4_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 294,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 61,
+          "end": 69
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 69,
+          "end": 86
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 89,
+          "end": 91
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 91,
+          "end": 129
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 129,
+          "end": 142
+        },
+        {
+          "entity_type": "BEARER_TOKEN",
+          "start": 226,
+          "end": 268
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 268,
+          "end": 275
+        },
+        {
+          "entity_type": "API_KEY",
+          "start": 296,
+          "end": 337
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 337,
+          "end": 352
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 381,
+          "end": 401
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 401,
+          "end": 408
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 482,
+          "end": 514
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 514,
+          "end": 526
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 545,
+          "end": 559
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 564,
+          "end": 600
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 600,
+          "end": 614
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 12,
+          "end": 61
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 61,
+          "end": 69
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 69,
+          "end": 88
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 89,
+          "end": 91
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 91,
+          "end": 129
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 129,
+          "end": 226
+        },
+        {
+          "entity_type": "BEARER_TOKEN",
+          "start": 226,
+          "end": 268
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 268,
+          "end": 296
+        },
+        {
+          "entity_type": "API_KEY",
+          "start": 296,
+          "end": 337
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 337,
+          "end": 381
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 381,
+          "end": 401
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 401,
+          "end": 482
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 482,
+          "end": 514
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 514,
+          "end": 545
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 545,
+          "end": 559
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 560,
+          "end": 564
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 564,
+          "end": 600
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 600,
+          "end": 678
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_plain__6_txt",
+      "corpus": "dkb_plain",
+      "complete_annotation": false,
+      "added_significant_characters": 5,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 18,
+          "end": 26
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 48,
+          "end": 96
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 126,
+          "end": 174
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 18,
+          "end": 26
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 48,
+          "end": 96
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 120,
+          "end": 125
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 126,
+          "end": 174
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__6_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 63,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 35,
+          "end": 43
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 43,
+          "end": 50
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 71,
+          "end": 119
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 119,
+          "end": 126
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 155,
+          "end": 203
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 203,
+          "end": 214
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 12,
+          "end": 35
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 35,
+          "end": 43
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 43,
+          "end": 71
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 71,
+          "end": 119
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 119,
+          "end": 154
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 155,
+          "end": 203
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 203,
+          "end": 214
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__7_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 66,
+      "before": [
+        {
+          "entity_type": "DB_URL",
+          "start": 29,
+          "end": 89
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 89,
+          "end": 110
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 115,
+          "end": 135
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 135,
+          "end": 162
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 167,
+          "end": 208
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 208,
+          "end": 223
+        },
+        {
+          "entity_type": "API_KEY",
+          "start": 228,
+          "end": 269
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 269,
+          "end": 282
+        },
+        {
+          "entity_type": "BEARER_TOKEN",
+          "start": 315,
+          "end": 357
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 357,
+          "end": 364
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 385,
+          "end": 410
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 410,
+          "end": 421
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 29
+        },
+        {
+          "entity_type": "DB_URL",
+          "start": 29,
+          "end": 89
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 89,
+          "end": 115
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 115,
+          "end": 135
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 135,
+          "end": 167
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 167,
+          "end": 208
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 208,
+          "end": 228
+        },
+        {
+          "entity_type": "API_KEY",
+          "start": 228,
+          "end": 269
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 269,
+          "end": 315
+        },
+        {
+          "entity_type": "BEARER_TOKEN",
+          "start": 315,
+          "end": 357
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 357,
+          "end": 385
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 385,
+          "end": 410
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 410,
+          "end": 421
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__9_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 64,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 92,
+          "end": 98
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 98,
+          "end": 104
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 109,
+          "end": 141
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 141,
+          "end": 152
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 12,
+          "end": 92
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 92,
+          "end": 98
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 98,
+          "end": 109
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 109,
+          "end": 141
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 141,
+          "end": 152
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__10_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 64,
+      "before": [
+        {
+          "entity_type": "LOGIN",
+          "start": 92,
+          "end": 98
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 98,
+          "end": 104
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 109,
+          "end": 173
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 173,
+          "end": 184
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 12,
+          "end": 92
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 92,
+          "end": 98
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 98,
+          "end": 109
+        },
+        {
+          "entity_type": "PASSWORD",
+          "start": 109,
+          "end": 173
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 173,
+          "end": 184
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__11_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 439,
+      "before": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 183,
+          "end": 224
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 224,
+          "end": 225
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 182
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 183,
+          "end": 224
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 224,
+          "end": 513
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__13_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 59
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 60,
+          "end": 96
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 96,
+          "end": 100
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 59
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 60,
+          "end": 96
+        },
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 96,
+          "end": 100
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__14_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 47
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 48,
+          "end": 64
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 64,
+          "end": 72
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 47
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 48,
+          "end": 64
+        },
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 64,
+          "end": 72
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__15_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 44
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 44
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__16_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 65
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "AUTH_TOKEN",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 65
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__17_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 64
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 64
+        }
+      ]
+    },
+    {
+      "case_id": "dkb_json__18_txt",
+      "corpus": "dkb_json",
+      "complete_annotation": false,
+      "added_significant_characters": 7,
+      "before": [
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 64
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "SECRET_KEY",
+          "start": 12,
+          "end": 19
+        },
+        {
+          "entity_type": "BASE64_DATA",
+          "start": 20,
+          "end": 64
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_006",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 53,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 130,
+          "end": 153
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 121,
+          "end": 129
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 130,
+          "end": 153
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 154,
+          "end": 208
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_013",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 50,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 147,
+          "end": 172
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 138,
+          "end": 146
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 147,
+          "end": 172
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 173,
+          "end": 223
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_021",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 67,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 93,
+          "end": 114
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 84,
+          "end": 92
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 93,
+          "end": 114
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 115,
+          "end": 188
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_030",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 56,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 128,
+          "end": 151
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 119,
+          "end": 127
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 128,
+          "end": 151
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 152,
+          "end": 209
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_043",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 62,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 93,
+          "end": 115
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 84,
+          "end": 92
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 93,
+          "end": 115
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 116,
+          "end": 180
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_058",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 42,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 39,
+          "end": 64
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 30,
+          "end": 38
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 39,
+          "end": 64
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 65,
+          "end": 108
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_069",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 65,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 115,
+          "end": 138
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 106,
+          "end": 114
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 115,
+          "end": 138
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 139,
+          "end": 209
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__dialog_099",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 78,
+      "before": [
+        {
+          "entity_type": "CREDIT_CARD",
+          "start": 143,
+          "end": 162
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 183,
+          "end": 209
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOGIN",
+          "start": 107,
+          "end": 142
+        },
+        {
+          "entity_type": "CREDIT_CARD",
+          "start": 143,
+          "end": 162
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 163,
+          "end": 182
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 183,
+          "end": 209
+        },
+        {
+          "entity_type": "LOGIN",
+          "start": 210,
+          "end": 245
+        }
+      ]
+    },
+    {
+      "case_id": "pii_domain__ss_026",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 13,
+      "before": [
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 15,
+          "end": 42
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PERSON",
+          "start": 0,
+          "end": 14
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 15,
+          "end": 42
+        }
+      ]
+    }
+  ],
+  "significant_coverage_losses": [],
+  "http_checks": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:7576452efc2fdc16d05ea96edc0fed7cf21bc79471c7c09967aa6758bbfdb9c5",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "controlled-Email:",
+        "status": "passed",
+        "seconds": 1.494,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          }
+        ]
+      },
+      {
+        "name": "controlled-Bearer",
+        "status": "passed",
+        "seconds": 0.723,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          }
+        ]
+      },
+      {
+        "name": "actual-k05",
+        "status": "passed",
+        "seconds": 0.791,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "mask",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "mode": "block",
+            "restored_or_blocked": true,
+            "request_mapping_cleaned": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "passed",
+        "seconds": 0.806,
+        "result": 0
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 165.227,
+        "result": 0
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 89.999,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true
+  },
+  "merger_benchmark": [
+    {
+      "case": "existing-longest-e9",
+      "characters": 128040,
+      "input_findings": 1602,
+      "before": {
+        "median_seconds": 0.13760183299746132,
+        "results": 802,
+        "samples": [
+          0.136813124998298,
+          0.13748012499854667,
+          0.1378938750058296,
+          0.13628125000104774,
+          0.13760183299746132,
+          0.13946183300140547,
+          0.13969812499999534
+        ]
+      },
+      "after": {
+        "median_seconds": 0.1260929589989246,
+        "results": 803,
+        "samples": [
+          0.12985916699835798,
+          0.12657029200636316,
+          0.12597904200083576,
+          0.1257552500028396,
+          0.12874462499894435,
+          0.1260929589989246,
+          0.1255742499997723
+        ]
+      },
+      "note": "Same text; controlled overlapping spans, not new NER predictions or capacity proof."
+    },
+    {
+      "case": "synthetic-256k-many-overlaps",
+      "characters": 262144,
+      "input_findings": 4096,
+      "before": {
+        "median_seconds": 0.34836741700564744,
+        "results": 4096,
+        "samples": [
+          0.34267349999572616,
+          0.34207445900392486,
+          0.35378216699609766,
+          0.34259991699946113,
+          0.34836741700564744,
+          0.35717320799449226,
+          0.36125437599548604
+        ]
+      },
+      "after": {
+        "median_seconds": 0.28711333299725084,
+        "results": 6144,
+        "samples": [
+          0.29661816600128077,
+          0.28711333299725084,
+          0.2964273339966894,
+          0.2778511249998701,
+          0.2860313339988352,
+          0.2840857920018607,
+          0.30418695799744455
+        ]
+      },
+      "note": "Same text; controlled overlapping spans, not new NER predictions or capacity proof."
+    }
+  ],
+  "regressions": {
+    "analyzer_pytest": 2712,
+    "guardrail_and_flow_pytest": 1514,
+    "static_pytest": 569,
+    "evaluation_pytest_overlaps_other_groups": 75,
+    "make_unittest": 18,
+    "frozen_ner_rule_replays": 29,
+    "frozen_ner_replays_changed": [
+      "pii_domain__ss_026"
+    ],
+    "warning_notes": [
+      "Existing Starlette deprecation; existing Pydantic serializer warnings."
+    ]
+  },
+  "strict_instruction_span_audit": {
+    "before": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new whole HTTP gate."
+    },
+    "after": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new whole HTTP gate."
+    }
+  }
+}

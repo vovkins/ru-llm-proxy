@@ -5,7 +5,8 @@ street, house, building, flat; plus a Latin variant) and joins neighbours
 separated only by spaces or one comma. A chain is emitted only when it holds a
 strong combination, so an isolated "стр. 5" or "кв. 3" never fires alone.
 An informal "улица дом" value is accepted only right after an address word,
-and quoted values of address-like keys are covered in code and JSON.
+and quoted values of address-like keys are covered in code and JSON. Entrance
+tails extend a confirmed core only; they never supply address evidence.
 """
 
 import re
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from string_spans import StringSpans
 
 from presidio_analyzer import AnalysisExplanation, EntityRecognizer, RecognizerResult
+from recognizers.ru_address import _COUNT_NOUN_AFTER_HOUSE, _UNIT_AFTER_HOUSE_NUMBER
 
 NAME = r'(?-i:[А-ЯЁ])[а-яё]+(?:-(?:на-)?(?-i:[А-ЯЁа-яё])[а-яё]+)*'
 NAMES = rf'{NAME}(?:[ \t]+{NAME}){{0,2}}'
@@ -27,6 +29,12 @@ STREET_PREFIX = (r'(?:улица|ул\.|ул|проспект|просп\.|пр-
                  r'микрорайон|мкр\.|мкр-н|мкр|линия)(?![А-Яа-яЁё])')
 STREET_POSTFIX = (r'(?:улица|ул\.?|проспект|просп\.|пр-т|переулок|пер\.?|бульвар|б-р|шоссе|ш\.?|набережная|наб\.?|'
                   r'площадь|пл\.?|проезд|пр-д|тупик|туп\.?|аллея|ал\.|квартал|кв-л|мкр\.?|мкр-н|микрорайон)')
+# Admit the previously rejected digit only when it starts a complete house,
+# using the same quantity exclusions as the basic address recognizer.
+HOUSE_NUMBER_END = (rf'{R}(?![\w/-]|\.[0-9])'
+                    rf'{_UNIT_AFTER_HOUSE_NUMBER}{_COUNT_NOUN_AFTER_HOUSE}'
+                    r'(?![ \t]*человека\b)')
+POSTFIX_BARE_HOUSE = rf'[ \t]+{NUM}{HOUSE_NUMBER_END}'
 SETTLEMENT_PREFIX = (r'(?:г\.|гор\.|город|г(?=[ \t])|пос\.|п\.|пгт\.?|с\.|село|дер\.|д\.(?=[ \t]*(?-i:[А-ЯЁ]))|деревня|'
                      r'посёлок|поселок|ст-ца|станица|рп\.?|снт)')
 COMPONENTS = {
@@ -38,7 +46,7 @@ COMPONENTS = {
                  rf'(?:{NAMES}|\d{{1,3}}(?-i:[А-Я])?)){R}'),
     'settlement': rf'{L}{SETTLEMENT_PREFIX}[ \t]*{NAME}(?:[ \t]+{NAME}(?![ \t]+{STREET_POSTFIX}(?![А-Яа-яЁё]))){{0,2}}{R}',
     'street': (rf'{L}(?:{STREET_PREFIX}[ \t]*{STREET_NAME}|{STREET_NAME}[ \t]+{STREET_POSTFIX}'
-               rf'(?![ \t]*(?:\d|(?-i:[А-ЯЁ])))){R}\.?'),
+               rf'(?:(?![ \t]*(?:\d|(?-i:[А-ЯЁ])))|(?={POSTFIX_BARE_HOUSE}))){R}\.?'),
     'house': rf'{L}(?:д\.|дом|д|вл\.|влад\.)[ \t]*{NUM}{R}',
     'building': rf'{L}(?:корп\.?|корпус|к\.|стр\.|строение|лит\.?|литера?)[ \t]*\d{{1,3}}(?-i:[А-Яа-я])?{R}',
     'flat': rf"{L}(?:кв\.?|квартира|оф\.?|офис|пом\.?|помещение|комн\.?|комната)[ \t]*(?:\d{{1,4}}(?-i:[А-Яа-я])?|\"\d{{1,4}}[А-Яа-я]?\"|'\d{{1,4}}[А-Яа-я]?'|«\d{{1,4}}[А-Яа-я]?»){R}",
@@ -49,8 +57,16 @@ COMPONENTS = {
     'lat_flat': r'(?<![A-Za-z0-9])(?:apt\.?|apartment|kv\.|flat|office|of\.|suite)[ \t]*\d{1,4}[A-Za-z]?(?![A-Za-z0-9])',
 }
 COMPILED = {k: re.compile(v, re.I) for k, v in COMPONENTS.items()}
+ENTRANCE_SEPARATOR = r'(?:[ \t]*,[ \t]*|[ \t]+)'
+ENTRANCE_TAIL = re.compile(
+    rf'{ENTRANCE_SEPARATOR}подъезд(?:[ \t]+(?:№[ \t]*)?|[ \t]*№[ \t]*)'
+    rf'[0-9]{{1,3}}(?![\w/-]|\.[0-9])(?:{ENTRANCE_SEPARATOR}{COMPONENTS["flat"]})?',
+    re.I,
+)
 SEP = re.compile(r'[ \t]*,?[ \t]*\Z')
 BARE_HOUSE = re.compile(rf'[ \t]*,?[ \t]*({NUM}){R}(?![ \t]*(?:%|руб|лет|год|раз|км|м\b|шт))')
+CONTEXT_BARE_HOUSE = re.compile(rf'[ \t]*,?[ \t]*({NUM}){HOUSE_NUMBER_END}', re.I)
+CONTEXT_HOUSE_END = re.compile(HOUSE_NUMBER_END, re.I)
 BARE_NAME = re.compile(rf'[ \t]*,[ \t]*({NAMES}|[A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?){R}')
 BARE_NAME_LEFT = re.compile(rf'({NAMES}|[A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?)[ \t]*,?[ \t]*\Z')
 STRONG_PAIRS = [{'street', 'house'}, {'street', 'settlement'}, {'street', 'flat'}, {'settlement', 'house'},
@@ -79,6 +95,11 @@ NUMBER_PARTS = re.compile(
 
 ADDRESS_CONTEXT = re.compile(r'(?i)(?:адрес\w*|address|addr|проживает|прописан\w*|живу|живёт|зарегистрирован\w*|'
                              r'доставк\w*|delivery|shipping)[^\n]{0,12}?(?=[ \t:="\'`(]|$)')
+EXPLICIT_ADDRESS_CONTEXT = re.compile(
+    r'(?i)(?<!\w)(?:адрес(?:[ \t]+(?:доставки|проживания|регистрации))?|address|addr)'
+    r'[ \t]*[:=](?![:=])[ \t]*')
+CONTEXT_VALUE_STOP = re.compile(r'[\r\n;{}]')
+CYRILLIC_WORD = re.compile(r'[А-Яа-яЁё]+')
 NOT_STREET = (r'(?!(?:Раздел|Глава|Пункт|Статья|Приложение|Таблица|Рисунок|Рис|Версия|Шаг|Этап|Пример|Страница|'
               r'Порт|Номер|Задача|Вопрос|Ответ|Часть|Том|Лист|Форма|Сервер|Строка|Колонка|Модуль|Адрес|Address)(?![а-яё]))')
 INFORMAL = re.compile(rf'[ \t:="\'`(]*(?P<v>{NOT_STREET}(?:{NAMES}[ \t]*,[ \t]*)?{STREET_NAME}(?:[ \t]*,[ \t]*|[ \t]+)\d{{1,4}}(?-i:[А-Яа-я])?'
@@ -108,37 +129,80 @@ def components(text):
     return merged
 
 
-def chains(text):
+def chains(text, *, contextual=False):
     comps = components(text)
+    if contextual:
+        comps = [c for c in comps if c[2] != 'house' or CONTEXT_HOUSE_END.match(text, c[1])]
+    house_pattern = CONTEXT_BARE_HOUSE if contextual else BARE_HOUSE
     out, i = [], 0
     while i < len(comps):
         start, end, kinds = comps[i][0], comps[i][1], {comps[i][2]}
+        street_count = int(comps[i][2] == 'street')
         j = i + 1
         while True:
             if j < len(comps) and SEP.match(text[end:comps[j][0]]) and comps[j][0] - end <= 3:
                 end, j = comps[j][1], j + 1
                 kinds.add(comps[j - 1][2])
+                street_count += comps[j - 1][2] == 'street'
                 continue
             if kinds & {'street', 'lat_street', 'lat_street_num'} and not kinds & {'house', 'lat_house', 'bare_house'}:
-                m = BARE_HOUSE.match(text, end)
+                m = house_pattern.match(text, end)
                 if m and m.end() > end:
                     end = m.end(1)
                     kinds.add('bare_house')
                     continue
             break
         if any(pair <= kinds for pair in STRONG_PAIRS):
-            m = BARE_NAME.match(text, end)
+            m = None if contextual else BARE_NAME.match(text, end)
             if m and not kinds & {'settlement'} and (j >= len(comps) or comps[j][0] >= m.end()):
                 end = m.end(1)
                 kinds.add('city')
                 if (m2 := BARE_NAME.match(text, end)) and re.fullmatch(r'Russia|Россия|РФ', m2.group(1)):
                     end = m2.end(1)
             left = BARE_NAME_LEFT.search(text, max(0, start - 60), start)
-            if left and not kinds & {'settlement'} and left.end() == start:
+            # Repeated street components may already include a bare city;
+            # another capitalized prefix is not independent address evidence.
+            if (left and street_count <= 1 and not kinds & {'settlement'} and left.end() == start
+                    and (not contextual or ',' in text[left.start(1):start])):
                 start = left.start(1)
             out.append((start, end, kinds))
         i = j
     return out
+
+
+def _entrance_end(text, end, limit=None):
+    """Extend an already confirmed address, never across a literal boundary."""
+    match = ENTRANCE_TAIL.match(text, end, len(text) if limit is None else limit)
+    return match.end() if match else end
+
+
+def _contextual_addresses(text, strings):
+    """Reuse the grammar on a bounded value; never recase the original source."""
+    for label in EXPLICIT_ADDRESS_CONTEXT.finditer(text):
+        start = label.end()
+        owner, literal = strings.at(label.start()), strings.at(start)
+        if literal is not None and literal.start == start:
+            if owner is not None:
+                continue
+            start = literal.content_start
+        elif owner is not literal:
+            continue
+        value_end = literal.content_end if literal else len(text)
+        limit = min(value_end, start + 200)
+        stop = CONTEXT_VALUE_STOP.search(text, start, limit)
+        if stop:
+            limit = stop.start()
+        value = text[start:limit]
+        if re.match(r'(?i)(?:null|none|true|false)\b', value):
+            continue
+        # Only these Cyrillic letters are changed: offsets and all other Unicode
+        # remain identical. Do not turn prose after the house into a bare city.
+        view = CYRILLIC_WORD.sub(lambda m: m.group().capitalize(), value)
+        for left, end, kinds in chains(view, contextual=True):
+            if left == 0 and 'street' in kinds and kinds & {'house', 'bare_house'}:
+                right = _entrance_end(text, start + end, limit)
+                if right != limit or stop is not None or limit == value_end:
+                    yield start, right
 
 
 @dataclass
@@ -228,8 +292,9 @@ def _full_address(value):
         kinds = {kind for _, _, kind in components(candidate)}
         pairs = [*STRONG_PAIRS, {'index', 'house'}, {'district', 'settlement'}]
         street_marker = re.search(STREET_PREFIX, candidate, re.I)
+        informal = INFORMAL.match(candidate)
         if (any(pair <= kinds for pair in pairs) or chains(candidate)
-                or INFORMAL.fullmatch(candidate)
+                or (informal and _entrance_end(candidate, informal.end()) == len(candidate))
                 or (street_marker and kinds & {'house', 'lat_house'})):
             return True
     return False
@@ -376,10 +441,13 @@ class RuAddressChainRecognizer(EntityRecognizer):
         if entities and 'RU_ADDRESS' not in entities:
             return []
         strings = StringSpans(text)
-        results = [RecognizerResult('RU_ADDRESS', s, e, 0.75, AnalysisExplanation(self.name, 0.75),
-                                    recognition_metadata={RecognizerResult.RECOGNIZER_NAME_KEY: self.name,
-                                                          'kinds': '+'.join(sorted(k))})
-                   for s, e, k in chains(text)]
+        results = []
+        for start, end, kinds in chains(text):
+            literal = strings.at(end - 1)
+            end = _entrance_end(text, end, literal.content_end if literal else None)
+            results.append(RecognizerResult('RU_ADDRESS', start, end, 0.75, AnalysisExplanation(self.name, 0.75),
+                                            recognition_metadata={RecognizerResult.RECOGNIZER_NAME_KEY: self.name,
+                                                                  'kinds': '+'.join(sorted(kinds))}))
         format_cache = {}
         for c in ADDRESS_CONTEXT.finditer(text):
             m = INFORMAL.search(text, c.end(), min(len(text), c.end() + 140))
@@ -396,10 +464,16 @@ class RuAddressChainRecognizer(EntityRecognizer):
             if (m and same_value and (formatted or not crossed_field) and not empty_assignment
                     and m.start('v') - c.end() <= 30
                     and not COMPILED['street'].search(m.group('v'))):
-                results.append(RecognizerResult('RU_ADDRESS', m.start('v'), m.end('v'), 0.6,
+                end = _entrance_end(text, m.end('v'), candidate.content_end if candidate else None)
+                results.append(RecognizerResult('RU_ADDRESS', m.start('v'), end, 0.6,
                                                 AnalysisExplanation(self.name, 0.6),
                                                 recognition_metadata={RecognizerResult.RECOGNIZER_NAME_KEY: self.name, 'kinds': 'informal'}))
         for field in _accepted_fields(text, strings):
             results.append(RecognizerResult('RU_ADDRESS', field.start, field.end,
                                             0.6, AnalysisExplanation(self.name, 0.6), recognition_metadata={RecognizerResult.RECOGNIZER_NAME_KEY: self.name, 'kinds': 'key'}))
+        for start, end in _contextual_addresses(text, strings):
+            results.append(RecognizerResult('RU_ADDRESS', start, end, 0.6,
+                                            AnalysisExplanation(self.name, 0.6), recognition_metadata={
+                                                RecognizerResult.RECOGNIZER_NAME_KEY: self.name,
+                                                'kinds': 'contextual'}))
         return results

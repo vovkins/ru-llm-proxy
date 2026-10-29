@@ -1,5 +1,24 @@
 # Уведомления о сторонних компонентах
 
+## Tiny2
+
+Источник: https://huggingface.co/Katerina-Bir/rubert-tiny2-secret-detection
+
+Ревизия: `4137142e79d52b0b69370e0e3dceb2d6ad82591d`.
+Базовая модель: `cointegrated/rubert-tiny2`. Вариант весов:
+`tiny2-mix-a-s1-ft-spacy-free-20261013-a-e2-b2`.
+
+Лицензия модели и обучающих данных: MIT; сведения об источниках и подтверждение
+автора получены владельцем проекта и зафиксированы в задаче #110. Контрольные
+суммы поставки находятся в `presidio/model_manifest.json`. Веса скачиваются
+при сборке и не включаются в Git.
+
+Triton и ONNX Runtime являются самостоятельными сторонними компонентами.
+MIT модели не распространяется на образ NVIDIA и его зависимости; применяются
+их собственные лицензии и [условия NVIDIA](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/tritonserver).
+
+## Детерминированные правила
+
 Детерминированные форматы ключей и токенов в
 `presidio/recognizers/credential_rules.py` частично адаптированы из конфигурации
 Gitleaks `config/gitleaks.toml`. Источник закреплён в

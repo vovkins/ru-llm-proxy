@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import signal
 import subprocess
@@ -13,7 +14,7 @@ import time
 from pathlib import Path
 
 
-PROJECT_NAME = "ru-llm-proxy-load"
+PROJECT_NAME = os.getenv("COMPOSE_PROJECT_NAME", "ru-llm-proxy-load")
 BYTE_UNITS = {
     "B": 1,
     "kB": 1_000,

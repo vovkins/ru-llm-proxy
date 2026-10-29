@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -19,7 +21,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from deployment import Context, memory_bytes  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent))
+from deployment import Context, memory_bytes, resources  # noqa: E402
+from ner_test_support import (
+    IMAGE_TAGS, check_internal_network, container_states, identities,
+    image_id, interruption, write_report,
+)
 
 
 MASTER = "sk-topology-test-only"
@@ -28,7 +35,7 @@ OTHER_PHONE = "+79031234568"
 
 
 def docker(*args):
-    return subprocess.check_output(["docker", *args], text=True, stderr=subprocess.DEVNULL).strip()
+    return subprocess.check_output(["docker", *args], text=True, stderr=subprocess.DEVNULL, timeout=90).strip()
 
 
 def request(url, path, payload=None, token=MASTER, headers=False):
@@ -38,7 +45,8 @@ def request(url, path, payload=None, token=MASTER, headers=False):
             result = response.status, response.read().decode()
             return (*result, response.headers) if headers else result
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
+        result = exc.code, exc.read().decode()
+        return (*result, exc.headers) if headers else result
 
 
 def assert_request(url, mode, api, stream, token, phone=PHONE):
@@ -58,8 +66,24 @@ def assert_request(url, mode, api, stream, token, phone=PHONE):
             assert "data:" in body, "Expected SSE response"
 
 
+def topology_networks(subnet, extended):
+    try:
+        parent = ipaddress.IPv4Network(subnet)
+        # Four /27 or larger networks leave room for every test replica.
+        if parent.prefixlen > 25:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise RuntimeError("Test IPv4 subnet must allow four networks of at least 30 hosts") from None
+    names = ["ru-llm-proxy", "test-ingress", "codex-lb-proxy", "codex-lb-database"]
+    networks = {name: {"ipam": {"config": [{"subnet": str(child)}]}}
+                for name, child in zip(names, parent.subnets(prefixlen_diff=2))}
+    networks["ru-llm-proxy"]["internal"] = True
+    networks["codex-lb-database"]["internal"] = True
+    return networks if extended else {name: networks[name] for name in names[:2]}
+
+
 class Gate:
-    def __init__(self, directory):
+    def __init__(self, directory, images=None):
         self.directory = Path(directory)
         self.project = "topology-gate-" + uuid.uuid4().hex[:8]
         self.env_file = self.directory / ".env"
@@ -79,27 +103,42 @@ class Gate:
         self.peak_memory = {}
         self.result = {"cases": [], "checks": [], "peak_container_memory_bytes": self.peak_memory, "peak_total_memory_bytes": 0}
         self.last_context = None
+        self.ipv4_subnet = None
+        self.images = dict(images or IMAGE_TAGS)
+        self.result["images"] = dict(self.images)
 
     def secrets(self):
         return [line for line in self.env_file.read_text().splitlines() if not line.startswith("PII_GUARDRAIL_MODE=")]
 
-    def context(self, stack, topology, mode, resources_file=None):
+    def context(self, stack, topology, mode, resources_file=None, triton_replicas=1):
+        if self.ipv4_subnet is None:
+            raise RuntimeError("Test IPv4 subnet must be collected before creating the topology")
+        networks = topology_networks(self.ipv4_subnet, stack.endswith("codex-lb"))
         os.environ.update(COMPOSE_PROJECT_NAME=self.project, STACK=stack, TOPOLOGY=topology, PII_GUARDRAIL_MODE=mode, PII_MODE_ORIGIN="command line", STACK_START_TIMEOUT="360")
-        for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "TOPOLOGY_ENV", "ANALYZER_PROFILE"):
+        for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "TOPOLOGY_ENV"):
             os.environ.pop(key, None)
-        if resources_file:
-            os.environ["TOPOLOGY_ENV"] = str(resources_file)
+        if topology == "production":
+            values = resources(ROOT / "tests/e2e/topology-resources.env")
+            if resources_file:
+                values.update(resources(Path(resources_file)))
+            values["TRITON_REPLICAS"] = str(triton_replicas)
+            target = self.directory / "active-resources.env"
+            target.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+            os.environ["TOPOLOGY_ENV"] = str(target)
         services = {service: {"container_name": f"{self.project}-{service}"} for service in ("nginx", "db", "redis", "litellm", "presidio-analyzer", "codex-lb", "codex-lb-db")}
+        # Triton is scalable and must never receive a fixed container_name.
+        services["ner-triton"] = {"image": self.images["ner-triton"], "pull_policy": "never"}
         if topology == "production":
             for service in ("litellm", "presidio-analyzer"):
                 services[service].pop("container_name")
         if stack == "litellm-presidio":
             services.pop("codex-lb")
             services.pop("codex-lb-db")
-        services["litellm"].update(image="ru-llm-proxy-litellm:latest", pull_policy="never", volumes=[f"{ROOT}/tests/e2e/litellm-config.topologies.yaml:/app/config.yaml:ro"], environment={"OPENAI_API_KEY": "test-only", "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS": "5", "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS": "1"})
-        services["presidio-analyzer"].update(image="ru-llm-proxy-presidio-analyzer:latest", pull_policy="never")
+        services["litellm"].update(image=self.images["litellm"], pull_policy="never", volumes=[f"{ROOT}/tests/e2e/litellm-config.topologies.yaml:/app/config.yaml:ro"], environment={"OPENAI_API_KEY": "test-only", "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS": "5", "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS": "1"})
+        services["presidio-analyzer"].update(image=self.images["presidio-analyzer"], pull_policy="never")
         for service in services:
             services[service]["healthcheck"] = {"interval": "3s"}
+            services[service]["restart"] = "no"
         services["nginx"]["ports"] = ["127.0.0.1:0:80"]
         if topology == "production":
             services["nginx"]["ports"] += ["127.0.0.1:0:4000", "127.0.0.1:0:5001"]
@@ -107,8 +146,13 @@ class Gate:
             services["nginx"]["ports"].append("127.0.0.1:0:2455")
         services["mock-upstream"] = {"image": "python:3.12-slim", "command": ["python", "/mock.py"], "volumes": [f"{ROOT}/tests/e2e/mock_openai_upstream.py:/mock.py:ro"], "environment": {"MOCK_ECHO_CHAT_CONTENT": "true", "MOCK_ECHO_RESPONSES_CONTENT": "true"}, "networks": ["ru-llm-proxy"], "ports": ["127.0.0.1:0:8080"], "labels": {"ru-llm-proxy.topology": topology}}
         if stack.endswith("codex-lb"):
-            services["codex-lb"].update(image="ru-llm-proxy-codex-lb:latest", pull_policy="never")
-        self.overlay.write_text(json.dumps({"services": services}))
+            services["codex-lb"].update(image=self.images["codex-lb"], pull_policy="never")
+        # Only the test gateway and mock expose localhost ports. The actual
+        # model, Analyzer, LiteLLM and databases have no external network.
+        for name in ("nginx", "mock-upstream"):
+            services[name]["networks"] = ["ru-llm-proxy", "test-ingress"] + (
+                ["codex-lb-proxy"] if name == "nginx" and stack.endswith("codex-lb") else [])
+        self.overlay.write_text(json.dumps({"services": services, "networks": networks}))
         self.ports_reset.write_text("services:\n" + "".join(f"  {service}:\n    ports: !reset []\n" for service in services if service != "mock-upstream"))
         ctx = Context(env_file=str(self.env_file))
         ctx.files.extend([str(self.ports_reset), str(self.overlay)])
@@ -182,13 +226,13 @@ class Gate:
         shared = set(item["NetworkSettings"]["Networks"]) & set(mock["NetworkSettings"]["Networks"])
         address = item["NetworkSettings"]["Networks"][next(iter(shared))]["IPAddress"]
         code = "import json,sys,urllib.request,urllib.error; data=json.load(sys.stdin); req=urllib.request.Request(data['url'], data=json.dumps(data['payload']).encode(), headers={'Authorization':'Bearer '+data['token'],'Content-Type':'application/json'});\ntry:\n r=urllib.request.urlopen(req,timeout=30); print(json.dumps({'status':r.status,'body':r.read().decode()}))\nexcept urllib.error.HTTPError as e:\n print(json.dumps({'status':e.code,'body':e.read().decode()}))"
-        result = subprocess.run(["docker", "exec", "-i", mock["Id"], "python", "-c", code], input=json.dumps({"url": f"http://{address}:4000/v1/{api}", "payload": payload, "token": token}), text=True, capture_output=True)
+        result = subprocess.run(["docker", "exec", "-i", mock["Id"], "python", "-c", code], input=json.dumps({"url": f"http://{address}:4000/v1/{api}", "payload": payload, "token": token}), text=True, capture_output=True, timeout=40)
         if result.returncode:
             raise RuntimeError(f"Per-replica test connection failed: {result.stderr[-500:]}")
         return json.loads(result.stdout)
 
     def metrics(self, item, port):
-        return docker("exec", item["Id"], "python", "-c", f"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:{port}/metrics', timeout=10).read().decode())")
+        return docker("exec", item["Id"], "python3", "-c", f"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:{port}/metrics', timeout=10).read().decode())")
 
     def cache_hits(self, item):
         prefix = 'ru_pii_guardrail_analysis_cache_requests_total{result="hit"} '
@@ -248,11 +292,12 @@ class Gate:
         assert self.redis(ctx, "KEYS", "pii_mapping:*") == "", "Mapping not cleaned after response"
         for item in ctx.containers():
             service = item["Config"]["Labels"].get("com.docker.compose.service")
-            if service in {"litellm", "presidio-analyzer"}:
-                port = 4000 if service == "litellm" else 5001
+            if service in {"litellm", "presidio-analyzer", "ner-triton"}:
+                port = {"litellm": 4000, "presidio-analyzer": 5001, "ner-triton": 8002}[service]
                 metrics = self.metrics(item, port)
-                assert "ru_pii_guardrail_" in metrics if service == "litellm" else "ru_presidio_analyzer_" in metrics
-        self.result["cases"].append({"stack": ctx.stack, "topology": ctx.topology, "mode": ctx.mode, "replicas": ctx.counts, "status": "passed"})
+                prefix = {"litellm": "ru_pii_guardrail_", "presidio-analyzer": "ru_presidio_analyzer_", "ner-triton": "nv_inference_"}[service]
+                assert prefix in metrics
+        self.result["cases"].append({"stack": ctx.stack, "topology": ctx.topology, "mode": ctx.mode, "replicas": ctx.counts, "status": "passed", "resources_scope": "functional test limits, not production recommendation"})
         print("CASE PASSED", ctx.stack, ctx.topology, ctx.mode, flush=True)
 
     def resilience(self, ctx, token):
@@ -277,27 +322,44 @@ class Gate:
         self.result["checks"].append("New SSE request succeeds with one LiteLLM replica stopped; all Analyzer unavailable: 503 without provider call; full sequential restart preserves shared state")
         custom = self.directory / "resources.env"
         custom.write_text("LITELLM_REPLICAS=3\nANALYZER_REPLICAS=2\n")
-        scaled = self.context(ctx.stack, "production", "mask", custom)
+        scaled = self.context(ctx.stack, "production", "mask", custom, ctx.counts["ner-triton"])
         scaled.start()
         self.verify_state(scaled)
         assert_request(self.url(scaled, "nginx", 80), "mask", "responses", True, token)
-        ctx = self.context(ctx.stack, "production", "mask")
+        ctx = self.context(ctx.stack, "production", "mask", triton_replicas=ctx.counts["ner-triton"])
         ctx.start()
         self.verify_state(ctx)
-        self.result["checks"].append("Scale 2/4 -> 3/2 -> 2/4: state and virtual key preserved, changed Docker DNS pools serve requests")
+        self.result["checks"].append("Scale test LiteLLM/Analyzer 2/2 -> 3/2 -> 2/2: state and virtual key preserved, changed Docker DNS pools serve requests")
         return ctx
 
     def run(self):
+        from triton_routing_checks import check_no_replay, check_replica_recovery
+
         monitor = threading.Thread(target=self.sample_memory, daemon=True)
         monitor.start()
         try:
+            self.result["phase"] = "identity"
+            self.images = {name: image_id(tag) for name, tag in self.images.items()}
+            self.result["images"] = dict(self.images)
+            self.result["model"] = identities(self.images)
+            self.result["phase"] = "no-replay"
+            no_replay = check_no_replay()
+            self.ipv4_subnet = no_replay["ipv4_subnet"]
+            self.result["checks"].append(no_replay)
             for stack in ("litellm-presidio", "litellm-presidio-codex-lb"):
                 token = None
                 affinity = None
-                for topology, mode in (("functional", "mask"), ("production", "mask"), ("production", "block"), ("functional", "block")):
-                    ctx = self.context(stack, topology, mode)
+                for topology, mode, count in (("functional", "mask", 1), ("production", "mask", 1),
+                                              ("production", "mask", 2), ("production", "block", 2),
+                                              ("functional", "block", 1)):
+                    self.result["phase"] = f"{stack}/{topology}/{mode}/triton={count}"
+                    ctx = self.context(stack, topology, mode, triton_replicas=count)
+                    assert ctx.counts["ner-triton"] == count
+                    assert not ctx.model["services"]["ner-triton"].get("container_name")
+                    assert not ctx.model["services"]["ner-triton"].get("ports")
                     ctx.compose("up", "-d", "--no-build", "--no-deps", "mock-upstream")
                     ctx.start()
+                    check_internal_network(ctx.model["networks"]["ru-llm-proxy"]["name"])
                     self.verify_state(ctx, first=token is None)
                     url = self.url(ctx, "nginx", 80)
                     if token is None:
@@ -313,25 +375,56 @@ class Gate:
                     assert current and (affinity is None or affinity == current), "Affinity changed after topology/policy switch"
                     affinity = current
                     assert self.redis(ctx, "KEYS", "deployment_affinity:v1:*")
-                    if ctx.extended and topology == "production" and mode == "mask":
+                    if ctx.extended and topology == "production" and mode == "mask" and count == 2:
+                        check_replica_recovery(self, ctx, token)
                         ctx = self.resilience(ctx, token)
                     self.exercise(ctx, token, other_token)
                     if ctx.extended:
                         assert request(self.url(ctx, "nginx", 2455), "/health/ready")[0] == 200
                 ctx.compose("down", "-v", "--remove-orphans")
             self.result["checks"].append("Both topologies, both policies, both stacks, both APIs/stream modes; state/secrets, shared analysis cache hits, limits, per-replica readiness/metrics and mapping cleanup")
+            self.result.update(status="passed", phase="completed")
+        except BaseException as exc:
+            self.result.update(status="failed", error_type=type(exc).__name__)
+            origin = exc.__traceback__
+            while origin is not None and origin.tb_next is not None:
+                origin = origin.tb_next
+            if origin is not None:
+                self.result["failure_origin"] = {"file": Path(origin.tb_frame.f_code.co_filename).name,
+                                                 "function": origin.tb_frame.f_code.co_name,
+                                                 "line": origin.tb_lineno}
+            raise
         finally:
             self.stop.set()
             monitor.join(timeout=15)
-            if self.last_context:
-                self.result["final_containers"] = [{"name": item["Name"].lstrip("/"), "oom_killed": item["State"].get("OOMKilled"), "restarts": item["RestartCount"], "health": item["State"].get("Health", {}).get("Status")} for item in self.last_context.containers()]
-                self.last_context.compose("down", "-v", "--remove-orphans")
+            self.cleanup()
+
+    def cleanup(self):
+        ctx = self.last_context
+        if ctx is None:
+            self.result["cleanup_ok"] = True
+            return
+        try:
+            try:
+                self.result["final_containers"] = container_states(ctx.container_ids())
+            finally:
+                subprocess.run(ctx.command + ["down", "-v", "--remove-orphans"],
+                               env=ctx.environment, cwd=ROOT, check=True, timeout=90)
+            self.result["cleanup_ok"] = not ctx.container_ids() and all(
+                not docker(kind, "ls", "-q", "--filter", f"label=com.docker.compose.project={self.project}")
+                for kind in ("network", "volume"))
+            if not self.result["cleanup_ok"]:
+                raise RuntimeError("Test deployment resources remained after cleanup")
+        except BaseException:
+            self.result.update(status="failed", cleanup_ok=False)
+            raise
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    signal.signal(signal.SIGTERM, interruption)
     with tempfile.TemporaryDirectory(prefix="ru-proxy-topologies-") as directory:
         gate = Gate(directory)
         try:
@@ -339,11 +432,10 @@ def main():
             gate.result["status"] = "passed"
             print(f"Topology gate passed: {len(gate.result['cases'])} cases; sampled peak container memory {gate.result['peak_total_memory_bytes'] / 1024**3:.2f} GiB", flush=True)
         except BaseException as exc:
-            gate.result.update(status="failed", error=str(exc))
+            gate.result.update(status="failed", error_type=type(exc).__name__)
             raise
         finally:
-            if args.report:
-                args.report.write_text(json.dumps(gate.result, ensure_ascii=False, indent=2) + "\n")
+            write_report(args.report, gate.result)
 
 
 if __name__ == "__main__":

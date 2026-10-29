@@ -6,11 +6,23 @@ import time
 import redis as sync_redis
 
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
+from litellm_guardrails.request_cancellation import _DISCONNECTED
 
 
 class ObservedGuardrail(RuPIIGuardrail):
     # LiteLLM detects iterator overrides in the leaf class, not its MRO.
     async_post_call_streaming_iterator_hook = RuPIIGuardrail.async_post_call_streaming_iterator_hook
+
+    async def _abort_preprocessing(self, data, originals, request_id):
+        await super()._abort_preprocessing(data, originals, request_id)
+        signal = _DISCONNECTED.get()
+        redis = await self._get_redis()
+        key = "preprocessing_observation:" + request_id
+        await redis.hset(key, mapping={
+            "cleanup_returned_at": time.monotonic(),
+            "client_disconnected": int(signal is not None and signal.is_set()),
+        })
+        await redis.expire(key, 120)
 
     def _observe_stream(self, request_id, field, value=None):
         # Synchronous test-only observation must not shield the actual cleanup.

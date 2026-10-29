@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 import os
 import re
@@ -65,6 +66,7 @@ CAPTURE = {
     "provider_request_paths": [],
     "analyzer_saw_canary": False,
     "provider_saw_canary": False,
+    "provider_saw_question_mark": False,
     "provider_saw_dkb_canary": False,
     "provider_saw_base64_boundary_value": False,
     "provider_saw_private_key_marker": False,
@@ -72,6 +74,9 @@ CAPTURE = {
     "provider_saw_phone_placeholder": False,
     "provider_saw_pii_placeholder": False,
     "provider_saw_synthetic_marker": False,
+    "provider_encrypted_content_sha256": [],
+    "provider_saw_e9_raw_phone": False,
+    "provider_native_arguments": [],
 }
 CAPTURE_LOCK = threading.Lock()
 CONTROL_PATTERN = re.compile(r"DISCONNECT_CASE_([a-f0-9]{16})")
@@ -121,6 +126,30 @@ def _first_match(value, pattern: re.Pattern) -> str | None:
         if match is not None:
             return match.group(0)
     return None
+
+
+def _password_echo_values(payload):
+    source = payload.get("messages", payload.get("input", ""))
+    if isinstance(source, list):
+        source = next((item.get("content", "") for item in reversed(source)
+                       if isinstance(item, dict) and item.get("role") == "user"), "")
+    return list(dict.fromkeys(
+        match.group() for text in _iter_strings(source)
+        for match in PII_PLACEHOLDER_PATTERN.finditer(text)
+        if match.group().startswith("<PASSWORD_")
+    ))
+
+
+def _native_argument_strings(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == 'arguments' and isinstance(child, str):
+                yield child
+            else:
+                yield from _native_argument_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _native_argument_strings(child)
 
 
 def _chat_response_content(payload) -> str:
@@ -204,10 +233,14 @@ def _record_provider_payload(path, payload):
             except (ValueError, TypeError):
                 pass
     saw_dkb_canary = any(canary in value for canary in DKB_CANARIES for value in strings)
+    opaque_hashes = [hashlib.sha256(item["encrypted_content"].encode()).hexdigest()
+                     for item in (payload.get("input") or []) if isinstance(item, dict)
+                     and item.get("type") == "reasoning" and isinstance(item.get("encrypted_content"), str)]
     with CAPTURE_LOCK:
         CAPTURE["provider_requests"] += 1
         CAPTURE["provider_request_paths"].append(path)
         CAPTURE["provider_saw_canary"] |= saw_canary
+        CAPTURE["provider_saw_question_mark"] |= _text_contains(payload, "?")
         CAPTURE["provider_saw_dkb_canary"] |= saw_dkb_canary
         CAPTURE["provider_saw_base64_boundary_value"] |= saw_base64_boundary_value
         CAPTURE["provider_saw_private_key_marker"] |= saw_private_key
@@ -215,6 +248,11 @@ def _record_provider_payload(path, payload):
         CAPTURE["provider_saw_phone_placeholder"] |= saw_phone_placeholder
         CAPTURE["provider_saw_pii_placeholder"] |= saw_pii_placeholder
         CAPTURE["provider_saw_synthetic_marker"] |= saw_synthetic_marker
+        CAPTURE["provider_encrypted_content_sha256"].extend(opaque_hashes)
+        CAPTURE["provider_saw_e9_raw_phone"] |= any(
+            _text_contains(payload, phone) for phone in (RAW_PHONE, "+79039876543", "+79030000001"))
+        if _text_contains(payload, 'JSON_NUMBER_ECHO'):
+            CAPTURE['provider_native_arguments'].extend(_native_argument_strings(payload))
 
 
 def _failure_mode(payload) -> str | None:
@@ -308,12 +346,17 @@ class Handler(BaseHTTPRequestHandler):
             match.group() for text in _iter_strings(payload.get("messages", []))
             for match in PII_PLACEHOLDER_PATTERN.finditer(text)
         ))
+        if payload.get("k07_password_echo") is True:
+            values = _password_echo_values(payload)
         if not values and _text_contains(payload, "BRIDGE_CLEAN"):
             values = ["safe-bridge-value"]
         text = " / ".join(values)
         tools = payload.get("tools") or []
         tool = tools[0]["function"] if tools else None
         arguments = json.dumps({"values": values})
+        if _text_contains(payload, 'JSON_NUMBER_ECHO'):
+            arguments = next(_native_argument_strings(payload))
+            text = arguments
         reasoning = "checking " + text if _text_contains(payload, "BRIDGE_REASONING") else None
         length = _text_contains(payload, "BRIDGE_LENGTH")
         if _text_contains(payload, "BRIDGE_PARTIAL_MARKER"):
@@ -479,7 +522,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)
-            if _text_contains(payload, "STOCK_BRIDGE_ECHO"):
+            if (_text_contains(payload, "STOCK_BRIDGE_ECHO") or _text_contains(payload, 'JSON_NUMBER_ECHO')
+                    or payload.get("k07_password_echo") is True):
                 self._write_chat_bridge_echo(payload)
                 return
             if not self._controlled_wait(payload):
@@ -653,16 +697,22 @@ class Handler(BaseHTTPRequestHandler):
             if failure_mode == "timeout":
                 time.sleep(FAILURE_DELAY_SECONDS)
             response_content = _responses_response_content(payload)
+            if _text_contains(payload, 'JSON_NUMBER_ECHO'):
+                response_content = next(_native_argument_strings(payload))
             response_id = "resp_" + uuid.uuid4().hex
-            if _text_contains(payload, "STATEFUL_HISTORY"):
+            password_echo = payload.get("k07_password_echo") is True
+            password_tool_echo = password_echo and bool(payload.get("tools"))
+            if _text_contains(payload, "STATEFUL_HISTORY") or password_echo:
                 with CAPTURE_LOCK:
                     previous = RESPONSES_HISTORY.get(payload.get("previous_response_id"), [])
                     current = [m.group(0) for text in _iter_strings(payload.get("input"))
                                for m in PII_PLACEHOLDER_PATTERN.finditer(text)]
                     values = list(dict.fromkeys(previous + current))
+                    if password_echo:
+                        values = _password_echo_values(payload)
                     RESPONSES_HISTORY[response_id] = values
                 response_content = (
-                    json.dumps({"values": values}) if _text_contains(payload, "HISTORY_TOOL")
+                    json.dumps({"values": values}) if _text_contains(payload, "HISTORY_TOOL") or password_tool_echo
                     else " / ".join(values) or "ok"
                 )
             if RESPONSE_DELAY_SECONDS > 0:
@@ -694,11 +744,17 @@ class Handler(BaseHTTPRequestHandler):
                     "total_tokens": 2,
                 },
             }
-            if _text_contains(payload, "STATEFUL_HISTORY") and _text_contains(payload, "HISTORY_TOOL"):
+            if ((_text_contains(payload, "STATEFUL_HISTORY") and _text_contains(payload, "HISTORY_TOOL"))
+                    or _text_contains(payload, 'NATIVE_ARGUMENT_TOOL') or password_tool_echo):
                 response["output"] = [{
                     "id": "fc_mock", "type": "function_call", "call_id": "call_mock",
                     "name": "save", "arguments": response_content, "status": "completed",
                 }]
+            if _text_contains(payload, "E9_ECHO_ENCRYPTED"):
+                response["output"].extend({"id": "rs_" + uuid.uuid4().hex, "type": "reasoning", "summary": [],
+                                            "encrypted_content": item["encrypted_content"]}
+                                           for item in payload.get("input", []) if isinstance(item, dict)
+                                           and item.get("type") == "reasoning" and "encrypted_content" in item)
             if payload.get("stream") is True:
                 if failure_mode == "stream_disconnect":
                     self._write_sse(
@@ -718,7 +774,18 @@ class Handler(BaseHTTPRequestHandler):
                         ]
                     )
                     return
-                delta_kind = "response.function_call_arguments.delta" if _text_contains(payload, "HISTORY_TOOL") else "response.output_text.delta"
+                delta_kind = ("response.function_call_arguments.delta"
+                              if _text_contains(payload, "HISTORY_TOOL") or _text_contains(payload, 'NATIVE_ARGUMENT_TOOL') or password_tool_echo
+                              else "response.output_text.delta")
+                if _text_contains(payload, "E9_FRAGMENTED_RESPONSE") or password_echo:
+                    events = [(delta_kind, {"type": delta_kind, "sequence_number": index,
+                               "item_id": response["output"][0]["id"], "output_index": 0,
+                               "content_index": 0, "delta": response_content[start:start + 3]})
+                              for index, start in enumerate(range(0, len(response_content), 3))]
+                    events.append(("response.completed", {"type": "response.completed",
+                                   "sequence_number": len(events), "response": response}))
+                    self._write_sse(events)
+                    return
                 self._write_sse(
                     [
                         (

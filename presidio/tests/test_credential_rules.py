@@ -78,6 +78,60 @@ def test_bare_punctuation_password_and_quoted_braces_are_literal_values():
     _assert_rule_match(PasswordRecognizer(), "password='{}{}'", "credential.kv.password", "PASSWORD", "{}{}")
 
 
+@pytest.mark.parametrize("value", ["!?$", "??!", "???", "?", "-$"])
+@pytest.mark.parametrize("key,separator", [("Пароль", ": "), ("PASSWORD", "="), ("DB_PASSWORD", "=")])
+@pytest.mark.parametrize("quoted", [False, True])
+def test_explicit_question_mark_password_is_covered_in_full(value, key, separator, quoted):
+    literal = json.dumps(value) if quoted else value
+    _assert_rule_match(
+        PasswordRecognizer(), f"{key}{separator}{literal}",
+        "credential.kv.password", "PASSWORD", value,
+    )
+
+
+@pytest.mark.parametrize("suffix", ["", "\nordinary text", " next=visible", ", next=visible", "; next=visible"])
+def test_question_mark_password_does_not_consume_adjacent_fields(suffix):
+    text = "PASSWORD=!?$" + suffix
+    _assert_rule_match(PasswordRecognizer(), text, "credential.kv.password", "PASSWORD", "!?$")
+
+
+@pytest.mark.parametrize("value", ["!?$", "???", "?"])
+def test_question_mark_password_preserves_json_field_boundaries(value):
+    text = json.dumps({"password": value, "next": "ordinary"})
+    _assert_rule_match(PasswordRecognizer(), text, "credential.kv.password", "PASSWORD", value)
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+@pytest.mark.parametrize("length,accepted", [(1, True), (256, True), (257, False)])
+def test_question_mark_password_length_limit_is_not_a_partial_match(quoted, length, accepted):
+    value = "?" * length
+    text = "PASSWORD=" + (json.dumps(value) if quoted else value)
+    results = _results(PasswordRecognizer(), text)
+    if accepted:
+        assert len(results) == 1 and results[0].entity_type == "PASSWORD"
+        assert text[results[0].start:results[0].end] == value
+    else:
+        assert results == []
+
+
+@pytest.mark.parametrize("text", [
+    "Что означает пароль?", "Просто пунктуация: !?$", "???", "bash-?", "echo '!?$'",
+    "password=${SECRET}", "password=${?}", "password=config.password", "password=$()",
+    "password == '?'", "password => other", "password='{}{}'.format(first, second)",
+    "password=", "password='   '", "password='ab'", "password=changeme",
+])
+def test_question_mark_password_keeps_context_and_reference_exclusions(text):
+    assert _results(PasswordRecognizer(), text) == []
+
+
+@pytest.mark.parametrize("recognizer,entity,key", [
+    (LoginRecognizer, "LOGIN", "login"), (AuthTokenRecognizer, "AUTH_TOKEN", "AUTH_TOKEN"),
+    (SecretKeyRecognizer, "SECRET_KEY", "SECRET_KEY"),
+])
+def test_question_mark_password_does_not_change_other_credential_types(recognizer, entity, key):
+    assert recognizer().analyze(f"{key}=!?$", [entity]) == []
+
+
 AWS_ACCESS_TOKEN = "AKIA" + "A2B3C4D5E6F7G2H3"
 BEDROCK_LONG_KEY = "ABSK" + "A" * 109
 BEDROCK_SHORT_KEY = "bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t"

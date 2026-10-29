@@ -421,7 +421,7 @@ class PasswordRecognizer(_CapturedCredentialRecognizer):
                     r"\s*\.format\s*\(", tail
                 ):
                     return False
-            elif re.fullmatch(r"[!$@#%^*+_~\\-]{1,256}", value) is None:
+            elif re.fullmatch(r"[!?$@#%^*+_~\\-]{1,256}", value) is None:
                 # Reject partial operators, containers and quotation syntax.
                 return False
             return (

@@ -18,10 +18,13 @@ from setup_codex_lb import update_env_value
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from presidio.model_contract import REMOVED_SETTINGS, reject_removed_settings
 STACKS = {"litellm-presidio", "litellm-presidio-codex-lb"}
-RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB")
+RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB", "TRITON")
 RESOURCE_KEYS = {f"{name}_{suffix}" for name in RESOURCE_COMPONENTS for suffix in ("CPUS", "MEMORY")}
-RESOURCE_KEYS |= {"LITELLM_REPLICAS", "ANALYZER_REPLICAS"}
+COUNT_KEYS = {"LITELLM_REPLICAS", "ANALYZER_REPLICAS", "TRITON_REPLICAS", "TRITON_MODEL_INSTANCES"}
+RESOURCE_KEYS |= COUNT_KEYS
 
 
 class DeploymentError(RuntimeError):
@@ -78,9 +81,13 @@ def resources(path: Path) -> dict[str, str]:
         if key in values:
             raise DeploymentError(f"Повторная запись {key} в {path}")
         value = setting(path, key)
-        if key.endswith("REPLICAS"):
+        if key in COUNT_KEYS:
             if not re.fullmatch(r"[1-9][0-9]*", value):
                 raise DeploymentError(f"{key}: требуется положительное целое число")
+            if key == "TRITON_REPLICAS" and value not in {"1", "2"}:
+                raise DeploymentError("TRITON_REPLICAS: поддерживаются один или два контейнера")
+            if key == "TRITON_MODEL_INSTANCES" and int(value) > 32:
+                raise DeploymentError("TRITON_MODEL_INSTANCES: допустимо от 1 до 32")
         elif key.endswith("CPUS"):
             if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value) or Decimal(value) <= 0:
                 raise DeploymentError(f"{key}: требуется положительное число CPU")
@@ -94,16 +101,17 @@ class Context:
     def __init__(self, *, stack: str | None = None, env_file: str | None = None):
         self.stack = stack or os.getenv("STACK", "litellm-presidio")
         self.topology = os.getenv("TOPOLOGY", "functional")
-        self.profile = os.getenv("ANALYZER_PROFILE", "cpu")
         self.env_file = Path(env_file or os.getenv("ENV_FILE", ".env"))
+        file_keys = set(re.findall(r"(?m)^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=",
+                                  self.env_file.read_text() if self.env_file.is_file() else ""))
+        try:
+            reject_removed_settings(set(os.environ) | file_keys)
+        except ValueError as error:
+            raise DeploymentError(str(error) + "; удалите эти параметры, см. docs/configuration.md") from None
         if self.stack not in STACKS:
             raise DeploymentError("Укажите STACK=litellm-presidio или STACK=litellm-presidio-codex-lb")
         if self.topology not in {"functional", "production"}:
             raise DeploymentError("TOPOLOGY должен быть functional или production")
-        if self.profile not in {"cpu", "gpu"}:
-            raise DeploymentError("ANALYZER_PROFILE должен быть cpu или gpu")
-        if self.topology == "production" and self.profile != "cpu":
-            raise DeploymentError("Production-профиль этой версии поддерживает только CPU")
         self.explicit_mode = os.getenv("PII_MODE_ORIGIN") == "command line"
         raw_mode = os.environ["PII_GUARDRAIL_MODE"] if "PII_GUARDRAIL_MODE" in os.environ else setting(self.env_file, "PII_GUARDRAIL_MODE", "mask")
         self.mode = raw_mode.strip().lower()
@@ -111,8 +119,6 @@ class Context:
             raise DeploymentError("PII_GUARDRAIL_MODE должен быть MASK или BLOCK; пустое значение запрещено")
         self.values = {}
         self.files = ["docker-compose.yml"]
-        if self.profile == "gpu":
-            self.files.append("docker-compose.gpu.yml")
         if self.extended:
             self.files.append("docker-compose.codex-lb.yml")
         if self.topology == "production":
@@ -126,7 +132,14 @@ class Context:
             raise DeploymentError("TOPOLOGY_ENV применяется только к production")
         self.environment = dict(os.environ, **self.values)
         self.environment.update(PII_GUARDRAIL_MODE=self.mode, TOPOLOGY=self.topology)
+        for key in ("TRITON_REPLICAS", "TRITON_MODEL_INSTANCES", "TRITON_CPUS", "TRITON_MEMORY"):
+            expected = self.values.get(key, {"TRITON_REPLICAS": "1", "TRITON_MODEL_INSTANCES": "2"}.get(key, ""))
+            for raw in (os.getenv(key), setting(self.env_file, key) if key in file_keys else None):
+                if raw is not None and raw != expected:
+                    raise DeploymentError(f"{key}: противоречит топологии; используйте production.env/TOPOLOGY_ENV")
+        self._validate_ner_settings()
         self._model = None
+        self._identity = None
         try:
             self.start_timeout = int(os.getenv("STACK_START_TIMEOUT", "180"))
         except ValueError as exc:
@@ -138,11 +151,36 @@ class Context:
     def extended(self):
         return self.stack == "litellm-presidio-codex-lb"
 
+    def _validate_ner_settings(self):
+        rules = {
+            "PRESIDIO_ANALYZER_WORKERS": (1, None, True),
+            "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": (1, None, True),
+            "PRESIDIO_ANALYZER_QUEUE_LIMIT": (0, None, True),
+            "PRESIDIO_ANALYZER_NER_BATCH_SIZE": (1, 32, True),
+            "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": (0, None, False),
+            "PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS": (0, 600, False),
+        }
+        for key, (minimum, maximum, integer) in rules.items():
+            raw = os.environ.get(key, setting(self.env_file, key))
+            if raw == "":
+                continue
+            try:
+                value = Decimal(raw)
+                valid = value.is_finite() and value >= minimum and (maximum is None or value <= maximum)
+                valid = valid and (not integer or bool(re.fullmatch(r"[0-9]+", raw)))
+                if key == "PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS":
+                    valid = valid and value > 0
+            except ArithmeticError:
+                valid = False
+            if not valid:
+                raise DeploymentError(f"Некорректная эксплуатационная настройка {key}")
+
     @property
     def counts(self):
         counts = {"nginx": 1, "db": 1, "redis": 1, "litellm": 1, "presidio-analyzer": 1}
         if self.topology == "production":
             counts.update(litellm=int(self.values["LITELLM_REPLICAS"]), **{"presidio-analyzer": int(self.values["ANALYZER_REPLICAS"])})
+        counts["ner-triton"] = int(self.values.get("TRITON_REPLICAS", "1"))
         if self.extended:
             counts.update({"codex-lb": 1, "codex-lb-db": 1})
         return counts
@@ -254,12 +292,16 @@ class Context:
                         failures.append(f"{item['Name'].lstrip('/')}: не готов")
                     elif service == "presidio-analyzer" and not self.ner_ready(item):
                         failures.append(f"{item['Name'].lstrip('/')}: NER не прогрета")
+                    elif service == "ner-triton" and not self.triton_ready(item):
+                        failures.append(f"{item['Name'].lstrip('/')}: комплект Triton не подтверждён")
                     if service == "litellm":
                         mode = next((entry.split("=", 1)[1] for entry in item["Config"]["Env"] if entry.startswith("PII_GUARDRAIL_MODE=")), "mask")
                         if mode != self.mode:
                             failures.append(f"{item['Name'].lstrip('/')}: работает {mode.upper()}, ожидается {self.mode.upper()}")
             if not failures and services is None and not self.gateway_ready(containers):
                 failures.append("Nginx: маршрут к LiteLLM или codex-lb не готов")
+            if not failures and "ner-triton" in wanted and not self.triton_route_ready(containers):
+                failures.append("Nginx: внутренний маршрут к Triton не готов")
             if not failures:
                 for item in containers:
                     service = item["Config"]["Labels"].get("com.docker.compose.service")
@@ -281,6 +323,16 @@ class Context:
                 return False
         return True
 
+    def triton_route_ready(self, containers):
+        ingress = next((item for item in containers
+                        if item["Config"]["Labels"].get("com.docker.compose.service") == "nginx"
+                        and item["State"].get("Running")), None)
+        if ingress is None:
+            return False
+        result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5",
+            "http://127.0.0.1:8000/v2/models/tiny2/versions/1/ready"], capture_output=True)
+        return result.returncode == 0
+
     def ner_ready(self, item):
         code = "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=5)); print(json.dumps(data))"
         result = subprocess.run(["docker", "exec", item["Id"], "python", "-c", code], text=True, capture_output=True)
@@ -288,8 +340,38 @@ class Context:
             return False
         try:
             data = json.loads(result.stdout)
-            return data.get("ner_state") == "ready" and data.get("ner_warmed_up") is True
+            return (isinstance(data, dict) and data.get("ner_state") == "ready" and data.get("ner_warmed_up") is True
+                    and data.get("ner_model") == self.model_identity["model_id"]
+                    and data.get("ner_revision") == self.model_identity["revision"]
+                    and data.get("ner_onnx_sha256") == self.model_identity["onnx_sha256"])
         except ValueError:
+            return False
+
+    @property
+    def model_identity(self):
+        if self._identity is None:
+            # Read the trusted metadata from the target build, never from the
+            # first response of a balanced server or a manually supplied hash.
+            image = self.model["services"]["ner-triton"]["image"]
+            output = subprocess.check_output(["docker", "run", "--rm", "--network", "none",
+                "--entrypoint", "python3", image, "/opt/ru-ner/verify_triton_service.py", "--identity-only"],
+                text=True, timeout=30)
+            self._identity = json.loads(output)
+            if (not isinstance(self._identity, dict) or
+                    set(self._identity) != {"model_id", "revision", "onnx_sha256"} or
+                    not isinstance(self._identity["onnx_sha256"], str) or
+                    not re.fullmatch(r"[0-9a-f]{64}", self._identity["onnx_sha256"])):
+                raise DeploymentError("Не удалось прочитать доверенную идентичность сборки Triton")
+        return self._identity
+
+    def triton_ready(self, item):
+        try:
+            result = subprocess.run(["docker", "exec", item["Id"], "python3",
+                "/opt/ru-ner/verify_triton_service.py"], text=True, capture_output=True, timeout=10)
+            if result.returncode:
+                return False
+            return json.loads(result.stdout) == self.model_identity
+        except (ValueError, subprocess.TimeoutExpired):
             return False
 
     def start(self, force=False, only_litellm=False):
@@ -301,7 +383,7 @@ class Context:
         serving = list(previous)
         timeout = self.start_timeout
         if not force:
-            for service in ("litellm", "presidio-analyzer"):
+            for service in ("litellm", "presidio-analyzer", "ner-triton"):
                 existing = [item for item in previous if item["Config"]["Labels"].get("com.docker.compose.service") == service]
                 if existing:
                     expected_hash = self.compose("config", "--hash", service, capture=True).split()[-1]
@@ -316,9 +398,6 @@ class Context:
                         previous = [item for item in previous if item not in existing]
         if only_litellm:
             self.health(services={service: count for service, count in self.counts.items() if service != "litellm"})
-        # Close ingress before changing the policy or topology of serving instances.
-        if any(item["State"]["Running"] for item in self.containers()):
-            self.compose("stop", "nginx")
         # Functional exposes LiteLLM directly too; close that ingress on policy switches.
         for item in serving:
             labels = item["Config"]["Labels"]
@@ -329,13 +408,34 @@ class Context:
                 self.compose("stop", "litellm")
                 previous = [entry for entry in previous if entry["Config"]["Labels"].get("com.docker.compose.service") != "litellm"]
                 break
+        for service in ("presidio-analyzer", "ner-triton"):
+            if any(item["State"]["Running"] and
+                   item["Config"]["Labels"].get("com.docker.compose.service") == service and
+                   item["Config"]["Labels"].get("ru-llm-proxy.topology", "functional") != self.topology
+                   for item in serving):
+                # Functional Analyzer publishes 5001; production Nginx takes
+                # that port. Release it before bringing the new gateway up.
+                self.compose("stop", service)
+                previous = [item for item in previous
+                            if item["Config"]["Labels"].get("com.docker.compose.service") != service]
         self.persist_mode()
         if force:
             previous = []
         flags = ["--force-recreate"] if force else []
+        # Full configuration from the start; the operator isolates real client
+        # traffic during deployment. Nginx must precede the required Analyzer.
+        self.compose("up", "-d", "--no-build", "--no-deps", *flags, "nginx")
+        self.compose("exec", "-T", "nginx", "nginx", "-t")
+        self.health(timeout, {"nginx": 1})
         if not only_litellm:
             self.compose("up", "-d", "--no-build", *flags, "db", "redis")
             self.health(timeout, {"db": 1, "redis": 1})
+            for count in self.start_counts(previous, "ner-triton"):
+                self.compose("up", "-d", "--no-build", "--no-deps", *flags,
+                             "--scale", f"ner-triton={count}", "ner-triton")
+                self.health(timeout, {"ner-triton": count})
+                flags = []
+        flags = ["--force-recreate"] if force else []
         # Sequential cold starts keep checkpoint-loading peaks bounded.
         for count in ([] if only_litellm else self.start_counts(previous, "presidio-analyzer")):
             self.compose("up", "-d", "--no-build", "--no-deps", *flags, "--scale", f"presidio-analyzer={count}", "presidio-analyzer")
@@ -349,7 +449,6 @@ class Context:
             self.compose("up", "-d", "--no-build", "--no-deps", *flags, "--scale", f"litellm={count}", "litellm")
             self.health(timeout, {"litellm": count})
             flags = []
-        self.compose("up", "-d", "--no-build", "--no-deps", *(["--force-recreate"] if force else []), "nginx")
         self.health(timeout)
 
     def start_counts(self, previous, service):
@@ -370,15 +469,15 @@ class Context:
         self.health()
         for item in self.containers():
             service = item["Config"]["Labels"].get("com.docker.compose.service")
-            if service not in {"litellm", "presidio-analyzer"}:
+            if service not in {"litellm", "presidio-analyzer", "ner-triton"}:
                 continue
-            port = 4000 if service == "litellm" else 5001
+            port = {"litellm": 4000, "presidio-analyzer": 5001, "ner-triton": 8002}[service]
             print(f"# {item['Name'].lstrip('/')} /metrics", flush=True)
             code = f"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:{port}/metrics', timeout=10).read().decode())"
-            result = subprocess.check_output(["docker", "exec", item["Id"], "python", "-c", code], text=True)
-            if not any(line.startswith(("litellm_", "ru_pii_guardrail_", "ru_presidio_analyzer_")) for line in result.splitlines()):
+            result = subprocess.check_output(["docker", "exec", item["Id"], "python3", "-c", code], text=True)
+            if not any(line.startswith(("litellm_", "ru_pii_guardrail_", "ru_presidio_", "nv_inference_")) for line in result.splitlines()):
                 raise DeploymentError(f"В {service} отсутствуют метрики")
-            print("\n".join(result.splitlines()[:120]))
+            print(result)
 
 
 def main():

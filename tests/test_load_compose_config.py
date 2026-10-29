@@ -7,7 +7,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_PATH = ROOT / "tests" / "load" / "docker-compose.yml"
-GPU_COMPOSE_PATH = ROOT / "tests" / "load" / "docker-compose.gpu.yml"
 CONFIG_PATH = ROOT / "tests" / "load" / "litellm-config.yaml"
 LOCUST_IMAGE = (
     "locustio/locust:2.46.5@"
@@ -32,6 +31,7 @@ def test_load_contour_is_isolated_and_uses_real_stateful_dependencies():
         "load-mock-upstream-b",
         "load-presidio-analyzer",
         "load-analyzer-router",
+        "load-ner-triton",
         "load-litellm",
         "load-litellm-router",
         "load-key-manager",
@@ -86,7 +86,8 @@ def test_load_balancers_refresh_scaled_services_and_expire_idle_upstreams():
         config = (ROOT / "tests" / "load" / "nginx" / name).read_text(
             encoding="utf-8"
         )
-        assert "resolver 127.0.0.11 valid=1s ipv6=off;" in config
+        combined = config + (ROOT / "nginx/conf.d/triton.conf").read_text()
+        assert "resolver 127.0.0.11 valid=1s ipv6=off;" in combined
         assert " resolve;" in config
         assert "proxy_next_upstream_tries 2;" in config
         assert "keepalive_timeout 4s;" in config
@@ -141,11 +142,9 @@ def test_locust_and_key_manager_are_pinned_and_explicitly_profiled():
     assert generator["environment"]["LOAD_ANALYZER_BACKEND"] == (
         "${LOAD_ANALYZER_BACKEND:-real}"
     )
-    assert generator["environment"]["LOAD_ANALYZER_PROFILE"] == (
-        "${LOAD_ANALYZER_PROFILE:-cpu}"
-    )
+    assert "LOAD_ANALYZER_PROFILE" not in generator["environment"]
     assert generator["environment"]["LOAD_ANALYZER_QUEUE_LIMIT"] == (
-        "${LOAD_ANALYZER_QUEUE_LIMIT:-8}"
+        "${LOAD_ANALYZER_QUEUE_LIMIT:-32}"
     )
     assert generator["environment"]["LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS"] == (
         "${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}"
@@ -170,20 +169,22 @@ def test_load_proxy_uses_project_guardrails_with_safe_failure_defaults():
     assert config["litellm_settings"]["require_auth_for_metrics_endpoint"] is False
 
 
-def test_gpu_load_overlay_reuses_the_cuda_analyzer_profile():
-    service = yaml.safe_load(GPU_COMPOSE_PATH.read_text(encoding="utf-8"))[
-        "services"
-    ]["load-presidio-analyzer"]
+def test_load_uses_the_same_cpu_triton_and_existing_router():
+    services = _compose()["services"]
+    assert services["load-ner-triton"]["build"]["target"] == "ner-triton"
+    assert "ports" not in services["load-ner-triton"]
+    assert services["load-analyzer-router"]["networks"]["load"]["aliases"] == ["nginx"]
+    assert "depends_on" not in services["load-analyzer-router"]
+    assert services["load-presidio-analyzer"]["depends_on"]["load-ner-triton"]["condition"] == "service_healthy"
+    assert not (ROOT / "tests/load/docker-compose.gpu.yml").exists()
 
-    assert service["build"]["target"] == "analyzer-gpu"
-    assert service["environment"] == {
-        "PRESIDIO_ANALYZER_DEVICE_PROFILE": "gpu",
-        "PRESIDIO_ANALYZER_GPU_PRECISION": "fp16",
-        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "8",
-        "PRESIDIO_ANALYZER_WORKERS": "1",
-    }
-    device = service["deploy"]["resources"]["reservations"]["devices"][0]
-    assert device == {"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}
+
+def test_research_cpu_threads_and_batch_are_explicit_without_product_defaults():
+    for service in ("load-presidio-analyzer", "load-generator"):
+        env = _compose()["services"][service]["environment"]
+        for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+            assert env[name] == "${" + name + ":-2}"
+        assert env["PRESIDIO_ANALYZER_NER_BATCH_SIZE"] == "${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-4}"
 
 
 def test_run_script_requires_explicit_consent_for_real_provider_load():
@@ -221,10 +222,30 @@ def test_run_script_requires_explicit_consent_for_real_provider_load():
     assert '--stop-timeout "$LOAD_STOP_TIMEOUT_SECONDS"' in script
     assert 'LOAD_CONTOUR" = "mock-direct' in script
     assert 'LOAD_ANALYZER_BACKEND must be real or mock' in script
-    assert 'LOAD_ANALYZER_PROFILE must be cpu or gpu' in script
-    assert 'GPU_COMPOSE_FILE="$ROOT/tests/load/docker-compose.gpu.yml"' in script
+    assert 'reject_removed_settings' in script
+    assert 'GPU_COMPOSE_FILE' not in script
     assert '--scale "load-presidio-analyzer=$LOAD_ANALYZER_REPLICAS"' in script
     assert '--scale "load-litellm=$LOAD_LITELLM_REPLICAS"' in script
+
+
+def test_load_compute_is_internal_and_only_routers_have_ingress():
+    compose = _compose()
+    assert compose["networks"]["load"]["internal"] is True
+    for name, service in compose["services"].items():
+        assert "env_file" not in service
+        expected = ["load", "load-ingress"] if name in {
+            "load-analyzer-router", "load-litellm-router"
+        } else ["load"]
+        assert list(service["networks"]) == expected
+
+
+def test_load_records_and_scales_triton_separately_from_analyzer():
+    script = (ROOT / "tests/load/run.sh").read_text()
+    generator = _compose()["services"]["load-generator"]
+    assert '--scale "load-ner-triton=$LOAD_TRITON_REPLICAS"' in script
+    assert 'triton-metrics-$replica.prom' in script
+    assert generator["environment"]["LOAD_TRITON_REPLICAS"] == "${LOAD_TRITON_REPLICAS:-1}"
+    assert generator["environment"]["TRITON_MODEL_INSTANCES"] == "${TRITON_MODEL_INSTANCES:-2}"
     assert '--profile load run --rm --no-deps load-key-manager create' in script
     assert 'compose_run_args=(--no-TTY --no-deps)' in script
     assert 'if [ -z "$container_ids" ]' in script

@@ -8,6 +8,7 @@ services:
       - "${NGINX_HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/conf.d/triton.conf:/etc/nginx/conf.d/triton.conf:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
       interval: 30s
@@ -24,6 +25,7 @@ services:
       dockerfile: litellm/Dockerfile
     container_name: ru-llm-proxy
     restart: unless-stopped
+    entrypoint: ["sh", "/app/litellm_guardrails/entrypoint.sh"]
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     ports:
       - "${LITELLM_PORT:-4000}:4000"
@@ -102,7 +104,7 @@ services:
       context: .
       dockerfile: presidio/Dockerfile
       target: analyzer
-      args:
+      args: &ner-build-args
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
@@ -120,13 +122,20 @@ services:
       - "5001:5001"
     environment:
       - PRESIDIO_ANALYZER_WORKERS=${PRESIDIO_ANALYZER_WORKERS:-1}
-      - PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-1}
+      - PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-2}
       - PRESIDIO_ANALYZER_BASE64_POLICY=${PRESIDIO_ANALYZER_BASE64_POLICY:-content}
-      - PRESIDIO_ANALYZER_QUEUE_LIMIT=${PRESIDIO_ANALYZER_QUEUE_LIMIT:-8}
-      - PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+      - PRESIDIO_ANALYZER_QUEUE_LIMIT=${PRESIDIO_ANALYZER_QUEUE_LIMIT:-32}
+      - PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}
       - PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=${PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM:-true}
       - PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=${PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES:-internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local}
       - PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=${PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS:-true}
+      - PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS:-60}
+      - PRESIDIO_ANALYZER_NER_BATCH_SIZE=${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-4}
+    depends_on:
+      nginx:
+        condition: service_healthy
+      ner-triton:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -137,6 +146,26 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    networks:
+      - ru-llm-proxy
+
+  # === Обязательная нейросеть: CPU Triton/ONNX Runtime ===
+  ner-triton:
+    image: ru-llm-proxy-ner-triton:latest
+    build:
+      context: .
+      dockerfile: presidio/Dockerfile
+      target: ner-triton
+      args: *ner-build-args
+    environment:
+      TRITON_MODEL_INSTANCES: "2"
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python3, /opt/ru-ner/verify_triton_service.py]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - ru-llm-proxy
 

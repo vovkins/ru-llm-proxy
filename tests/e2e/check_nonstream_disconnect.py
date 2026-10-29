@@ -118,6 +118,28 @@ def success(connection, content):
     assert actual == content, "Exact restoration changed"
 
 
+def check_preprocessing_cancel(host, path, stream):
+    observations_before = set(REDIS.scan_iter("preprocessing_observation:*"))
+    case_id, connection, before, _ = begin(host, path, "DISCONNECT_HOLD_ANALYZER", stream=stream)
+    try:
+        wait_for(lambda: state(case_id, "analyzer"), "analysis accepted")
+        assert mappings() == before
+        disconnect(connection)
+        # Do not release the Analyzer: disconnect must interrupt its held HTTP call.
+        wait_for(lambda: state(case_id, "analyzer").get("closed_at"), "analysis HTTP closed before release", 2)
+        observation_key = wait_for(
+            lambda: next(iter(set(REDIS.scan_iter("preprocessing_observation:*")) - observations_before), None),
+            "pre-provider cancellation cleanup", 2,
+        )
+        observation = REDIS.hgetall(observation_key)
+        assert observation["client_disconnected"] == "1", observation
+        assert not state(case_id), "Cancelled preprocessing called the provider"
+        assert mappings() == before, "Cancelled preprocessing left a request mapping"
+    finally:
+        connection.close()
+        release(case_id, "analyzer")
+
+
 def run(baseline):
     checks = 0
     fallback_keys = set()
@@ -160,23 +182,9 @@ def run(baseline):
             wait_for(lambda: not REDIS.exists(live_key), "neighbour success cleanup")
             checks += 1
 
-            # Disconnect while analysis is held: the stock monitor starts after pre-call.
-            observations_before = set(REDIS.scan_iter("disconnect_observation:*"))
-            case_id, connection, before, _ = begin(host, path, "DISCONNECT_HOLD_ANALYZER")
-            wait_for(lambda: state(case_id, "analyzer"), "analysis accepted")
-            assert mappings() == before
-            disconnect(connection)
-            release(case_id, "analyzer")
-            observation_key = wait_for(
-                lambda: next(iter(set(REDIS.scan_iter("disconnect_observation:*")) - observations_before), None),
-                "early disconnect observed as 499",
-            )
-            wait_for(lambda: REDIS.hget(observation_key, "cleanup_returned_at"),
-                     "early failure cleanup returned")
-            upstream = state(case_id)
-            assert not upstream or upstream["closed_at"] is not None
-            wait_for(lambda: mappings() == before, "early cancellation cleanup")
-            checks += 1
+            for stream in (False, True):
+                check_preprocessing_cancel(host, path, stream)
+                checks += 1
 
             # Repeat completion/close races. Either outcome must clean its own mapping.
             for _ in range(5):

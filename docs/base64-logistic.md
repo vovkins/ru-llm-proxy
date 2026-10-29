@@ -189,8 +189,8 @@ python presidio/evaluation/base64_policies.py \
 - `test_base64_logistic_cases.py` — синтетические аналоги кейсов безопасников,
   обычный код и текст без масок.
 - `test_base64_logistic_api.py` — HTTP, длинный текст через внешние фрагменты,
-  JSON-экранирование; вычисления BERT подменены.
-- `make test-ner-proxy` — собранный образ, настоящий BERT, Redis и тестовый провайдер:
+  JSON-экранирование; вычисления NER подменены.
+- `make test-ner-proxy` — собранные Analyzer/Triton, настоящая Tiny2, Redis и тестовый провайдер:
   оба API, текст и аргументы инструментов, `stream=False/True`, восстановление,
   блокировка без обращения к провайдеру и границы внешних фрагментов.
   Для новой политики: `PRESIDIO_ANALYZER_BASE64_POLICY=logistic make test-ner-proxy`.

@@ -60,9 +60,9 @@ def prepare_window(
 
 def run_experiment(*, repetitions: int = 5) -> dict:
     # Import only on explicit execution; no production callback or setting.
-    from ..ner.huggingface_recognizer import HuggingFaceNERRecognizer, MODEL_REVISION
+    from ..ner.triton_recognizer import TritonNERRecognizer, MODEL_REVISION
 
-    recognizer = HuggingFaceNERRecognizer()
+    recognizer = TritonNERRecognizer()
     recognizer.load_model()
     selected = (
         case

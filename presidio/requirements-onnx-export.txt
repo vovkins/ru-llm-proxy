@@ -1,0 +1,6 @@
+# Build-only export and parity validation; not installed in Analyzer runtime.
+transformers==4.57.6
+huggingface-hub==0.36.2
+safetensors==0.8.0
+onnx==1.23.1
+onnxruntime==1.30.0

@@ -1,0 +1,32 @@
+{"id":"dev_person","annotated_text":"Получатель посылки — {{PERSON:Марина Орлова}}.","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_location","annotated_text":"Место встречи: {{LOCATION:Казань}}.","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_org","annotated_text":"Счёт выставило {{ORGANIZATION:ООО «Летний сад»}}.","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_login","annotated_text":"PGUSER={{LOGIN:report_reader_47}}","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_password","annotated_text":"PASSWORD={{PASSWORD:Zv47/abc!?}}","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_auth","annotated_text":"AUTH_TOKEN={{AUTH_TOKEN:synthetic-access-47!?}}","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_secret","annotated_text":"SECRET_KEY={{SECRET_KEY:synthetic-signing-48}}","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_contract","annotated_text":"Номер договора: \"{{CONTRACT_NUMBER:ДК-2026/483}}\"","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_prompt","annotated_text":"bash-$ printf hello","critical":false,"tags":["negative","development","tiny2_components"]}
+{"id":"dev_instruction","annotated_text":"Верни результат без пояснений.","critical":false,"tags":["negative","development","tiny2_components"]}
+{"id":"dev_done","annotated_text":"Статус завершения: Done.","critical":false,"tags":["negative","development","tiny2_components"]}
+{"id":"dev_word","annotated_text":"The program prints NorthwindResearch as an example.","critical":false,"tags":["negative","development","tiny2_components"]}
+{"id":"dev_prompt_argument","annotated_text":"bash-$ tool '{{PASSWORD:-$}}'","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_labeled_prompt","annotated_text":"PASSWORD={{PASSWORD:-$}}","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_location_case","annotated_text":"Доставка в {{LOCATION:Нижний Новгород}}.","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"dev_person_sentence","annotated_text":"Ответственный {{PERSON:Николай Сорокин}}. Верни строку.","critical":true,"tags":["positive","development","tiny2_components"]}
+{"id":"ctrl_person","annotated_text":"Заявитель: {{PERSON:Оксана Белова}}.","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_location","annotated_text":"Офис расположен в {{LOCATION:Томске}}.","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_org","annotated_text":"Оплату приняло {{ORGANIZATION:АО «Северный ветер»}}.","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_login","annotated_text":"smtp_user={{LOGIN:dispatch_agent_63}}","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_password","annotated_text":"PASSWORD={{PASSWORD:Mn63+xyz?!.}}","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_auth","annotated_text":"AUTH_TOKEN={{AUTH_TOKEN:synthetic-access-64}}","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_secret","annotated_text":"SECRET_KEY={{SECRET_KEY:synthetic-signing-65!?}}","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_contract","annotated_text":"Госконтракт № \"{{CONTRACT_NUMBER:КТ-2026/957}}\"","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_prompt","annotated_text":"zsh> tool --flag","critical":false,"tags":["negative","control","tiny2_components"]}
+{"id":"ctrl_instruction","annotated_text":"Покажи только готовый ответ.","critical":false,"tags":["negative","control","tiny2_components"]}
+{"id":"ctrl_status","annotated_text":"Результат вычисления: complete.","critical":false,"tags":["negative","control","tiny2_components"]}
+{"id":"ctrl_word","annotated_text":"The command uses a local variable called ExampleValue.","critical":false,"tags":["negative","control","tiny2_components"]}
+{"id":"ctrl_prompt_argument","annotated_text":"zsh> tool '{{PASSWORD:>}}'","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_labeled_prompt","annotated_text":"Пароль: {{PASSWORD:!?$}}","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_location_case","annotated_text":"Поезд отправляется из {{LOCATION:Екатеринбурга}}.","critical":true,"tags":["positive","control","tiny2_components"]}
+{"id":"ctrl_org_sentence","annotated_text":"Получатель {{ORGANIZATION:ООО «Синий лес»}}. Покажи итог.","critical":true,"tags":["positive","control","tiny2_components"]}

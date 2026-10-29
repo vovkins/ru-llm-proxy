@@ -20,6 +20,7 @@ from presidio.entity_types import SUPPORTED_ENTITY_TYPES
 
 DKB_CORPUS = Path(__file__).resolve().parents[1] / "fixtures/dkb"
 DKB_CASES = json.loads((DKB_CORPUS / "manifest.json").read_text())
+NER_VALUE_CASES = json.loads((Path(__file__).resolve().parents[1] / "fixtures/ner-value-repair.json").read_text())
 
 
 @pytest_asyncio.fixture
@@ -137,6 +138,27 @@ async def test_round_trip_through_litellm_parser(
     await _round_trip_through_litellm_parser(
         api, output_kind, stream, replacement, entity_type
     )
+
+
+# These expected spans are also verified against the actual Analyzer
+# postprocessor; the transport mock alone cannot establish NER correctness.
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("output_kind", ["text", "arguments"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("case", NER_VALUE_CASES, ids=lambda c: c["id"])
+async def test_repaired_ner_values_round_trip(api, output_kind, stream, case, llm_logging_lifecycle):
+    await _round_trip_through_litellm_parser(api, output_kind, stream, "ner-value", case)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_uri_component_only_mock_still_respects_final_leak_policy(api, stream, llm_logging_lifecycle):
+    case = next(case for case in NER_VALUE_CASES if case["id"] == "uri-components")
+    incomplete = {key: value for key, value in case.items() if key != "analyzer_expected"}
+    with pytest.raises(litellm.UnprocessableEntityError, match="confirmed raw leak marker"):
+        await _round_trip_through_litellm_parser(api, "text", stream, "ner-value", incomplete)
 
 
 MODEL_RESPONSE_CASES = [
@@ -313,14 +335,14 @@ async def test_stock_responses_chat_bridge_history_without_persisted_history(
 
 async def _round_trip_through_litellm_parser(
     api, output_kind, stream, replacement, entity_type, *, behavior=None,
-    require_tool=False, bridge=False, required_tool_choice=False,
+    require_tool=False, bridge=False, required_tool_choice=False, analyzer=None,
 ):
     provider_api = "chat" if bridge else api
     dictionary = replacement == "dictionary"
-    corpus_case = entity_type if replacement == "dkb" else None
+    corpus_case = entity_type if replacement in {"dkb", "ner-value"} else None
     guardrail = RuPIIGuardrail(
-        pre_egress_policy_mode="off" if corpus_case else None,
-        final_payload_leak_check_mode="off" if corpus_case else None,
+        pre_egress_policy_mode="off" if replacement == "dkb" else None,
+        final_payload_leak_check_mode="off" if replacement == "dkb" else None,
         dictionary_substitutions_enabled=dictionary,
         dictionary_substitutions_file="",
         dictionary_substitutions_json=(
@@ -354,8 +376,14 @@ async def _round_trip_through_litellm_parser(
     redis.delete.side_effect = delete
     guardrail._redis = redis
     original = "Т-Банк" if dictionary else 'Москва "центр"\nC:\\work\\main.py\t😀'
-    if corpus_case:
+    if replacement == "dkb":
         original = (DKB_CORPUS / corpus_case["file"]).read_bytes().decode("utf-8")
+    elif replacement == "ner-value":
+        original = corpus_case["text"]
+        corpus_case = {**corpus_case, "expected": [
+            {"start": original.index(value), "end": original.index(value) + len(value), "entities": [kind]}
+            for value, kind in corpus_case.get("analyzer_expected", corpus_case["expected"])
+        ]}
     if replacement == "long-base64":
         original = "A" * 70000 + "\n    " + "B" * 70000
     expected = original
@@ -415,7 +443,7 @@ async def _round_trip_through_litellm_parser(
     with patch.object(
         guardrail,
         "_analyze_text",
-        return_value=entities,
+        **({"side_effect": analyzer} if analyzer is not None else {"return_value": entities}),
     ):
         masked = await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
     provider_value = "Зетта Групп" if dictionary else f"<{entity_type}_1>"

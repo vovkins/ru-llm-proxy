@@ -26,7 +26,7 @@ class MemoryStore(ResponsesStateStore):
 
     async def load(self, owner, model, response_id):
         try:
-            return dict(self.snapshots[owner, model, response_id])
+            return self.snapshots[owner, model, response_id].copy()
         except KeyError:
             raise missing_state() from None
 
@@ -36,7 +36,7 @@ class MemoryStore(ResponsesStateStore):
         key = owner, model, response_id
         if key in self.snapshots and self.snapshots[key] != mapping:
             raise missing_state()
-        self.snapshots[key] = dict(mapping)
+        self.snapshots[key] = mapping.copy()
 
 
 @pytest.fixture
@@ -52,10 +52,10 @@ def harness(monkeypatch):
     temporary = {}
 
     async def save(request_id, mapping):
-        temporary[request_id] = dict(mapping)
+        temporary[request_id] = mapping.copy()
 
     async def load(request_id):
-        return dict(temporary.get(request_id, {}))
+        return temporary.get(request_id, {}).copy()
 
     async def delete(request_id):
         temporary.pop(request_id, None)
@@ -123,6 +123,39 @@ async def test_three_turns_restore_old_and_new_without_raw_upstream(harness, str
                                         previous="resp-second", stream=stream, arguments=arguments)
     assert captured == "Repeat both contacts"
     assert "alpha@example.test" in output and "beta@example.test" in output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+@pytest.mark.parametrize('arguments', [False, True])
+async def test_numeric_provenance_survives_three_turns_and_immutable_branches(harness, stream, arguments):
+    guardrail, store, temporary, auth = harness
+
+    async def analyze(text, *_args):
+        return [{'entity_type': 'RU_PASSPORT', 'start': match.start(), 'end': match.end(), 'score': .75}
+                for match in re.finditer(r'122648|654321|847291', text)]
+
+    guardrail._analyze_text_with_cache.side_effect = analyze
+    source = '{"passport_number":122648,"string":"122648"}'
+    output = '{"n":"<RU_PASSPORT_1>","s":"<RU_PASSPORT_2>"}'
+    captured, text, _ = await complete(harness, source, 'numeric-parent', output, stream=stream, arguments=arguments)
+    assert json.loads(captured) == {'passport_number': '<RU_PASSPORT_1>', 'string': '<RU_PASSPORT_2>'}
+    assert json.loads(text) == {'n': 122648, 's': '122648'}
+    parent = await store.load(store.owner(auth.token), 'gpt-6-luna', 'numeric-parent')
+    assert parent.json_numbers == {'<RU_PASSPORT_1>'}
+    branch_output = '{"old":"<RU_PASSPORT_1>","new":"<RU_PASSPORT_3>","s":"<RU_PASSPORT_2>"}'
+    for response_id, literal in [('left', 654321), ('right', 847291)]:
+        captured, text, _ = await complete(harness, json.dumps({'passport_number': literal}), response_id,
+            branch_output, previous='numeric-parent', stream=stream, arguments=arguments)
+        assert str(literal) not in captured
+        assert json.loads(text) == {'old': 122648, 'new': literal, 's': '122648'}
+        child = await store.load(store.owner(auth.token), 'gpt-6-luna', response_id)
+        assert child.json_numbers == {'<RU_PASSPORT_1>', '<RU_PASSPORT_3>'}
+    assert parent.json_numbers == {'<RU_PASSPORT_1>'} and len(parent) == 2
+    _, text, _ = await complete(harness, [], 'empty-child', branch_output,
+                              previous='left', stream=stream, arguments=arguments)
+    assert json.loads(text) == {'old': 122648, 'new': 654321, 's': '122648'}
+    assert not temporary
 
 
 @pytest.mark.asyncio

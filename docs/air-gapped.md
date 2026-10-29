@@ -1,6 +1,8 @@
 # Запуск в изолированной корпоративной среде
 
-Инструкция описывает запуск текущего `main` на стенде, где внешние соединения
+Инструкция относится к целевому комплекту Tiny2/Triton. Для обновления
+прежней установки используйте порядок [перехода целым выпуском](deployment.md#применение-к-существующей-установке).
+На изолированном стенде внешние соединения
 проходят через корпоративный прокси, TLS переподписывается корпоративным
 удостоверяющим центром, а пакеты Python берутся из внутреннего зеркала.
 
@@ -17,8 +19,9 @@
 - адрес корпоративного HTTP-прокси;
 - цепочку корневых и промежуточных сертификатов прокси в файлах `certs/*.crt`;
 - адрес внутреннего индекса Python-пакетов;
-- отдельный индекс с точным CPU-пакетом `torch==2.13.0+cpu`;
-- доступ через прокси к закрепленной модели Hugging Face и образам Docker;
+- отдельный индекс с `torch==2.13.0+cpu` для сборочного экспорта;
+- доступ через прокси к закреплённой Tiny2 на Hugging Face и образам Docker,
+  включая официальный Triton в NGC (`nvcr.io`);
 - для состава с `codex-lb` — доступ к конечным точкам OAuth и ChatGPT;
 - два ключа Z.AI и секреты локального запуска.
 
@@ -42,7 +45,7 @@
    ```dotenv
    HTTP_PROXY=http://proxy.corp.example:3128
    HTTPS_PROXY=http://proxy.corp.example:3128
-   NO_PROXY=localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db
+   NO_PROXY=localhost,127.0.0.1,db,redis,presidio-analyzer,ner-triton,litellm,nginx,codex-lb,codex-lb-db
 
    # Используйте эти значения, если корпоративный прокси не поддерживает WebSocket.
    CODEX_LB_HTTP_RESPONSES_SESSION_BRIDGE_ENABLED=false
@@ -87,15 +90,18 @@ make health STACK=litellm-presidio-codex-lb
 
 - `apt`, `pip` и spaCy используют общий прокси;
 - обычные зависимости берутся из `PIP_INDEX_URL`;
-- CPU-only PyTorch берется из `PYTORCH_INDEX_URL`;
+- PyTorch для экспорта берётся из `PYTORCH_INDEX_URL`; ONNX собирается и проверяется
+  до создания рабочего Analyzer и образа Triton;
 - разрешенные файлы модели скачиваются через `NER_MODEL_PROXY` либо общий
   `HTTPS_PROXY` и проверяются по размеру и SHA-256;
 - корпоративные сертификаты проверяются и добавляются в образы LiteLLM,
   Analyzer, тестов и, в расширенном составе, `codex-lb`; повреждённая
   PEM-цепочка останавливает сборку.
 
-Во время работы Analyzer использует только модель внутри образа и не обращается
-к Hugging Face. Внешний сетевой доступ требуется LiteLLM для прямых провайдеров,
+Во время работы Analyzer использует локальный токенизатор и обращается к
+Tiny2/Triton по HTTP через `nginx:8000`. Triton исполняет ONNX на CPU без загрузок
+из интернета. Корпоративный CA в Triton не добавляется: исходящие TLS-вызовы для
+обработки ему не нужны. Внешний доступ требуется LiteLLM для прямых провайдеров,
 а `codex-lb` — для OAuth и ChatGPT.
 
 ## Проверка
@@ -106,7 +112,7 @@ make health STACK=litellm-presidio-codex-lb
 curl -fsS http://localhost/health/liveliness
 
 curl -fsS http://localhost/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"ping"}],"max_tokens":8}'
 ```
@@ -117,6 +123,10 @@ curl -fsS http://localhost/v1/chat/completions \
 make guardrails-smoke STACK=litellm-presidio-codex-lb
 make routing-smoke STACK=litellm-presidio-codex-lb
 ```
+
+Для запроса выше нужен пользовательский ключ LiteLLM, не административный
+`LITELLM_MASTER_KEY`. Обновление существующей установки и возврат без удаления
+постоянных данных описаны в [deployment.md](deployment.md#применение-к-существующей-установке).
 
 В расширенном составе тот же Nginx публикует административный интерфейс
 `codex-lb` на `CODEX_LB_PORT`, по умолчанию `2455`. Контейнер `codex-lb` этот
@@ -140,3 +150,5 @@ make routing-smoke STACK=litellm-presidio-codex-lb
 | Не скачивается NER-модель | `NER_MODEL_PROXY` или общий `HTTPS_PROXY`, доступ к `huggingface.co` |
 | Внутренние запросы уходят в прокси | Имена сервисов и внутренние домены в `NO_PROXY` |
 | Не загружается базовый образ | Настройки прокси Docker daemon вне проекта |
+| Не загружается Triton | Доступ Docker daemon к `nvcr.io` и наличие закреплённого образа во внутреннем реестре |
+| Analyzer не видит модель | Внутренний маршрут `nginx:8000`, готовность каждого Triton и совпадение комплекта; `make health` |

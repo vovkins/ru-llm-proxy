@@ -88,13 +88,14 @@ def test_compose_routes_external_runtime_egress_through_proxy():
 
 def test_analyzer_keeps_verified_offline_cpu_model_contract():
     dockerfile = _read("presidio/Dockerfile")
-    cpu_requirements = _read("presidio/requirements-analyzer-cpu.txt")
+    cpu_requirements = _read("presidio/requirements-export-cpu.txt")
 
     assert "DEEPPAVLOV" not in dockerfile.upper()
     assert "python download_hf_model.py" in dockerfile
     assert "COPY --from=model-download" in dockerfile
     assert "HF_HUB_OFFLINE=1" in dockerfile
-    assert "TRANSFORMERS_OFFLINE=1" in dockerfile
+    assert "COPY --from=triton-model-export" in dockerfile
+    assert "transformers==" not in _read("presidio/requirements-analyzer.txt")
     assert "torch==2.13.0+cpu" in cpu_requirements
     assert "--index-url" not in cpu_requirements
     assert "PYTORCH_INDEX_URL" in dockerfile
@@ -132,5 +133,8 @@ def test_air_gapped_variables_and_main_support_are_documented():
         assert f"{variable}=" in env_example
         assert f"`{variable}`" in configuration
 
-    assert "запуск текущего `main`" in guide
-    assert "Analyzer использует только модель внутри образа" in guide
+    assert "Tiny2/Triton" in guide
+    assert "локальный токенизатор" in guide
+    assert "nginx:8000" in guide
+    assert "Triton исполняет ONNX на CPU без загрузок" in guide
+    assert "Analyzer использует только модель внутри образа" not in guide

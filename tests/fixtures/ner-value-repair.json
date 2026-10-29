@@ -1,0 +1,10 @@
+[
+  {"id":"cross-type", "text":"Иван Петровsecret12", "pieces":[["Иван Петров","PERSON"],["secret12","PASSWORD"]], "expected":[["Иван","PERSON"],["Петровsecret12","PASSWORD"]]},
+  {"id":"password-slashes", "text":"PASSWORD=a/b+c?d! next=visible", "pieces":[["b+c","PASSWORD"]], "expected":[["a/b+c?d!","PASSWORD"]]},
+  {"id":"password-punctuation", "text":"PASSWORD=Alp42!?. next=visible", "pieces":[["Alp42","PASSWORD"]], "expected":[["Alp42!?.","PASSWORD"]]},
+  {"id":"json-password", "text":"{\"password\":\"Alp/ha!?\",\"next\":\"visible\"}", "pieces":[["ha","PASSWORD"]], "expected":[["Alp/ha!?","PASSWORD"]]},
+  {"id":"uri-components", "text":"DB=postgresql://alice:Pa%40ss!@db:5432/app", "pieces":[["ali","LOGIN"],["40s","PASSWORD"]], "expected":[["alice","LOGIN"],["Pa%40ss!","PASSWORD"]], "analyzer_expected":[["postgresql://alice:Pa%40ss!@db:5432/app","DB_URL"]]},
+  {"id":"query-component", "text":"https://service.local/run?api_key=Ab/C+!?&visible=ordinary", "pieces":[["C+","AUTH_TOKEN"]], "expected":[["Ab/C+!?","AUTH_TOKEN"]]},
+  {"id":"adjacent-array-values", "text":"{\"values\":[\"abc/def!\",\"ghi?jkl\"],\"next\":\"visible\"}", "pieces":[["def","PASSWORD"],["ghi","PASSWORD"]], "expected":[["abc/def!","PASSWORD"],["ghi?jkl","PASSWORD"]]},
+  {"id":"contract-slashes", "text":"Договор № \"2026/АГ/6581\"", "pieces":[["2026","CONTRACT_NUMBER"]], "expected":[["2026/АГ/6581","CONTRACT_NUMBER"]]}
+]

@@ -1,0 +1,3022 @@
+{
+  "status": "K01_verified_not_overall_migration_acceptance",
+  "source": {
+    "case_count": 2318,
+    "corpus_counts": {
+      "ner_migration": 77,
+      "instruction_regressions": 70,
+      "name_context_regressions": 32,
+      "name_field_header_control": 8,
+      "name_field_holdout": 12,
+      "person_dialogue_research": 46,
+      "person_organization_regressions": 36,
+      "deterministic_rules_review": 75,
+      "tiny2_component_study": 32,
+      "all_class_context": 52,
+      "value_repair": 8,
+      "dkb_plain": 18,
+      "dkb_json": 18,
+      "windows": 24,
+      "pii_entity": 910,
+      "pii_domain": 900
+    },
+    "unique_texts": 2296,
+    "duplicate_text_occurrences": 22,
+    "manifest_sha256": "5badf1c99e31d3cc92129fe22cb3284c55ad3b06ed0edfc5a78dfc0b1755ad5d",
+    "public_dataset": {
+      "repository": "hivetrace/pii-bench",
+      "revision": "cd6a18ace16daf23e79247ccf1e2b245d4054654",
+      "license": "apache-2.0",
+      "files_sha256": {
+        "entity.parquet": "6e0c77d566c2f04e7213917b26f1038336e28fc006551fac7a7f44f7627d5f96",
+        "domain.parquet": "7ef3574273c0fe3a987981e38e32cd2764031a82766ca5b235bfccd1f27058eb"
+      },
+      "type_mapping": {
+        "NAME": "PERSON",
+        "ADDRESS": "RU_ADDRESS",
+        "EMAIL": "EMAIL_ADDRESS",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "BANK_CARD_NUMBER": "CREDIT_CARD",
+        "INN": "RU_INN",
+        "KPP": "RU_KPP",
+        "OGRN": "RU_OGRN",
+        "OGRNIP": "RU_OGRNIP",
+        "SNILS": "RU_SNILS",
+        "PASSPORT_NUMBER": "RU_PASSPORT",
+        "TOKEN": "AUTH_TOKEN",
+        "CVC": "CVC_OUT_OF_SCOPE"
+      },
+      "notes": [
+        "Not proven identical to author validation (8224 rows).",
+        "Author already evaluated PII-Bench; not independent of model selection.",
+        "ADDRESS full address maps to RU_ADDRESS; LOCATION constituents may still cover characters.",
+        "TOKEN maps strictly to AUTH_TOKEN; alternate secret classes remain visible in untyped coverage.",
+        "CVC is explicitly outside approved product scope; no new detector is added.",
+        "Clean/extra character counts refer only to annotation scope, not every project class."
+      ]
+    }
+  },
+  "changed_runtime_sources": [
+    "recognizers/ru_address_chain.py"
+  ],
+  "packages_unchanged": true,
+  "runtime_source_sha256": {
+    "analyzer_server.py": "d86c584f02eb5996426ade70cd9e07b5a48ea118f8909c59cdee1f87587f433e",
+    "result_merging.py": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+    "string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+    "ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+    "ner/backend_settings.py": "246441f57a7359f46fd1336531ab55862bbcb8309b2419ef1555f88980c716e2",
+    "ner/boundary_recheck.py": "a2cd01b745e12ba6da0af76c1a35f7070f69be2bf8cd45e88f7400252a9403ce",
+    "ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+    "ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f",
+    "ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+    "ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+    "ner/triton_model.py": "4691b539345ee67aa8e92437630422f8bc1c3e1cd951a172aec55af7fc625d2f",
+    "ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+    "ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+    "recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+    "recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+    "recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+    "recognizers/credential_rules.py": "8c5f36f9d77e3a9d4fc53bd125fe18bf9bbb634e7ab55ed321344c170947c545",
+    "recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+    "recognizers/json_strings.py": "e60b3643d05032224942023e6590dcff5b0585323adca04257c60a7e16d8fa9c",
+    "recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+    "recognizers/ru_address_chain.py": "fa416fbc0edf4bc4f761ebf0f44fcd38844598975e62184ec84e9e58eef70751",
+    "recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+    "recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+    "recognizers/ru_email.py": "14c8b406e144d78b514adf60b8caa1be9fd5a3a122848d47a2020e71db9fc1cd",
+    "recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+    "recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+    "recognizers/ru_passport_ext.py": "9ad03f4c80c8dd2db2346696e1322109d1412b04b08c6bf2edbb5d21ab42cf62",
+    "recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+    "recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+    "recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc"
+  },
+  "comparison": {
+    "before_k01": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1732,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40495,
+        "in_scope_extra_masked_characters": 7010,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1903,
+        "partially_covered": 87,
+        "typed_fully_covered": 1749,
+        "significant_fully_covered": 1916,
+        "significant_partially_covered": 74,
+        "typed_significant_fully_covered": 1751,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39118,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2040,
+        "true_positives": 1727,
+        "false_positives": 313,
+        "false_negatives": 377
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 122,
+          "typed_significant_fully_covered": 41,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 181,
+          "true_positives": 181,
+          "false_positives": 0,
+          "false_negatives": 3,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 183,
+          "typed_significant_fully_covered": 181,
+          "precision": 1.0,
+          "recall": 0.9836956521739131,
+          "f1": 0.9917808219178083
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 83,
+          "true_positives": 56,
+          "false_positives": 27,
+          "false_negatives": 8,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 60,
+          "typed_significant_fully_covered": 58,
+          "precision": 0.6746987951807228,
+          "recall": 0.875,
+          "f1": 0.7619047619047619
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "significant_fully_covered": 310,
+          "typed_significant_fully_covered": 306,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 151,
+          "true_positives": 83,
+          "false_positives": 68,
+          "false_negatives": 96,
+          "significant_fully_covered": 105,
+          "typed_significant_fully_covered": 86,
+          "precision": 0.5496688741721855,
+          "recall": 0.46368715083798884,
+          "f1": 0.503030303030303
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 108,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 35,
+          "typed_significant_fully_covered": 33,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    },
+    "after_k01": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1732,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40624,
+        "in_scope_extra_masked_characters": 7019,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1910,
+        "partially_covered": 80,
+        "typed_fully_covered": 1756,
+        "significant_fully_covered": 1925,
+        "significant_partially_covered": 65,
+        "typed_significant_fully_covered": 1758,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39221,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2043,
+        "true_positives": 1733,
+        "false_positives": 310,
+        "false_negatives": 371
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 122,
+          "typed_significant_fully_covered": 41,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 181,
+          "true_positives": 181,
+          "false_positives": 0,
+          "false_negatives": 3,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 183,
+          "typed_significant_fully_covered": 181,
+          "precision": 1.0,
+          "recall": 0.9836956521739131,
+          "f1": 0.9917808219178083
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 83,
+          "true_positives": 56,
+          "false_positives": 27,
+          "false_negatives": 8,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 60,
+          "typed_significant_fully_covered": 58,
+          "precision": 0.6746987951807228,
+          "recall": 0.875,
+          "f1": 0.7619047619047619
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "significant_fully_covered": 310,
+          "typed_significant_fully_covered": 306,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 154,
+          "true_positives": 89,
+          "false_positives": 65,
+          "false_negatives": 90,
+          "significant_fully_covered": 114,
+          "typed_significant_fully_covered": 93,
+          "precision": 0.577922077922078,
+          "recall": 0.4972067039106145,
+          "f1": 0.5345345345345346
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 108,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 35,
+          "typed_significant_fully_covered": 33,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    },
+    "main_e9": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 12,
+        "negative_cases_with_any_mask": 44,
+        "cases_with_any_mask": 1704,
+        "gold_characters": 42115,
+        "covered_gold_characters": 38783,
+        "in_scope_extra_masked_characters": 452,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1790,
+        "partially_covered": 181,
+        "typed_fully_covered": 1654,
+        "significant_fully_covered": 1866,
+        "significant_partially_covered": 105,
+        "typed_significant_fully_covered": 1656,
+        "significant_characters": 40476,
+        "covered_significant_characters": 37505,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 4,
+        "clean_characters": 2681,
+        "false_block_cases": 0,
+        "expected": 2104,
+        "predicted": 1943,
+        "true_positives": 1649,
+        "false_positives": 294,
+        "false_negatives": 455
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 32,
+          "true_positives": 31,
+          "false_positives": 1,
+          "false_negatives": 100,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 73,
+          "typed_significant_fully_covered": 31,
+          "precision": 0.96875,
+          "recall": 0.2366412213740458,
+          "f1": 0.3803680981595092
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 181,
+          "true_positives": 181,
+          "false_positives": 0,
+          "false_negatives": 3,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 184,
+          "typed_significant_fully_covered": 181,
+          "precision": 1.0,
+          "recall": 0.9836956521739131,
+          "f1": 0.9917808219178083
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 13,
+          "true_positives": 13,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 57,
+          "true_positives": 40,
+          "false_positives": 17,
+          "false_negatives": 0,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.7017543859649122,
+          "recall": 1.0,
+          "f1": 0.8247422680412371
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 55,
+          "true_positives": 52,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.9454545454545454,
+          "recall": 1.0,
+          "f1": 0.9719626168224299
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 76,
+          "true_positives": 57,
+          "false_positives": 19,
+          "false_negatives": 7,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 58,
+          "typed_significant_fully_covered": 57,
+          "precision": 0.75,
+          "recall": 0.890625,
+          "f1": 0.8142857142857143
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 324,
+          "true_positives": 272,
+          "false_positives": 52,
+          "false_negatives": 41,
+          "significant_fully_covered": 302,
+          "typed_significant_fully_covered": 273,
+          "precision": 0.8395061728395061,
+          "recall": 0.8690095846645367,
+          "f1": 0.8540031397174255
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 209,
+          "true_positives": 33,
+          "false_positives": 176,
+          "false_negatives": 146,
+          "significant_fully_covered": 107,
+          "typed_significant_fully_covered": 36,
+          "precision": 0.15789473684210525,
+          "recall": 0.18435754189944134,
+          "f1": 0.17010309278350516
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 109,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 35,
+          "true_positives": 32,
+          "false_positives": 3,
+          "false_negatives": 3,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 34,
+          "typed_significant_fully_covered": 32,
+          "precision": 0.9142857142857143,
+          "recall": 0.9142857142857143,
+          "f1": 0.9142857142857143
+        }
+      }
+    }
+  },
+  "changed_cases": [
+    {
+      "case_id": "pii_entity__addr_010",
+      "corpus": "pii_entity",
+      "complete_annotation": false,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 27,
+          "end": 51
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 27,
+          "end": 62
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 27,
+            "end": 70,
+            "characters": 43,
+            "covered_characters": 24,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 36,
+            "covered_significant_characters": 21,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 43,
+        "covered_gold_characters": 24,
+        "masked_characters": 24,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 27,
+            "end": 70,
+            "characters": 43,
+            "covered_characters": 35,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 36,
+            "covered_significant_characters": 30,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 43,
+        "covered_gold_characters": 35,
+        "masked_characters": 35,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_entity__addr_026",
+      "corpus": "pii_entity",
+      "complete_annotation": false,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 26,
+          "end": 57
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 26,
+          "end": 68
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 26,
+            "end": 84,
+            "characters": 58,
+            "covered_characters": 31,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 49,
+            "covered_significant_characters": 28,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 58,
+        "covered_gold_characters": 31,
+        "masked_characters": 31,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 26,
+            "end": 84,
+            "characters": 58,
+            "covered_characters": 42,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 49,
+            "covered_significant_characters": 37,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 58,
+        "covered_gold_characters": 42,
+        "masked_characters": 42,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_entity__addr_055",
+      "corpus": "pii_entity",
+      "complete_annotation": false,
+      "added_significant_characters": 14,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 36,
+          "end": 66
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 36,
+          "end": 84
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 36,
+            "end": 84,
+            "characters": 48,
+            "covered_characters": 30,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 39,
+            "covered_significant_characters": 25,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 48,
+        "covered_gold_characters": 30,
+        "masked_characters": 30,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 36,
+            "end": 84,
+            "characters": 48,
+            "covered_characters": 48,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 39,
+            "covered_significant_characters": 39,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 48,
+        "covered_gold_characters": 48,
+        "masked_characters": 48,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__dialog_029",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 8,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 124,
+          "end": 156
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 124,
+          "end": 166
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 124,
+            "end": 166,
+            "characters": 42,
+            "covered_characters": 32,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 35,
+            "covered_significant_characters": 27,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 42,
+        "covered_gold_characters": 32,
+        "masked_characters": 32,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 124,
+            "end": 166,
+            "characters": 42,
+            "covered_characters": 42,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 35,
+            "covered_significant_characters": 35,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 42,
+        "covered_gold_characters": 42,
+        "masked_characters": 42,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__del_013",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 8,
+      "before": [
+        {
+          "entity_type": "PERSON",
+          "start": 0,
+          "end": 15
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 23,
+          "end": 37
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PERSON",
+          "start": 0,
+          "end": 15
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 23,
+          "end": 47
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "PERSON",
+            "start": 0,
+            "end": 15,
+            "characters": 15,
+            "covered_characters": 15,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 14,
+            "covered_significant_characters": 14,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 23,
+            "end": 47,
+            "characters": 24,
+            "covered_characters": 14,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 21,
+            "covered_significant_characters": 13,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 39,
+        "covered_gold_characters": 29,
+        "masked_characters": 29,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "PERSON",
+            "start": 0,
+            "end": 15,
+            "characters": 15,
+            "covered_characters": 15,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 14,
+            "covered_significant_characters": 14,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 23,
+            "end": 47,
+            "characters": 24,
+            "covered_characters": 24,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 21,
+            "covered_significant_characters": 21,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 39,
+        "covered_gold_characters": 39,
+        "masked_characters": 39,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__del_029",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 8,
+      "before": [
+        {
+          "entity_type": "PERSON",
+          "start": 0,
+          "end": 12
+        },
+        {
+          "entity_type": "PHONE_NUMBER",
+          "start": 21,
+          "end": 32
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 41,
+          "end": 50
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "PERSON",
+          "start": 0,
+          "end": 12
+        },
+        {
+          "entity_type": "PHONE_NUMBER",
+          "start": 21,
+          "end": 32
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 41,
+          "end": 60
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "PERSON",
+            "start": 0,
+            "end": 12,
+            "characters": 12,
+            "covered_characters": 12,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 11,
+            "covered_significant_characters": 11,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "PHONE_NUMBER",
+            "start": 21,
+            "end": 32,
+            "characters": 11,
+            "covered_characters": 11,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 11,
+            "covered_significant_characters": 11,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 41,
+            "end": 60,
+            "characters": 19,
+            "covered_characters": 9,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 16,
+            "covered_significant_characters": 8,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 42,
+        "covered_gold_characters": 32,
+        "masked_characters": 32,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "PERSON",
+            "start": 0,
+            "end": 12,
+            "characters": 12,
+            "covered_characters": 12,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 11,
+            "covered_significant_characters": 11,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "PHONE_NUMBER",
+            "start": 21,
+            "end": 32,
+            "characters": 11,
+            "covered_characters": 11,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 11,
+            "covered_significant_characters": 11,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 41,
+            "end": 60,
+            "characters": 19,
+            "covered_characters": 19,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 16,
+            "covered_significant_characters": 16,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 42,
+        "covered_gold_characters": 42,
+        "masked_characters": 42,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__del_062",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 8,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 17,
+          "end": 42
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 17,
+          "end": 42
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 43,
+          "end": 52
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 17,
+            "end": 42,
+            "characters": 25,
+            "covered_characters": 25,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 20,
+            "covered_significant_characters": 20,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 25,
+        "covered_gold_characters": 25,
+        "masked_characters": 25,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 17,
+            "end": 42,
+            "characters": 25,
+            "covered_characters": 25,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 20,
+            "covered_significant_characters": 20,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 25,
+        "covered_gold_characters": 25,
+        "masked_characters": 34,
+        "outside_gold_characters": 9
+      }
+    },
+    {
+      "case_id": "pii_domain__del_081",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 8,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 7,
+          "end": 35
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 7,
+          "end": 45
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 7,
+            "end": 45,
+            "characters": 38,
+            "covered_characters": 28,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 32,
+            "covered_significant_characters": 24,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 38,
+        "covered_gold_characters": 28,
+        "masked_characters": 28,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 7,
+            "end": 45,
+            "characters": 38,
+            "covered_characters": 38,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 32,
+            "covered_significant_characters": 32,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 38,
+        "covered_gold_characters": 38,
+        "masked_characters": 38,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__del_087",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 12,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 11,
+          "end": 29
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 11,
+          "end": 45
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 11,
+            "end": 45,
+            "characters": 34,
+            "covered_characters": 18,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 28,
+            "covered_significant_characters": 16,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          }
+        ],
+        "gold_characters": 34,
+        "covered_gold_characters": 18,
+        "masked_characters": 18,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 11,
+            "end": 45,
+            "characters": 34,
+            "covered_characters": 34,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 28,
+            "covered_significant_characters": 28,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 34,
+        "covered_gold_characters": 34,
+        "masked_characters": 34,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__re_024",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "LOCATION",
+          "start": 15,
+          "end": 24
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 24,
+          "end": 25
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 26,
+          "end": 59
+        },
+        {
+          "entity_type": "PHONE_NUMBER",
+          "start": 80,
+          "end": 96
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "LOCATION",
+          "start": 15,
+          "end": 24
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 24,
+          "end": 25
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 26,
+          "end": 59
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 59,
+          "end": 70
+        },
+        {
+          "entity_type": "PHONE_NUMBER",
+          "start": 80,
+          "end": 96
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 15,
+            "end": 70,
+            "characters": 55,
+            "covered_characters": 43,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 45,
+            "covered_significant_characters": 36,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          },
+          {
+            "entity_type": "PHONE_NUMBER",
+            "start": 80,
+            "end": 96,
+            "characters": 16,
+            "covered_characters": 16,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 16,
+            "covered_significant_characters": 16,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 71,
+        "covered_gold_characters": 59,
+        "masked_characters": 59,
+        "outside_gold_characters": 0
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 15,
+            "end": 70,
+            "characters": 55,
+            "covered_characters": 54,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 45,
+            "covered_significant_characters": 45,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": false
+          },
+          {
+            "entity_type": "PHONE_NUMBER",
+            "start": 80,
+            "end": 96,
+            "characters": 16,
+            "covered_characters": 16,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 16,
+            "covered_significant_characters": 16,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 71,
+        "covered_gold_characters": 70,
+        "masked_characters": 70,
+        "outside_gold_characters": 0
+      }
+    },
+    {
+      "case_id": "pii_domain__re_036",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "entity_type": "LOCATION",
+          "start": 6,
+          "end": 11
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 11,
+          "end": 12
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 13,
+          "end": 47
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 68,
+          "end": 91
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 0,
+          "end": 5
+        },
+        {
+          "entity_type": "LOCATION",
+          "start": 6,
+          "end": 11
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 11,
+          "end": 12
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 13,
+          "end": 47
+        },
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 47,
+          "end": 58
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 68,
+          "end": 91
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 6,
+            "end": 58,
+            "characters": 52,
+            "covered_characters": 40,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 42,
+            "covered_significant_characters": 33,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          },
+          {
+            "entity_type": "EMAIL_ADDRESS",
+            "start": 68,
+            "end": 91,
+            "characters": 23,
+            "covered_characters": 23,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 23,
+            "covered_significant_characters": 23,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 75,
+        "covered_gold_characters": 63,
+        "masked_characters": 68,
+        "outside_gold_characters": 5
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 6,
+            "end": 58,
+            "characters": 52,
+            "covered_characters": 51,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 42,
+            "covered_significant_characters": 42,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": false
+          },
+          {
+            "entity_type": "EMAIL_ADDRESS",
+            "start": 68,
+            "end": 91,
+            "characters": 23,
+            "covered_characters": 23,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 23,
+            "covered_significant_characters": 23,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 75,
+        "covered_gold_characters": 74,
+        "masked_characters": 79,
+        "outside_gold_characters": 5
+      }
+    },
+    {
+      "case_id": "pii_domain__re_052",
+      "corpus": "pii_domain",
+      "complete_annotation": false,
+      "added_significant_characters": 9,
+      "before": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 0,
+          "end": 44
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 65,
+          "end": 79
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 81,
+          "end": 96
+        }
+      ],
+      "after": [
+        {
+          "entity_type": "RU_ADDRESS",
+          "start": 0,
+          "end": 55
+        },
+        {
+          "entity_type": "PERSON",
+          "start": 65,
+          "end": 79
+        },
+        {
+          "entity_type": "EMAIL_ADDRESS",
+          "start": 81,
+          "end": 96
+        }
+      ],
+      "coverage_before": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 7,
+            "end": 55,
+            "characters": 48,
+            "covered_characters": 37,
+            "fully_covered": false,
+            "partially_covered": true,
+            "typed_fully_covered": false,
+            "significant_characters": 40,
+            "covered_significant_characters": 31,
+            "significant_fully_covered": false,
+            "significant_partially_covered": true,
+            "typed_significant_fully_covered": false
+          },
+          {
+            "entity_type": "PERSON",
+            "start": 65,
+            "end": 79,
+            "characters": 14,
+            "covered_characters": 14,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 13,
+            "covered_significant_characters": 13,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "EMAIL_ADDRESS",
+            "start": 81,
+            "end": 96,
+            "characters": 15,
+            "covered_characters": 15,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 15,
+            "covered_significant_characters": 15,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 77,
+        "covered_gold_characters": 66,
+        "masked_characters": 73,
+        "outside_gold_characters": 7
+      },
+      "coverage_after": {
+        "values": [
+          {
+            "entity_type": "RU_ADDRESS",
+            "start": 7,
+            "end": 55,
+            "characters": 48,
+            "covered_characters": 48,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 40,
+            "covered_significant_characters": 40,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "PERSON",
+            "start": 65,
+            "end": 79,
+            "characters": 14,
+            "covered_characters": 14,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 13,
+            "covered_significant_characters": 13,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          },
+          {
+            "entity_type": "EMAIL_ADDRESS",
+            "start": 81,
+            "end": 96,
+            "characters": 15,
+            "covered_characters": 15,
+            "fully_covered": true,
+            "partially_covered": false,
+            "typed_fully_covered": true,
+            "significant_characters": 15,
+            "covered_significant_characters": 15,
+            "significant_fully_covered": true,
+            "significant_partially_covered": false,
+            "typed_significant_fully_covered": true
+          }
+        ],
+        "gold_characters": 77,
+        "covered_gold_characters": 77,
+        "masked_characters": 84,
+        "outside_gold_characters": 7
+      }
+    }
+  ],
+  "significant_coverage_losses": [],
+  "strict_instruction_span_audit": {
+    "before_k01": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new full strict gate."
+    },
+    "after_k01": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new full strict gate."
+    }
+  },
+  "qualifications": [
+    "K01 reruns all 2318 cases with real Tiny2/Triton HTTP inference.",
+    "The baseline is the verified K05 run; main/BERT is unchanged frozen E9, not a new run.",
+    "Only recognizers/ru_address_chain.py differs in recorded candidate runtime sources.",
+    "The owner explicitly retained the pre-K01 false positive on Адрес: Подъезд 2.",
+    "No ground-truth edits, new acceptance thresholds, platform patches or automatic K/Q acceptance.",
+    "Extra masking on partially annotated data is not automatically a false positive."
+  ],
+  "http_checks": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:29df60e7733a16f574c2f76239b413c9f2f9538179272789b1818a47e81f88c8",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k01",
+        "status": "passed",
+        "seconds": 2.309,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "formal-and-flat",
+        "status": "passed",
+        "seconds": 1.509,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "escaped-json",
+        "status": "passed",
+        "seconds": 1.46,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "passed",
+        "seconds": 0.975,
+        "result": 0
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 163.348,
+        "result": 0
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 89.671,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true
+  },
+  "analysis_signature_changed": true,
+  "owner_decisions": {
+    "K01": "Append full-word entrance and 1-3 digit number only after a confirmed address core; optional No sign and following supported flat.",
+    "additional_limitation": "Owner explicitly chose to retain pre-existing false RU_ADDRESS on Адрес: Подъезд 2; no core filter added.",
+    "scope_exclusions": [
+      "floor",
+      "intercom",
+      "abbreviations",
+      "entrance before core",
+      "standalone entrance field",
+      "K02",
+      "K03"
+    ]
+  },
+  "regressions": {
+    "analyzer_pytest": 2768,
+    "new_entrance_tests": 56,
+    "before_fix_new_tests": {
+      "failed_expected_gap": 17,
+      "passed": 36
+    },
+    "guardrail_flow_pytest": 1514,
+    "static_pytest": 569,
+    "evaluation_pytest_overlaps_other_suites": 75,
+    "make_unittest": 18,
+    "frozen_ner_rules_replays": {
+      "cases": 29,
+      "changed_from_K05": [
+        "pii_domain__del_013"
+      ]
+    },
+    "warnings": [
+      "Existing Starlette TestClient deprecation.",
+      "Existing Pydantic serializer warnings."
+    ]
+  }
+}

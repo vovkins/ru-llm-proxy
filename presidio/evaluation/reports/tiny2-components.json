@@ -1,0 +1,2437 @@
+{
+  "stage": "E5",
+  "acceptance": "diagnostic only; owner decides after E9",
+  "base_pr_head": "d9fbb592e3fd997559afe26e32e6feaafe35b00a",
+  "worktree_dirty": true,
+  "model_revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+  "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353",
+  "environment": {
+    "architecture": "arm64",
+    "analyzer_cpus": 2,
+    "analyzer_memory_gib": 2,
+    "triton_cpus": 2,
+    "triton_memory_gib": 2,
+    "triton_instances": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "production_capacity_claimed": false
+  },
+  "source_hashes": {
+    "analyzer_server.py": "622313b5c76e6c9e978e0590932bdb6ca68dbe9fc95a003c0355e69c0008982c",
+    "entity_types.py": "68da0fed596f8682b60bcf4b33617e0eb0f4b757bcce703a0224b531edc46f4f",
+    "model_profiles.py": "ac0ef6abb21f2ad693c9a15ad131f502d2e9da282b35f6db798cd1d3fee35a5b",
+    "result_merging.py": "a3b105d9c3c6ef5039e3c88ea958e14929e7da62bd028316ac1e14f7e7536ba6",
+    "string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+    "text_chunking.py": "0f9f44978a949d5de798db6f9fae913147d7e5b5461ce3d7e00612e9fd03c521",
+    "model_contract.py": "a1d6b905d0cd616d6fae0e97679d6a518452e4482af127b30166c15467925b1c",
+    "onnx_artifact.py": "20c5e878f2800f3277a4a78078033b5564172169799c6e07b98d4d09e9f2fe87",
+    "ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+    "ner/backend_settings.py": "6ad1fef0765fc41c3dbecc003f1970af341bbb5ac62bbb34972f104b917a9c37",
+    "ner/boundary_recheck.py": "6b18393a1ed0e75f51fb72c87d1839f79b2bb7ac9d64ab2e6717ff4133c6459c",
+    "ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+    "ner/span_postprocessing.py": "b81543b896ad5753840dcd2b35aeb8f364d89eb07c838d8e7f7d1109e80ba47c",
+    "ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+    "ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+    "ner/triton_model.py": "108b0230c2587bb20d855c82f8ec8fa18d012a4026786f57da220b1044775bd4",
+    "ner/triton_recognizer.py": "5ab2e68be32c7194ca5820208a54547e0cb57bd4a865a2b49103989c85937d31",
+    "recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+    "recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+    "recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+    "recognizers/credential_rules.py": "8c5f36f9d77e3a9d4fc53bd125fe18bf9bbb634e7ab55ed321344c170947c545",
+    "recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+    "recognizers/json_strings.py": "e60b3643d05032224942023e6590dcff5b0585323adca04257c60a7e16d8fa9c",
+    "recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+    "recognizers/ru_address_chain.py": "9fa1e691b7e501314707c22a9c9102063b1788e27a936394473a0208868c49e0",
+    "recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+    "recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+    "recognizers/ru_email.py": "14c8b406e144d78b514adf60b8caa1be9fd5a3a122848d47a2020e71db9fc1cd",
+    "recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+    "recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+    "recognizers/ru_passport_ext.py": "9ad03f4c80c8dd2db2346696e1322109d1412b04b08c6bf2edbb5d21ab42cf62",
+    "recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+    "recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+    "recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc"
+  },
+  "data_sha256": {
+    "instruction_regressions.jsonl": "5096b3fbe0f368976447d1e9a4c1eccddd2f38ce9f50123a8bc85eedf1132f06",
+    "name_context_regressions.jsonl": "505895aa022cf8c04cbda12c775d79ec7a552ba54e7315ce82913a0b7264f9c9",
+    "name_field_header_control.jsonl": "ae588faaf27cb56313fce2ec220b9a2804484569e20255ae1f55e4714f344c2d",
+    "deterministic_rules_review.jsonl": "0f7173f3778faa89f2c69c6269eb38e3c7028ae8144f9ddca1cd6bf8db6dbda2",
+    "tiny2_component_study.jsonl": "3ef4c3cc195f61a552706a925ee227888aa8781a484779e07cb2dd9486e7ed8a",
+    "name_field_holdout.jsonl": "67c10f77c85b8ec0fd53d5363fc66d87cabb7a03d119d31dab11df9ffc36b6a1",
+    "person_dialogue_research.jsonl": "a3f7fcc7712ea021b54b59e1756175ffbe6d07392b2bd80f8a1d76de189f073c",
+    "person_organization_regressions.jsonl": "01375f04ff42de73a6ea7bd6dbfc8e693a9fea82d289da150bfaabaafa1e6a74",
+    "ner_migration.jsonl": "8bc2f6e3f10a9d123651839de21bae09b35c708622f9bfcada2f908ec0b5582f"
+  },
+  "packages": {
+    "spacy": "3.8.16",
+    "ru-core-news-sm": "3.8.0",
+    "presidio-analyzer": "2.2.364",
+    "numpy": "2.4.6",
+    "tokenizers": "0.22.2",
+    "httpx": "0.28.1"
+  },
+  "variants": {
+    "light_o1": {
+      "runtime": {
+        "spacy": "light",
+        "o_bias": 1,
+        "compensate_name_selection": false,
+        "recheck": "off",
+        "active_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "study_signature": "0cac61c314e87d6f9e4b8ffa1d031d1ac041171f728de083ca171a802237b3cf",
+        "analyzer_import_seconds": 0.6659118749666959
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 219,
+        "false_positives": 121,
+        "false_negatives": 15,
+        "union_covered": 229,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 68,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 19,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 47,
+          "false_positives": 5,
+          "false_negatives": 1,
+          "union_covered": 48
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 53,
+          "false_positives": 20,
+          "false_negatives": 11,
+          "union_covered": 59
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 6,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 4,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.037294042063876987,
+          "samples_seconds": [
+            0.041450958931818604,
+            0.03676170902326703,
+            0.037294042063876987
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.12663454189896584,
+          "samples_seconds": [
+            0.1824373749550432,
+            0.12663454189896584,
+            0.12438737507909536
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.1535960009787232,
+          "samples_seconds": [
+            1.1614982499741018,
+            1.1535960009787232,
+            1.1453300430439413
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 394496,
+        "VmRSS": 389524
+      },
+      "changed_case_ids": {},
+      "raw_sha256": "9231fa666e8cc3207a3ce445f54e96aa8c50d2ae0dc3948c5cce819208073905",
+      "inference_evaluator_sha256": "7c52f07197bd9fe5d8583ac356c0690b1aa78a1f88f5df1871c6d1344dfb768e",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    },
+    "full_o1": {
+      "runtime": {
+        "spacy": "full",
+        "o_bias": 1,
+        "compensate_name_selection": false,
+        "recheck": "off",
+        "active_pipes": [
+          "tok2vec",
+          "morphologizer",
+          "parser",
+          "attribute_ruler",
+          "lemmatizer",
+          "ner"
+        ],
+        "study_signature": "d9cfd0223f64b3161090900d5a1e2eaa5faf2d787c3e8434aee39b04eca1b829",
+        "analyzer_import_seconds": 0.6970201258081943
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 219,
+        "false_positives": 121,
+        "false_negatives": 15,
+        "union_covered": 229,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 68,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 19,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 47,
+          "false_positives": 5,
+          "false_negatives": 1,
+          "union_covered": 48
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 53,
+          "false_positives": 20,
+          "false_negatives": 11,
+          "union_covered": 59
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 6,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 4,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.04108850006014109,
+          "samples_seconds": [
+            0.04153066594153643,
+            0.04108850006014109,
+            0.040152540896087885
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.17348374985158443,
+          "samples_seconds": [
+            0.17348374985158443,
+            0.1743936249986291,
+            0.16930487495847046
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.6062826260458678,
+          "samples_seconds": [
+            1.7203280420508236,
+            1.6062826260458678,
+            1.6027412919793278
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 497096,
+        "VmRSS": 497096
+      },
+      "changed_case_ids": {},
+      "raw_sha256": "0ae27033c05cb7441c5f7aa8d9f293f62fc56d240132dd5bf06a46a08c933d12",
+      "inference_evaluator_sha256": "7c52f07197bd9fe5d8583ac356c0690b1aa78a1f88f5df1871c6d1344dfb768e",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    },
+    "light_o0": {
+      "runtime": {
+        "spacy": "light",
+        "o_bias": 0,
+        "compensate_name_selection": false,
+        "recheck": "off",
+        "active_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "study_signature": "51b1cdb66b0b63b8c142cb62d3a35da0c7dacdeae55641bf31351995ba31a9e3",
+        "analyzer_import_seconds": 0.5617291668895632
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 218,
+        "false_positives": 111,
+        "false_negatives": 16,
+        "union_covered": 230,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 48,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 21,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 46,
+          "false_positives": 10,
+          "false_negatives": 2,
+          "union_covered": 48
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 4,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 53,
+          "false_positives": 22,
+          "false_negatives": 11,
+          "union_covered": 60
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 6,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 4,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.037467083893716335,
+          "samples_seconds": [
+            0.03799083293415606,
+            0.037467083893716335,
+            0.03668254101648927
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.1270538328681141,
+          "samples_seconds": [
+            0.1270538328681141,
+            0.1376441668253392,
+            0.12465883302502334
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.1636825008317828,
+          "samples_seconds": [
+            1.2644576670136303,
+            1.1636825008317828,
+            1.1566830838564783
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 396076,
+        "VmRSS": 390972
+      },
+      "changed_case_ids": {
+        "ner_migration": [
+          "person_label_negative",
+          "contract_agreement_en",
+          "mixed_org_location_secrets"
+        ],
+        "instruction_regressions": [
+          "instruction_english_marker",
+          "instruction_holdout_english_command",
+          "dialogue_role_which",
+          "dialogue_role_write",
+          "dialogue_role_where",
+          "dialogue_role_email"
+        ],
+        "name_context_regressions": [
+          "fio_field_names"
+        ],
+        "person_dialogue_research": [
+          "research_ordinary_0_example",
+          "research_name_context_0"
+        ],
+        "deterministic_rules_review": [
+          "kv_password_ru",
+          "cli_psql_environment",
+          "cli_reference_single",
+          "gitleaks_generic_docs",
+          "stress_long_repetition"
+        ]
+      },
+      "raw_sha256": "8bca1d4f964b8a67713188f561bb9dcb3e8430af7aa688681848b6104a48b659",
+      "inference_evaluator_sha256": "7c52f07197bd9fe5d8583ac356c0690b1aa78a1f88f5df1871c6d1344dfb768e",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    },
+    "light_o0_compensated": {
+      "runtime": {
+        "spacy": "light",
+        "o_bias": 0,
+        "compensate_name_selection": true,
+        "recheck": "off",
+        "active_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "study_signature": "6b9bc37b2f885b0fd600bd03332695d5a2008c156b86f9a43b8205d99febe6fa",
+        "analyzer_import_seconds": 0.6397756261285394
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 219,
+        "false_positives": 97,
+        "false_negatives": 15,
+        "union_covered": 225,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 45,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 21,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 47,
+          "false_positives": 6,
+          "false_negatives": 1,
+          "union_covered": 48
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 4,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 53,
+          "false_positives": 16,
+          "false_negatives": 11,
+          "union_covered": 55
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 5,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 3,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.037198917008936405,
+          "samples_seconds": [
+            0.03787020803429186,
+            0.037198917008936405,
+            0.03684637486003339
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.12434316682629287,
+          "samples_seconds": [
+            0.12434316682629287,
+            0.12400870816782117,
+            0.12437745905481279
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.1553494581021369,
+          "samples_seconds": [
+            1.1540542931761593,
+            1.1553494581021369,
+            1.1558087088633329
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 394204,
+        "VmRSS": 389472
+      },
+      "changed_case_ids": {
+        "instruction_regressions": [
+          "instruction_person_uppercase",
+          "dialogue_role_which",
+          "dialogue_role_write",
+          "dialogue_role_where"
+        ],
+        "name_context_regressions": [
+          "client_uppercase",
+          "holdout_client_uppercase"
+        ],
+        "name_field_holdout": [
+          "field_person_caps",
+          "field_person_dotted"
+        ],
+        "person_dialogue_research": [
+          "research_ordinary_2_roles",
+          "research_ordinary_2_prose",
+          "research_ordinary_4_roles",
+          "research_ordinary_5_roles",
+          "research_person_0_example",
+          "research_person_3_example",
+          "research_person_4_example",
+          "research_person_5_example",
+          "research_name_context_0",
+          "research_name_context_3"
+        ],
+        "person_organization_regressions": [
+          "person_uppercase",
+          "holdout_person_uppercase"
+        ],
+        "deterministic_rules_review": [
+          "kv_password_ru",
+          "cli_psql_environment",
+          "opaque_repeated",
+          "gitleaks_generic_docs",
+          "stress_long_repetition"
+        ],
+        "development": [
+          "dev_word"
+        ]
+      },
+      "raw_sha256": "8abe781d256a9fbf21e2667a7f361a17d5ed077f0ffe8cba0e1ebc457f54e9ae",
+      "inference_evaluator_sha256": "7c52f07197bd9fe5d8583ac356c0690b1aa78a1f88f5df1871c6d1344dfb768e",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    },
+    "light_o1_compensated": {
+      "runtime": {
+        "spacy": "light",
+        "o_bias": 1,
+        "compensate_name_selection": true,
+        "recheck": "off",
+        "active_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "study_signature": "dd5dd47d2b8f7a8bf2059d300e8b2748a08e65b02fb019bc49dfff449ac214e1",
+        "analyzer_import_seconds": 0.5489949590992182
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 217,
+        "false_positives": 120,
+        "false_negatives": 17,
+        "union_covered": 222,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 68,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 19,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 46,
+          "false_positives": 7,
+          "false_negatives": 2,
+          "union_covered": 47
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 52,
+          "false_positives": 18,
+          "false_negatives": 12,
+          "union_covered": 53
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 5,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 2,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.037945999996736646,
+          "samples_seconds": [
+            0.04172175005078316,
+            0.037945999996736646,
+            0.03746487502939999
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.1246411669999361,
+          "samples_seconds": [
+            0.12481795810163021,
+            0.1246411669999361,
+            0.12429670803248882
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.155874416930601,
+          "samples_seconds": [
+            1.155874416930601,
+            1.1528224588837475,
+            1.1722553339786828
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 396236,
+        "VmRSS": 391216
+      },
+      "changed_case_ids": {
+        "instruction_regressions": [
+          "instruction_person_uppercase",
+          "dialogue_role_which",
+          "dialogue_role_write",
+          "dialogue_role_where"
+        ],
+        "name_context_regressions": [
+          "client_uppercase",
+          "fio_field_names",
+          "holdout_fio",
+          "holdout_client_uppercase"
+        ],
+        "name_field_holdout": [
+          "field_person_caps",
+          "field_person_dotted",
+          "field_legal_person"
+        ],
+        "person_dialogue_research": [
+          "research_ordinary_0_roles",
+          "research_ordinary_2_roles",
+          "research_ordinary_2_prose",
+          "research_ordinary_4_roles",
+          "research_ordinary_4_prose",
+          "research_ordinary_5_roles",
+          "research_person_0_example",
+          "research_person_3_example",
+          "research_person_4_example",
+          "research_person_5_example",
+          "research_name_context_3"
+        ],
+        "person_organization_regressions": [
+          "person_uppercase",
+          "holdout_person_uppercase"
+        ],
+        "deterministic_rules_review": [
+          "opaque_repeated"
+        ],
+        "development": [
+          "dev_word"
+        ]
+      },
+      "raw_sha256": "08faf577c2c5d9c08925bea1c6f5d5fb448dacbc96f4785ac43a38938c03e7ae",
+      "inference_evaluator_sha256": "7c52f07197bd9fe5d8583ac356c0690b1aa78a1f88f5df1871c6d1344dfb768e",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    },
+    "light_o1_on": {
+      "runtime": {
+        "spacy": "light",
+        "o_bias": 1,
+        "compensate_name_selection": false,
+        "recheck": "shell-prompt",
+        "active_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "study_signature": "d2e312ca45e941afdbbf7abb24718be4569c5447e35b9f0517a0549b1a718094",
+        "analyzer_import_seconds": 0.6762388341594487
+      },
+      "diagnostics_356_rows": {
+        "expected": 234,
+        "true_positives": 219,
+        "false_positives": 121,
+        "false_negatives": 15,
+        "union_covered": 229,
+        "http_refusals": 0
+      },
+      "per_entity": {
+        "AUTH_TOKEN": {
+          "expected": 18,
+          "true_positives": 18,
+          "false_positives": 68,
+          "false_negatives": 0,
+          "union_covered": 18
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 21,
+          "true_positives": 21,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 21
+        },
+        "LOCATION": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "LOGIN": {
+          "expected": 23,
+          "true_positives": 22,
+          "false_positives": 19,
+          "false_negatives": 1,
+          "union_covered": 23
+        },
+        "ORGANIZATION": {
+          "expected": 48,
+          "true_positives": 47,
+          "false_positives": 5,
+          "false_negatives": 1,
+          "union_covered": 48
+        },
+        "PASSWORD": {
+          "expected": 27,
+          "true_positives": 27,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "union_covered": 27
+        },
+        "PERSON": {
+          "expected": 64,
+          "true_positives": 53,
+          "false_positives": 20,
+          "false_negatives": 11,
+          "union_covered": 59
+        },
+        "SECRET_KEY": {
+          "expected": 16,
+          "true_positives": 14,
+          "false_positives": 6,
+          "false_negatives": 2,
+          "union_covered": 16
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 8,
+          "true_positives": 8,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 8
+        },
+        "HOSTNAME": {
+          "expected": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "union_covered": 1
+        }
+      },
+      "development_16_rows": {
+        "expected": 12,
+        "true_positives": 11,
+        "false_positives": 4,
+        "false_negatives": 1,
+        "union_covered": 11,
+        "http_refusals": 0
+      },
+      "context_passed_of_52": 47,
+      "benchmark": [
+        {
+          "characters": 75,
+          "median_seconds": 0.03691987507045269,
+          "samples_seconds": [
+            0.0382277499884367,
+            0.036888458067551255,
+            0.03691987507045269
+          ]
+        },
+        {
+          "characters": 4629,
+          "median_seconds": 0.12375962501391768,
+          "samples_seconds": [
+            0.12362700002267957,
+            0.12375962501391768,
+            0.1241866669151932
+          ]
+        },
+        {
+          "characters": 46029,
+          "median_seconds": 1.1598251669202,
+          "samples_seconds": [
+            1.1900516250170767,
+            1.154806082835421,
+            1.1598251669202
+          ]
+        }
+      ],
+      "server_memory_kib": {
+        "VmHWM": 396488,
+        "VmRSS": 390964
+      },
+      "changed_case_ids": {},
+      "raw_sha256": "0db5763725c525464b43437f55eca8e748891ce63bdfc2817c8f2437d711a1d4",
+      "inference_evaluator_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159",
+      "scorer_sha256": "0d7c6e256e46f84e67ce20aad1998e457475a3ebff0a2da8267739af50e9d159"
+    }
+  },
+  "control": {
+    "full_o1": {
+      "expected": 12,
+      "true_positives": 9,
+      "false_positives": 2,
+      "false_negatives": 3,
+      "union_covered": 10,
+      "http_refusals": 0,
+      "uncovered": [
+        "ctrl_prompt_argument",
+        "ctrl_labeled_prompt"
+      ],
+      "raw_sha256": "36843b3d18b5f7b91cfd6e3683fbc8c50e83aeab6d48913637c1d63488cfa316"
+    },
+    "light_o1_off": {
+      "expected": 12,
+      "true_positives": 9,
+      "false_positives": 2,
+      "false_negatives": 3,
+      "union_covered": 10,
+      "http_refusals": 0,
+      "uncovered": [
+        "ctrl_prompt_argument",
+        "ctrl_labeled_prompt"
+      ],
+      "raw_sha256": "ff6acb2eba773dc135f0c6aadd0e83b50e83bbd7abe48f812c95fccf05899e1a"
+    },
+    "light_o1_on": {
+      "expected": 12,
+      "true_positives": 9,
+      "false_positives": 2,
+      "false_negatives": 3,
+      "union_covered": 10,
+      "http_refusals": 0,
+      "uncovered": [
+        "ctrl_prompt_argument",
+        "ctrl_labeled_prompt"
+      ],
+      "raw_sha256": "de17f0967a8ee6d79731b216f5521453513a4723b02258514b9dacd5fc7559d1"
+    }
+  },
+  "shell": {
+    "light_o1_off": {
+      "expected": 36,
+      "true_positives": 16,
+      "false_positives": 0,
+      "false_negatives": 20,
+      "union_covered": 16,
+      "http_refusals": 2,
+      "processed_windows": 194,
+      "refusals": [
+        "shell_password_374",
+        "shell_password_694"
+      ],
+      "rows": [
+        [
+          "shell_prompt_0",
+          "ok",
+          3,
+          2,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_0",
+          "ok",
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          "shell_argument_0",
+          "ok",
+          6,
+          2,
+          0,
+          1
+        ],
+        [
+          "shell_password_0",
+          "ok",
+          6,
+          2,
+          1,
+          1
+        ],
+        [
+          "shell_token_0",
+          "ok",
+          7,
+          2,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_0",
+          "ok",
+          7,
+          2,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_374",
+          "ok",
+          377,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_374",
+          "ok",
+          376,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_374",
+          "ok",
+          380,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_374",
+          "http_503",
+          380,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_token_374",
+          "ok",
+          381,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_374",
+          "ok",
+          381,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_378",
+          "ok",
+          381,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_378",
+          "ok",
+          380,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_378",
+          "ok",
+          384,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_378",
+          "ok",
+          384,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_378",
+          "ok",
+          385,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_378",
+          "ok",
+          385,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_382",
+          "ok",
+          385,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_382",
+          "ok",
+          384,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_382",
+          "ok",
+          388,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_382",
+          "ok",
+          388,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_382",
+          "ok",
+          389,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_382",
+          "ok",
+          389,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_386",
+          "ok",
+          389,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_386",
+          "ok",
+          388,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_386",
+          "ok",
+          392,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_386",
+          "ok",
+          392,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_386",
+          "ok",
+          393,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_386",
+          "ok",
+          393,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_694",
+          "ok",
+          697,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_694",
+          "ok",
+          696,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_694",
+          "ok",
+          700,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_694",
+          "http_503",
+          700,
+          5,
+          0,
+          1
+        ],
+        [
+          "shell_token_694",
+          "ok",
+          701,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_694",
+          "ok",
+          701,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_698",
+          "ok",
+          701,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_698",
+          "ok",
+          700,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_698",
+          "ok",
+          704,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_698",
+          "ok",
+          704,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_token_698",
+          "ok",
+          705,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_698",
+          "ok",
+          705,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_702",
+          "ok",
+          705,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_702",
+          "ok",
+          704,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_702",
+          "ok",
+          708,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_702",
+          "ok",
+          708,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_token_702",
+          "ok",
+          709,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_702",
+          "ok",
+          709,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_1500",
+          "ok",
+          1503,
+          6,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_1500",
+          "ok",
+          1502,
+          6,
+          0,
+          0
+        ],
+        [
+          "shell_argument_1500",
+          "ok",
+          1506,
+          6,
+          0,
+          1
+        ],
+        [
+          "shell_password_1500",
+          "ok",
+          1506,
+          6,
+          1,
+          1
+        ],
+        [
+          "shell_token_1500",
+          "ok",
+          1507,
+          6,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_1500",
+          "ok",
+          1507,
+          6,
+          0,
+          1
+        ]
+      ],
+      "median_seconds": 0.14238324959296733,
+      "raw_sha256": "953bc7e6db2cbd8f23e585ca68506f2b59cda8cdaef51f71de43495602885866"
+    },
+    "light_o1_on": {
+      "expected": 36,
+      "true_positives": 16,
+      "false_positives": 0,
+      "false_negatives": 20,
+      "union_covered": 16,
+      "http_refusals": 2,
+      "processed_windows": 194,
+      "refusals": [
+        "shell_password_374",
+        "shell_password_694"
+      ],
+      "rows": [
+        [
+          "shell_prompt_0",
+          "ok",
+          3,
+          2,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_0",
+          "ok",
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          "shell_argument_0",
+          "ok",
+          6,
+          2,
+          0,
+          1
+        ],
+        [
+          "shell_password_0",
+          "ok",
+          6,
+          2,
+          1,
+          1
+        ],
+        [
+          "shell_token_0",
+          "ok",
+          7,
+          2,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_0",
+          "ok",
+          7,
+          2,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_374",
+          "ok",
+          377,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_374",
+          "ok",
+          376,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_374",
+          "ok",
+          380,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_374",
+          "http_503",
+          380,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_token_374",
+          "ok",
+          381,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_374",
+          "ok",
+          381,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_378",
+          "ok",
+          381,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_378",
+          "ok",
+          380,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_378",
+          "ok",
+          384,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_378",
+          "ok",
+          384,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_378",
+          "ok",
+          385,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_378",
+          "ok",
+          385,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_382",
+          "ok",
+          385,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_382",
+          "ok",
+          384,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_382",
+          "ok",
+          388,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_382",
+          "ok",
+          388,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_382",
+          "ok",
+          389,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_382",
+          "ok",
+          389,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_386",
+          "ok",
+          389,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_386",
+          "ok",
+          388,
+          3,
+          0,
+          0
+        ],
+        [
+          "shell_argument_386",
+          "ok",
+          392,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_password_386",
+          "ok",
+          392,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_token_386",
+          "ok",
+          393,
+          3,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_386",
+          "ok",
+          393,
+          3,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_694",
+          "ok",
+          697,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_694",
+          "ok",
+          696,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_694",
+          "ok",
+          700,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_694",
+          "http_503",
+          700,
+          5,
+          0,
+          1
+        ],
+        [
+          "shell_token_694",
+          "ok",
+          701,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_694",
+          "ok",
+          701,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_698",
+          "ok",
+          701,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_698",
+          "ok",
+          700,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_698",
+          "ok",
+          704,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_698",
+          "ok",
+          704,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_token_698",
+          "ok",
+          705,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_698",
+          "ok",
+          705,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_702",
+          "ok",
+          705,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_702",
+          "ok",
+          704,
+          4,
+          0,
+          0
+        ],
+        [
+          "shell_argument_702",
+          "ok",
+          708,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_password_702",
+          "ok",
+          708,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_token_702",
+          "ok",
+          709,
+          4,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_702",
+          "ok",
+          709,
+          4,
+          0,
+          1
+        ],
+        [
+          "shell_prompt_1500",
+          "ok",
+          1503,
+          6,
+          0,
+          0
+        ],
+        [
+          "shell_zsh_prompt_1500",
+          "ok",
+          1502,
+          6,
+          0,
+          0
+        ],
+        [
+          "shell_argument_1500",
+          "ok",
+          1506,
+          6,
+          0,
+          1
+        ],
+        [
+          "shell_password_1500",
+          "ok",
+          1506,
+          6,
+          1,
+          1
+        ],
+        [
+          "shell_token_1500",
+          "ok",
+          1507,
+          6,
+          1,
+          1
+        ],
+        [
+          "shell_unicode_argument_1500",
+          "ok",
+          1507,
+          6,
+          0,
+          1
+        ]
+      ],
+      "median_seconds": 0.1391540210461244,
+      "raw_sha256": "72a6f31c58c70731ec81c796033b8b9b06353019fb615e77181741f6cb4942e3"
+    },
+    "changed_status_or_ranges": []
+  },
+  "context_deviations": [
+    {
+      "case_id": "kpp_requisites",
+      "entity_type": "RU_KPP",
+      "positive": true,
+      "typed_covered": false,
+      "target_detected": false,
+      "masking_covered": false,
+      "passed": false,
+      "predicted_types": []
+    },
+    {
+      "case_id": "address_currency",
+      "entity_type": "RU_ADDRESS",
+      "positive": false,
+      "typed_covered": false,
+      "target_detected": true,
+      "masking_covered": false,
+      "passed": false,
+      "predicted_types": [
+        "RU_ADDRESS"
+      ]
+    },
+    {
+      "case_id": "inn_bare",
+      "entity_type": "RU_INN",
+      "positive": true,
+      "typed_covered": false,
+      "target_detected": false,
+      "masking_covered": false,
+      "passed": false,
+      "predicted_types": []
+    },
+    {
+      "case_id": "bearer",
+      "entity_type": "BEARER_TOKEN",
+      "positive": true,
+      "typed_covered": false,
+      "target_detected": false,
+      "masking_covered": true,
+      "passed": false,
+      "predicted_types": [
+        "AUTH_TOKEN"
+      ]
+    },
+    {
+      "case_id": "api_key",
+      "entity_type": "API_KEY",
+      "positive": true,
+      "typed_covered": false,
+      "target_detected": false,
+      "masking_covered": true,
+      "passed": false,
+      "predicted_types": [
+        "SECRET_KEY"
+      ]
+    }
+  ],
+  "nlp_probe": {
+    "light": [
+      {
+        "text": "Реквизиты получателя: 770801001.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "реквизит",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 10,
+            "lemma": "получатель",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 20,
+            "lemma": ":",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 22,
+            "lemma": "770801001",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 31,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": []
+      },
+      {
+        "text": "Доставка в Нижний Новгород.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "доставка",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 9,
+            "lemma": "в",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 11,
+            "lemma": "нижний",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 18,
+            "lemma": "новгород",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 26,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": []
+      },
+      {
+        "text": "Клиент Марина Орлова. Верни строку.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "клиент",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 7,
+            "lemma": "Марина",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 14,
+            "lemma": "орлов",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 20,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 22,
+            "lemma": "вернуть",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 28,
+            "lemma": "строка",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 34,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": []
+      },
+      {
+        "text": "ООО «Летний сад». Покажи ответ.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "ооо",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 4,
+            "lemma": "«",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 5,
+            "lemma": "летний",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 12,
+            "lemma": "сад",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 15,
+            "lemma": "»",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 16,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 18,
+            "lemma": "показать",
+            "pos": "",
+            "sentence_start": true
+          },
+          {
+            "start": 25,
+            "lemma": "ответ",
+            "pos": "",
+            "sentence_start": false
+          },
+          {
+            "start": 30,
+            "lemma": ".",
+            "pos": "",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": []
+      }
+    ],
+    "full": [
+      {
+        "text": "Реквизиты получателя: 770801001.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "реквизит",
+            "pos": "NOUN",
+            "sentence_start": true
+          },
+          {
+            "start": 10,
+            "lemma": "получатель",
+            "pos": "NOUN",
+            "sentence_start": false
+          },
+          {
+            "start": 20,
+            "lemma": ":",
+            "pos": "PUNCT",
+            "sentence_start": false
+          },
+          {
+            "start": 22,
+            "lemma": "770801001",
+            "pos": "NUM",
+            "sentence_start": false
+          },
+          {
+            "start": 31,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": []
+      },
+      {
+        "text": "Доставка в Нижний Новгород.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "доставка",
+            "pos": "NOUN",
+            "sentence_start": true
+          },
+          {
+            "start": 9,
+            "lemma": "в",
+            "pos": "ADP",
+            "sentence_start": false
+          },
+          {
+            "start": 11,
+            "lemma": "нижний",
+            "pos": "ADJ",
+            "sentence_start": false
+          },
+          {
+            "start": 18,
+            "lemma": "новгород",
+            "pos": "PROPN",
+            "sentence_start": false
+          },
+          {
+            "start": 26,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": [
+          {
+            "start": 11,
+            "end": 26,
+            "label": "LOC"
+          }
+        ]
+      },
+      {
+        "text": "Клиент Марина Орлова. Верни строку.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "клиент",
+            "pos": "NOUN",
+            "sentence_start": true
+          },
+          {
+            "start": 7,
+            "lemma": "марина",
+            "pos": "PROPN",
+            "sentence_start": false
+          },
+          {
+            "start": 14,
+            "lemma": "орлов",
+            "pos": "PROPN",
+            "sentence_start": false
+          },
+          {
+            "start": 20,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          },
+          {
+            "start": 22,
+            "lemma": "верни",
+            "pos": "PROPN",
+            "sentence_start": true
+          },
+          {
+            "start": 28,
+            "lemma": "строка",
+            "pos": "NOUN",
+            "sentence_start": false
+          },
+          {
+            "start": 34,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": [
+          {
+            "start": 7,
+            "end": 20,
+            "label": "PER"
+          }
+        ]
+      },
+      {
+        "text": "ООО «Летний сад». Покажи ответ.",
+        "tokens": [
+          {
+            "start": 0,
+            "lemma": "ооо",
+            "pos": "NOUN",
+            "sentence_start": true
+          },
+          {
+            "start": 4,
+            "lemma": "\"",
+            "pos": "PUNCT",
+            "sentence_start": false
+          },
+          {
+            "start": 5,
+            "lemma": "летний",
+            "pos": "ADJ",
+            "sentence_start": false
+          },
+          {
+            "start": 12,
+            "lemma": "сад",
+            "pos": "NOUN",
+            "sentence_start": false
+          },
+          {
+            "start": 15,
+            "lemma": "\"",
+            "pos": "PUNCT",
+            "sentence_start": false
+          },
+          {
+            "start": 16,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          },
+          {
+            "start": 18,
+            "lemma": "покажи",
+            "pos": "VERB",
+            "sentence_start": true
+          },
+          {
+            "start": 25,
+            "lemma": "ответ",
+            "pos": "NOUN",
+            "sentence_start": false
+          },
+          {
+            "start": 30,
+            "lemma": ".",
+            "pos": "PUNCT",
+            "sentence_start": false
+          }
+        ],
+        "spacy_entities": [
+          {
+            "start": 0,
+            "end": 16,
+            "label": "ORG"
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "356 rows include repeated texts, not independent samples.",
+    "Author validation 8224 unavailable; public PII-Bench card lists 1810 entity/domain cases, not proven identical.",
+    "Synthetic control is predefined but public and small; not a closed holdout.",
+    "Five reports rescored from unchanged predictions with symmetric per-corpus annotation scope; inference hash retained.",
+    "Union coverage uses all masks; exact FP/FN counts only annotated classes.",
+    "HTTP refusals are not successful leaks.",
+    "Compensation adjusts selection only, scores use delivered logits; weights were not changed.",
+    "Warm medians of three runs are not production-load measurements.",
+    "No runtime default or platform code changes."
+  ],
+  "proposed_candidate_not_accepted": {
+    "spacy": "light",
+    "o_bias": 1,
+    "weights": "delivered, no duplicate correction",
+    "negative_recheck": "keep off pending demonstrated benefit and owner decision"
+  },
+  "tests": {
+    "analyzer": 2541,
+    "guardrails_api": 1504,
+    "real_analyzer_triton_wire": 24,
+    "external_llm_calls": 0
+  }
+}

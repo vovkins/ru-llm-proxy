@@ -5,11 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
-MODEL_DIRECTORY = Path("/opt/models/ner_rus_bert-secret_detection")
+MODEL_DIRECTORY = Path("/opt/models/rubert-tiny2-secret-detection")
 EMBEDDED_MANIFEST_NAME = ".model-manifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -134,3 +134,14 @@ def load_and_verify_embedded_manifest(model_directory: Path) -> ModelManifest:
     manifest = load_manifest(model_directory / EMBEDDED_MANIFEST_NAME)
     verify_model_directory(model_directory, manifest)
     return manifest
+
+
+def load_and_verify_runtime_artifact(model_directory: Path) -> ModelManifest:
+    """Verify the tokenizer-only runtime against the full canonical source."""
+    canonical = load_manifest(Path(__file__).with_name("model_manifest.json"))
+    embedded = load_manifest(model_directory / EMBEDDED_MANIFEST_NAME)
+    if embedded != canonical:
+        raise ModelArtifactError("runtime source manifest differs from canonical source")
+    runtime_files = tuple(f for f in canonical.files if f.path != "model.safetensors")
+    verify_model_directory(model_directory, replace(canonical, files=runtime_files))
+    return canonical

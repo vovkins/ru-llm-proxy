@@ -107,11 +107,20 @@ services:
       target: analyzer
       args:
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    depends_on:
+      load-analyzer-router:
+        condition: service_healthy
+      load-ner-triton:
+        condition: service_healthy
     environment:
       PRESIDIO_ANALYZER_WORKERS: ${LOAD_ANALYZER_WORKERS:-1}
-      PRESIDIO_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
-      PRESIDIO_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-8}
-      PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-2}
+      PRESIDIO_ANALYZER_NER_BATCH_SIZE: ${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-4}
+      PRESIDIO_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-2}
+      PRESIDIO_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-32}
+      PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}
     healthcheck:
       test:
         - CMD
@@ -130,11 +139,9 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./nginx/analyzer.conf:/etc/nginx/nginx.conf:ro
+      - ../../nginx/conf.d/triton.conf:/etc/nginx/triton.conf:ro
     ports:
       - "127.0.0.1:${LOAD_ANALYZER_PORT:-15020}:5001"
-    depends_on:
-      load-presidio-analyzer:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5001/router-health"]
       interval: 2s
@@ -142,12 +149,36 @@ services:
       retries: 30
     cpus: ${LOAD_ROUTER_CPUS:-1.0}
     mem_limit: ${LOAD_ROUTER_MEMORY:-256m}
-    networks: [load]
+    networks:
+      load:
+        aliases: [nginx]
+      load-ingress: {}
+
+  load-ner-triton:
+    build:
+      context: ../..
+      dockerfile: presidio/Dockerfile
+      target: ner-triton
+      args:
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    environment:
+      TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-2}
+    healthcheck:
+      test: ["CMD", "python3", "/opt/ru-ner/verify_triton_service.py"]
+      interval: 3s
+      timeout: 8s
+      retries: 80
+    cpus: ${TRITON_CPUS:-2.0}
+    mem_limit: ${TRITON_MEMORY:-2g}
+    networks:
+      load:
+        aliases: [ner-triton]
 
   load-litellm:
     build:
       context: ../..
       dockerfile: litellm/Dockerfile
+    entrypoint: ["sh", "/app/litellm_guardrails/entrypoint.sh"]
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     environment:
       LITELLM_MASTER_KEY: sk-load-test-master
@@ -214,7 +245,7 @@ services:
       retries: 30
     cpus: ${LOAD_ROUTER_CPUS:-1.0}
     mem_limit: ${LOAD_ROUTER_MEMORY:-256m}
-    networks: [load]
+    networks: [load, load-ingress]
 
   load-key-manager:
     image: locustio/locust:2.46.5@sha256:02109fe359906ebea8a1a1f4c1567771e815990739b9400c33d6c2692ac00af5
@@ -263,12 +294,19 @@ services:
       LOAD_CONTOUR: ${LOAD_CONTOUR:-mock}
       LOAD_INPUT_VARIATION: ${LOAD_INPUT_VARIATION:-repeat}
       LOAD_ANALYZER_BACKEND: ${LOAD_ANALYZER_BACKEND:-real}
-      LOAD_ANALYZER_PROFILE: ${LOAD_ANALYZER_PROFILE:-cpu}
       LOAD_ANALYZER_REPLICAS: ${LOAD_ANALYZER_REPLICAS:-1}
       LOAD_LITELLM_REPLICAS: ${LOAD_LITELLM_REPLICAS:-1}
-      LOAD_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-1}
-      LOAD_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-8}
-      LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-1}
+      LOAD_TRITON_REPLICAS: ${LOAD_TRITON_REPLICAS:-1}
+      TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-2}
+      TRITON_CPUS: ${TRITON_CPUS:-2.0}
+      TRITON_MEMORY: ${TRITON_MEMORY:-2g}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-2}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${OPENBLAS_NUM_THREADS:-2}
+      PRESIDIO_ANALYZER_NER_BATCH_SIZE: ${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-4}
+      LOAD_ANALYZER_CONCURRENCY_LIMIT: ${LOAD_ANALYZER_CONCURRENCY_LIMIT:-2}
+      LOAD_ANALYZER_QUEUE_LIMIT: ${LOAD_ANALYZER_QUEUE_LIMIT:-32}
+      LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}
       LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS:-20}
       LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS: ${LOAD_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS:-10}
       LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS: ${LOAD_GUARDRAIL_REDIS_MAX_CONNECTIONS:-20}
@@ -290,4 +328,7 @@ volumes:
 
 networks:
   load:
+    driver: bridge
+    internal: true
+  load-ingress:
     driver: bridge

@@ -110,3 +110,29 @@ def test_ner_migration_research_links_resolve():
         ROOT / "presidio" / "evaluation" / "reports" / "huggingface-candidate.json",
     ):
         assert path.is_file(), f"missing NER migration artifact: {path}"
+
+
+def test_tiny2_current_status_preserves_owner_acceptance_and_limits():
+    for name in ("README.md", "docs/architecture.md", "docs/deployment.md", "docs/ner-triton.md", "docs/compliance.md"):
+        content = (ROOT / name).read_text(encoding="utf-8")
+        assert "ещё не принят" not in content
+        assert "Приёмка качества остаётся за владельцем" not in content
+        assert "ограничени" in content
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Целевой механизм NER — Tiny2/Triton на CPU" in readme
+    assert "ёмкость 400 пользователей на целевом сервере ещё не подтверждена" in readme
+    quality = (ROOT / "docs/research/tiny2-quality-comparison.md").read_text(encoding="utf-8")
+    current = quality.split("<summary>История Э9", 1)[0]
+    assert "Переход принят владельцем с ограничениями" in current
+    assert "tests/fixtures/ner-model-limitations.json" in current
+    assert "не участвует в рабочем маскировании" in current
+    assert "94 неполностью закрытых значения" in current
+    assert "сырые TP/FP/FN остаются неизменными" in current
+    assert "T01" in current and "CANCEL-OBS-01" in current and "LIVE04" in current
+    assert "Переход не принят: есть подтверждённые пропуски" in quality
+    compliance = (ROOT / "docs/compliance.md").read_text(encoding="utf-8")
+    assert "Строгий набор кандидата PR #109 пока неуспешен" not in compliance
+    assert "20 известных ухудшений покрытия" in compliance
+    coverage = (ROOT / "docs/research/ner-migration-test-coverage.md").read_text(encoding="utf-8")
+    assert "Владелец принял переход" in coverage
+    assert "18 отклонений" in coverage and "20 известных ухудшений покрытия" in coverage

@@ -472,7 +472,7 @@ def test_markdown_report_contains_metrics_but_no_case_text():
     assert text not in markdown
 
 
-def test_checked_in_candidate_passes_explicit_quality_gate():
+def test_historical_bert_report_keeps_its_original_metrics_and_metadata():
     reports_dir = DEFAULT_CORPUS_PATH.parent.parent / "reports"
     candidate = json.loads(
         (reports_dir / "huggingface-candidate.json").read_text(encoding="utf-8")
@@ -509,6 +509,33 @@ def test_checked_in_candidate_passes_explicit_quality_gate():
     assert runtime["packages"]["torch"] == "2.13.0+cpu"
     assert runtime["torch_cuda_build"] is None
     assert runtime["torch_cuda_available"] is False
+
+
+def test_default_tiny2_outputs_cannot_overwrite_historical_reports():
+    assert run_baseline.DEFAULT_JSON_REPORT.name == "tiny2-candidate.json"
+    assert run_baseline.DEFAULT_MARKDOWN_REPORT.name == "ner-tiny2-candidate.md"
+
+
+def test_live_model_metadata_is_derived_from_the_build_not_manual_labels():
+    from presidio.tests.test_onnx_artifact import fixture_metadata
+    _, artifact = fixture_metadata()
+    health = {"ner_model": artifact["source_model_id"], "ner_revision": artifact["source_revision"],
+              "ner_backend": "triton_onnxruntime", "ner_onnx_sha256": artifact["onnx_sha256"]}
+    metadata = run_baseline._model_metadata(health, {"export": artifact})
+    assert metadata["model_checksum_enforced"] is True
+    assert metadata["model_artifact_sha256"] == artifact["onnx_sha256"]
+    assert artifact["source_model_id"] in metadata["system"]
+    assert run_baseline._model_metadata(health, None)["model_checksum_enforced"] is False
+    health["ner_onnx_sha256"] = "b" * 64
+    with pytest.raises(RuntimeError, match="trusted"):
+        run_baseline._model_metadata(health, {"export": artifact})
+
+
+def test_manual_model_labels_are_not_evaluation_arguments():
+    parser = run_baseline.build_parser()
+    for flag in ("--system", "--model-artifact-sha256", "--model-checksum-enforced"):
+        with pytest.raises(SystemExit):
+            parser.parse_args([flag, "synthetic-value"])
 
 
 def test_quality_gate_reports_credential_recall_regression():

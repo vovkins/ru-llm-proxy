@@ -1,0 +1,366 @@
+{
+  "stage": "E7",
+  "status": "passed",
+  "generated_at": "2026-10-26T07:39:40.324893+00:00",
+  "git_revision": "d9fbb592e3fd997559afe26e32e6feaafe35b00a",
+  "git_worktree_dirty": true,
+  "branch": "codex/pr-109-tiny2-hardening",
+  "scope": {
+    "architecture": "Tiny2/ONNX CPU; Analyzer -> existing full-config Nginx -> 1/2 Triton",
+    "deployment": "single-phase; operator excludes real client traffic externally",
+    "platform_source_patches": false,
+    "external_llm_requests": false,
+    "production_quality_accepted": false,
+    "production_resources_accepted": false,
+    "hardware": "local ARM64, Docker VM approximately 8 GiB; functional checks, not capacity proof",
+    "build": "derived test images copy E7 code over E5 Analyzer/E4 Triton; verified export reused; not a clean source build (E12)"
+  },
+  "runtime_identity": {
+    "system": "Katerina-Bir/rubert-tiny2-secret-detection / triton_onnxruntime + recognizers",
+    "model_artifact_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353",
+    "model_checksum_enforced": true,
+    "analysis_signature": "dcd656523c7fdbbb2873f3a274525ddf21aff8c0219c449a8543182462def382",
+    "health": {
+      "ner": "loaded",
+      "ner_backend": "triton_onnxruntime",
+      "ner_model": "Katerina-Bir/rubert-tiny2-secret-detection",
+      "ner_onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353",
+      "ner_required": true,
+      "ner_revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+      "ner_state": "ready",
+      "ner_warmed_up": true,
+      "status": "ok"
+    }
+  },
+  "runtime_packages": {
+    "huggingface-hub": "1.33.0",
+    "numpy": "2.4.6",
+    "presidio-analyzer": "2.2.364",
+    "ru-core-news-sm": "3.8.0",
+    "safetensors": "not-installed",
+    "spacy": "3.8.16",
+    "tokenizers": "0.22.2",
+    "torch": "not-installed",
+    "transformers": "not-installed"
+  },
+  "test_image_ids": {
+    "analyzer": "sha256:a1e25ee99cffaee115024e44ec4e9ae7effe11b667fcfc13dff5517cb6ca14dc",
+    "triton": "sha256:5e26df59422501a67d36fb89b1428a75c193a66bac8ec9f782780013123a9d1c"
+  },
+  "tests": {
+    "make_test_static": {
+      "status": "passed",
+      "pytest_cases": 509,
+      "routing_make_cases": 18
+    },
+    "analyzer_unit": {
+      "status": "passed",
+      "cases": 2621,
+      "warnings": 1
+    },
+    "guardrail_and_flow_unit": {
+      "status": "passed",
+      "cases": 1508,
+      "warnings": 2
+    },
+    "evaluation_after_live_metadata_check": {
+      "status": "passed",
+      "cases": 45
+    },
+    "make_test_hf_model_run": {
+      "status": "passed",
+      "independent_cold_runs": 3,
+      "scenarios_each_run": [
+        "short",
+        "long_tail",
+        "unicode_original_offsets"
+      ]
+    },
+    "topology_matrix": {
+      "status": "passed",
+      "cases": [
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed"
+        }
+      ],
+      "checks": [
+        "config: litellm-presidio/functional/triton=1",
+        "litellm-presidio: full nginx healthy before model/Analyzer",
+        "config: litellm-presidio/production/triton=1",
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "config: litellm-presidio/production/triton=2",
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "config: litellm-presidio/production/triton=2",
+        "config: litellm-presidio/functional/triton=1",
+        "config: litellm-presidio-codex-lb/functional/triton=1",
+        "litellm-presidio-codex-lb: full nginx healthy before model/Analyzer",
+        "codex-lb setup routes available before NER/LiteLLM",
+        "config: litellm-presidio-codex-lb/production/triton=1",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        "config: litellm-presidio-codex-lb/production/triton=2",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        "wrong export digest in one live replica: complete stack health refuses it",
+        {
+          "one_triton_stopped": [
+            200
+          ],
+          "replacement_new_ip": true
+        },
+        "full force restart preserves state and verifies each replica",
+        "config: litellm-presidio-codex-lb/production/triton=2",
+        "config: litellm-presidio-codex-lb/functional/triton=1"
+      ]
+    },
+    "inference_post_no_replay": {
+      "status": "passed",
+      "upstream_post_counts": [
+        1,
+        0
+      ]
+    },
+    "shell_syntax_and_git_diff_check": "passed"
+  },
+  "test_resource_overrides": {
+    "1": {
+      "LITELLM_REPLICAS": "2",
+      "ANALYZER_REPLICAS": "2",
+      "TRITON_REPLICAS": "1",
+      "TRITON_MODEL_INSTANCES": "1",
+      "LITELLM_CPUS": "1",
+      "LITELLM_MEMORY": "2g",
+      "ANALYZER_CPUS": "1",
+      "ANALYZER_MEMORY": "512m",
+      "TRITON_CPUS": "2",
+      "TRITON_MEMORY": "1g",
+      "DB_MEMORY": "256m",
+      "REDIS_MEMORY": "128m",
+      "CODEX_LB_MEMORY": "512m",
+      "CODEX_LB_DB_MEMORY": "256m"
+    },
+    "2": {
+      "LITELLM_REPLICAS": "2",
+      "ANALYZER_REPLICAS": "2",
+      "TRITON_REPLICAS": "2",
+      "TRITON_MODEL_INSTANCES": "1",
+      "LITELLM_CPUS": "1",
+      "LITELLM_MEMORY": "2g",
+      "ANALYZER_CPUS": "1",
+      "ANALYZER_MEMORY": "512m",
+      "TRITON_CPUS": "2",
+      "TRITON_MEMORY": "1g",
+      "DB_MEMORY": "256m",
+      "REDIS_MEMORY": "128m",
+      "CODEX_LB_MEMORY": "512m",
+      "CODEX_LB_DB_MEMORY": "256m"
+    }
+  },
+  "findings_resolved": [
+    "Nginx internal route may lag behind direct Triton readiness: control GET waits before Analyzer, no configuration switch or user POST retry",
+    "Common make build validation accepts no STACK; deployment still requires explicit STACK",
+    "Evaluator derives identity from trusted export and actual health backend triton_onnxruntime; no manual label/hash or runtime Torch import"
+  ],
+  "test_environment_adjustments": [
+    "Synthetic LiteLLM limit 1 GiB caused startup OOM; test repeated with 2 GiB; project production default remains 4 GiB",
+    "Separate public Docker config avoids absent credential helper; no user Docker config edits",
+    "Internal-only Docker networks do not publish host ports on this engine; only temporary gateway/mock have an extra localhost ingress network"
+  ],
+  "cleanup": {
+    "test_containers_networks_volumes_removed": true,
+    "temporary_test_image_tags_removed": true,
+    "base_image_cache_preserved": true,
+    "user_stand": [
+      {
+        "name": "presidio-analyzer",
+        "started_at": "2026-10-12T16:27:10.719092959Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy",
+        "started_at": "2026-10-11T18:21:56.145318543Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb",
+        "started_at": "2026-10-10T06:57:50.282824386Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy-nginx",
+        "started_at": "2026-10-10T06:58:19.503876927Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb-db",
+        "started_at": "2026-10-08T18:33:07.730255836Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy-db",
+        "started_at": "2026-10-08T18:32:55.443603011Z",
+        "health": "healthy"
+      },
+      {
+        "name": "ru-llm-proxy-redis",
+        "started_at": "2026-10-08T18:32:55.444105386Z",
+        "health": "healthy"
+      }
+    ],
+    "env_certificates_auth_files_changed": false,
+    "global_docker_prune": false
+  },
+  "remaining_stages": [
+    "E8 full existing Make/CI gates",
+    "E9 quality comparison",
+    "E10 end-to-end capacity/resources",
+    "E11 full concise documentation",
+    "E12 clean build/final test",
+    "E13 owner acceptance"
+  ]
+}

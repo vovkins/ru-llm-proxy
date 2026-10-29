@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from ner_instruction_checks import _request, _restored_text
+from ner_test_support import run_checks, write_report
 
 
 CORPUS = Path(__file__).resolve().parents[1] / "fixtures/dkb"
@@ -210,13 +211,33 @@ def check(analyzer_url, proxy_url, block_proxy_url, capture_url):
                     assert capture(capture_url)["provider_requests"] == 0, context
                     blocked += 1
     print(json.dumps({"status": "ok", "dkb_files": len(cases), "annotations": annotations, "json_annotations": json_annotations, "echo_flows": flows, "blocked_flows": blocked, "final_blocked_flows": final_blocked}))
-    check_chunk_boundaries(analyzer_url, proxy_url, block_proxy_url, capture_url)
-    check_base64_policy(analyzer_url, proxy_url, block_proxy_url, capture_url)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     for name in ("analyzer", "proxy", "block-proxy", "capture"):
         parser.add_argument("--" + name + "-url", required=True)
     args = parser.parse_args()
-    check(args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
+    urls = (args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
+    policy = os.environ.get("PRESIDIO_ANALYZER_BASE64_POLICY", "content")
+    if policy not in {"content", "logistic"}:
+        parser.error("Unsupported Base64 policy")
+    folder = os.environ.get("NER_TEST_REPORT_DIR")
+    report = {"status": "running", "base64_policy": policy, "checks": []}
+    case_ids = [case["file"] for case in json.loads((CORPUS / "manifest.json").read_text())]
+    case_ids += ["long", "offset", "multiline", "escaped-key", "short-email", "binary", "mime"]
+    try:
+        run_checks([("dkb-corpus", lambda: check(*urls)),
+                    ("chunk-boundaries", lambda: check_chunk_boundaries(*urls)),
+                    ("base64-policy", lambda: check_base64_policy(*urls))],
+                   report["checks"], case_ids=case_ids)
+        report["status"] = "passed"
+    except BaseException:
+        report["status"] = "failed"
+        raise
+    finally:
+        write_report(Path(folder) / f"dkb-{policy}.json" if folder else None, report)
+
+
+if __name__ == "__main__":
+    main()

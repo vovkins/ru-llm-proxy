@@ -3,15 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/tests/e2e/docker-compose.ner-proxy.yml"
-ANALYZER_PROFILE="${ANALYZER_PROFILE:-cpu}"
-GPU_COMPOSE_FILE="$ROOT_DIR/tests/e2e/docker-compose.ner-proxy.gpu.yml"
 COMPOSE_FILES=(-f "$COMPOSE_FILE")
-if [ "$ANALYZER_PROFILE" = "gpu" ]; then
-    COMPOSE_FILES+=(-f "$GPU_COMPOSE_FILE")
-elif [ "$ANALYZER_PROFILE" != "cpu" ]; then
-    echo "ANALYZER_PROFILE must be cpu or gpu" >&2
-    exit 2
-fi
+PYTHONPATH="$ROOT_DIR" python3 -c 'import os; from presidio.model_contract import reject_removed_settings; reject_removed_settings(os.environ)'
 PROJECT_NAME="${NER_PROXY_PROJECT:-ru-llm-proxy-ner-$$-${RANDOM}}"
 MASK_PORT="${NER_PROXY_MASK_PORT:-14010}"
 BLOCK_PORT="${NER_PROXY_BLOCK_PORT:-14011}"
@@ -28,6 +21,13 @@ ORG_VALUES=("ООО Север" "Туле" "mixed-auth-token-00073" "mixed-secre
 export NER_PROXY_CANARIES="Олег Волков,oleg.volkov,Mix3d-Value!,OV-2026/81,ООО Север,Туле,mixed-auth-token-00073,mixed-secret-key-00084"
 NER_PROXY_CANARIES+=",U3ludGhldGljLVBhc3N3b3JkLTIwMjY=,YUBiLnJ1,c3ludGhldGljLWJpbmFyeS0AAQItMDIwMjY=,Qr3yIQbw"
 NER_PROXY_CANARIES+=",$(python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" --canaries)"
+NER_PROXY_CANARIES+=",Михаил Соколов,mikhail.sokolov@outlook.com"
+NER_PROXY_CANARIES+=",Дмитрий Соколов,Московская 156,подъезд 2"
+NER_PROXY_CANARIES+=",Фрунзенская набережная 24,набережная 24"
+NER_PROXY_CANARIES+=",Максим Лебедев,Новосибирск ул. Красный проспект 44,кв. 12"
+NER_PROXY_CANARIES+=",москва,проспект вернадского 30,фрунзенская набережная 24"
+NER_PROXY_CANARIES+=",марина.кузнецова@inbox.ru"
+NER_PROXY_CANARIES+=",847291"
 export NER_PROXY_MASK_PORT="$MASK_PORT"
 export NER_PROXY_BLOCK_PORT="$BLOCK_PORT"
 export NER_PROXY_ANALYZER_PORT="$ANALYZER_PORT"
@@ -35,10 +35,30 @@ export NER_PROXY_CAPTURE_PORT="$CAPTURE_PORT"
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
-    docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+    local status=$?
+    trap - EXIT INT TERM HUP
+    local cleaned=true
+    if ! docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" down -v --remove-orphans >/dev/null 2>&1; then
+        cleaned=false
+        status=1
+    fi
+    if [ -n "${NER_TEST_REPORT_DIR:-}" ]; then
+        python3 - "$NER_TEST_REPORT_DIR" "$status" "$cleaned" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+path.mkdir(parents=True, exist_ok=True)
+policy = os.environ.get('PRESIDIO_ANALYZER_BASE64_POLICY', 'content')
+result = {'status': 'passed' if sys.argv[2] == '0' else 'failed',
+          'base64_policy': policy, 'cleanup_ok': sys.argv[3] == 'true'}
+(path / ('proxy-flow-' + policy + '.json')).write_text(json.dumps(result) + '\n')
+PY
+    fi
     rm -rf "$tmp_dir"
+    exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 wait_for_http() {
     local url="$1"
@@ -207,10 +227,21 @@ if not values or max(values) < minimum:
 PY
 }
 
-if ! docker image inspect "${ANALYZER_IMAGE:-ru-llm-proxy-presidio-analyzer:latest}" >/dev/null 2>&1; then
+if ! docker image inspect "${ANALYZER_IMAGE:-ru-llm-proxy-ner-tests:analyzer}" >/dev/null 2>&1; then
     echo "Analyzer image is missing; run 'make test-hf-model' first" >&2
     exit 1
 fi
+
+# Pin this run to immutable images and compare their artifacts with the checkout.
+export ANALYZER_IMAGE
+export NER_TEST_TRITON_IMAGE
+ANALYZER_IMAGE="$(docker image inspect "${ANALYZER_IMAGE:-ru-llm-proxy-ner-tests:analyzer}" --format '{{.Id}}')"
+NER_TEST_TRITON_IMAGE="$(docker image inspect "${NER_TEST_TRITON_IMAGE:-ru-llm-proxy-ner-tests:triton}" --format '{{.Id}}')"
+PYTHONPATH="$ROOT_DIR:$ROOT_DIR/tests/e2e" python3 - <<'PY'
+import os
+from ner_test_support import identities
+identities({'presidio-analyzer': os.environ['ANALYZER_IMAGE'], 'ner-triton': os.environ['NER_TEST_TRITON_IMAGE']})
+PY
 
 docker compose -p "$PROJECT_NAME" "${COMPOSE_FILES[@]}" up -d
 
@@ -302,14 +333,26 @@ PY
 
 echo "Real Analyzer proxy flow passed: mask/block and guardrail metrics verified"
 
-python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" \
+checks_status=0
+if ! python3 "$ROOT_DIR/tests/e2e/ner_instruction_checks.py" \
     --analyzer-url "http://127.0.0.1:${ANALYZER_PORT}" \
     --proxy-url "http://127.0.0.1:${MASK_PORT}" \
     --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
-    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"
+    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"; then
+    checks_status=1
+fi
 
-python3 "$ROOT_DIR/tests/e2e/dkb_corpus_checks.py" \
+if ! python3 "$ROOT_DIR/tests/e2e/dkb_corpus_checks.py" \
     --analyzer-url "http://127.0.0.1:${ANALYZER_PORT}" \
     --proxy-url "http://127.0.0.1:${MASK_PORT}" \
     --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
-    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"
+    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"; then
+    checks_status=1
+fi
+if ! python3 "$ROOT_DIR/tests/e2e/ner_protocol_checks.py" \
+    --proxy-url "http://127.0.0.1:${MASK_PORT}" \
+    --block-proxy-url "http://127.0.0.1:${BLOCK_PORT}" \
+    --capture-url "http://127.0.0.1:${CAPTURE_PORT}"; then
+    checks_status=1
+fi
+exit "$checks_status"

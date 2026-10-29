@@ -39,21 +39,19 @@ def run():
                     connection.close()
                     release(case_id, "analyzer")
 
-                # Stock LiteLLM starts disconnect monitoring after pre-call. Until
-                # then the budget must still close abandoned Analyzer work.
+                # Our ASGI adapter must close abandoned analysis before the
+                # independent three-second preprocessing budget is exhausted.
                 case_id, connection, before, _ = begin(
                     host, path, "DISCONNECT_HOLD_ANALYZER", stream=stream,
                 )
                 try:
                     wait_for(lambda: state(case_id, "analyzer"), "analysis accepted")
                     abandoned_at = disconnect(connection)
-                    time.sleep(0.2)
-                    assert not state(case_id, "analyzer").get("closed_at")
                     ended = wait_for(lambda: state(case_id, "analyzer").get("closed_at"),
-                                     "abandoned analysis closed by budget", 6)
-                    assert ended - abandoned_at < 6
+                                     "abandoned analysis closed by disconnect", 2)
+                    assert ended - abandoned_at < 2
                     assert state(case_id, "analyzer")["attempts"] == 1
-                    assert not state(case_id), "Provider received an abandoned timed-out request"
+                    assert not state(case_id), "Provider received an abandoned request"
                     assert mappings() == before
                     measurements.append({"route": host, "api": path, "stream": stream,
                                          "case": "early_disconnect",

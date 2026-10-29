@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -568,10 +569,28 @@ class TestAnalyzeText:
         finally:
             pii_guardrail._ANALYZER_CALL_CONTEXT.reset(context_token)
 
-        assert client.post.await_args.kwargs["headers"] == {
+        headers = dict(client.post.await_args.kwargs["headers"])
+        assert 0 < float(headers.pop(pii_guardrail.ANALYZER_BUDGET_HEADER)) <= pii_guardrail.PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS
+        assert headers == {
             pii_guardrail.ANALYZER_REQUEST_ID_HEADER: request_id,
             pii_guardrail.ANALYZER_TEXT_FIELD_INDEX_HEADER: "2",
         }
+
+    @pytest.mark.asyncio
+    async def test_analyzer_receives_remaining_not_reset_budget(self, guardrail):
+        client = AsyncMock()
+        client.post.return_value = self._mock_analyzer_response()
+        token = pii_guardrail._ANALYSIS_DEADLINE.set(time.monotonic() + 0.5)
+        try:
+            with patch.object(pii_guardrail, "_get_shared_analyzer_http_client", return_value=client):
+                await guardrail._analyze_text("synthetic text")
+                first = float(client.post.await_args.kwargs["headers"][pii_guardrail.ANALYZER_BUDGET_HEADER])
+                await asyncio.sleep(0.01)
+                await guardrail._analyze_text("synthetic text")
+                second = float(client.post.await_args.kwargs["headers"][pii_guardrail.ANALYZER_BUDGET_HEADER])
+            assert 0 < second < first <= 0.5
+        finally:
+            pii_guardrail._ANALYSIS_DEADLINE.reset(token)
 
     @pytest.mark.asyncio
     async def test_pre_call_indexes_analyzer_calls_without_leaking_context(
@@ -686,6 +705,21 @@ class TestAnalyzeText:
         assert exc_info.value.phase == "readiness"
         assert exc_info.value.failure_class == "unexpected_failure"
 
+    @pytest.mark.parametrize("kind", ["analysis_deadline_exceeded", "triton_contract_invalid"])
+    def test_nonretryable_ner_failure_has_no_retry_after(self, guardrail, kind):
+        with pytest.raises(ProxyException) as error:
+            guardrail._raise_analyzer_unavailable(AnalyzerUnavailableError(
+                phase="inference", failure_class=kind))
+        assert error.value.status_code == 503
+        assert not error.value.headers
+        assert error.value.param["analyzer_unavailable"]["details"]["retryable"] is False
+
+    def test_transient_ner_failure_preserves_retry_delay(self, guardrail):
+        with pytest.raises(ProxyException) as error:
+            guardrail._raise_analyzer_unavailable(AnalyzerUnavailableError(
+                phase="triton_readiness", failure_class="triton_unavailable", retry_after_seconds=5))
+        assert error.value.headers == {"Retry-After": "5"}
+
     @pytest.mark.asyncio
     async def test_unknown_analyzer_503_is_always_unavailable(self, guardrail):
         mock_response = MagicMock()
@@ -751,6 +785,47 @@ class TestAnalyzeText:
 
 
 class TestPreprocessingBudget:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("api", ["chat", "responses"])
+    @pytest.mark.parametrize("stream", [False, True])
+    async def test_http_disconnect_cleans_only_request_mapping(self, guardrail, api, stream):
+        from litellm_guardrails.request_cancellation import RequestCancellationMiddleware
+
+        incoming, stored, cleaned = asyncio.Queue(), asyncio.Event(), asyncio.Event()
+        source = "Phone +79031234567"
+        target = {"role": "user", "content": source}
+        data = {"model": "mock-chat", "stream": stream,
+                "messages" if api == "chat" else "input": [target],
+                "metadata": {"pii_request_id": "forged-neighbour"}}
+
+        async def save(_request_id, _mapping):
+            stored.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaned.set()
+
+        async def app(*_args):
+            with pytest.raises(HTTPException) as error:
+                await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+            assert error.value.status_code == 499
+            assert error.value.detail == "Client disconnected the request"
+
+        with (
+            patch.object(guardrail, "_get_request_id", return_value="disconnect-owned"),
+            patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[_entity(source, "+79031234567")])),
+            patch.object(guardrail, "_save_mapping", side_effect=save),
+        ):
+            task = asyncio.create_task(RequestCancellationMiddleware(app)(
+                {"type": "http", "method": "POST"}, incoming.get, None))
+            await asyncio.wait_for(stored.wait(), 1)
+            incoming.put_nowait({"type": "http.disconnect"})
+            await asyncio.wait_for(task, 1)
+        assert cleaned.is_set()
+        assert target["content"] == source
+        assert guardrail._get_response_request_id(data) is None
+        guardrail._redis.delete.assert_awaited_once_with("pii_mapping:disconnect-owned")
+
     @pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan"), 0.0, -1.0])
     def test_time_budget_cannot_be_infinite(self, value):
         assert pii_guardrail._normalize_positive_float("synthetic-timeout", value, 30.0) == 30.0

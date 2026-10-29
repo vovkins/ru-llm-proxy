@@ -25,8 +25,17 @@ services:
     container_name: !reset null
     ports: !reset []
     scale: ${ANALYZER_REPLICAS:-4}
-    cpus: ${ANALYZER_CPUS:-4.0}
-    mem_limit: ${ANALYZER_MEMORY:-8g}
+    cpus: ${ANALYZER_CPUS:-2.0}
+    mem_limit: ${ANALYZER_MEMORY:-4g}
+    labels:
+      ru-llm-proxy.topology: production
+
+  ner-triton:
+    scale: ${TRITON_REPLICAS:-2}
+    cpus: ${TRITON_CPUS:-2.0}
+    mem_limit: ${TRITON_MEMORY:-2g}
+    environment:
+      TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-2}
     labels:
       ru-llm-proxy.topology: production
 
@@ -38,6 +47,6 @@ services:
 
   redis:
     cpus: ${REDIS_CPUS:-1.0}
-    mem_limit: ${REDIS_MEMORY:-2g}
+    mem_limit: ${REDIS_MEMORY:-16g}
     labels:
       ru-llm-proxy.topology: production

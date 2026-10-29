@@ -31,6 +31,36 @@ PATTERNS = [
     ('grouped', re.compile(rf'{L}(?P<v>\d{{2}}[ \t]\d{{2}}[ \t]\d{{3}}[ \t]\d{{3}}){R}'), 0.3),
 ]
 
+_SHORT_LABEL = re.compile(
+    r'(?i)(?<!\w)(?:(?:номер[ \t]+паспорта|паспортный[ \t]+номер)(?!\w)'
+    r'[ \t]*(?:[:=№][ \t]*)?|паспорт(?!\w)[ \t]*[:=№][ \t]*)'
+)
+_SHORT_NUMBER = re.compile(r'[0-9]{6}(?![\w/-]|\.[0-9])')
+_SHORT_KEYS = frozenset({'паспорт', 'номер паспорта', 'passport', 'passport_number'})
+
+
+def _short_numbers(text, strings):
+    for label in _SHORT_LABEL.finditer(text):
+        if strings is None:
+            strings = StringSpans(text)
+        start = label.end()
+        owner, literal = strings.at(label.start()), strings.at(start)
+        if literal is not None and literal.start == start:
+            if owner is not None:
+                continue
+            start = literal.content_start
+        elif owner is not literal:
+            continue
+        limit = literal.content_end if literal else len(text)
+        number = _SHORT_NUMBER.match(text, start, limit)
+        if number:
+            yield number.start(), number.end(), 'short_label'
+    # Reuse the validated member scanner; a key confirms only its own scalar.
+    from recognizers.json_strings import iter_json_keyed_strings
+    for key, value, offsets in iter_json_keyed_strings(text, integers=True):
+        if key.casefold() in _SHORT_KEYS and _SHORT_NUMBER.fullmatch(value):
+            yield offsets[0], offsets[-1], 'short_field'
+
 
 class RuPassportExtRecognizer(EntityRecognizer):
     """Recognize separated, labelled and glued passport series and numbers."""
@@ -73,4 +103,8 @@ class RuPassportExtRecognizer(EntityRecognizer):
                         confidence = min(1.0, score + 0.35)
                 out.append(RecognizerResult('RU_PASSPORT', m.start('v'), m.end('v'), confidence, AnalysisExplanation(self.name, confidence),
                                             recognition_metadata={RecognizerResult.RECOGNIZER_NAME_KEY: self.name, 'pattern': name}))
+        for start, end, name in _short_numbers(text, strings):
+            out.append(RecognizerResult('RU_PASSPORT', start, end, 0.75,
+                                        AnalysisExplanation(self.name, 0.75), recognition_metadata={
+                                            RecognizerResult.RECOGNIZER_NAME_KEY: self.name, 'pattern': name}))
         return out

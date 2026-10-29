@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "ACTIVE_PROFILE",
     "MODEL_ID",
     "MODEL_REVISION",
-    "HuggingFaceNERRecognizer",
+    "TritonNERRecognizer",
     "NERBackendError",
     "NERConfigurationError",
     "NERInferenceCancelled",
@@ -21,6 +22,6 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     if name not in __all__:
         raise AttributeError(name)
-    from . import huggingface_recognizer
+    from . import triton_recognizer
 
-    return getattr(huggingface_recognizer, name)
+    return getattr(triton_recognizer, name)

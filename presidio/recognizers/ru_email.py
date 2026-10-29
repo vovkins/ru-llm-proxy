@@ -3,14 +3,21 @@
 from presidio_analyzer import Pattern, PatternRecognizer
 
 
+_LETTERS = r"A-Za-z\p{Script=Cyrillic}"
+_LOCAL = rf"[{_LETTERS}0-9_][{_LETTERS}0-9._%+\-]*"
+_DOMAIN = rf"[{_LETTERS}0-9.\-]+"
+_SUFFIX = rf"(?:xn--[A-Za-z0-9\-]+|[{_LETTERS}]{{2,}})"
+
+
 class RuEmailRecognizer(PatternRecognizer):
     """Recognize email addresses with Russian context words."""
 
-    # Standard email regex
+    # Match complete supported values, including an encoded final domain label.
+    # Unicode word guards prevent a match ending inside an unsupported suffix.
     PATTERNS = [
         Pattern(
             name="email_address",
-            regex=r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b",
+            regex=rf"(?<![\w@]){_LOCAL}@{_DOMAIN}\.{_SUFFIX}(?![\w@\-])",
             score=0.85,
         ),
     ]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download and verify the project's pinned Hugging Face NER model."""
+"""Atomically download and verify the single pinned NER model at build time."""
 
 from __future__ import annotations
 
@@ -54,7 +54,15 @@ def download_file(url: str, destination: Path, expected: ModelFile) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
         with destination.open("wb") as output:
-            shutil.copyfileobj(response, output, length=1024 * 1024)
+            remaining = expected.size
+            while True:
+                block = response.read(min(1024 * 1024, remaining + 1))
+                if not block:
+                    break
+                if len(block) > remaining:
+                    raise ModelArtifactError(f"downloaded model file size mismatch: {expected.path}")
+                output.write(block)
+                remaining -= len(block)
 
     if destination.stat().st_size != expected.size:
         raise ModelArtifactError(f"downloaded model file size mismatch: {expected.path}")
@@ -107,11 +115,7 @@ def download_model(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--manifest",
-        type=Path,
-        default=Path(__file__).with_name("model_manifest.json"),
-    )
+    parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("model_manifest.json"))
     parser.add_argument("--output", type=Path, default=MODEL_DIRECTORY)
     return parser
 

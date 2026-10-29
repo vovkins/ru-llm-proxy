@@ -1,0 +1,1103 @@
+{
+  "model_revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+  "decision": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6497524146",
+  "source_manifest_sha256": "5badf1c99e31d3cc92129fe22cb3284c55ad3b06ed0edfc5a78dfc0b1755ad5d",
+  "note": "Test expectations only. Gold annotations and raw quality metrics remain unchanged.",
+  "groups": {
+    "instruction_regressions": {
+      "instruction_password_pair": {
+        "text_sha256": "3084aa76558d0dc6815363b099250fa53daf18477c62a25e2448200e44fdb362",
+        "expected": [
+          [
+            "PASSWORD",
+            21,
+            35
+          ]
+        ],
+        "accepted": [
+          [
+            "PASSWORD",
+            21,
+            35
+          ],
+          [
+            "PASSWORD",
+            35,
+            36
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "password"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "instruction_holdout_empty_person": {
+        "text_sha256": "ad729e52879cd3451a4f79230734503290811890be71a65f395e060d161bea2d",
+        "expected": [],
+        "accepted": [
+          [
+            "ORGANIZATION",
+            20,
+            22
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "negative",
+          "instruction",
+          "holdout"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_original": {
+        "text_sha256": "24b85b9b1f696f0aff21a6878d48ff288e4e95d70d59308e237a78b0eb0121a3",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_lowercase": {
+        "text_sha256": "d6f56a0aed24693a6bbcbec869ff225684a83483f98340bd2bb1d567846209df",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_uppercase": {
+        "text_sha256": "87e729fc23b871b61bb39c36772d2143ad4f4c473c2c48ab932923a90974a76a",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q03"
+      },
+      "login_instruction_email_polite": {
+        "text_sha256": "8d0092d72a9e259a9dd7f9771ed3c358bfcda3d37c15eb0373c6ec645bae2e68",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_respond": {
+        "text_sha256": "f06909a25bd778f87a9919e6be4240916f378de06886a6831ae15a94050a7bf7",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_return": {
+        "text_sha256": "56866004908801fc8b745835154cb859fdfde6ed7e4755763595dac823c542e1",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            27,
+            54
+          ],
+          [
+            "LOGIN",
+            54,
+            55
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "login_instruction_email_russian": {
+        "text_sha256": "1620986cf848ae842fb14a5c4e4cb8317af31eadf4ed21cd0eff9cd2967e107a",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            6,
+            33
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            6,
+            33
+          ],
+          [
+            "LOGIN",
+            33,
+            34
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "instruction",
+          "instruction_login_context",
+          "ru"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "dialogue_role_which": {
+        "text_sha256": "7bb8fee946418b6d1002fe6153d160b7dbf450cf8f5a2a58318f5915c03d61f9",
+        "expected": [],
+        "accepted": [
+          [
+            "PERSON",
+            57,
+            60
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "negative",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q01"
+      },
+      "dialogue_role_write": {
+        "text_sha256": "4e97b1c36cad5b5f8029e3491c1751d6acde749e8feba7086696fcbd19f911fe",
+        "expected": [],
+        "accepted": [
+          [
+            "PERSON",
+            45,
+            48
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "negative",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q01"
+      },
+      "dialogue_role_where": {
+        "text_sha256": "408045401d8d3b04f59ed7c03868eb84826fa957bf17c85e77a87800dbc9ce43",
+        "expected": [],
+        "accepted": [
+          [
+            "PERSON",
+            59,
+            62
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "negative",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q01"
+      },
+      "dialogue_role_email": {
+        "text_sha256": "579e706dcf54340773fbad2c984d0b9d288b2e4c53b22b6d0ac28ff2a8064354",
+        "expected": [
+          [
+            "EMAIL_ADDRESS",
+            34,
+            63
+          ]
+        ],
+        "accepted": [
+          [
+            "EMAIL_ADDRESS",
+            34,
+            63
+          ],
+          [
+            "LOGIN",
+            63,
+            64
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "dialogue_role_nested_credentials": {
+        "text_sha256": "793cd7ae1d4818639573e9f880ad310ed965c87566d885d4efb851b7b491affc",
+        "expected": [
+          [
+            "AUTH_TOKEN",
+            73,
+            95
+          ],
+          [
+            "LOGIN",
+            20,
+            36
+          ],
+          [
+            "PASSWORD",
+            46,
+            61
+          ],
+          [
+            "SECRET_KEY",
+            107,
+            129
+          ]
+        ],
+        "accepted": [
+          [
+            "AUTH_TOKEN",
+            73,
+            95
+          ],
+          [
+            "LOGIN",
+            20,
+            36
+          ],
+          [
+            "PASSWORD",
+            46,
+            61
+          ],
+          [
+            "PERSON",
+            141,
+            145
+          ],
+          [
+            "SECRET_KEY",
+            107,
+            129
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q01"
+      },
+      "dialogue_role_user_assignment": {
+        "text_sha256": "3daf9763020af4e24ce4e816a133db71c15e805bc2cddb3fe2ba5b396a80beeb",
+        "expected": [
+          [
+            "LOGIN",
+            26,
+            40
+          ]
+        ],
+        "accepted": [
+          [
+            "LOGIN",
+            26,
+            40
+          ],
+          [
+            "LOGIN",
+            41,
+            50
+          ],
+          [
+            "PERSON",
+            52,
+            56
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "dialogue",
+          "instruction_login_context",
+          "en"
+        ],
+        "language": "ru",
+        "reason": "Q01/Q02"
+      }
+    },
+    "person_organization_regressions": {
+      "holdout_person_uppercase": {
+        "text_sha256": "7dab91655648694ad160a9db70bb8aa4a017d85491134c14af902ff91692ddad",
+        "expected": [
+          [
+            "PERSON",
+            7,
+            20
+          ]
+        ],
+        "accepted": [
+          [
+            "ORGANIZATION",
+            7,
+            11
+          ],
+          [
+            "PERSON",
+            12,
+            20
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "person",
+          "uppercase",
+          "holdout"
+        ],
+        "language": "ru",
+        "reason": "Q03"
+      }
+    },
+    "name_context_regressions": {
+      "fio_field_names": {
+        "text_sha256": "6e33e5a9fd6864db9e0b5e75c32c4bcaa8f2f83e3d3630788f3d32554bd1738e",
+        "expected": [],
+        "accepted": [
+          [
+            "ORGANIZATION",
+            11,
+            19
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "negative",
+          "person_field",
+          "counterexample"
+        ],
+        "language": "ru",
+        "reason": "Q02"
+      },
+      "holdout_client_uppercase": {
+        "text_sha256": "7dab91655648694ad160a9db70bb8aa4a017d85491134c14af902ff91692ddad",
+        "expected": [
+          [
+            "PERSON",
+            7,
+            20
+          ]
+        ],
+        "accepted": [
+          [
+            "ORGANIZATION",
+            7,
+            11
+          ],
+          [
+            "PERSON",
+            12,
+            20
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "uppercase",
+          "experiment",
+          "holdout"
+        ],
+        "language": "ru",
+        "reason": "Q03"
+      }
+    },
+    "name_field_holdout": {},
+    "accepted_coverage": {
+      "value_repair__query_component": {
+        "text": "https://service.local/run?api_key=Ab/C+!?&visible=ordinary",
+        "text_sha256": "3f2d2ebfc8740419f34f7c0f1e7b2781099e6070da1bc4cd71039324cdc7c1b0",
+        "expected": [
+          [
+            "AUTH_TOKEN",
+            34,
+            41
+          ]
+        ],
+        "accepted": [
+          [
+            "INTERNAL_DOMAIN",
+            8,
+            21
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": true,
+        "tags": [
+          "positive",
+          "existing_value_boundary"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_011": {
+        "text": "привезите на Тула, Советская 44, кв 3, спасибо",
+        "text_sha256": "55ed88ed60e4b3987ba6e869ea41e106b00cc83c6293aaac32d26e8cf7ea733a",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            13,
+            37
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            13,
+            17
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_013": {
+        "text": "жду вас завтра в 10 утра, наш офис находится Владимир, Большая Московская, 14",
+        "text_sha256": "f70aca8bdd5f0e0c890aadac420240bce52bdacb66bda1717edbff09d930fa36",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            45,
+            77
+          ]
+        ],
+        "accepted": [
+          [
+            "PERSON",
+            45,
+            53
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_019": {
+        "text": "заказ жду на адрес москва, арбат 5, кв 2",
+        "text_sha256": "99d80ce5f9d436415f714f8e4ea5d1274c9d133f5db9debc59d70e0f6dc0dd3c",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            19,
+            40
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_029": {
+        "text": "доставка на владимир, горького 45, кв 17, спс",
+        "text_sha256": "2f6f5fbb0000a86dcf5984d69f8a8bf1e5774be92a983e5260cd9e642bb16c6b",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            12,
+            40
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            12,
+            20
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_035": {
+        "text": "привезите плз на екатеринбург, куйбышева 22, кв 3",
+        "text_sha256": "caae669bc35ce6d926d64cfd88da3b7f1dc6c0c2181fc098d944e5fba4302097",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            17,
+            49
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            31,
+            33
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_040": {
+        "text": "срочная доставка на омск, ленина 67, кв 12, когда привезут??",
+        "text_sha256": "b6e21fab902a4f0548e7d87c48b2aa0c7fa3978ef77cabb415e8a52151fc8c85",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            20,
+            42
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            20,
+            24
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_043": {
+        "text": "го к вам в гости, где адрес? рязань, московское шоссе 12, кв 4?",
+        "text_sha256": "22a75f252acd63e829ebb7e72b3b12c9976fc7386fd147fdd2e15b39e5cf1aca",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            29,
+            62
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            29,
+            35
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_049": {
+        "text": "доставьте на казань, чернышевского 78, кв 45, спс большое",
+        "text_sha256": "e376e68e9814cb25fd28ac1db4ef1e2e10c7f8c16d5309fec8e1561ae5fa58f5",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            13,
+            44
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            13,
+            19
+          ],
+          [
+            "LOCATION",
+            21,
+            34
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_061": {
+        "text": "го завтра встречаемся, я буду в офисе Калуга, Ленина 89",
+        "text_sha256": "1f196bf5d69670092cff71d1c0ffd3dd107bc27dd326f6b858981292e21e90be",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            38,
+            55
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            38,
+            44
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__addr_070": {
+        "text": "доставьте посылку срочно на омск, карла маркса 102, кв 15, спс",
+        "text_sha256": "27cda3c407db48b6266b06bc0621c64e7a2acafb5ec21de9a54bed6f4cbca749",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            28,
+            57
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            28,
+            32
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "ADDRESS"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_entity__passport_058": {
+        "text": "потерял паспорт, срочно нужна замена! Серию не помню, но номер был 122648",
+        "text_sha256": "7c06b7ceb5edab707383eb39d9ab3b03ae5b8a0ac089a1e1918f3c0b117f5e4d",
+        "expected": [
+          [
+            "RU_PASSPORT",
+            67,
+            73
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "PASSPORT_NUMBER"
+        ],
+        "language": "ru",
+        "reason": "K06: free narrative"
+      },
+      "pii_domain__s_auto_039": {
+        "text": "Выезд мастера возможен? Местоположение ул. Садовая 23, Екатеринбург",
+        "text_sha256": "9636bb39ae6a660983df760d36e79526e430a809d281861c854e7c0a8917a9db",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            39,
+            67
+          ]
+        ],
+        "accepted": [
+          [
+            "LOCATION",
+            55,
+            67
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-AUTO"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__s_auto_084": {
+        "text": "адрес у них москва, проспект вернадского 45 — реально там офис или только юр?",
+        "text_sha256": "60cb9e5b80cd6d1efecbb2f335b9732d00ef474b20c865d0ad08dfec3a3962c6",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            12,
+            43
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-AUTO"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__s_auto_096": {
+        "text": "адрес ихний в подмосковье, люберцы пр-т гагарина 15 — реально доедешь или это промзона?",
+        "text_sha256": "f131a38246926c4bffc5342d168e184a3fbaaff0a9bb390831dbb0e8141789e6",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            14,
+            51
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-AUTO"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__del_011": {
+        "text": "Екатерина Волкова, тел 8 903 555 12 34, привезите на Садовую улицу, д 8, кв 45",
+        "text_sha256": "027d6d78485191d934d0308c5883b3249bfe39e3d82fb0256a7ff965ece6f300",
+        "expected": [
+          [
+            "PERSON",
+            0,
+            17
+          ],
+          [
+            "PHONE_NUMBER",
+            23,
+            38
+          ],
+          [
+            "RU_ADDRESS",
+            53,
+            78
+          ]
+        ],
+        "accepted": [
+          [
+            "PERSON",
+            0,
+            17
+          ],
+          [
+            "PHONE_NUMBER",
+            23,
+            38
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-DELIVERY"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__del_039": {
+        "text": "Ирина Лебедева на Гагарина 33 корпус 2",
+        "text_sha256": "07d66931f56902a66ad70818c4f5c8d72fc772ae1e2069751bd2ed35b3cfd5bc",
+        "expected": [
+          [
+            "PERSON",
+            0,
+            14
+          ],
+          [
+            "RU_ADDRESS",
+            18,
+            38
+          ]
+        ],
+        "accepted": [
+          [
+            "PERSON",
+            0,
+            14
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-DELIVERY"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__del_077": {
+        "text": "привезите на набережная реки Фонтанки 15",
+        "text_sha256": "e317436145807e0028c075cf0fc32f44d28b40c673497b2f6ed3480ce0b7fbb1",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            13,
+            40
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-DELIVERY"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__del_092": {
+        "text": "Ирина Кузнецова ул. Некрасова 7 кв. 29",
+        "text_sha256": "fb1f4a92fb45872e8a71c8b359c6244c6a8c47ae04039891df75563803688147",
+        "expected": [
+          [
+            "PERSON",
+            0,
+            15
+          ],
+          [
+            "RU_ADDRESS",
+            16,
+            38
+          ]
+        ],
+        "accepted": [
+          [
+            "PERSON",
+            0,
+            15
+          ]
+        ],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-DELIVERY"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      },
+      "pii_domain__hr_073": {
+        "text": "привет, у нас в офисе на тверской 25 сегодня собеседование сегодня, можешь подойти помочь?",
+        "text_sha256": "37e4e4e67d4f296d20f8be5b60df097efeef2addb7ef1e20dce90fbfb10e7fec",
+        "expected": [
+          [
+            "RU_ADDRESS",
+            25,
+            36
+          ]
+        ],
+        "accepted": [],
+        "score_threshold": 0.35,
+        "critical": false,
+        "tags": [
+          "positive",
+          "public_control",
+          "S-HR"
+        ],
+        "language": "ru",
+        "reason": "E13: partial coverage regression"
+      }
+    }
+  }
+}

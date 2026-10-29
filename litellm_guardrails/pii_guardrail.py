@@ -11,6 +11,7 @@ import os
 import re
 import time
 import uuid
+from bisect import bisect_right
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Union
@@ -29,6 +30,9 @@ from litellm_guardrails.dictionary_policy import (
     DictionarySubstitutionPolicy,
     DictionarySubstitutionResult,
 )
+from litellm_guardrails.restoration_mapping import (
+    RestorationMapping, decode_mapping, encode_mapping, json_number_spans,
+)
 from litellm_guardrails.streaming_restoration import (
     ResponsesStreamNormalizer,
     StreamingResponseRestorer,
@@ -36,6 +40,7 @@ from litellm_guardrails.streaming_restoration import (
     restore_text,
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
+from litellm_guardrails.request_cancellation import ClientDisconnected, until_client_disconnect
 from litellm_guardrails.responses_state import (
     STATE_METADATA_KEY,
     ResponsesStateError,
@@ -186,6 +191,8 @@ DEFAULT_DEPENDENCY_RETRY_AFTER_SECONDS = 1
 MAX_ANALYZER_RETRY_AFTER_SECONDS = 3_600
 ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
+ANALYZER_BUDGET_HEADER = "X-Ru-LLM-Analysis-Budget-Seconds"
+_ANALYSIS_DEADLINE: ContextVar[Optional[float]] = ContextVar("pii_analysis_deadline", default=None)
 _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int]]] = ContextVar(
     "ru_llm_proxy_analyzer_call_context",
     default=None,
@@ -204,6 +211,9 @@ ANALYZER_FAILURE_PHASES = frozenset(
         "decoding",
         "offset_mapping",
         "startup",
+        "triton_loading",
+        "triton_readiness",
+        "postprocessing",
     }
 )
 ANALYZER_FAILURE_CLASSES = frozenset(
@@ -225,6 +235,12 @@ ANALYZER_FAILURE_CLASSES = frozenset(
         "offset_mapping_failed",
         "unexpected_failure",
         "startup_failed",
+        "triton_load_failed",
+        "triton_unavailable",
+        "triton_overloaded",
+        "triton_contract_invalid",
+        "analysis_deadline_exceeded",
+        "span_postprocessing_failed",
     }
 )
 
@@ -433,7 +449,8 @@ class AnalyzerOverloadedError(RuntimeError):
 class AnalyzerUnavailableError(RuntimeError):
     """Raised when the required Presidio NER backend is unavailable."""
 
-    def __init__(self, *, phase: str = "readiness", failure_class: str = "not_ready"):
+    def __init__(self, *, phase: str = "readiness", failure_class: str = "not_ready",
+                 retry_after_seconds: int = DEFAULT_ANALYZER_RETRY_AFTER_SECONDS):
         super().__init__(ANALYZER_UNAVAILABLE_MESSAGE)
         self.phase = phase if phase in ANALYZER_FAILURE_PHASES else "readiness"
         self.failure_class = (
@@ -441,6 +458,8 @@ class AnalyzerUnavailableError(RuntimeError):
             if failure_class in ANALYZER_FAILURE_CLASSES
             else "unexpected_failure"
         )
+        self.retryable = self.failure_class not in {"analysis_deadline_exceeded", "triton_contract_invalid"}
+        self.retry_after_seconds = _normalize_analyzer_retry_after(retry_after_seconds)
 
 
 def _normalize_analyzer_retry_after(value: object) -> int:
@@ -1408,7 +1427,7 @@ class RuPIIGuardrail(CustomGuardrail):
             "details": {
                 "phase": error.phase,
                 "failure_class": error.failure_class,
-                "retry_after_seconds": DEFAULT_ANALYZER_RETRY_AFTER_SECONDS,
+                **({"retry_after_seconds": error.retry_after_seconds} if error.retryable else {"retryable": False}),
             },
         }
         exc = ProxyException(
@@ -1421,7 +1440,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 }
             },
             code=503,
-            headers={"Retry-After": str(DEFAULT_ANALYZER_RETRY_AFTER_SECONDS)},
+            headers={"Retry-After": str(error.retry_after_seconds)} if error.retryable else {},
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
@@ -2720,6 +2739,13 @@ class RuPIIGuardrail(CustomGuardrail):
                     ANALYZER_REQUEST_ID_HEADER: request_id,
                     ANALYZER_TEXT_FIELD_INDEX_HEADER: str(text_field_index),
                 }
+            deadline = _ANALYSIS_DEADLINE.get()
+            remaining = (PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS if deadline is None
+                         else deadline - time.monotonic())
+            if remaining <= 0:
+                raise TimeoutError
+            # Generated locally, never copied from a public request header.
+            headers[ANALYZER_BUDGET_HEADER] = str(min(86_400.0, remaining))
             response = await client.post(
                 f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
                 json={"text": text, "language": "ru", "score_threshold": 0.35},
@@ -2762,6 +2788,8 @@ class RuPIIGuardrail(CustomGuardrail):
                         failure_class=str(
                             detail.get("failure_class") or "not_ready"
                         ),
+                        retry_after_seconds=_normalize_analyzer_retry_after(
+                            response.headers.get("Retry-After", DEFAULT_ANALYZER_RETRY_AFTER_SECONDS)),
                     )
                 raise AnalyzerUnavailableError(
                     phase="readiness",
@@ -2775,7 +2803,7 @@ class RuPIIGuardrail(CustomGuardrail):
             response.raise_for_status()
             data = response.json()
             return data.get("entities", [])
-        except (AnalyzerOverloadedError, AnalyzerUnavailableError):
+        except (AnalyzerOverloadedError, AnalyzerUnavailableError, TimeoutError):
             raise
         except httpx.RequestError as exc:
             raise AnalyzerUnavailableError(
@@ -2808,13 +2836,25 @@ class RuPIIGuardrail(CustomGuardrail):
             return text, {}
 
         parts = []
-        mapping = {}
+        mapping = RestorationMapping()
         last_end = 0
+        numbers = json_number_spans(text)
+        number_starts = [start for start, _end in numbers]
         for start, end, entity_type in normalized_entities:
+            number_index = bisect_right(number_starts, start) - 1
+            is_number = number_index >= 0 and end <= numbers[number_index][1]
+            if is_number:
+                start, end = numbers[number_index]
+            if start < last_end:
+                # Separate findings inside one numeric literal share one mask.
+                continue
             placeholder = self._next_placeholder(entity_type, entity_counts)
             parts.append(text[last_end:start])
-            parts.append(placeholder)
-            mapping[placeholder] = text[start:end]
+            parts.append(json.dumps(placeholder) if is_number else placeholder)
+            if is_number:
+                mapping.add_number(placeholder, text[start:end])
+            else:
+                mapping[placeholder] = text[start:end]
             last_end = end
 
         parts.append(text[last_end:])
@@ -3099,7 +3139,7 @@ class RuPIIGuardrail(CustomGuardrail):
             await r.setex(
                 f"pii_mapping:{request_id}",
                 self.mapping_ttl_seconds,
-                json.dumps(mapping, ensure_ascii=False),
+                encode_mapping(mapping),
             )
         finally:
             PII_REDIS_LATENCY.labels(operation="save").observe(
@@ -3117,7 +3157,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 time.perf_counter() - started_at
             )
         if data:
-            return json.loads(data)
+            return decode_mapping(data)
         return {}
 
     async def _delete_mapping(self, request_id: str) -> None:
@@ -3653,11 +3693,14 @@ class RuPIIGuardrail(CustomGuardrail):
             (target, field, target[field]) for target, field in request_targets
         ]
         outcome = "failure"
+        budget_token = _ANALYSIS_DEADLINE.set(time.monotonic() + PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS)
         try:
             with anyio.fail_after(PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS):
-                result = await self._pre_call_with_budget(
-                    user_api_key_dict, cache, data, call_type, started_at,
-                    request_id, request_targets,
+                result = await until_client_disconnect(
+                    lambda: self._pre_call_with_budget(
+                        user_api_key_dict, cache, data, call_type, started_at,
+                        request_id, request_targets,
+                    )
                 )
                 # Synchronous masking/policy work can overrun without a checkpoint.
                 if time.perf_counter() - started_at >= PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS:
@@ -3686,6 +3729,13 @@ class RuPIIGuardrail(CustomGuardrail):
             )
             exc.status_code = 503
             raise exc from None
+        except ClientDisconnected:
+            outcome = "cancelled"
+            await _finish_stream_cleanup(
+                self._abort_preprocessing(data, originals, request_id)
+            )
+            _safe_log(logging.INFO, "pii_guardrail_client_disconnected", request_id=request_id)
+            raise HTTPException(status_code=499, detail="Client disconnected the request") from None
         except asyncio.CancelledError:
             outcome = "cancelled"
             await _finish_stream_cleanup(
@@ -3693,6 +3743,7 @@ class RuPIIGuardrail(CustomGuardrail):
             )
             raise
         finally:
+            _ANALYSIS_DEADLINE.reset(budget_token)
             PII_PREPROCESSING_LATENCY.labels(outcome=outcome).observe(time.perf_counter() - started_at)
 
     async def _abort_preprocessing(self, data: dict, originals: list, request_id: str) -> None:
@@ -3782,8 +3833,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     call_type=call_type,
                 )
 
-        full_mapping: dict[str, str] = dict(inherited_mapping)
-        pii_mapping: dict[str, str] = {}
+        full_mapping = RestorationMapping(inherited_mapping)
+        pii_mapping = RestorationMapping()
         dictionary_mapping: dict[str, str] = {}
         dictionary_rule_counts: dict[str, int] = {}
         entity_counts: dict[str, int] = placeholder_counters(inherited_mapping)

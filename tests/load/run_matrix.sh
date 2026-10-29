@@ -20,8 +20,9 @@ Modes:
   litellm      Compare LiteLLM replicas from LOAD_LITELLM_MATRIX (default: 1 2 4)
   combined     Run LOAD_COMBINED_MATRIX pairs (default: 2:1 4:1 4:2)
 
-Results are written outside the repository by default. Every run uses unique
-synthetic input so the Analyzer result cache does not hide compute saturation.
+Results are written outside the repository by default. Every run changes the
+synthetic prompt; repeated fragments can still hit the analysis cache. Inspect
+cache and NER counters before interpreting the result as cold compute capacity.
 The LiteLLM-only mode uses the lightweight analyzer simulator and therefore
 does not verify masking restoration; combined modes always use the real model.
 EOF

@@ -1,0 +1,3871 @@
+{
+  "status": "K06_and_K06_J01_verified_with_explicitly_accepted_limits_not_migration_acceptance",
+  "source": {
+    "case_count": 2318,
+    "corpus_counts": {
+      "ner_migration": 77,
+      "instruction_regressions": 70,
+      "name_context_regressions": 32,
+      "name_field_header_control": 8,
+      "name_field_holdout": 12,
+      "person_dialogue_research": 46,
+      "person_organization_regressions": 36,
+      "deterministic_rules_review": 75,
+      "tiny2_component_study": 32,
+      "all_class_context": 52,
+      "value_repair": 8,
+      "dkb_plain": 18,
+      "dkb_json": 18,
+      "windows": 24,
+      "pii_entity": 910,
+      "pii_domain": 900
+    },
+    "unique_texts": 2296,
+    "duplicate_text_occurrences": 22,
+    "manifest_sha256": "5badf1c99e31d3cc92129fe22cb3284c55ad3b06ed0edfc5a78dfc0b1755ad5d",
+    "public_dataset": {
+      "repository": "hivetrace/pii-bench",
+      "revision": "cd6a18ace16daf23e79247ccf1e2b245d4054654",
+      "license": "apache-2.0",
+      "files_sha256": {
+        "entity.parquet": "6e0c77d566c2f04e7213917b26f1038336e28fc006551fac7a7f44f7627d5f96",
+        "domain.parquet": "7ef3574273c0fe3a987981e38e32cd2764031a82766ca5b235bfccd1f27058eb"
+      },
+      "type_mapping": {
+        "NAME": "PERSON",
+        "ADDRESS": "RU_ADDRESS",
+        "EMAIL": "EMAIL_ADDRESS",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "BANK_CARD_NUMBER": "CREDIT_CARD",
+        "INN": "RU_INN",
+        "KPP": "RU_KPP",
+        "OGRN": "RU_OGRN",
+        "OGRNIP": "RU_OGRNIP",
+        "SNILS": "RU_SNILS",
+        "PASSPORT_NUMBER": "RU_PASSPORT",
+        "TOKEN": "AUTH_TOKEN",
+        "CVC": "CVC_OUT_OF_SCOPE"
+      },
+      "notes": [
+        "Not proven identical to author validation (8224 rows).",
+        "Author already evaluated PII-Bench; not independent of model selection.",
+        "ADDRESS full address maps to RU_ADDRESS; LOCATION constituents may still cover characters.",
+        "TOKEN maps strictly to AUTH_TOKEN; alternate secret classes remain visible in untyped coverage.",
+        "CVC is explicitly outside approved product scope; no new detector is added.",
+        "Clean/extra character counts refer only to annotation scope, not every project class."
+      ]
+    }
+  },
+  "changed_runtime_sources": [
+    "recognizers/json_strings.py",
+    "recognizers/ru_passport_ext.py"
+  ],
+  "packages_unchanged": true,
+  "runtime_source_sha256": {
+    "analyzer_server.py": "d86c584f02eb5996426ade70cd9e07b5a48ea118f8909c59cdee1f87587f433e",
+    "result_merging.py": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+    "string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+    "ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+    "ner/backend_settings.py": "246441f57a7359f46fd1336531ab55862bbcb8309b2419ef1555f88980c716e2",
+    "ner/boundary_recheck.py": "a2cd01b745e12ba6da0af76c1a35f7070f69be2bf8cd45e88f7400252a9403ce",
+    "ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+    "ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f",
+    "ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+    "ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+    "ner/triton_model.py": "4691b539345ee67aa8e92437630422f8bc1c3e1cd951a172aec55af7fc625d2f",
+    "ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+    "ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+    "recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+    "recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+    "recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+    "recognizers/credential_rules.py": "8c5f36f9d77e3a9d4fc53bd125fe18bf9bbb634e7ab55ed321344c170947c545",
+    "recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+    "recognizers/json_strings.py": "c4aeaf5b53196e8018a88447cae375f5811e8f5053f983acff5487dc9eb8b7f6",
+    "recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+    "recognizers/ru_address_chain.py": "846ac32fa364b34ea988bd64221d32a1acfa6ad288590f30c67e3b5b77ea7fa0",
+    "recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+    "recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+    "recognizers/ru_email.py": "907560dcb04c3a407c541e945d6ec477fcfd08265586b3f300844172dc8f4eb2",
+    "recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+    "recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+    "recognizers/ru_passport_ext.py": "1b1d46174fc92315e7983e1a86a9e44293d6ae3382e8bf0269fa2f19bf76c802",
+    "recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+    "recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+    "recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc"
+  },
+  "comparison": {
+    "before_k06": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1733,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40742,
+        "in_scope_extra_masked_characters": 7019,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1917,
+        "partially_covered": 76,
+        "typed_fully_covered": 1763,
+        "significant_fully_covered": 1932,
+        "significant_partially_covered": 61,
+        "typed_significant_fully_covered": 1765,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39326,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2049,
+        "true_positives": 1740,
+        "false_positives": 309,
+        "false_negatives": 364
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 122,
+          "typed_significant_fully_covered": 41,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 182,
+          "true_positives": 182,
+          "false_positives": 0,
+          "false_negatives": 2,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 184,
+          "typed_significant_fully_covered": 182,
+          "precision": 1.0,
+          "recall": 0.9891304347826086,
+          "f1": 0.994535519125683
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 83,
+          "true_positives": 56,
+          "false_positives": 27,
+          "false_negatives": 8,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 60,
+          "typed_significant_fully_covered": 58,
+          "precision": 0.6746987951807228,
+          "recall": 0.875,
+          "f1": 0.7619047619047619
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "significant_fully_covered": 310,
+          "typed_significant_fully_covered": 306,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 159,
+          "true_positives": 95,
+          "false_positives": 64,
+          "false_negatives": 84,
+          "significant_fully_covered": 120,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.5974842767295597,
+          "recall": 0.5307262569832403,
+          "f1": 0.5621301775147929
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 108,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 35,
+          "typed_significant_fully_covered": 33,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    },
+    "after_k06": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1733,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40742,
+        "in_scope_extra_masked_characters": 7019,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1917,
+        "partially_covered": 76,
+        "typed_fully_covered": 1763,
+        "significant_fully_covered": 1932,
+        "significant_partially_covered": 61,
+        "typed_significant_fully_covered": 1765,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39326,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2049,
+        "true_positives": 1740,
+        "false_positives": 309,
+        "false_negatives": 364
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 122,
+          "typed_significant_fully_covered": 41,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 182,
+          "true_positives": 182,
+          "false_positives": 0,
+          "false_negatives": 2,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 184,
+          "typed_significant_fully_covered": 182,
+          "precision": 1.0,
+          "recall": 0.9891304347826086,
+          "f1": 0.994535519125683
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 83,
+          "true_positives": 56,
+          "false_positives": 27,
+          "false_negatives": 8,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 60,
+          "typed_significant_fully_covered": 58,
+          "precision": 0.6746987951807228,
+          "recall": 0.875,
+          "f1": 0.7619047619047619
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "significant_fully_covered": 310,
+          "typed_significant_fully_covered": 306,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 159,
+          "true_positives": 95,
+          "false_positives": 64,
+          "false_negatives": 84,
+          "significant_fully_covered": 120,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.5974842767295597,
+          "recall": 0.5307262569832403,
+          "f1": 0.5621301775147929
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 108,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 35,
+          "typed_significant_fully_covered": 33,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    },
+    "main_e9": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 12,
+        "negative_cases_with_any_mask": 44,
+        "cases_with_any_mask": 1704,
+        "gold_characters": 42115,
+        "covered_gold_characters": 38783,
+        "in_scope_extra_masked_characters": 452,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1790,
+        "partially_covered": 181,
+        "typed_fully_covered": 1654,
+        "significant_fully_covered": 1866,
+        "significant_partially_covered": 105,
+        "typed_significant_fully_covered": 1656,
+        "significant_characters": 40476,
+        "covered_significant_characters": 37505,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 4,
+        "clean_characters": 2681,
+        "false_block_cases": 0,
+        "expected": 2104,
+        "predicted": 1943,
+        "true_positives": 1649,
+        "false_positives": 294,
+        "false_negatives": 455
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 4,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 32,
+          "true_positives": 31,
+          "false_positives": 1,
+          "false_negatives": 100,
+          "gold_values_all_requests": 131,
+          "significant_fully_covered": 73,
+          "typed_significant_fully_covered": 31,
+          "precision": 0.96875,
+          "recall": 0.2366412213740458,
+          "f1": 0.3803680981595092
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "significant_fully_covered": 17,
+          "typed_significant_fully_covered": 17,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "significant_fully_covered": 31,
+          "typed_significant_fully_covered": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 95,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "significant_fully_covered": 4,
+          "typed_significant_fully_covered": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 181,
+          "true_positives": 181,
+          "false_positives": 0,
+          "false_negatives": 3,
+          "gold_values_all_requests": 184,
+          "significant_fully_covered": 184,
+          "typed_significant_fully_covered": 181,
+          "precision": 1.0,
+          "recall": 0.9836956521739131,
+          "f1": 0.9917808219178083
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "significant_fully_covered": 6,
+          "typed_significant_fully_covered": 6,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 2,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 13,
+          "true_positives": 13,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "significant_fully_covered": 13,
+          "typed_significant_fully_covered": 13,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 57,
+          "true_positives": 40,
+          "false_positives": 17,
+          "false_negatives": 0,
+          "gold_values_all_requests": 40,
+          "significant_fully_covered": 40,
+          "typed_significant_fully_covered": 40,
+          "precision": 0.7017543859649122,
+          "recall": 1.0,
+          "f1": 0.8247422680412371
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 55,
+          "true_positives": 52,
+          "false_positives": 3,
+          "false_negatives": 0,
+          "gold_values_all_requests": 52,
+          "significant_fully_covered": 52,
+          "typed_significant_fully_covered": 52,
+          "precision": 0.9454545454545454,
+          "recall": 1.0,
+          "f1": 0.9719626168224299
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 76,
+          "true_positives": 57,
+          "false_positives": 19,
+          "false_negatives": 7,
+          "gold_values_all_requests": 64,
+          "significant_fully_covered": 58,
+          "typed_significant_fully_covered": 57,
+          "precision": 0.75,
+          "recall": 0.890625,
+          "f1": 0.8142857142857143
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 324,
+          "true_positives": 272,
+          "false_positives": 52,
+          "false_negatives": 41,
+          "significant_fully_covered": 302,
+          "typed_significant_fully_covered": 273,
+          "precision": 0.8395061728395061,
+          "recall": 0.8690095846645367,
+          "f1": 0.8540031397174255
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "significant_fully_covered": 220,
+          "typed_significant_fully_covered": 220,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 5,
+          "typed_significant_fully_covered": 5,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 209,
+          "true_positives": 33,
+          "false_positives": 176,
+          "false_negatives": 146,
+          "significant_fully_covered": 107,
+          "typed_significant_fully_covered": 36,
+          "precision": 0.15789473684210525,
+          "recall": 0.18435754189944134,
+          "f1": 0.17010309278350516
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 1,
+          "typed_significant_fully_covered": 1,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "significant_fully_covered": 119,
+          "typed_significant_fully_covered": 107,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "significant_fully_covered": 95,
+          "typed_significant_fully_covered": 86,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "significant_fully_covered": 94,
+          "typed_significant_fully_covered": 89,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "significant_fully_covered": 88,
+          "typed_significant_fully_covered": 80,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "significant_fully_covered": 109,
+          "typed_significant_fully_covered": 99,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "significant_fully_covered": 3,
+          "typed_significant_fully_covered": 3,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "significant_fully_covered": 96,
+          "typed_significant_fully_covered": 87,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 35,
+          "true_positives": 32,
+          "false_positives": 3,
+          "false_negatives": 3,
+          "gold_values_all_requests": 35,
+          "significant_fully_covered": 34,
+          "typed_significant_fully_covered": 32,
+          "precision": 0.9142857142857143,
+          "recall": 0.9142857142857143,
+          "f1": 0.9142857142857143
+        }
+      }
+    }
+  },
+  "changed_cases": [],
+  "significant_coverage_losses": [],
+  "strict_instruction_span_audit": {
+    "before_k06": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new full strict gate."
+    },
+    "after_k06": {
+      "cases": 27,
+      "failed": [
+        "login_instruction_email_original",
+        "login_instruction_email_lowercase",
+        "login_instruction_email_uppercase",
+        "login_instruction_email_polite",
+        "login_instruction_email_respond",
+        "login_instruction_email_return",
+        "login_instruction_email_russian",
+        "dialogue_role_which",
+        "dialogue_role_write",
+        "dialogue_role_where",
+        "dialogue_role_email",
+        "dialogue_role_nested_credentials",
+        "dialogue_role_user_assignment"
+      ],
+      "method": "Existing strict span checker on saved real HTTP predictions, not a new full strict gate."
+    }
+  },
+  "qualifications": [
+    "K06 reruns all 2318 cases with real Tiny2/Triton HTTP inference.",
+    "The baseline is the verified final K04 run; main/BERT is unchanged frozen E9, not a new run.",
+    "Only recognizers/json_strings.py and recognizers/ru_passport_ext.py differ in recorded candidate runtime sources.",
+    "The owner explicitly retained the pre-K01 false positive on Адрес: Подъезд 2.",
+    "No ground-truth edits, new acceptance thresholds, platform patches or automatic K/Q acceptance.",
+    "Extra masking on partially annotated data is not automatically a false positive.",
+    "Independent HTTP checks use real Tiny2/Triton, Analyzer and LiteLLM with a mock LLM provider; no external LLM calls.",
+    "The accepted narrative miss retains its original positive annotation and is not treated as a fixed case.",
+    "Test counts overlap and are not unique corpus cases.",
+    "Temporary containers and networks were removed; the seven main containers were unchanged.",
+    "K06-J01 does not claim compatibility with strict upstream numeric tool schemas; that limitation was explicitly accepted.",
+    "The typed text scanner handles JSON literal positions without blindly removing key quotes. Arbitrary model reformatting or nested recoding is not guaranteed exactly reversible.",
+    "The first failed HTTP fixture attempt is retained; only the complete repeated attempt is reported as passed.",
+    "Redis Lua, owner/reference scheme, TTLs, quotas, model, platform packages, environment settings and Make commands were not changed for K06-J01."
+  ],
+  "http_checks": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:aa2c19d30a296b1b30885b80449b9b32261d74484d05aa8ecc6b8920c5b09bca",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "explicit-only",
+        "status": "passed",
+        "seconds": 2.306,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "leading-zero",
+        "status": "passed",
+        "seconds": 1.548,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "adjacent-ticket",
+        "status": "passed",
+        "seconds": 1.531,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.614,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-integer",
+        "status": "passed",
+        "seconds": 1.673,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "escaped-json",
+        "status": "passed",
+        "seconds": 1.597,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "passed",
+        "seconds": 2.658,
+        "result": 0
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 165.105,
+        "result": 0
+      },
+      {
+        "name": "typed-redis",
+        "status": "passed",
+        "seconds": 2.332,
+        "result": {
+          "status": "passed",
+          "real_redis_checks": [
+            "typed-save-load",
+            "concurrent-immutable-branches",
+            "owner-model-isolation",
+            "same-values-different-type-conflict",
+            "flat-map-read",
+            "reference-eviction",
+            "ttl-expiry"
+          ],
+          "guardrail_sources_sha256": {
+            "pii_guardrail.py": "da649af117e75e648986f56932cb73419ac0b22ecb444ed2a68c64c61eb9d1d8",
+            "streaming_restoration.py": "a8126bf56a3da8d2ad804876f8fbc6a053d7b1b1425b0018d4a8e7ae07d389e3",
+            "responses_state.py": "18022c564583d7078570270a319979d1f30577d6a5b316e1a366a97cbd21c6c2",
+            "restoration_mapping.py": "f821a7ca42e5ea6f8708d37694c00d1d534328c8349ab316f8458f68ee433265"
+          }
+        }
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 89.941,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true,
+    "native_arguments_diagnostic": [
+      {
+        "api": "chat/completions",
+        "stream": false,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": false,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": true,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": true,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": false,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": false,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": true,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": true,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      }
+    ]
+  },
+  "analysis_signature_changed": true,
+  "owner_decisions": {
+    "scope": "Six digits without series only with an immediate passport label or an exact own scalar key.",
+    "accepted_narrative_limitation": "Free narrative is not covered by the new short rule. The positive passport_058 annotation remains unchanged.",
+    "preserved": [
+      "K01",
+      "K02 with boundary fix",
+      "K03 with accepted wide mask",
+      "K04 Cyrillic/encoded email domains",
+      "K05 coverage preservation"
+    ],
+    "k06_j01_implementation_explicitly_approved": true,
+    "provider_strict_integer_schema_limitation_explicitly_accepted": true,
+    "platform_code_changes": false
+  },
+  "accepted_narrative_case": {
+    "case_id": "pii_entity__passport_058",
+    "expected_class": "RU_PASSPORT",
+    "expected_value": "122648",
+    "positive_annotation_retained": true,
+    "before": {
+      "status": "ok",
+      "entities": [],
+      "diagnostic_seconds": 0.034484
+    },
+    "after": {
+      "status": "ok",
+      "entities": [],
+      "diagnostic_seconds": 0.035458
+    },
+    "not_claimed_fixed": true,
+    "after_j01": {
+      "status": "ok",
+      "entities": [],
+      "diagnostic_seconds": 0.035137
+    }
+  },
+  "regressions": {
+    "analyzer_pytest": {
+      "tests": 3082,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "guardrail_flow_pytest": {
+      "tests": 1576,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "new_tests": {
+      "tests": 91,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "on_preserved_K04": {
+      "tests": 91,
+      "failures": 46,
+      "errors": 0,
+      "skipped": 0
+    },
+    "static_pytest": 569,
+    "evaluation_pytest_overlaps_other_suites": 75,
+    "make_unittest": 18,
+    "special_http_scenarios": 96,
+    "protocol_scenarios": 140,
+    "dkb": {
+      "files": 18,
+      "plain_annotations": 53,
+      "json_annotations": 53,
+      "echo": 112,
+      "block": 144,
+      "expected_final_blocks": 32
+    },
+    "base64_boundaries": {
+      "cases": 3,
+      "echo": 24,
+      "block": 24
+    },
+    "base64_content": {
+      "cases": 2,
+      "echo": 16,
+      "block": 16
+    },
+    "frozen_rules_replay": {
+      "cases": 29,
+      "changed_cases_from_K04": [],
+      "method": "actual rules with frozen NER, not model inference"
+    },
+    "warnings": [
+      "Existing Starlette deprecation.",
+      "Existing Pydantic serializer warnings."
+    ],
+    "json_number_initial_regressions": {
+      "tests": 29,
+      "failures": 24,
+      "errors": 0,
+      "skipped": 0
+    },
+    "json_number_new_tests_in_full_suite": 62,
+    "native_number_protocols": {
+      "mask": 24,
+      "block": 24,
+      "history_turns": 6
+    }
+  },
+  "rule_cost": {
+    "method": "same process, 2 CPU limit, medians of 3 rule-only runs; not production capacity",
+    "results": [
+      {
+        "case": "ordinary_128k",
+        "characters": 128000,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 0.009499874999164604,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 0.011029124987544492,
+            "findings": 0
+          }
+        }
+      },
+      {
+        "case": "unlabelled_numbers_20000",
+        "characters": 140000,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 0.0125038330006646,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 0.014407458002096973,
+            "findings": 0
+          }
+        }
+      },
+      {
+        "case": "inert_labels_4000",
+        "characters": 60000,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 0.007452000005287118,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 0.01324887499504257,
+            "findings": 0
+          }
+        }
+      },
+      {
+        "case": "long_invalid_number",
+        "characters": 128016,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 0.008305750001454726,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 0.016986875009024516,
+            "findings": 0
+          }
+        }
+      },
+      {
+        "case": "short_label",
+        "characters": 22,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 1.834006980061531e-06,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 6.665999535471201e-06,
+            "findings": 1
+          }
+        }
+      },
+      {
+        "case": "integer_fields_1000",
+        "characters": 29000,
+        "timings": {
+          "before_k06": {
+            "median_seconds": 0.002798792003886774,
+            "findings": 0
+          },
+          "after_k06": {
+            "median_seconds": 0.005248916000709869,
+            "findings": 1000
+          }
+        }
+      }
+    ]
+  },
+  "open_findings": [],
+  "initial_k06_numeric_finding": {
+    "status": "K06_partial_pending_owner_decision_on_numeric_JSON_masking",
+    "open_findings": [
+      {
+        "id": "K06-J01",
+        "status": "awaiting_owner_decision",
+        "problem": "A numeric JSON scalar becomes an unquoted string placeholder. Captured native tool arguments must be inspected separately from exact text round-trip tests.",
+        "controlled_mask_diagnostic": {
+          "method": "existing mask function with controlled detector span, not a live provider test",
+          "original": "{\"passport_number\":122648,\"ticket\":654321}",
+          "masked": "{\"passport_number\":<RU_PASSPORT_1>,\"ticket\":654321}",
+          "masked_is_valid_json": false,
+          "restored": "{\"passport_number\":122648,\"ticket\":654321}"
+        },
+        "native_argument_diagnostic": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "original_value_type": "str",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": true,
+            "status": "passed"
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "original_value_type": "int",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": false,
+            "status": "needs_owner_decision"
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "original_value_type": "str",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": true,
+            "status": "passed"
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "original_value_type": "int",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": false,
+            "status": "needs_owner_decision"
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "original_value_type": "str",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": true,
+            "status": "passed"
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "original_value_type": "int",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": false,
+            "status": "needs_owner_decision"
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "original_value_type": "str",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": true,
+            "status": "passed"
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "original_value_type": "int",
+            "http_status": 200,
+            "captured_arguments": [
+              "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+            ],
+            "provider_received_request": true,
+            "raw_value_reached_provider": false,
+            "all_arguments_valid_json": false,
+            "status": "needs_owner_decision"
+          }
+        ],
+        "working_guardrail_code_changed_for_this_finding": false
+      }
+    ],
+    "native_arguments_diagnostic": [
+      {
+        "api": "chat/completions",
+        "stream": false,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": false,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": false,
+        "status": "needs_owner_decision"
+      },
+      {
+        "api": "chat/completions",
+        "stream": true,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": true,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": false,
+        "status": "needs_owner_decision"
+      },
+      {
+        "api": "responses",
+        "stream": false,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": false,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": false,
+        "status": "needs_owner_decision"
+      },
+      {
+        "api": "responses",
+        "stream": true,
+        "original_value_type": "str",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": \"<RU_PASSPORT_1>\", \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": true,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": true,
+        "original_value_type": "int",
+        "http_status": 200,
+        "captured_arguments": [
+          "{\"passport_number\": <RU_PASSPORT_1>, \"ticket\": 654321}"
+        ],
+        "provider_received_request": true,
+        "raw_value_reached_provider": false,
+        "all_arguments_valid_json": false,
+        "status": "needs_owner_decision"
+      }
+    ],
+    "owner_decisions": {
+      "scope": "Six digits without series only with an immediate passport label or an exact own scalar key.",
+      "accepted_narrative_limitation": "Free narrative is not covered by the new short rule. The positive passport_058 annotation remains unchanged.",
+      "preserved": [
+        "K01",
+        "K02 with boundary fix",
+        "K03 with accepted wide mask",
+        "K04 Cyrillic/encoded email domains",
+        "K05 coverage preservation"
+      ],
+      "not_authorized": "No guardrail masking or JSON type restoration fix has been authorized for K06-J01."
+    }
+  },
+  "resolved_findings": [
+    {
+      "id": "K06-J01",
+      "status": "fixed_and_verified",
+      "contract": "Quoted source-number placeholders with explicit JSON-number provenance in request/Responses state. Client numbers restore as source literals; original strings stay strings.",
+      "accepted_limit": "A masked value is a string upstream; strict integer tool schemas are not automatically adapted.",
+      "reference": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6452455286"
+    }
+  ],
+  "k06_j01_validation": {
+    "real_redis": {
+      "status": "passed",
+      "real_redis_checks": [
+        "typed-save-load",
+        "concurrent-immutable-branches",
+        "owner-model-isolation",
+        "same-values-different-type-conflict",
+        "flat-map-read",
+        "reference-eviction",
+        "ttl-expiry"
+      ],
+      "guardrail_sources_sha256": {
+        "pii_guardrail.py": "da649af117e75e648986f56932cb73419ac0b22ecb444ed2a68c64c61eb9d1d8",
+        "streaming_restoration.py": "a8126bf56a3da8d2ad804876f8fbc6a053d7b1b1425b0018d4a8e7ae07d389e3",
+        "responses_state.py": "18022c564583d7078570270a319979d1f30577d6a5b316e1a366a97cbd21c6c2",
+        "restoration_mapping.py": "f821a7ca42e5ea6f8708d37694c00d1d534328c8349ab316f8458f68ee433265"
+      }
+    },
+    "long_json_cost": {
+      "method": "2 CPU; three uninstrumented masking runs, streaming allocation tracing changes timing; no capacity claims",
+      "rows": [
+        {
+          "source_chars": 128036,
+          "mask_median_ms": 0.168,
+          "restoration": {
+            "arguments": {
+              "tracemalloc_instrumented_seconds": 0.01,
+              "peak_traced_bytes": 84665,
+              "max_retained_candidate_chars": 15,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            },
+            "text": {
+              "tracemalloc_instrumented_seconds": 0.005,
+              "peak_traced_bytes": 85224,
+              "max_retained_candidate_chars": 16,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            }
+          }
+        },
+        {
+          "source_chars": 1000036,
+          "mask_median_ms": 1.233,
+          "restoration": {
+            "arguments": {
+              "tracemalloc_instrumented_seconds": 0.075,
+              "peak_traced_bytes": 84665,
+              "max_retained_candidate_chars": 15,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            },
+            "text": {
+              "tracemalloc_instrumented_seconds": 0.039,
+              "peak_traced_bytes": 85224,
+              "max_retained_candidate_chars": 16,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            }
+          }
+        },
+        {
+          "source_chars": 4000036,
+          "mask_median_ms": 5.026,
+          "restoration": {
+            "arguments": {
+              "tracemalloc_instrumented_seconds": 0.301,
+              "peak_traced_bytes": 84665,
+              "max_retained_candidate_chars": 15,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            },
+            "text": {
+              "tracemalloc_instrumented_seconds": 0.151,
+              "peak_traced_bytes": 85224,
+              "max_retained_candidate_chars": 16,
+              "chunk_chars": 8192,
+              "roundtrip_sha256_equal": true
+            }
+          }
+        }
+      ]
+    },
+    "corpus_cases": 2318,
+    "changed_class_or_boundaries_from_k06": [],
+    "analyzer_signature_unchanged_from_k06": true,
+    "first_http_attempt": {
+      "project": "ru-j01-030c8366",
+      "main_before": [
+        {
+          "name": "ru-llm-proxy-nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy",
+          "image_id": "sha256:cd7745d70bfd5f4aeb1b0e1829bea36e8a71e4739c6fdc1ba278d42d9d23c77c",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb",
+          "image_id": "sha256:cb636765df33f7e907161efb9e4bcb181138567550e96fed64482d83b33e4177",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "presidio-analyzer",
+          "image_id": "sha256:83b50f3152bd2f8f3e086da24a87fb6739a4b2187adf62e11feca51dcdb3016b",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-redis",
+          "image_id": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        }
+      ],
+      "images": {
+        "analyzer": "sha256:aa2c19d30a296b1b30885b80449b9b32261d74484d05aa8ecc6b8920c5b09bca",
+        "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+        "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+      },
+      "checks": [
+        {
+          "name": "explicit-only",
+          "status": "passed",
+          "seconds": 2.481,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "leading-zero",
+          "status": "passed",
+          "seconds": 1.535,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "adjacent-ticket",
+          "status": "passed",
+          "seconds": 1.536,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "json-string",
+          "status": "passed",
+          "seconds": 1.518,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "json-integer",
+          "status": "passed",
+          "seconds": 1.528,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "escaped-json",
+          "status": "passed",
+          "seconds": 1.543,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "protocol",
+          "status": "failed",
+          "error_type": "CalledProcessError"
+        }
+      ],
+      "runtime": {
+        "packages": {
+          "presidio-analyzer": "2.2.364",
+          "spacy": "3.8.16",
+          "ru-core-news-sm": "3.8.0",
+          "torch": null,
+          "transformers": null,
+          "tokenizers": "0.22.2",
+          "numpy": "2.4.6",
+          "httpx": "0.28.1",
+          "preshed": "3.0.13",
+          "cymem": "2.0.16",
+          "murmurhash": "1.0.16",
+          "srsly": "2.5.5"
+        },
+        "sources_sha256": {
+          "analyzer_server.py": "d86c584f02eb5996426ade70cd9e07b5a48ea118f8909c59cdee1f87587f433e",
+          "result_merging.py": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+          "string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+          "ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+          "ner/backend_settings.py": "246441f57a7359f46fd1336531ab55862bbcb8309b2419ef1555f88980c716e2",
+          "ner/boundary_recheck.py": "a2cd01b745e12ba6da0af76c1a35f7070f69be2bf8cd45e88f7400252a9403ce",
+          "ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+          "ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f",
+          "ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+          "ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+          "ner/triton_model.py": "4691b539345ee67aa8e92437630422f8bc1c3e1cd951a172aec55af7fc625d2f",
+          "ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+          "ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+          "recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+          "recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+          "recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+          "recognizers/credential_rules.py": "8c5f36f9d77e3a9d4fc53bd125fe18bf9bbb634e7ab55ed321344c170947c545",
+          "recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+          "recognizers/json_strings.py": "c4aeaf5b53196e8018a88447cae375f5811e8f5053f983acff5487dc9eb8b7f6",
+          "recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+          "recognizers/ru_address_chain.py": "846ac32fa364b34ea988bd64221d32a1acfa6ad288590f30c67e3b5b77ea7fa0",
+          "recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+          "recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+          "recognizers/ru_email.py": "907560dcb04c3a407c541e945d6ec477fcfd08265586b3f300844172dc8f4eb2",
+          "recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+          "recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+          "recognizers/ru_passport_ext.py": "1b1d46174fc92315e7983e1a86a9e44293d6ae3382e8bf0269fa2f19bf76c802",
+          "recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+          "recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+          "recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc"
+        },
+        "spacy_pipes": [
+          "sentencizer",
+          "lemmatizer"
+        ],
+        "recognizer_runtime": {
+          "profile": "cpu",
+          "device": "cpu",
+          "precision": "fp32",
+          "inference_batch_size": 4,
+          "model_profile": "tiny2",
+          "o_logit_bias": 1.0,
+          "span_postprocessing": "secrets-contracts",
+          "backend": "triton",
+          "boundary_recheck": "off",
+          "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+        }
+      },
+      "temporary_containers": [
+        {
+          "name": "ru-j01-030c8366-litellm-block-1",
+          "image_id": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-litellm-mask-1",
+          "image_id": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-mock-upstream-1",
+          "image_id": "sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-ner-triton-1",
+          "image_id": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-nginx-1",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-presidio-analyzer-1",
+          "image_id": "sha256:aa2c19d30a296b1b30885b80449b9b32261d74484d05aa8ecc6b8920c5b09bca",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-j01-030c8366-redis-1",
+          "image_id": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        }
+      ],
+      "cleanup_ok": true,
+      "main_after": [
+        {
+          "name": "ru-llm-proxy-nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy",
+          "image_id": "sha256:cd7745d70bfd5f4aeb1b0e1829bea36e8a71e4739c6fdc1ba278d42d9d23c77c",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb",
+          "image_id": "sha256:cb636765df33f7e907161efb9e4bcb181138567550e96fed64482d83b33e4177",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "presidio-analyzer",
+          "image_id": "sha256:83b50f3152bd2f8f3e086da24a87fb6739a4b2187adf62e11feca51dcdb3016b",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        },
+        {
+          "name": "ru-llm-proxy-redis",
+          "image_id": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+          "status": "running",
+          "exit_code": 0,
+          "oom_killed": false,
+          "restarts": 0,
+          "health": "healthy"
+        }
+      ],
+      "main_unchanged": true
+    },
+    "first_attempt_explanation": "The new test flag was stripped from Chat metadata; moved to synthetic user content. The product masker and platform were not changed for this fixture fix. Full HTTP rerun passed.",
+    "external_llm_calls": false
+  }
+}

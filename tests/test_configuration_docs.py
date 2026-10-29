@@ -52,7 +52,6 @@ EXPECTED_DOCUMENTED_ENV = {
     "PIP_TRUSTED_HOST",
     "PIP_PROXY",
     "PYTORCH_INDEX_URL",
-    "PYTORCH_GPU_INDEX_URL",
     "NER_MODEL_PROXY",
     # Analyzer and recognizers
     "PRESIDIO_ANALYZER_URL",
@@ -61,9 +60,12 @@ EXPECTED_DOCUMENTED_ENV = {
     "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT",
     "PRESIDIO_ANALYZER_QUEUE_LIMIT",
     "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS",
-    "PRESIDIO_ANALYZER_DEVICE_PROFILE",
-    "PRESIDIO_ANALYZER_GPU_PRECISION",
     "PRESIDIO_ANALYZER_NER_BATCH_SIZE",
+    "PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS",
+    "TRITON_REPLICAS",
+    "TRITON_MODEL_INSTANCES",
+    "TRITON_CPUS",
+    "TRITON_MEMORY",
     "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM",
     "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES",
     "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
@@ -264,27 +266,27 @@ def test_compose_defaults_use_fail_closed_and_optional_provider_keys_are_quiet()
     assert "DEEPPAVLOV_NER_REQUIRED" not in compose
 
 
-def test_analyzer_pins_huggingface_model_and_transformers_runtime():
+def test_analyzer_uses_the_single_pinned_export_without_local_execution():
     requirements = _read("presidio/requirements-analyzer.txt")
-    cpu_requirements = _read("presidio/requirements-analyzer-cpu.txt")
+    cpu_requirements = _read("presidio/requirements-export-cpu.txt")
     manifest = _read("presidio/model_manifest.json")
     dockerfile = _read("presidio/Dockerfile")
     makefile = _read("Makefile")
     e2e = _read("tests/e2e/test_e2e.sh")
 
-    assert "transformers==4.57.6" in requirements
+    assert "transformers==" not in requirements
     assert "torch==2.13.0+cpu" in cpu_requirements
     assert "--index-url" not in cpu_requirements
     assert "download.pytorch.org/whl/cpu" in dockerfile
     assert "torch>=" not in requirements
-    assert "fef2/ner_rus_bert-secret_detection" in manifest
-    assert "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4" in manifest
+    assert "Katerina-Bir/rubert-tiny2-secret-detection" in manifest
+    assert "4137142e79d52b0b69370e0e3dceb2d6ad82591d" in manifest
     assert "HF_HUB_OFFLINE=1" in dockerfile
-    assert "TRANSFORMERS_OFFLINE=1" in dockerfile
     assert "DEEPPAVLOV" not in dockerfile
-    assert "--network none" in makefile
+    assert "offline_probe" in _read("tests/e2e/model_smoke.py")
+    assert '"--network", "none"' in _read("tests/e2e/ner_test_support.py")
     assert "test-hf-model" in makefile
-    assert "ner-migration-candidate" in makefile
+    assert "ner-tiny2-candidate" in makefile
     assert "ner-migration-baseline.md" not in makefile
     deployment = _read("scripts/deployment.py")
     assert 'data.get("ner_state") == "ready"' in deployment

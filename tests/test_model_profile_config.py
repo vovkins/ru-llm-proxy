@@ -114,7 +114,7 @@ def test_metrics_endpoint_is_public_and_monitoring_targets_follow_redirects():
     assert "$(DEPLOY) metrics" in makefile
     deployment = (ROOT / "scripts/deployment.py").read_text(encoding="utf-8")
     assert "/metrics" in deployment and '"docker", "exec"' in deployment
-    assert 'service not in {"litellm", "presidio-analyzer"}' in deployment
-    assert 'port = 4000 if service == "litellm" else 5001' in deployment
+    assert 'service not in {"litellm", "presidio-analyzer", "ner-triton"}' in deployment
+    assert '"ner-triton": 8002' in deployment
     assert "открыт без ключа LiteLLM API" in readme
     assert "require_auth_for_metrics_endpoint: false" in monitoring

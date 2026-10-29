@@ -1,0 +1,2056 @@
+{
+  "stage": "E8",
+  "status": "incomplete_quality_failure_and_ci_pending",
+  "generated_at": "2026-10-26T11:48:41.010462+00:00",
+  "git_revision": "d9fbb592e3fd997559afe26e32e6feaafe35b00a",
+  "git_worktree_dirty": true,
+  "branch": "codex/pr-109-tiny2-hardening",
+  "tracking": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6411975049",
+  "scope": {
+    "new_public_make_targets": false,
+    "platform_source_patches": false,
+    "external_llm_calls": false,
+    "production_quality_accepted": false,
+    "production_resources_accepted": false,
+    "hardware": "local ARM64; 10 CPU, Docker approximately 8 GiB; functional tests only",
+    "build": "ordinary source Dockerfile/Compose, shared verified export cache; not derived-copy images",
+    "clean_build_or_fresh_download_in_E8": false,
+    "historical_reports_preserved": true
+  },
+  "implemented": [
+    "Existing Make targets share one controller; model build happens once per aggregate invocation",
+    "Dedicated test image tags resolved to immutable IDs, matched with this checkout's source manifest",
+    "Real CPU Triton inference and per-replica trust, readiness, internal Nginx route",
+    "Unit tests run offline in uniquely named Compose projects without user .env",
+    "Full Analyzer regression set included in baseline CI alongside the existing API subset",
+    "CI path filters, export cache, disk preflight, bounded JSON artifacts and test-only cleanup",
+    "Two Triton failure/replacement, wrong artifact, no POST replay tests are permanent",
+    "New Tiny2 evaluation output filenames cannot overwrite historical BERT reports"
+  ],
+  "tests": {
+    "make_test": {
+      "status": "passed",
+      "analyzer": 2651,
+      "guardrails": 685,
+      "flow": 823,
+      "static_pytest": 554,
+      "make_unittest": 18
+    },
+    "make_test_recognizer_api": {
+      "status": "passed",
+      "cases": 1598
+    },
+    "make_test_ner_evaluation": {
+      "status": "passed",
+      "cases": 46
+    },
+    "harness_evaluation_integration_contract_targeted": {
+      "status": "passed",
+      "cases": 102
+    },
+    "counts_note": "Overlapping sets; do not sum these as unique tests.",
+    "make_test_hf_model": {
+      "status": "passed",
+      "normal_source_build_with_cache": true
+    },
+    "make_test_hf_model_run": {
+      "status": "passed",
+      "images": {
+        "presidio-analyzer": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+        "ner-triton": "sha256:bd14e97c670608d46fe26b9f95672c32857ead897eb0e3fc38ddb959a89e5951"
+      },
+      "phase": "completed",
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "inference": {
+        "entity_types": {
+          "long": [
+            "PERSON"
+          ],
+          "short": [
+            "PERSON"
+          ],
+          "unicode": [
+            "PERSON"
+          ]
+        },
+        "model": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "result_counts": {
+          "long": 1,
+          "short": 1,
+          "unicode": 1
+        },
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "state": "ready",
+        "status": "ok",
+        "warmed_up": true
+      },
+      "internal_network": true,
+      "cleanup_ok": true,
+      "generated_at": "2026-10-26T11:13:42.538925+00:00"
+    },
+    "make_test_ner_proxy": {
+      "status": "failed",
+      "phase": "instruction dialogue arguments",
+      "basic_eight_class_mask_block_flow_before_failure": "passed"
+    },
+    "make_test_ner_integration": {
+      "status": "failed",
+      "suite": "all",
+      "phase": "independent-checks",
+      "images": {
+        "presidio-analyzer": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+        "ner-triton": "sha256:bd14e97c670608d46fe26b9f95672c32857ead897eb0e3fc38ddb959a89e5951",
+        "litellm": "sha256:5894eede52f135e93590ba9d970d4202e6524f58e1ab15e657a8b7e6393b4875",
+        "codex-lb": "sha256:2e9270e442a9489583e7b68fa6e79c722840c6ec5a4a1d5958f0ac5b53063cd3"
+      },
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "checks": [
+        {
+          "check": "proxy-flow",
+          "status": "failed",
+          "error_type": "RuntimeError"
+        },
+        {
+          "check": "topologies",
+          "status": "passed"
+        }
+      ],
+      "error_type": "RuntimeError",
+      "generated_at": "2026-10-26T11:29:24.224757+00:00"
+    },
+    "independent_deployment_topology_gate": {
+      "status": "passed",
+      "cases": [
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        }
+      ],
+      "checks": [
+        {
+          "check": "single_post_no_replay",
+          "status": "passed",
+          "peer_post_counts": [
+            1,
+            0
+          ]
+        },
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        {
+          "check": "triton_replica_recovery",
+          "status": "passed",
+          "wrong_artifact_rejected": true,
+          "stopped_replica_rejected": true,
+          "client_attempt_statuses": [
+            200
+          ],
+          "replacement_new_ip": true
+        },
+        "New SSE request succeeds with one LiteLLM replica stopped; all Analyzer unavailable: 503 without provider call; full sequential restart preserves shared state",
+        "Scale test LiteLLM/Analyzer 2/2 -> 3/2 -> 2/2: state and virtual key preserved, changed Docker DNS pools serve requests",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        "Both topologies, both policies, both stacks, both APIs/stream modes; state/secrets, shared analysis cache hits, limits, per-replica readiness/metrics and mapping cleanup"
+      ],
+      "images": {
+        "presidio-analyzer": "sha256:f406e20f8bbfbe62bb99cce58d3d9f80ddeeaacdde16a89ec26d9cb0697757eb",
+        "ner-triton": "sha256:3a11c35c42ea8b57b15c4801b531c85769bdcbe9b40353ed81297a19024e74dd",
+        "litellm": "sha256:182ba73f28b33b29694a60f62461d3e6de7c68bda20c906e53acfc9da8b516f8",
+        "codex-lb": "sha256:24c748b91fb89c5552d4d03f90d8c752878f7742433e121d8ad266acc433aaab"
+      },
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "peak_sampled_test_container_memory_bytes": 4054455412,
+      "resources_scope": "functional test fixture, not production capacity",
+      "final_cleanup_method_verified_separately_after_diagnostics_refactor": true
+    },
+    "real_sigterm_and_partial_topology_cleanup": {
+      "status": "passed",
+      "interrupted_process_nonzero": true,
+      "resources_remaining": {
+        "container": [],
+        "network": []
+      },
+      "failed_run_reported_honestly": true,
+      "partial_topology_cleanup_including_volumes_networks": true
+    },
+    "yaml_python_shell_syntax_and_git_diff_check": "passed"
+  },
+  "unresolved": [
+    {
+      "id": "E8-Q01",
+      "case_id": "dialogue_role_which",
+      "input_example": "user: which file contains the implementation?\nassistant: Done.",
+      "expected": "No sensitive entities or provider-bound placeholders",
+      "model_and_analyzer": {
+        "entity_type": "PERSON",
+        "start": 57,
+        "end": 60,
+        "matched_synthetic_fragment": "Don",
+        "score": 0.8183771371841431
+      },
+      "observed_proxy_case": {
+        "api": "chat/completions",
+        "stream": false,
+        "tool_arguments": true
+      },
+      "controls": "Unrelated benign phrase has no findings; a phone in similar context is protected",
+      "diagnostic_scope": "Plain-text and JSON-wrapped Analyzer/model probes are not all possible proxy fields",
+      "risk": "False masking and potentially false BLOCK, not an observed leak",
+      "changes_made": "None to detection, thresholds, expected spans or accepted exceptions",
+      "owner_decision": "Retain strict failures for separately approved E9 comparison; no weakening or quality acceptance",
+      "decision_url": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6413170717"
+    },
+    {
+      "id": "E8-Q02",
+      "class": "false_masks",
+      "examples": [
+        {
+          "input": "Верни пустой список PERSON, если имена не указаны.",
+          "false_entity": "ORGANIZATION",
+          "fragment": "PE"
+        },
+        {
+          "input": "Поля ФИО и ORGANIZATION описаны в инструкции.",
+          "false_entity": "ORGANIZATION",
+          "fragment": "ORGANIZA"
+        },
+        {
+          "context": "terminal punctuation following a fully protected email or password",
+          "false_entities": [
+            "LOGIN",
+            "PASSWORD"
+          ],
+          "fragments": [
+            ".",
+            "?"
+          ]
+        }
+      ],
+      "risk": "False masking or BLOCK; not an observed data leak",
+      "owner_decision": "Retain strict failures for separately approved E9 comparison; no weakening or quality acceptance"
+    },
+    {
+      "id": "E8-Q03",
+      "class": "split_name_entity_types",
+      "input": "Клиент АННА СОКОЛОВА подтвердил заявку.",
+      "actual": [
+        {
+          "type": "ORGANIZATION",
+          "value": "АННА"
+        },
+        {
+          "type": "PERSON",
+          "value": "СОКОЛОВА"
+        }
+      ],
+      "all_entity_types": "Both name parts protected",
+      "PERSON_only_filter": "АННА not protected; independently reproduced",
+      "owner_decision": "Retain strict failures for separately approved E9 comparison; no weakening or quality acceptance"
+    }
+  ],
+  "not_completed": [
+    "Strict instruction/name groups remain failed due to E8-Q01/Q02/Q03; later per-case proxy flows after each first failing assertion are not claimed passed",
+    "E9 comparison and owner acceptance; E9 not started",
+    "GitHub Actions on unpublished changes, including x86_64 runner disk/time fit",
+    "Final clean build E12 and production quality/capacity acceptance"
+  ],
+  "ci": {
+    "configuration_updated": true,
+    "new_revision_execution": "not_run_no_commit_or_push_authorized",
+    "runner_resource_fit": "not_verified_on_GitHub",
+    "timeout_minutes": 60,
+    "disk_preflight_free_gib": 40,
+    "mandatory_external_llm_calls": false
+  },
+  "cleanup": {
+    "status": "passed",
+    "stand_containers_same_ids_healthy": [
+      {
+        "name": "presidio-analyzer",
+        "id": "8e481672db91b09ddf16461dfbfe49fb8fe9c0bae10d6122c0b3d2ca3270400d",
+        "started_at": "2026-10-12T16:27:10.719092959Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy",
+        "id": "22f6f630221e5c18d418f6960409166720325b8a0bbdf5dd20ccfb6f7c78894d",
+        "started_at": "2026-10-26T10:16:33.39571167Z",
+        "health": "healthy",
+        "restarts": 1
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb",
+        "id": "c28c0ce482888223122f18dd6aa555bfb9eae049b9d383cdd34a4ddc27441de7",
+        "started_at": "2026-10-10T06:57:50.282824386Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-nginx",
+        "id": "4676969ef127f3d16075e82ed6969e911a549fd0127f5a3486f7d4efdbed3920",
+        "started_at": "2026-10-10T06:58:19.503876927Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb-db",
+        "id": "50ac756a0b060891098d0317756d8cc04027a554e1d4ff439eed2097c34e48f0",
+        "started_at": "2026-10-08T18:33:07.730255836Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-db",
+        "id": "e998770f23fbfcf2b681774a7faf6447fad92e0c089d975265ffa9af20e78117",
+        "started_at": "2026-10-08T18:32:55.443603011Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-redis",
+        "id": "c7500c9885ba07eb090ade80748d7bbc2a491d26d585cad11459f1c23fd85e92",
+        "started_at": "2026-10-08T18:32:55.444105386Z",
+        "health": "healthy",
+        "restarts": 0
+      }
+    ],
+    "warnings": [],
+    "remaining_test_containers": [],
+    "remaining_test_networks_volumes": {
+      "network": [],
+      "volume": []
+    },
+    "global_prune": false,
+    "test_images_and_cache_preserved": true,
+    "baseline": "Latest E8 audit before R01 fix; LiteLLM already had one recorded restart"
+  },
+  "initial_run_summary": {
+    "generated_at": "2026-10-26T09:44:50.897521+00:00",
+    "status": "incomplete_quality_failure_and_ci_pending",
+    "initial_static_pytest": 543,
+    "initial_full_integration": {
+      "status": "failed",
+      "suite": "all",
+      "phase": "proxy-flow",
+      "images": {
+        "presidio-analyzer": "sha256:1f4418d3b94b75f8f2138f8c5aca9658468f99ba6c3229189b38cacf58b55b59",
+        "ner-triton": "sha256:0fcbf673affb326653a18df6dae5b9d98c6d8d644b9451f8ac0c1164bf2c24ce",
+        "litellm": "sha256:106f7de48a47f6cc225719eb428bf245401e893caf967106724d7632a73c2059",
+        "codex-lb": "sha256:d71b7de835dbe7bf394a3d2db991cea36360edefd7057bc8c90637b986a2dea6"
+      },
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "error_type": "RuntimeError",
+      "generated_at": "2026-10-26T09:35:14.775777+00:00"
+    },
+    "initial_cleanup": {
+      "status": "passed",
+      "stand_containers_same_ids_healthy_no_restarts": [
+        {
+          "name": "presidio-analyzer",
+          "id": "8e481672db91b09ddf16461dfbfe49fb8fe9c0bae10d6122c0b3d2ca3270400d",
+          "started_at": "2026-10-12T16:27:10.719092959Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy",
+          "id": "22f6f630221e5c18d418f6960409166720325b8a0bbdf5dd20ccfb6f7c78894d",
+          "started_at": "2026-10-11T18:21:56.145318543Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb",
+          "id": "c28c0ce482888223122f18dd6aa555bfb9eae049b9d383cdd34a4ddc27441de7",
+          "started_at": "2026-10-10T06:57:50.282824386Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-nginx",
+          "id": "4676969ef127f3d16075e82ed6969e911a549fd0127f5a3486f7d4efdbed3920",
+          "started_at": "2026-10-10T06:58:19.503876927Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb-db",
+          "id": "50ac756a0b060891098d0317756d8cc04027a554e1d4ff439eed2097c34e48f0",
+          "started_at": "2026-10-08T18:33:07.730255836Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-db",
+          "id": "e998770f23fbfcf2b681774a7faf6447fad92e0c089d975265ffa9af20e78117",
+          "started_at": "2026-10-08T18:32:55.443603011Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-redis",
+          "id": "c7500c9885ba07eb090ade80748d7bbc2a491d26d585cad11459f1c23fd85e92",
+          "started_at": "2026-10-08T18:32:55.444105386Z",
+          "health": "healthy",
+          "restarts": 0
+        }
+      ],
+      "remaining_test_networks_volumes": {
+        "network": [],
+        "volume": []
+      },
+      "remaining_test_containers": [],
+      "old_unit_image_tags_removed": true,
+      "separate_ner_test_images_and_build_cache_preserved": true,
+      "global_prune": false
+    },
+    "note": "Historical snapshot before independent follow-up; current results supersede it, not a current no-restart claim"
+  },
+  "followup": {
+    "scope": "Independent E8 regression groups and failure diagnosis only, not E9 acceptance/comparison",
+    "product_detection_changes": false,
+    "test_assertions_weakened": false,
+    "independent_groups_continue_after_error": true,
+    "aggregate_failure_retained": true,
+    "harness_regressions": {
+      "status": "passed",
+      "cases": 44
+    },
+    "observability_gate": {
+      "status": "passed",
+      "cases": 4
+    },
+    "instructions": {
+      "content": {
+        "status": "failed",
+        "base64_policy": "content",
+        "checks": [
+          {
+            "check": "dialogue-arguments",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "dialogue_role_which"
+          },
+          {
+            "check": "instructions",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "names",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-context",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-holdout",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T10:03:43.884965+00:00"
+      },
+      "logistic": {
+        "status": "failed",
+        "base64_policy": "logistic",
+        "checks": [
+          {
+            "check": "dialogue-arguments",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "dialogue_role_which"
+          },
+          {
+            "check": "instructions",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "instruction_holdout_empty_person"
+          },
+          {
+            "check": "names",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-context",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-holdout",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T10:31:49.011436+00:00"
+      }
+    },
+    "dkb": {
+      "content": {
+        "status": "failed",
+        "base64_policy": "content",
+        "checks": [
+          {
+            "check": "dkb-corpus",
+            "status": "failed",
+            "error_type": "HTTPError"
+          },
+          {
+            "check": "chunk-boundaries",
+            "status": "passed"
+          },
+          {
+            "check": "base64-policy",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T10:06:22.033981+00:00"
+      },
+      "logistic": {
+        "status": "failed",
+        "base64_policy": "logistic",
+        "checks": [
+          {
+            "check": "dkb-corpus",
+            "status": "failed",
+            "error_type": "HTTPError",
+            "http_status": 503
+          },
+          {
+            "check": "chunk-boundaries",
+            "status": "passed"
+          },
+          {
+            "check": "base64-policy",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T10:34:24.916721+00:00"
+      }
+    },
+    "full_topology_gate_after_corpus_failure": {
+      "cases": [
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        }
+      ],
+      "checks": [
+        {
+          "check": "single_post_no_replay",
+          "status": "passed",
+          "peer_post_counts": [
+            1,
+            0
+          ]
+        },
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        {
+          "check": "triton_replica_recovery",
+          "status": "passed",
+          "wrong_artifact_rejected": true,
+          "stopped_replica_rejected": true,
+          "client_attempt_statuses": [
+            503,
+            200
+          ],
+          "replacement_new_ip": true
+        },
+        "New SSE request succeeds with one LiteLLM replica stopped; all Analyzer unavailable: 503 without provider call; full sequential restart preserves shared state",
+        "Scale test LiteLLM/Analyzer 2/2 -> 3/2 -> 2/2: state and virtual key preserved, changed Docker DNS pools serve requests",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        "Both topologies, both policies, both stacks, both APIs/stream modes; state/secrets, shared analysis cache hits, limits, per-replica readiness/metrics and mapping cleanup"
+      ],
+      "peak_container_memory_bytes": {
+        "topology-gate-f70ad840-nginx": 11398021,
+        "topology-gate-f70ad840-mock-upstream-1": 18559795,
+        "topology-gate-f70ad840-db": 50908364,
+        "topology-gate-f70ad840-redis": 11869880,
+        "topology-gate-f70ad840-ner-triton-1": 181927936,
+        "topology-gate-f70ad840-presidio-analyzer": 341206630,
+        "topology-gate-f70ad840-litellm": 1246614257,
+        "topology-gate-f70ad840-presidio-analyzer-1": 320969113,
+        "topology-gate-f70ad840-presidio-analyzer-2": 318033100,
+        "topology-gate-f70ad840-litellm-1": 1269162835,
+        "topology-gate-f70ad840-litellm-2": 1243393032,
+        "topology-gate-f70ad840-ner-triton-2": 167038156,
+        "topology-gate-f70ad840-codex-lb-db": 67454894,
+        "topology-gate-f70ad840-codex-lb": 196398284,
+        "topology-gate-f70ad840-litellm-3": 1000970649
+      },
+      "peak_total_memory_bytes": 3618157620,
+      "images": {
+        "presidio-analyzer": "sha256:2926e8838f94685bda861e0d40d8e6960233af0647b911669ee5e93d67d3f09b",
+        "ner-triton": "sha256:b111837d2b93f177da78cc372e1d24fb658e7cb02eac4ffaaf2f5a4c0b0b0604",
+        "litellm": "sha256:48ede5552544fcda280f4169bad6f96b7e0f20c53a92f9a05e726619c69c162c",
+        "codex-lb": "sha256:de4031991e62df9b0801bab52f94d42adcc80c9d267535c925b55627f3bd5e76"
+      },
+      "phase": "completed",
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "vm_memory_samples": [
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "4443980 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "148 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3440620 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "148 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3120632 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "148 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3296904 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "152 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "4454504 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "152 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3475652 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "152 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2363260 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "160 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2187600 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "160 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "539792 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "6088 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2152236 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "198832 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2972124 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "200624 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2901476 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "258284 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3949692 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "435472 kB"
+        }
+      ],
+      "status": "passed",
+      "final_containers": [],
+      "cleanup_ok": true,
+      "generated_at": "2026-10-26T10:19:48.010578+00:00"
+    },
+    "strict_diagnostic_case_counts": {
+      "instructions": {
+        "cases": 70,
+        "exact_mismatches": 15,
+        "request_errors": 0
+      },
+      "names": {
+        "cases": 36,
+        "exact_mismatches": 1,
+        "request_errors": 0
+      },
+      "name-context": {
+        "cases": 32,
+        "exact_mismatches": 2,
+        "request_errors": 0
+      }
+    },
+    "diagnosis_is_not_a_new_or_independent_holdout": true,
+    "json_failure_and_entity_filter_probe": {
+      "scope": "E8 failure diagnosis, not a product fix or E9 comparison",
+      "cases": [
+        {
+          "file": "2.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "2.txt",
+          "form": "json",
+          "status": 503,
+          "detail": {
+            "code": "required_ner_unavailable",
+            "phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          },
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "json",
+          "status": 503,
+          "detail": {
+            "code": "required_ner_unavailable",
+            "phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          },
+          "health_after": 200,
+          "next_request_status": 200
+        }
+      ],
+      "uppercase_name_filters": [
+        {
+          "selected": null,
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON"
+          ],
+          "actual": [
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON",
+            "ORGANIZATION"
+          ],
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        }
+      ],
+      "images": {
+        "presidio-analyzer": "sha256:2926e8838f94685bda861e0d40d8e6960233af0647b911669ee5e93d67d3f09b",
+        "ner-triton": "sha256:b111837d2b93f177da78cc372e1d24fb658e7cb02eac4ffaaf2f5a4c0b0b0604"
+      }
+    },
+    "field_holdout": {
+      "status": "passed",
+      "cases": 12,
+      "filter_cases": 36,
+      "echo_flows": 48,
+      "block_flows": 24
+    },
+    "base64": {
+      "content": {
+        "status": "passed",
+        "cases": 2,
+        "echo_flows": 16,
+        "block_flows": 16
+      },
+      "logistic": {
+        "status": "passed",
+        "cases": 4,
+        "echo_flows": 32,
+        "block_flows": 32
+      },
+      "boundary_cases_per_policy": {
+        "status": "passed",
+        "cases": 3,
+        "echo_flows": 24,
+        "block_flows": 24
+      }
+    },
+    "egress_security": {
+      "status": "passed",
+      "command": "make test-egress-security",
+      "returncode": 0,
+      "stream_disconnect_cases": 446,
+      "stream_failures": [],
+      "leftover_mappings": 0,
+      "analyzer": "controlled mock, not a proof of real NER quality",
+      "external_provider_calls": false
+    },
+    "parallel_run_limitations": {
+      "egress_returncode": 2,
+      "logistic_returncode": 1,
+      "logistic_DKB_report": {
+        "status": "failed",
+        "base64_policy": "logistic",
+        "checks": [
+          {
+            "check": "dkb-corpus",
+            "status": "failed",
+            "error_type": "HTTPError",
+            "http_status": 503
+          },
+          {
+            "check": "chunk-boundaries",
+            "status": "failed",
+            "error_type": "HTTPError",
+            "http_status": 502
+          },
+          {
+            "check": "base64-policy",
+            "status": "failed",
+            "error_type": "HTTPError",
+            "http_status": 502
+          }
+        ],
+        "generated_at": "2026-10-26T10:17:19.631890+00:00"
+      },
+      "precise_oom_cause": "not established",
+      "local_VM_memory_pressure_observed": true,
+      "sequential_repeats": "Egress passed; logistic Base64 and boundaries passed; corpus 503 and quality mismatches persist",
+      "logistic_sequential_returncode": 1,
+      "sampled_logistic_container_faults": []
+    },
+    "commands_remaining_failed": [
+      "make test-ner-integration",
+      "strict real-NER proxy corpus checks under content and logistic"
+    ]
+  },
+  "r01_fix": {
+    "status": "resolved_in_worktree",
+    "results_url": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6415271726",
+    "approval": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6414365954",
+    "scope": "E8-R01 only; no E9 model comparison or quality acceptance",
+    "before": {
+      "scope": "E8 failure diagnosis, not a product fix or E9 comparison",
+      "cases": [
+        {
+          "file": "2.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "2.txt",
+          "form": "json",
+          "status": 503,
+          "detail": {
+            "code": "required_ner_unavailable",
+            "phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          },
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "json",
+          "status": 503,
+          "detail": {
+            "code": "required_ner_unavailable",
+            "phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          },
+          "health_after": 200,
+          "next_request_status": 200
+        }
+      ],
+      "uppercase_name_filters": [
+        {
+          "selected": null,
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON"
+          ],
+          "actual": [
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON",
+            "ORGANIZATION"
+          ],
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        }
+      ],
+      "images": {
+        "presidio-analyzer": "sha256:2926e8838f94685bda861e0d40d8e6960233af0647b911669ee5e93d67d3f09b",
+        "ner-triton": "sha256:b111837d2b93f177da78cc372e1d24fb658e7cb02eac4ffaaf2f5a4c0b0b0604"
+      }
+    },
+    "after": {
+      "scope": "E8 failure diagnosis, not a product fix or E9 comparison",
+      "cases": [
+        {
+          "file": "2.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "2.txt",
+          "form": "json",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "plain",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        },
+        {
+          "file": "5.txt",
+          "form": "json",
+          "status": 200,
+          "health_after": 200,
+          "next_request_status": 200
+        }
+      ],
+      "uppercase_name_filters": [
+        {
+          "selected": null,
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON"
+          ],
+          "actual": [
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        },
+        {
+          "selected": [
+            "PERSON",
+            "ORGANIZATION"
+          ],
+          "actual": [
+            {
+              "type": "ORGANIZATION",
+              "value": "АННА"
+            },
+            {
+              "type": "PERSON",
+              "value": "СОКОЛОВА"
+            }
+          ]
+        }
+      ],
+      "images": {
+        "presidio-analyzer": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+        "ner-triton": "sha256:bd14e97c670608d46fe26b9f95672c32857ead897eb0e3fc38ddb959a89e5951"
+      }
+    },
+    "design": {
+      "shifted_model_inference_retained": true,
+      "extra_model_calls": 0,
+      "existing_value_boundary_expansion_reused": true,
+      "all_original_cluster_and_overlapping_same_type_recovery_evidence_covered": true,
+      "each_cut_edge_must_be_extended": true,
+      "type_and_minimum_score_preserved": true,
+      "json_string_content_may_be_masked_entirely": true,
+      "json_quotes_and_structure_retained": true,
+      "unresolvable_cases_still_refuse_only_current_request": true,
+      "word_exceptions_or_negative_filters_added": false,
+      "new_env_settings_or_platform_patches": false
+    },
+    "runtime_file_sha256": {
+      "presidio/ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+      "presidio/ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f"
+    },
+    "built_runtime_source_verification": {
+      "status": "passed",
+      "image_id": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+      "runtime_sha256": {
+        "ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+        "ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f"
+      },
+      "checkout_source_matches_runtime": true
+    },
+    "before_fix_regressions": {
+      "cases": 2,
+      "status": "both_failed_with_window_boundary_unresolved"
+    },
+    "focused_regressions": {
+      "status": "passed",
+      "cases": 205
+    },
+    "make_test_and_api": {
+      "status": "passed",
+      "analyzer": 2651,
+      "guardrails": 685,
+      "flow": 823,
+      "static_pytest": 554,
+      "make_unittest": 18,
+      "recognizer_api": 1598
+    },
+    "fast_evaluation_and_observability": {
+      "status": "passed",
+      "evaluation_cases": 46,
+      "observability_cases": 4
+    },
+    "dkb": {
+      "content": {
+        "status": "passed",
+        "base64_policy": "content",
+        "checks": [
+          {
+            "check": "dkb-corpus",
+            "status": "passed"
+          },
+          {
+            "check": "chunk-boundaries",
+            "status": "passed"
+          },
+          {
+            "check": "base64-policy",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T11:17:02.010107+00:00"
+      },
+      "logistic": {
+        "status": "passed",
+        "base64_policy": "logistic",
+        "checks": [
+          {
+            "check": "dkb-corpus",
+            "status": "passed"
+          },
+          {
+            "check": "chunk-boundaries",
+            "status": "passed"
+          },
+          {
+            "check": "base64-policy",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T11:36:01.921769+00:00"
+      }
+    },
+    "dkb_cases_per_policy": {
+      "files": 18,
+      "typed_original_annotations": 53,
+      "JSON_coverage_annotations": 53,
+      "echo_flows": 112,
+      "block_flows": 144,
+      "final_blocked_flows": 32
+    },
+    "base64_per_policy": {
+      "content": {
+        "cases": 2,
+        "echo_flows": 16,
+        "block_flows": 16
+      },
+      "logistic": {
+        "cases": 4,
+        "echo_flows": 32,
+        "block_flows": 32
+      },
+      "boundary_cases_each": {
+        "cases": 3,
+        "echo_flows": 24,
+        "block_flows": 24
+      }
+    },
+    "strict_instructions": {
+      "content": {
+        "status": "failed",
+        "base64_policy": "content",
+        "checks": [
+          {
+            "check": "dialogue-arguments",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "dialogue_role_which"
+          },
+          {
+            "check": "instructions",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "instruction_holdout_empty_person"
+          },
+          {
+            "check": "names",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-context",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-holdout",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T11:14:14.985737+00:00"
+      },
+      "logistic": {
+        "status": "failed",
+        "base64_policy": "logistic",
+        "checks": [
+          {
+            "check": "dialogue-arguments",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "dialogue_role_which"
+          },
+          {
+            "check": "instructions",
+            "status": "failed",
+            "error_type": "AssertionError",
+            "case_id": "instruction_holdout_empty_person"
+          },
+          {
+            "check": "names",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-context",
+            "status": "failed",
+            "error_type": "AssertionError"
+          },
+          {
+            "check": "name-holdout",
+            "status": "passed"
+          }
+        ],
+        "generated_at": "2026-10-26T11:33:16.297596+00:00"
+      }
+    },
+    "integration_all": {
+      "status": "failed",
+      "suite": "all",
+      "phase": "independent-checks",
+      "images": {
+        "presidio-analyzer": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+        "ner-triton": "sha256:bd14e97c670608d46fe26b9f95672c32857ead897eb0e3fc38ddb959a89e5951",
+        "litellm": "sha256:5894eede52f135e93590ba9d970d4202e6524f58e1ab15e657a8b7e6393b4875",
+        "codex-lb": "sha256:2e9270e442a9489583e7b68fa6e79c722840c6ec5a4a1d5958f0ac5b53063cd3"
+      },
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "checks": [
+        {
+          "check": "proxy-flow",
+          "status": "failed",
+          "error_type": "RuntimeError"
+        },
+        {
+          "check": "topologies",
+          "status": "passed"
+        }
+      ],
+      "error_type": "RuntimeError",
+      "generated_at": "2026-10-26T11:29:24.224757+00:00"
+    },
+    "topologies": {
+      "cases": [
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "mask",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "production",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 2,
+            "presidio-analyzer": 2,
+            "ner-triton": 2,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        },
+        {
+          "stack": "litellm-presidio-codex-lb",
+          "topology": "functional",
+          "mode": "block",
+          "replicas": {
+            "nginx": 1,
+            "db": 1,
+            "redis": 1,
+            "litellm": 1,
+            "presidio-analyzer": 1,
+            "ner-triton": 1,
+            "codex-lb": 1,
+            "codex-lb-db": 1
+          },
+          "status": "passed",
+          "resources_scope": "functional test limits, not production recommendation"
+        }
+      ],
+      "checks": [
+        {
+          "check": "single_post_no_replay",
+          "status": "passed",
+          "peer_post_counts": [
+            0,
+            1
+          ]
+        },
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio: Responses history restored across two LiteLLM processes, both stream modes",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        {
+          "check": "triton_replica_recovery",
+          "status": "passed",
+          "wrong_artifact_rejected": true,
+          "stopped_replica_rejected": true,
+          "client_attempt_statuses": [
+            200
+          ],
+          "replacement_new_ip": true
+        },
+        "New SSE request succeeds with one LiteLLM replica stopped; all Analyzer unavailable: 503 without provider call; full sequential restart preserves shared state",
+        "Scale test LiteLLM/Analyzer 2/2 -> 3/2 -> 2/2: state and virtual key preserved, changed Docker DNS pools serve requests",
+        "litellm-presidio-codex-lb: Responses history restored across two LiteLLM processes, both stream modes",
+        "Both topologies, both policies, both stacks, both APIs/stream modes; state/secrets, shared analysis cache hits, limits, per-replica readiness/metrics and mapping cleanup"
+      ],
+      "peak_container_memory_bytes": {
+        "topology-gate-1a3f891c-nginx": 9768534,
+        "topology-gate-1a3f891c-mock-upstream-1": 17259560,
+        "topology-gate-1a3f891c-db": 45780828,
+        "topology-gate-1a3f891c-redis": 10789847,
+        "topology-gate-1a3f891c-ner-triton-1": 187904819,
+        "topology-gate-1a3f891c-presidio-analyzer": 315097088,
+        "topology-gate-1a3f891c-litellm": 1217623228,
+        "topology-gate-1a3f891c-presidio-analyzer-1": 316040806,
+        "topology-gate-1a3f891c-presidio-analyzer-2": 313104793,
+        "topology-gate-1a3f891c-litellm-1": 1250909224,
+        "topology-gate-1a3f891c-litellm-2": 1282047737,
+        "topology-gate-1a3f891c-ner-triton-2": 156342681,
+        "topology-gate-1a3f891c-codex-lb-db": 66909634,
+        "topology-gate-1a3f891c-codex-lb": 186331955,
+        "topology-gate-1a3f891c-litellm-3": 1240171806
+      },
+      "peak_total_memory_bytes": 4056681540,
+      "images": {
+        "presidio-analyzer": "sha256:a12320ed85816b2dafa2dd3f4d46c2f99f9cfc1dcec09929b250a93a8ce0bf22",
+        "ner-triton": "sha256:bd14e97c670608d46fe26b9f95672c32857ead897eb0e3fc38ddb959a89e5951",
+        "litellm": "sha256:5894eede52f135e93590ba9d970d4202e6524f58e1ab15e657a8b7e6393b4875",
+        "codex-lb": "sha256:2e9270e442a9489583e7b68fa6e79c722840c6ec5a4a1d5958f0ac5b53063cd3"
+      },
+      "phase": "completed",
+      "model": {
+        "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+        "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+        "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+      },
+      "vm_memory_samples": [
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "4140528 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3005936 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2869332 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2928744 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "4113784 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3831292 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2856612 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2703436 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2722664 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439912 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "1944284 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439656 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2717292 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439656 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "2674796 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439656 kB"
+        },
+        {
+          "MemTotal": "8126480 kB",
+          "MemAvailable": "3882328 kB",
+          "SwapTotal": "1048572 kB",
+          "SwapFree": "439656 kB"
+        }
+      ],
+      "status": "passed",
+      "final_containers": [],
+      "cleanup_ok": true,
+      "generated_at": "2026-10-26T11:29:24.222960+00:00"
+    },
+    "sampled_logistic_container_faults": [],
+    "egress_security": {
+      "status": "passed",
+      "command": "make test-egress-security",
+      "returncode": 0,
+      "stream_disconnect_cases": 446,
+      "failures": [],
+      "leftover_mappings": 0,
+      "analyzer": "controlled mock for transport/cleanup, not a proof of real NER quality"
+    },
+    "cleanup": {
+      "status": "passed",
+      "stand_containers_same_ids_healthy": [
+        {
+          "name": "presidio-analyzer",
+          "id": "8e481672db91b09ddf16461dfbfe49fb8fe9c0bae10d6122c0b3d2ca3270400d",
+          "started_at": "2026-10-12T16:27:10.719092959Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy",
+          "id": "22f6f630221e5c18d418f6960409166720325b8a0bbdf5dd20ccfb6f7c78894d",
+          "started_at": "2026-10-26T10:16:33.39571167Z",
+          "health": "healthy",
+          "restarts": 1
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb",
+          "id": "c28c0ce482888223122f18dd6aa555bfb9eae049b9d383cdd34a4ddc27441de7",
+          "started_at": "2026-10-10T06:57:50.282824386Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-nginx",
+          "id": "4676969ef127f3d16075e82ed6969e911a549fd0127f5a3486f7d4efdbed3920",
+          "started_at": "2026-10-10T06:58:19.503876927Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-codex-lb-db",
+          "id": "50ac756a0b060891098d0317756d8cc04027a554e1d4ff439eed2097c34e48f0",
+          "started_at": "2026-10-08T18:33:07.730255836Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-db",
+          "id": "e998770f23fbfcf2b681774a7faf6447fad92e0c089d975265ffa9af20e78117",
+          "started_at": "2026-10-08T18:32:55.443603011Z",
+          "health": "healthy",
+          "restarts": 0
+        },
+        {
+          "name": "ru-llm-proxy-redis",
+          "id": "c7500c9885ba07eb090ade80748d7bbc2a491d26d585cad11459f1c23fd85e92",
+          "started_at": "2026-10-08T18:32:55.444105386Z",
+          "health": "healthy",
+          "restarts": 0
+        }
+      ],
+      "warnings": [],
+      "remaining_test_containers": [],
+      "remaining_test_networks_volumes": {
+        "network": [],
+        "volume": []
+      },
+      "global_prune": false,
+      "test_images_and_cache_preserved": true,
+      "baseline": "Latest E8 audit before R01 fix; LiteLLM already had one recorded restart"
+    },
+    "external_llm_calls": false,
+    "new_defects_accepted": false,
+    "unpublished_worktree": true,
+    "ci": "not_run_on_new_unpublished_changes"
+  },
+  "prior_cleanup_before_r01_fix": {
+    "status": "passed_with_unexpected_main_restart",
+    "stand_containers_same_ids_healthy": [
+      {
+        "name": "presidio-analyzer",
+        "id": "8e481672db91b09ddf16461dfbfe49fb8fe9c0bae10d6122c0b3d2ca3270400d",
+        "started_at": "2026-10-12T16:27:10.719092959Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy",
+        "id": "22f6f630221e5c18d418f6960409166720325b8a0bbdf5dd20ccfb6f7c78894d",
+        "started_at": "2026-10-26T10:16:33.39571167Z",
+        "health": "healthy",
+        "restarts": 1
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb",
+        "id": "c28c0ce482888223122f18dd6aa555bfb9eae049b9d383cdd34a4ddc27441de7",
+        "started_at": "2026-10-10T06:57:50.282824386Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-nginx",
+        "id": "4676969ef127f3d16075e82ed6969e911a549fd0127f5a3486f7d4efdbed3920",
+        "started_at": "2026-10-10T06:58:19.503876927Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-codex-lb-db",
+        "id": "50ac756a0b060891098d0317756d8cc04027a554e1d4ff439eed2097c34e48f0",
+        "started_at": "2026-10-08T18:33:07.730255836Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-db",
+        "id": "e998770f23fbfcf2b681774a7faf6447fad92e0c089d975265ffa9af20e78117",
+        "started_at": "2026-10-08T18:32:55.443603011Z",
+        "health": "healthy",
+        "restarts": 0
+      },
+      {
+        "name": "ru-llm-proxy-redis",
+        "id": "c7500c9885ba07eb090ade80748d7bbc2a491d26d585cad11459f1c23fd85e92",
+        "started_at": "2026-10-08T18:32:55.444105386Z",
+        "health": "healthy",
+        "restarts": 0
+      }
+    ],
+    "warnings": [
+      {
+        "name": "ru-llm-proxy",
+        "previous_restarts": 0,
+        "current_restarts": 1,
+        "previous_started_at": "2026-10-11T18:21:56.145318543Z",
+        "current_started_at": "2026-10-26T10:16:33.39571167Z",
+        "cause": "not established; observed during parallel test executions"
+      }
+    ],
+    "remaining_test_containers": [],
+    "remaining_test_networks_volumes": {
+      "network": [],
+      "volume": []
+    },
+    "global_prune": false,
+    "test_images_and_cache_preserved": true
+  },
+  "resolved": [
+    {
+      "id": "E8-R01",
+      "class": "JSON_document_window_boundary_unresolved",
+      "files": [
+        "2.txt",
+        "5.txt"
+      ],
+      "plain_text": "HTTP 200; all 18 DKB originals cover expected typed values in direct Analyzer calls",
+      "JSON_wrapper": {
+        "http_status": 503,
+        "code": "required_ner_unavailable",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved"
+      },
+      "isolation": "Reproduced without parallel container test suites",
+      "health_and_next_request_after_error": 200,
+      "risk": "Availability failure for JSON tool/document input; fail-closed retained",
+      "owner_decision": "pending separate investigation/fix approval",
+      "status": "resolved_in_worktree",
+      "resolution": "See r01_fix: two JSON cases now HTTP 200, full DKB passed under both policies"
+    }
+  ]
+}

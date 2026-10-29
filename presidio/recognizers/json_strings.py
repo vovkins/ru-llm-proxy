@@ -18,6 +18,7 @@ MAX_JSON_CHARS = 65536
 _STRING = re.compile(r'"(?:[^"\\]|\\.)*"', re.S)
 _KEY_SEPARATOR = re.compile(r"\s*:")
 _MEMBER_SEPARATOR = re.compile(r"\s*:\s*")
+_UNSIGNED_INTEGER = re.compile(r'[0-9]+(?=[ \t\r\n]*[,}\]])')
 
 
 def _reject_json_constant(value):
@@ -38,8 +39,8 @@ def iter_json_string_values(text):
         yield decoded_string_offsets(text, match.start(), match.end())
 
 
-def iter_json_keyed_strings(text):
-    """Yield decoded key, decoded value and value offsets for string object members."""
+def iter_json_keyed_strings(text, *, integers=False):
+    """Yield string members, optionally also unsigned integer source literals."""
     if len(text) > MAX_JSON_CHARS or not text.lstrip().startswith(("{", "[", '"')):
         return
     try:
@@ -53,6 +54,10 @@ def iter_json_keyed_strings(text):
         if separator:
             key = json.loads(match.group())
             value_start = separator.end()
+            if integers:
+                number = _UNSIGNED_INTEGER.match(text, value_start)
+                if number:
+                    yield key, number.group(), range(number.start(), number.end() + 1)
             continue
         if match.start() == value_start:
             yield (key, *decoded_string_offsets(text, match.start(), match.end()))

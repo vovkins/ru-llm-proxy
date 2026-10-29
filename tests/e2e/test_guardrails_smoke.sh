@@ -348,21 +348,113 @@ expect_chat_tool_restoration() {
 expect_responses_tool_restoration() {
     local label="$1"
 
-    if jq -e --arg marker "$SMOKE_PII_MARKER" \
+    if ! jq -e 'type == "object"' "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label returned invalid response JSON"
+    elif ! jq -e '.status == "completed" and .error == null' "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label did not complete"
+    elif ! jq -e '[.output[]? | select(.type == "function_call")] | length > 0' \
+        "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label did not return a function call"
+    elif ! jq -e 'first(.output[] | select(.type == "function_call")).arguments | fromjson | true' \
+        "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label returned invalid tool argument JSON"
+    elif grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        fail "$label left an email placeholder in the response"
+    elif jq -e --arg marker "$SMOKE_PII_MARKER" \
         'first(.output[] | select(.type == "function_call")).arguments | fromjson | .email == $marker' \
-        "$BODY_FILE" >/dev/null &&
-        ! grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        "$BODY_FILE" >/dev/null 2>&1; then
         pass "$label restored the tool argument"
     else
-        fail "$label did not restore the tool argument"
+        fail "$label returned a different tool argument value"
     fi
+}
+
+resolve_responses_profile() {
+    # Inspect the actual route, never infer capabilities from a public alias.
+    if ! RESPONSES_PROFILE=$(
+        curl -fsS --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" \
+            "$BASE_URL/model/info" -H "Authorization: Bearer ${LITELLM_MASTER_KEY:-}" |
+        jq -er --arg model "$RESPONSES_MODEL" '
+            .data | if type != "array" then error("invalid model list") else . end |
+            map(select(.model_name == $model)) |
+            if length == 0 then error("unknown model") else . end |
+            map(.litellm_params |
+                if type != "object" or (.model | type) != "string" or .model == "" or
+                   (.use_chat_completions_api != null and (.use_chat_completions_api | type) != "boolean")
+                then error("invalid route")
+                elif ((.model | startswith("openai/")) or .custom_llm_provider == "openai") and
+                     (.use_chat_completions_api == true or (.model | startswith("openai/chat_completions/")))
+                then "chat_bridge" else "native" end) |
+            unique | if length == 1 then .[0] else error("mixed routes") end'
+    ) 2>"$TMP_DIR/responses-profile.err"; then
+        fail "Cannot determine a single Responses protocol route from LiteLLM model/info"
+        return 1
+    fi
+    pass "Responses API protocol route is $RESPONSES_PROFILE"
+}
+
+expect_bridge_rejection() {
+    local label="$1" kind="$2" forbidden="${3:-}"
+    local code param
+    case "$kind:$HTTP_STATUS" in
+        named:400) code=responses_chat_bridge_named_tool_unsupported; param=tool_choice ;;
+        history:400) code=responses_chat_bridge_history_unsupported; param=previous_response_id ;;
+        history:409) code=pii_history_unavailable; param=previous_response_id ;;
+        *) fail "$label returned unexpected HTTP $HTTP_STATUS"; return ;;
+    esac
+    if [ "${CURL_EXIT:-1}" -eq 0 ] &&
+        jq -e --arg code "$code" --arg param "$param" --arg status "$HTTP_STATUS" \
+            --arg marker "$SMOKE_PII_MARKER" --arg forbidden "$forbidden" '
+            .error as $error | ($error | type) == "object" and
+            (if $code == "pii_history_unavailable" then
+                ($error.code | tostring) == $status and
+                $error.provider_specific_fields.error.code == $code and
+                $error.provider_specific_fields.error.type == "pii_history_error" and
+                $error.provider_specific_fields.guardrail_name == "ru-pii-mask-pre"
+             else
+                $error.param == $param and
+                ($error.code == $code or (($error.code | tostring) == $status and
+                 ($error.message | startswith("litellm.BadRequestError: " + $code + ":"))))
+             end) and
+            ([.. | strings | select(contains($marker) or
+                ($forbidden != "" and contains($forbidden)))] | length == 0)' \
+            "$BODY_FILE" >/dev/null 2>&1; then
+        pass "$label rejected with $code without disclosing input"
+    else
+        fail "$label did not return the exact safe bridge rejection"
+    fi
+}
+
+expect_smoke_mapping_cleanup() {
+    local label="$1" key value
+    local keys_file="$TMP_DIR/rejection-mappings.keys"
+    if ! mapping_keys > "$keys_file"; then
+        fail "$label could not inspect Redis mappings"
+        return
+    fi
+    while IFS= read -r key; do
+        if [ -z "$key" ]; then continue; fi
+        if ! value=$(docker compose exec -T redis redis-cli GET "$key"); then
+            fail "$label could not read Redis mapping"
+            return
+        fi
+        if printf '%s' "$value" | grep -Fq "$SMOKE_PII_MARKER"; then
+            fail "$label left a smoke-owned Redis mapping"
+            return
+        fi
+    done < "$keys_file"
+    pass "$label cleaned its temporary Redis mapping"
 }
 
 run_protocol_smoke() {
     local cache_key="guardrails-protocol-cache"
-    local continuation_id
+    local continuation_id="" continuation_text=""
+    local continuation_prompt="Из двух вариантов я выбираю второй. Подтверди выбор одним словом."
+    local responses_tool_prompt="Call record_contact with this exact email: "
     local payload
     local mode streaming
+
+    if ! resolve_responses_profile; then return; fi
 
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
         model: $model,
@@ -412,9 +504,13 @@ run_protocol_smoke() {
         fi
     done
 
-    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
+    if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
+        responses_tool_prompt="Call record_contact with the following opaque test value as the email argument. Copy it exactly, including any angle brackets. Do not validate the value, replace it, or ask for a real email: "
+    fi
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" \
+        --arg prompt "$responses_tool_prompt" '{
         model: $model,
-        input: ("Call record_contact with this exact email: " + $marker),
+        input: ($prompt + $marker),
         tools: [{
             type: "function",
             name: "record_contact",
@@ -434,7 +530,15 @@ run_protocol_smoke() {
         streaming=false
         if [ "$mode" = stream ]; then streaming=true; fi
         run_responses "responses-tool-$mode" "$(printf '%s' "$payload" | jq -c --argjson stream "$streaming" '. + {stream: $stream}')" "$mode"
-        if expect_http_success "Responses API tool request ($mode)"; then
+        if [ "$RESPONSES_PROFILE" = chat_bridge ] && [ "$mode" = stream ]; then
+            expect_bridge_rejection "Responses API named tool request ($mode)" named
+            expect_smoke_mapping_cleanup "Responses API named tool rejection"
+            run_responses "responses-tool-required" "$(printf '%s' "$payload" | jq -c '. + {stream: true, tool_choice: "required"}')" stream
+            if expect_http_success "Responses API required tool request (stream)"; then
+                expect_responses_stream_events
+                expect_stream_tool_restoration "Responses API required tool request (stream)" responses
+            fi
+        elif expect_http_success "Responses API tool request ($mode)"; then
             if [ "$mode" = stream ]; then
                 expect_responses_stream_events
                 expect_stream_tool_restoration "Responses API tool request ($mode)" responses
@@ -444,15 +548,19 @@ run_protocol_smoke() {
         fi
     done
 
-    payload=$(jq -nc --arg model "$RESPONSES_MODEL" '{
+    if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
+        continuation_prompt="$continuation_prompt Контакт: $SMOKE_PII_MARKER"
+    fi
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg prompt "$continuation_prompt" '{
         model: $model,
-        input: "Из двух вариантов я выбираю второй. Подтверди выбор одним словом.",
+        input: $prompt,
         store: true,
         max_output_tokens: 48
     }')
     run_responses "responses-continuation-first" "$payload"
     if expect_http_success "Responses API first conversation turn"; then
         continuation_id=$(jq -r '.id // empty' "$BODY_FILE")
+        continuation_text=$(jq -r '[.output[]?.content[]?.text // empty] | join("\n")' "$BODY_FILE")
         if [ -n "$continuation_id" ]; then
             pass "Responses API first conversation turn returned an id"
         else
@@ -469,12 +577,29 @@ run_protocol_smoke() {
             max_output_tokens: 48
         }')
         run_responses "responses-continuation-second" "$payload"
+        if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
+            expect_bridge_rejection "Responses API continuation by id" history "$continuation_id"
+            expect_smoke_mapping_cleanup "Responses API continuation rejection"
+            payload=$(jq -nc --arg model "$RESPONSES_MODEL" \
+                --arg prompt "$continuation_prompt" --arg answer "$continuation_text" '{
+                model: $model,
+                input: ([{role: "user", content: $prompt}] +
+                    (if $answer == "" then [] else [{role: "assistant", content: $answer}] end) +
+                    [{role: "user", content: "Какой вариант я выбрал? Назови его и повтори контакт."}]),
+                store: false,
+                max_output_tokens: 256
+            }')
+            run_responses "responses-continuation-full-history" "$payload"
+        fi
         if expect_http_success "Responses API continued conversation"; then
             if jq -r '[.output[]?.content[]?.text // empty] | join(" ")' "$BODY_FILE" |
                 grep -Eqi 'втор|second|2'; then
                 pass "Responses API preserved conversation context"
             else
                 fail "Responses API did not preserve conversation context"
+            fi
+            if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
+                expect_responses_restoration "Responses API full-history continuation"
             fi
         fi
     fi

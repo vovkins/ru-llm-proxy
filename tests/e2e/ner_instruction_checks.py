@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -14,53 +15,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from presidio.evaluation.corpus import DEFAULT_CORPUS_PATH, load_corpus
 from presidio.evaluation.metrics import evaluate_predictions
+from presidio.evaluation.tiny2_comparison import coverage
 from presidio.evaluation.run_baseline import AnalyzerClient
+from tests.e2e.ner_model_limits import (
+    accepted_coverage_cases,
+    check_case_result,
+    check_login_filter,
+)
+from tests.e2e.ner_test_support import run_checks, write_report
 
 CORPUS = DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl")
 NAME_CORPUS = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
 CONTEXT_CORPUS = DEFAULT_CORPUS_PATH.with_name("name_context_regressions.jsonl")
 FIELD_HOLDOUT_CORPUS = DEFAULT_CORPUS_PATH.with_name("name_field_holdout.jsonl")
 NAME_TYPES = frozenset({"PERSON", "ORGANIZATION"})
-# Model limitations remain explicit; these are not exemptions in production code.
-INSTRUCTION_EXACT_LIMITATIONS = {
-    "dialogue_role_email": {
-        "text": (
-            "<example>\nuser: what is the email dialogue-contact@example.test?\n"
-            "assistant: Done.\n</example>"
-        ),
-        "expected_spans": frozenset({("EMAIL_ADDRESS", 34, 63)}),
-        "extra_spans": frozenset({("PERSON", 76, 80)}),
-    },
-}
-NAME_EXACT_LIMITATIONS = {
-    "person_uppercase": (["PERSON"], ["ORGANIZATION"]),
-}
-CONTEXT_EXACT_LIMITATIONS = {
-    "client_uppercase": (["PERSON"], ["ORGANIZATION"]),
-}
-# The original control exposed a header boundary regression. Its annotation is
-# unchanged and must now pass exactly; it is no longer an independent control.
-FIELD_HOLDOUT_EXACT_LIMITATIONS = {}
-
-
-def _check_instruction_exact_spans(case, results):
-    expected = {(e.entity_type, e.start, e.end) for e in case.expected}
-    actual = {(r["entity_type"], r["start"], r["end"]) for r in results}
-    extra = actual - expected
-    limitation = INSTRUCTION_EXACT_LIMITATIONS.get(case.case_id)
-    if limitation is not None:
-        assert (
-            case.text == limitation["text"]
-            and expected == limitation["expected_spans"]
-            and case.score_threshold == 0.35
-        ), f"{case.case_id}: accepted limitation no longer matches source annotation"
-        allowed_extra = limitation["extra_spans"]
-    else:
-        allowed_extra = frozenset()
-    assert expected <= actual and extra <= allowed_extra, (
-        f"{case.case_id}: command or credential changed"
-    )
-    return sorted(extra)
 
 
 def _name_cases():
@@ -206,38 +174,20 @@ def check_instructions(analyzer_url, proxy_url, block_proxy_url, capture_url):
     client = AnalyzerClient(analyzer_url, timeout_seconds=60)
     predictions = {case.case_id: client.analyze(case) for case in cases}
     metrics = evaluate_predictions(cases, predictions)
-    observed_limitations = {}
+    verdicts = {
+        case.case_id: check_case_result(case, predictions[case.case_id], "instruction_regressions")
+        for case in cases
+    }
+    observed_limitations = [key for key, value in verdicts.items()
+                            if value["assessment"] == "accepted_limitation"]
     for case in cases:
         results = predictions[case.case_id]
         if "instruction_login_context" in case.tags:
-            expected_spans = {(e.entity_type, e.start, e.end) for e in case.expected}
-            extra = _check_instruction_exact_spans(case, results)
-            if extra:
-                observed_limitations[case.case_id] = extra
             filtered = _request(
                 analyzer_url, "/api/v1/analyze",
                 {"text": case.text, "entities": ["LOGIN"], "score_threshold": 0.35},
             )["entities"]
-            filtered_spans = {
-                (r["entity_type"], r["start"], r["end"]) for r in filtered
-            }
-            # A selective filter can expose a different BERT type for an email
-            # or hostname. Preserve that accepted limitation, never the command.
-            assert {span for span in expected_spans if span[0] == "LOGIN"} <= filtered_spans
-            assert all(
-                r["entity_type"] == "LOGIN"
-                and any(e.start <= r["start"] < r["end"] <= e.end for e in case.expected)
-                for r in filtered
-            ), (
-                f"{case.case_id}: LOGIN filter changed command or credential"
-            )
-        if not case.expected:
-            assert not results, f"{case.case_id}: unexpected masking"
-        for expected in case.expected:
-            assert any(
-                result["start"] <= expected.start and result["end"] >= expected.end
-                for result in results
-            ), f"{case.case_id}: sensitive value not fully covered"
+            check_login_filter(case, results, filtered)
     assert metrics["aggregate"]["critical_coverage_recall"] == 1.0
 
     flows = 0
@@ -268,12 +218,13 @@ def check_instructions(analyzer_url, proxy_url, block_proxy_url, capture_url):
                 assert not capture[
                     "provider_saw_canary"
                 ], f"{case.case_id}: sensitive egress"
-                assert capture["provider_saw_pii_placeholder"] == bool(case.expected)
+                expected_masked = verdicts[case.case_id]["expected_masked"]
+                assert capture["provider_saw_pii_placeholder"] == expected_masked
                 flows += 1
                 if "instruction_login_context" not in case.tags:
                     continue
                 _request(capture_url, "/capture/reset", {})
-                if case.expected:
+                if expected_masked:
                     try:
                         _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
                     except urllib.error.HTTPError as error:
@@ -285,7 +236,7 @@ def check_instructions(analyzer_url, proxy_url, block_proxy_url, capture_url):
                     assert _restored_text(response, api, stream) == case.text
                 with urllib.request.urlopen(capture_url + "/capture", timeout=5) as captured:
                     capture = json.load(captured)
-                assert capture["provider_requests"] == (0 if case.expected else 1)
+                assert capture["provider_requests"] == (0 if expected_masked else 1)
                 login_block_flows += 1
     print(
         json.dumps(
@@ -304,10 +255,13 @@ def check_instructions(analyzer_url, proxy_url, block_proxy_url, capture_url):
     )
 
 
-def check_dialogue_arguments(proxy_url, block_proxy_url, capture_url):
+def check_dialogue_arguments(analyzer_url, proxy_url, block_proxy_url, capture_url):
     from dkb_corpus_checks import payload_for
 
     cases = [case for case in load_corpus(CORPUS) if "dialogue" in case.tags]
+    client = AnalyzerClient(analyzer_url, timeout_seconds=60)
+    verdicts = {case.case_id: check_case_result(case, client.analyze(case), "instruction_regressions")
+                for case in cases}
     flows = blocked = clean = 0
     for case in cases:
         for api in ("chat/completions", "responses"):
@@ -322,12 +276,13 @@ def check_dialogue_arguments(proxy_url, block_proxy_url, capture_url):
                     result = json.load(captured)
                 assert result["provider_requests"] == 1
                 assert not result["provider_saw_canary"], case.case_id
-                assert result["provider_saw_pii_placeholder"] == bool(case.expected), (
+                expected_masked = verdicts[case.case_id]["expected_masked"]
+                assert result["provider_saw_pii_placeholder"] == expected_masked, (
                     case.case_id, api, stream, "unexpected masking of dialogue arguments"
                 )
                 flows += 1
                 _request(capture_url, "/capture/reset", {})
-                if case.expected:
+                if expected_masked:
                     try:
                         _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
                     except urllib.error.HTTPError as error:
@@ -360,29 +315,14 @@ def check_names(
     client = AnalyzerClient(analyzer_url, timeout_seconds=60)
     predictions = {case.case_id: client.analyze(case) for case in cases}
     metrics = evaluate_predictions(cases, predictions)
-    limitations = {
-        row["case_id"]: (row["missing_entity_types"], row["unexpected_target_types"])
-        for row in metrics["cases"]
-        if row["missing_entity_types"] or row["unexpected_target_types"]
-    }
-    expected_limitations = (
-        FIELD_HOLDOUT_EXACT_LIMITATIONS if field_holdout
-        else CONTEXT_EXACT_LIMITATIONS if context else NAME_EXACT_LIMITATIONS
-    )
-    assert (
-        limitations == expected_limitations
-    ), "name corpus: unexpected exact-span/type change"
-    assert metrics["aggregate"]["critical_coverage_recall"] == 1.0
-    filters = flows = blocked = 0
+    corpus = "name_field_holdout" if field_holdout else (
+        "name_context_regressions" if context else "person_organization_regressions")
+    verdicts = {case.case_id: check_case_result(case, predictions[case.case_id], corpus) for case in cases}
+    limitations = [key for key, value in verdicts.items() if value["assessment"] == "accepted_limitation"]
+    filters = flows = blocked = clean_blocked = 0
+    filter_coverage = []
     for case in cases:
         results = predictions[case.case_id]
-        if not case.expected:
-            assert not results, f"{case.case_id}: unexpected masking of negative name case"
-        for expected in case.expected:
-            assert any(
-                result["start"] <= expected.start and result["end"] >= expected.end
-                for result in results
-            ), f"{case.case_id}: no complete sensitive span"
         name_reference = results
         if context or field_holdout:
             combined = _request(
@@ -413,6 +353,9 @@ def check_names(
                 for result in name_reference
                 if result["entity_type"] == entity_type
             ], f"{case.case_id}: filtered analysis differs"
+            if case.expected and verdicts[case.case_id]["assessment"] == "accepted_limitation":
+                filter_coverage.append({"case_id": case.case_id, "entities": [entity_type],
+                                        "coverage": coverage(case, filtered)["values"]})
             filters += 1
         for api in ("chat/completions", "responses"):
             for stream in (False, True):
@@ -439,24 +382,28 @@ def check_names(
                 assert not capture[
                     "provider_saw_canary"
                 ], f"{case.case_id}: sensitive egress"
-                assert capture["provider_saw_pii_placeholder"] == bool(results)
+                expected_masked = verdicts[case.case_id]["expected_masked"]
+                assert capture["provider_saw_pii_placeholder"] == expected_masked
                 flows += 1
-                if not results:
-                    continue
                 _request(capture_url, "/capture/reset", {})
-                try:
-                    _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
-                except urllib.error.HTTPError as error:
-                    assert error.code == 422, f"{case.case_id}: unexpected block status"
+                if expected_masked:
+                    try:
+                        _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 422, f"{case.case_id}: unexpected block status"
+                    else:
+                        raise AssertionError(f"{case.case_id}: sensitive request was not blocked")
+                    blocked += 1
                 else:
-                    raise AssertionError(
-                        f"{case.case_id}: sensitive request was not blocked"
-                    )
+                    response = _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
+                    assert _restored_text(response, api, stream) == case.text
+                    clean_blocked += 1
                 with urllib.request.urlopen(
                     capture_url + "/capture", timeout=5
                 ) as captured:
-                    assert json.load(captured)["provider_requests"] == 0
-                blocked += 1
+                    capture = json.load(captured)
+                assert capture["provider_requests"] == (0 if expected_masked else 1)
+                assert not capture["provider_saw_canary"]
     print(
         json.dumps(
             {
@@ -469,12 +416,36 @@ def check_names(
                 "name_filter_cases": filters,
                 "echo_flows": flows,
                 "blocked_flows": blocked,
+                "clean_block_flows": clean_blocked,
                 "exact_limitations": sorted(limitations),
+                "accepted_filter_coverage": filter_coverage,
                 "metrics": metrics["aggregate"],
             },
             sort_keys=True,
         )
     )
+
+
+def check_accepted_coverage(analyzer_url):
+    cases = accepted_coverage_cases()
+    client = AnalyzerClient(analyzer_url, timeout_seconds=60)
+    predictions = {case.case_id: client.analyze(case) for case in cases}
+    verdicts = {case.case_id: check_case_result(case, predictions[case.case_id], "accepted_coverage")
+                for case in cases}
+    report = {
+        "status": "passed",
+        "contract": "owner_accepted_known_coverage_gaps_not_complete_protection",
+        "cases": [{"case_id": key, **value} for key, value in verdicts.items()],
+        "raw_quality": evaluate_predictions(cases, predictions),
+        "provider_requests": 0,
+        "note": "Analyzer-only subset of the frozen comparison, not an independent corpus or egress test.",
+    }
+    folder = os.environ.get("NER_TEST_REPORT_DIR")
+    if folder:
+        policy = os.environ.get("PRESIDIO_ANALYZER_BASE64_POLICY", "content")
+        write_report(Path(folder) / ("accepted-coverage-" + policy + ".json"), report)
+    print(json.dumps({"status": "ok", "accepted_coverage_cases": len(cases),
+                      "raw_quality": report["raw_quality"]["aggregate"]}, sort_keys=True))
 
 
 def main():
@@ -498,25 +469,30 @@ def main():
         (args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
     ):
         parser.error("Analyzer, mask/block proxy and capture URLs are required")
-    check_dialogue_arguments(args.proxy_url, args.block_proxy_url, args.capture_url)
-    check_instructions(args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
-    check_names(
-        args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url
-    )
-    check_names(
-        args.analyzer_url,
-        args.proxy_url,
-        args.block_proxy_url,
-        args.capture_url,
-        context=True,
-    )
-    check_names(
-        args.analyzer_url,
-        args.proxy_url,
-        args.block_proxy_url,
-        args.capture_url,
-        field_holdout=True,
-    )
+    urls = (args.analyzer_url, args.proxy_url, args.block_proxy_url, args.capture_url)
+    checks = [
+        ("dialogue-arguments", lambda: check_dialogue_arguments(*urls)),
+        ("instructions", lambda: check_instructions(*urls)),
+        ("names", lambda: check_names(*urls)),
+        ("name-context", lambda: check_names(*urls, context=True)),
+        ("name-holdout", lambda: check_names(*urls, field_holdout=True)),
+        ("accepted-coverage", lambda: check_accepted_coverage(urls[0])),
+    ]
+    cases = (*load_corpus(CORPUS), *_name_cases(), *_context_cases(), *_field_holdout_cases(),
+             *accepted_coverage_cases())
+    policy = os.environ.get("PRESIDIO_ANALYZER_BASE64_POLICY", "content")
+    if policy not in {"content", "logistic"}:
+        parser.error("Unsupported Base64 policy")
+    folder = os.environ.get("NER_TEST_REPORT_DIR")
+    report = {"status": "running", "base64_policy": policy, "checks": []}
+    try:
+        run_checks(checks, report["checks"], case_ids=[case.case_id for case in cases])
+        report["status"] = "passed"
+    except BaseException:
+        report["status"] = "failed"
+        raise
+    finally:
+        write_report(Path(folder) / f"instructions-{policy}.json" if folder else None, report)
 
 
 if __name__ == "__main__":

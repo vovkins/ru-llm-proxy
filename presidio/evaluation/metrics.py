@@ -78,6 +78,8 @@ def _metric_row(*, expected: int, predicted: int, true_positives: int) -> dict[s
 def evaluate_predictions(
     cases: Iterable[CorpusCase],
     predictions_by_case: Mapping[str, Iterable[Mapping[str, Any]]],
+    *,
+    entity_types: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Evaluate Analyzer responses without retaining raw entity values."""
     normalized_cases = tuple(cases)
@@ -88,9 +90,13 @@ def evaluate_predictions(
         raise ValueError(f"predictions contain unknown case ids: {unknown}")
 
     # Auxiliary annotations and predictions need the same exact-match domain.
-    evaluation_types = TARGET_ENTITY_TYPES | {
+    annotated_types = {
         entity.entity_type for case in normalized_cases for entity in case.expected
     }
+    evaluation_types = TARGET_ENTITY_TYPES | annotated_types if entity_types is None else entity_types
+    if (not evaluation_types or any(not isinstance(t, str) or not t for t in evaluation_types)
+            or not annotated_types <= evaluation_types):
+        raise ValueError("evaluation entity types must contain all annotated classes")
     totals = Counter()
     per_entity = {entity_type: Counter() for entity_type in evaluation_types}
     prediction_type_counts: Counter[str] = Counter()

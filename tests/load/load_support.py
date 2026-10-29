@@ -386,7 +386,12 @@ class SafeReportWriter:
         self._writer.writeheader()
         self._lock = threading.Lock()
         self._samples: list[dict[str, Any]] = []
+        self._requests_started = 0
         self._started = time.time()
+
+    def request_started(self) -> None:
+        with self._lock:
+            self._requests_started += 1
 
     def record(self, sample: dict[str, Any]) -> None:
         bounded = {name: sample.get(name) for name in self.FIELDNAMES}
@@ -411,6 +416,7 @@ class SafeReportWriter:
             self._file.close()
             elapsed = max(time.time() - self._started, 0.001)
             samples = list(self._samples)
+            requests_started = max(self._requests_started, len(samples))
 
         successful = [item for item in samples if not item.get("error_kind")]
         latencies = [float(item["total_ms"]) for item in successful]
@@ -459,6 +465,8 @@ class SafeReportWriter:
             "parameters": self.metadata,
             "duration_seconds": round(elapsed, 3),
             "request_count": len(samples),
+            "started_request_count": requests_started,
+            "unfinished_request_count": requests_started - len(samples),
             "success_count": len(successful),
             "failure_count": len(samples) - len(successful),
             "requests_per_second": round(len(samples) / elapsed, 3),

@@ -31,6 +31,11 @@ def main() -> None:
                 "analyzer_profile": parameters.get("analyzer_profile", "cpu"),
                 "analyzer_replicas": parameters.get("analyzer_replicas"),
                 "litellm_replicas": parameters.get("litellm_replicas"),
+                "triton_replicas": parameters.get("triton_replicas"),
+                "triton_model_instances": parameters.get("triton_model_instances"),
+                "nominal_requests_per_second": parameters.get("nominal_requests_per_second"),
+                "started_request_count": request.get("started_request_count"),
+                "unfinished_request_count": request.get("unfinished_request_count"),
                 "requests_per_second": request.get("requests_per_second"),
                 "successful_requests_per_second": request.get(
                     "successful_requests_per_second"
@@ -52,6 +57,9 @@ def main() -> None:
                 "litellm_peak_memory_bytes": resources.get("load-litellm", {}).get(
                     "peak_total_memory_bytes"
                 ),
+                "triton_peak_memory_bytes": resources.get("load-ner-triton", {}).get(
+                    "peak_total_memory_bytes"
+                ),
             }
         )
 
@@ -65,6 +73,7 @@ def main() -> None:
         "Input",
         "Analyzer",
         "LiteLLM",
+        "Triton x instances",
         "RPS",
         "Useful RPS",
         "Failure rate",
@@ -89,6 +98,7 @@ def main() -> None:
             row["input_variation"],
             analyzer,
             row["litellm_replicas"],
+            f'{row["triton_replicas"]} x {row["triton_model_instances"]}',
             row["requests_per_second"],
             row["successful_requests_per_second"],
             row["failure_rate"],

@@ -1,7 +1,47 @@
 # Оценка качества NER
 
-Этот каталог содержит воспроизводимую проверку качества для миграции NER из
-задачи [#67](https://github.com/vovkins/ru-llm-proxy/issues/67).
+Этот каталог содержит корпуса и оценщик NER. Текущая миграция Tiny2/Triton
+отслеживается в [#110](https://github.com/vovkins/ru-llm-proxy/issues/110).
+Критерии перехода владелец определяет после сравнительной таблицы; исторические
+пороги задачи #67 не считаются принятыми для новой модели.
+
+## Сравнение Э9
+
+[Результаты BERT и Tiny2/Triton](../../docs/research/tiny2-quality-comparison.md)
+содержат таблицы по классам и корпусам. Они не означают принятия миграции:
+сквозные регрессии и ложные маски остаются явно открытыми.
+
+Исследование использует внешний образ прежнего main, не возвращая BERT
+в рабочий код. Новых команд Make и обязательных внешних LLM нет.
+`make test-ner-evaluation` проверяет и сравнительный оценщик.
+Чтение PII-Bench требует PyArrow только в исследовательском окружении;
+Parquet скачиваются из закреплённой ревизии и проверяются по SHA-256.
+Основному Analyzer эта зависимость не нужна.
+
+```sh
+python -m presidio.evaluation.tiny2_comparison_run freeze \
+  --public-data /tmp/pii-bench --output /tmp/e9-cases.json
+python -m presidio.evaluation.tiny2_comparison_docker reference analyzer \
+  --case-packet /tmp/e9-cases.json --report-dir /tmp/e9 \
+  --reference-image sha256:EXPECTED_MAIN_IMAGE
+```
+
+Последовательно повторите запуск для `candidate analyzer`, `reference ner`
+и `candidate ner`; целевые тестовые образы подготовьте существующей
+`make test-hf-model`. Сначала проверьте соответствие внешнего образа
+точному main. Обвязка не останавливает рабочий стенд автоматически.
+Она использует внутреннюю сеть и удаляет только собственные контейнеры;
+существующие отчёты не перезаписывает. Генератор сводки:
+
+```sh
+python -m presidio.evaluation.tiny2_comparison_report \
+  --input-cases /tmp/e9-cases.json --raw-report-dir /tmp/e9 \
+  --reference-source /path/to/fixed-main-checkout
+```
+
+Точные показатели относятся к явно заданной области разметки. Полное
+покрытие, покрытие непробельных символов, ошибки запросов и лишние маски
+считаются отдельно. Незакоммиченные результаты не называются итоговым CI.
 
 ## Состав
 
@@ -11,8 +51,9 @@
 - `run_baseline.py` — запуск корпуса через работающий Analyzer;
 - `reports/deeppavlov-baseline.json` — неизменяемые исходные показатели старой модели;
 - `docs/research/ner-migration-baseline.md` — исторический сводный отчёт;
-- `reports/huggingface-candidate.json` — результат текущей модели;
-- `docs/research/ner-migration-candidate.md` — сводный отчёт текущей модели;
+- `reports/huggingface-candidate.json` — исторический результат прежней модели;
+- `reports/tiny2-candidate.json` — новый результат Tiny2, создаётся прогоном;
+- `docs/research/ner-tiny2-candidate.md` — новый сводный отчёт, создаётся прогоном;
 - `docs/research/ner-migration-candidate-observations.md` — сравнение и выводы.
 
 Отдельные артефакты проверки детерминированного слоя из репозитория модели:
@@ -36,6 +77,8 @@
 PERSON для `Done`: только исходный пример `dialogue_role_email` и границы
 `[76, 80)`. Исходная разметка и метрики не корректируются; пропуск email или
 любое иное отклонение не разрешены. Рабочего исключения слова `Done` нет.
+Это историческое разрешение прежней модели, не автоматическая приёмка Tiny2:
+её частичный `Don` и остальные расхождения остаются открытыми в Э9.
 
 ## Формат корпуса
 
@@ -104,7 +147,7 @@ make test-ner-evaluation
 `ner=loaded`:
 
 ```bash
-make ner-evaluate
+make ner-evaluate STACK=litellm-presidio
 ```
 
 Команда записывает отчёты даже при нарушении порога, но завершается ненулевым
@@ -113,25 +156,27 @@ make ner-evaluate
 `PERSON`, `LOCATION`, `ORGANIZATION` упала более чем на два процентных пункта
 относительно сохранённого исходного отчёта DeepPavlov.
 
+Это существующие проверки оценщика, не согласованные конечные пороги перехода
+Tiny2. Решение по #110 принимает владелец по полной таблице Э13; успешный либо
+неуспешный порог не заменяет разбор пропусков, лишних масок и ошибок класса.
+
 Другой адрес можно передать явно:
 
 ```bash
-make ner-evaluate ANALYZER_URL=http://analyzer.example:5001
+make ner-evaluate STACK=litellm-presidio ANALYZER_URL=http://analyzer.example:5001
 ```
 
 Для локального Docker-запуска команда также записывает версии основных пакетов
 из контейнера `presidio-analyzer`. При удалённом Analyzer это можно отключить:
 
 ```bash
-make ner-evaluate ANALYZER_URL=http://analyzer.example:5001 NER_EVALUATION_RUNTIME_CONTAINER=
+make ner-evaluate STACK=litellm-presidio ANALYZER_URL=http://analyzer.example:5001 NER_EVALUATION_RUNTIME_CONTAINER=
 ```
 
-Команда по умолчанию записывает в отчёт закреплённую контрольную сумму файла
-весов. Другой исследовательский артефакт можно указать явно:
-
-```bash
-make ner-evaluate NER_EVALUATION_MODEL_SHA256=<sha256-файла-весов>
-```
+Команда сама получает модель, ревизию и SHA-256 ONNX из доверенного описания
+экспорта в контейнере и сверяет с `/api/v1/health`. Ручного задания контрольной
+суммы или названия системы нет. Без доступа к контейнеру отчёт помечается как
+не подтверждённый локальным описанием (`model_checksum_enforced=false`).
 
 Флаги `--allow-degraded` и `--allow-case-errors` предназначены только для
 диагностики. Второй флаг позволяет записать отчёт с идентификаторами примеров,
@@ -139,7 +184,7 @@ make ner-evaluate NER_EVALUATION_MODEL_SHA256=<sha256-файла-весов>
 флага наличие хотя бы одной ошибки завершает команду ненулевым кодом.
 
 ```bash
-make ner-evaluate NER_EVALUATION_FLAGS=--allow-case-errors
+make ner-evaluate STACK=litellm-presidio NER_EVALUATION_FLAGS=--allow-case-errors
 ```
 
 Для локальной диагностики из рабочего дерева с незакоммиченными изменениями

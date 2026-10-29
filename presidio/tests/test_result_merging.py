@@ -476,9 +476,13 @@ def test_deterministic_winner_keeps_its_boundaries_against_a_model_value():
     )
     wider_ner = _result("AUTH_TOKEN", 0, len(text), 0.99, SOURCE_NER)
 
-    assert _summary(merge_results(text, [wider_ner, native])) == [
-        ("AUTH_TOKEN", text.index(value), text.index(value) + len(value), 0.7)
+    outcome = merge_results(text, [wider_ner, native])
+    assert _summary(outcome) == [
+        ("AUTH_TOKEN", 0, text.index(value), 0.99),
+        ("AUTH_TOKEN", text.index(value), text.index(value) + len(value), 0.7),
+        ("AUTH_TOKEN", text.index("for deploy"), len(text), 0.99),
     ]
+    assert outcome.results[1] is native
 
 
 def test_additive_address_rule_completes_a_partial_native_address():
@@ -549,7 +553,92 @@ def test_model_password_keeps_the_tail_a_native_value_cut_at_an_ampersand():
     ]
 
 
-def test_glued_tail_stops_at_whitespace_and_never_takes_a_left_label():
+def test_name_before_email_keeps_the_frozen_k05_ner_coverage():
+    text = "Михаил Соколов mikhail.sokolov@outlook.com не могу войти в личный кабинет"
+    ner = _result("PERSON", 0, 22, 0.5756028294563293, SOURCE_NER)
+    email = _result("EMAIL_ADDRESS", 15, 42, 0.85, SOURCE_STRUCTURAL)
+
+    for order in itertools.permutations([ner, email]):
+        outcome = merge_results(text, order)
+
+        assert _summary(outcome) == [
+            ("PERSON", 0, 14, ner.score),
+            ("EMAIL_ADDRESS", 15, 42, email.score),
+        ]
+        assert outcome.results[0].recognition_metadata == ner.recognition_metadata
+        assert outcome.results[1] is email
+
+
+@pytest.mark.parametrize(
+    "ner_bounds,winner_bounds",
+    [
+        ((2, 18), [(6, 10)]),
+        ((6, 18), [(2, 10)]),
+        ((2, 10), [(6, 18)]),
+        ((2, 22), [(4, 8), (12, 16)]),
+        ((4, 12), [(2, 16)]),
+        ((4, 12), [(4, 12)]),
+        ((2, 22), [(4, 8), (8, 12), (16, 20)]),
+    ],
+)
+@pytest.mark.parametrize("source", [SOURCE_NATIVE_CREDENTIAL, SOURCE_STRUCTURAL, SOURCE_NER])
+def test_overlapping_ner_retains_all_uncovered_characters(ner_bounds, winner_bounds, source):
+    text = "abcdefghijklmnopqrstuvwxyz"
+    ner = _result("PASSWORD", *ner_bounds, 0.8, SOURCE_NER)
+    winners = [_result("AUTH_TOKEN", start, end, 0.99, source, "winner")
+               for start, end in winner_bounds]
+    expected_coverage = {i for r in [ner, *winners] for i in range(r.start, r.end)}
+    expected = None
+
+    for order in itertools.permutations([ner, *winners]):
+        outcome = merge_results(text, order)
+        assert {i for r in outcome.results for i in range(r.start, r.end)} == expected_coverage
+        assert all(a.end <= b.start for a, b in zip(outcome.results, outcome.results[1:]))
+        assert all(any(r is winner for r in outcome.results) for winner in winners)
+        assert all(r.recognition_metadata == ner.recognition_metadata and r.score == ner.score
+                   for r in outcome.results if not any(r is winner for winner in winners))
+        if expected is None:
+            expected = _summary(outcome)
+        assert _summary(outcome) == expected
+
+
+@pytest.mark.parametrize("separator", [" ", "\t", "\n", " \t "])
+def test_ner_remainder_preserves_whole_words_but_trims_edge_whitespace(separator):
+    text = separator + "label=" + separator + "Alpha42" + separator + "ordinary text" + separator
+    start = text.index("Alpha42")
+    native = _result("PASSWORD", start, start + len("Alpha42"), 0.9, SOURCE_NATIVE_CREDENTIAL)
+    ner = _result("PASSWORD", 0, len(text), 0.8, SOURCE_NER)
+
+    outcome = merge_results(text, [ner, native])
+
+    assert [text[r.start:r.end] for r in outcome.results] == ["label=", "Alpha42", "ordinary text"]
+    assert all(text[i].isspace() or any(r.start <= i < r.end for r in outcome.results)
+               for i in range(len(text)))
+
+
+@pytest.mark.parametrize("label,entity_type", [("Email:", "PERSON"), ("Bearer", "AUTH_TOKEN")])
+def test_overlapped_model_field_labels_remain_masked(label, entity_type):
+    text = label + " jane@example.test"
+    start = text.index("jane")
+    ner = _result(entity_type, 0, start + len("jane"), 0.9, SOURCE_NER)
+    email = _result("EMAIL_ADDRESS", start, len(text), 0.85, SOURCE_STRUCTURAL)
+
+    outcome = merge_results(text, [ner, email])
+
+    assert [text[r.start:r.end] for r in outcome.results] == [label, "jane@example.test"]
+    assert outcome.results[0].entity_type == entity_type
+    assert outcome.results[1] is email
+
+
+def test_excluded_ner_class_does_not_reappear_as_an_overlap_remainder():
+    text = "Email: jane@example.test"
+    ner = _result("PERSON", 0, 11, 0.9, SOURCE_NER)
+    email = _result("EMAIL_ADDRESS", 7, len(text), 0.85, SOURCE_STRUCTURAL)
+
+    assert merge_results(text, [ner, email], requested_entities=["EMAIL_ADDRESS"]).results == (email,)
+
+
+def test_wider_ner_keeps_left_label_and_entire_detected_tail():
     text = "token=SyntheticToken42&x2 for deploy"
     value = "SyntheticToken42"
     start = text.index(value)
@@ -557,8 +646,9 @@ def test_glued_tail_stops_at_whitespace_and_never_takes_a_left_label():
     wider_ner = _result("AUTH_TOKEN", 0, len(text), 0.99, SOURCE_NER)
 
     assert _summary(merge_results(text, [wider_ner, native])) == [
+        ("AUTH_TOKEN", 0, start, 0.99),
         ("AUTH_TOKEN", start, start + len(value), 0.7),
-        ("AUTH_TOKEN", start + len(value), text.index(" for"), 0.99),
+        ("AUTH_TOKEN", start + len(value), len(text), 0.99),
     ]
 
 
@@ -621,6 +711,21 @@ def test_organization_piece_of_a_split_secret_stays_masked():
     assert set(range(start, len(text))) <= covered
 
 
+def _word_piece_result(entity_type, start, end, score):
+    return _result(entity_type, start, end, score, SOURCE_NER)
+
+
+@pytest.mark.parametrize("text,value,kind", [
+    ("Клиент John Smith оставил заявку", "John Smi", "PERSON"),
+    ("Компания Northwind Research работает", "Northwind Rese", "ORGANIZATION"),
+    ("Город New York указан", "New Yor", "LOCATION"),
+])
+def test_partial_latin_names_are_not_discarded_without_context_evidence(text, value, kind):
+    start = text.index(value)
+    outcome = merge_results(text, [_word_piece_result(kind, start, start + len(value), .9)])
+    assert any(r.start <= start and r.end >= start + len(value) for r in outcome.results)
+
+
 @pytest.mark.parametrize(
     ("text", "value"),
     [
@@ -672,6 +777,35 @@ def test_name_after_a_field_label_is_kept():
     assert _summary(merge_results(text, [label_piece, dot, name])) == [
         ("PERSON", 8, len(text), 0.99)
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "entity_type"),
+    [
+        ("user: which file contains the implementation?\nassistant: Done.", "Don", "PERSON"),
+        ("Поля ФИО и ORGANIZATION описаны в инструкции.", "ORGANIZA", "ORGANIZATION"),
+    ],
+)
+def test_word_piece_name_is_not_suppressed_without_context(text, value, entity_type):
+    start = text.index(value)
+    piece = _word_piece_result(entity_type, start, start + len(value), 0.8)
+
+    assert merge_results(text, [piece]).results == (piece,)
+
+
+def test_word_piece_name_is_kept_on_its_own_or_next_to_a_secret():
+    text = "assistant: Done."
+    start = text.index("Don")
+    bert_piece = _result("PERSON", start, start + 3, 0.8, SOURCE_NER)
+    assert len(merge_results(text, [bert_piece]).results) == 1
+
+    text = "token: ci_test_97"
+    login = _result("LOGIN", text.index("i_test"), len(text), 0.9, SOURCE_NER)
+    piece = _word_piece_result("PERSON", text.index("ci"), text.index("ci") + 1, 0.6)
+    covered = set()
+    for result in merge_results(text, [login, piece]).results:
+        covered.update(range(result.start, result.end))
+    assert set(range(text.index("ci"), len(text))) <= covered
 
 
 @pytest.mark.parametrize(
@@ -743,7 +877,7 @@ def test_shortened_ner_fragment_does_not_hide_a_later_additive_remainder(
         assert summary == expected
 
 
-def test_multiple_nested_additive_losers_complete_only_their_own_ranges():
+def test_nested_additive_and_ner_losers_complete_their_combined_ranges():
     text = "password=Alpha42&tail middle final visible"
     start = text.index("Alpha42")
     native = _result("PASSWORD", start, start + len("Alpha42"), .9, SOURCE_NATIVE_CREDENTIAL)
@@ -758,25 +892,27 @@ def test_multiple_nested_additive_losers_complete_only_their_own_ranges():
         spans = outcome.results
         covered = {i for r in spans for i in range(r.start, r.end)}
         assert all(text[i].isspace() or i in covered
-                   for i in range(start, text.index(" visible")))
-        assert not any(i in covered for i in range(text.index("visible"), len(text)))
+                   for i in range(len(text)))
+        assert native in spans
         assert all(a.end <= b.start for a, b in zip(spans, spans[1:]))
         if expected is None:
             expected = _summary(outcome)
         assert _summary(outcome) == expected
 
 
-def test_glued_tail_alone_does_not_mask_unconfirmed_following_text():
+def test_ner_keeps_its_detected_following_text_without_an_additive_rule():
     text = "password=Alpha42&tail ordinary text"
     start = text.index("Alpha42")
     native = _result("PASSWORD", start, start + len("Alpha42"), .9, SOURCE_NATIVE_CREDENTIAL)
     wide = _result("PASSWORD", 0, len(text), .8, SOURCE_NER)
     for order in itertools.permutations([native, wide]):
         spans = merge_results(text, order).results
-        assert [text[r.start:r.end] for r in spans] == ["Alpha42", "&tail"]
+        assert [text[r.start:r.end] for r in spans] == [
+            "password=", "Alpha42", "&tail ordinary text",
+        ]
 
 
-def test_two_exact_winners_do_not_hide_gaps_from_an_additive_rule():
+def test_two_exact_winners_and_additive_rule_keep_all_detected_ner_gaps():
     text = "key=Alpha42&tail middle Beta77&more final visible"
     first = text.index("Alpha42")
     second = text.index("Beta77")
@@ -791,8 +927,7 @@ def test_two_exact_winners_do_not_hide_gaps_from_an_additive_rule():
         outcome = merge_results(text, order)
         spans = outcome.results
         covered = {i for r in spans for i in range(r.start, r.end)}
-        assert all(text[i].isspace() or i in covered for i in range(first, end))
-        assert not any(i in covered for i in range(end, len(text)))
+        assert all(text[i].isspace() or i in covered for i in range(len(text)))
         assert password in spans and secret in spans
         assert all(a.end <= b.start for a, b in zip(spans, spans[1:]))
         if expected is None:
@@ -800,7 +935,7 @@ def test_two_exact_winners_do_not_hide_gaps_from_an_additive_rule():
         assert _summary(outcome) == expected
 
 
-def test_excluding_additive_entity_preserves_only_the_allowed_ner_tail():
+def test_excluding_additive_entity_preserves_only_the_allowed_ner_class():
     text = "password=Alpha42&tail ул. Ленина, д. 5"
     start = text.index("Alpha42")
     native = _result("PASSWORD", start, start + len("Alpha42"), .9, SOURCE_NATIVE_CREDENTIAL)
@@ -809,4 +944,7 @@ def test_excluding_additive_entity_preserves_only_the_allowed_ner_tail():
                       SOURCE_STRUCTURAL, "RuAddressChainRecognizer")
     for order in itertools.permutations([native, wide, address]):
         spans = merge_results(text, order, requested_entities=["PASSWORD"]).results
-        assert [text[r.start:r.end] for r in spans] == ["Alpha42", "&tail"]
+        assert [text[r.start:r.end] for r in spans] == [
+            "password=", "Alpha42", "&tail ул. Ленина, д. 5",
+        ]
+        assert all(r.entity_type == "PASSWORD" for r in spans)

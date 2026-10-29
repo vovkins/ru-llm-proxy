@@ -32,3 +32,19 @@ def test_existing_gate_runs_real_disconnect_checks():
     workflow = (ROOT / ".github/workflows/baseline.yml").read_text()
     assert "bash -n tests/e2e/test_nonstream_disconnect.sh" in workflow
     assert "run: make test-final-leak-proxy" in workflow
+
+
+@pytest.mark.parametrize("path,services", [
+    ("docker-compose.yml", ("litellm",)),
+    ("tests/e2e/docker-compose.pre-egress-proxy.yml", ("litellm",)),
+    ("tests/e2e/docker-compose.ner-proxy.yml", ("litellm-mask", "litellm-block")),
+    ("tests/load/docker-compose.yml", ("load-litellm",)),
+])
+def test_profiles_register_cancellation_without_replacing_native_cli(path, services):
+    config = yaml.safe_load((ROOT / path).read_text())
+    for service in services:
+        assert config["services"][service]["entrypoint"] == ["sh", "/app/litellm_guardrails/entrypoint.sh"]
+    source = (ROOT / "litellm_guardrails" / "server.py").read_text()
+    assert "app.add_middleware(RequestCancellationMiddleware)" in source
+    assert "run_server()" in source and "__mp_main__" in source
+    assert "skip_server_startup" not in source and "uvicorn.run" not in source

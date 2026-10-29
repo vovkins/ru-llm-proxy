@@ -8,6 +8,8 @@ import json
 import re
 from typing import Any
 
+from .restoration_mapping import decode_mapping, encode_mapping
+
 
 STATE_METADATA_KEY = "pii_responses_state"
 KEY_PREFIX = "pii_responses_state:v1:"
@@ -129,14 +131,12 @@ class ResponsesStateStore:
 
     @staticmethod
     def serialize(mapping: dict[str, str]) -> str:
-        if (
-            not isinstance(mapping, dict)
-            or any(not isinstance(k, str) or not k or not isinstance(v, str) for k, v in mapping.items())
-        ):
-            raise unavailable_state()
+        try:
+            body = encode_mapping(mapping)
+        except (ValueError, TypeError):
+            raise unavailable_state() from None
         if len(mapping) > MAX_MAPPING_PAIRS:
             raise ResponsesStateError("pii_history_too_large", 413, "Sensitive history mapping exceeds its limit.")
-        body = json.dumps(mapping, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         try:
             size = len(body.encode())
         except UnicodeError:
@@ -156,7 +156,7 @@ class ResponsesStateStore:
         if not result or result[0] != "found":
             raise missing_state()
         try:
-            mapping = json.loads(result[1])
+            mapping = decode_mapping(result[1])
             self.serialize(mapping)
             return mapping
         except (ValueError, TypeError, ResponsesStateError):

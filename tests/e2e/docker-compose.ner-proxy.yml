@@ -1,4 +1,31 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ../../nginx/conf.d/triton.conf:/etc/nginx/conf.d/triton.conf:ro
+      - ./nginx.ner-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${NER_PROXY_ANALYZER_PORT:-15001}:5001"
+      - "127.0.0.1:${NER_PROXY_MASK_PORT:-14010}:4000"
+      - "127.0.0.1:${NER_PROXY_BLOCK_PORT:-14011}:4001"
+    networks: [default, test-ingress]
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  ner-triton:
+    image: ${NER_TEST_TRITON_IMAGE:-ru-llm-proxy-ner-tests:triton}
+    pull_policy: never
+    environment:
+      TRITON_MODEL_INSTANCES: "2"
+    healthcheck:
+      test: ["CMD", "python3", "/opt/ru-ner/verify_triton_service.py"]
+      interval: 3s
+      timeout: 8s
+      retries: 60
+
   redis:
     image: redis:7-alpine
     healthcheck:
@@ -20,6 +47,7 @@ services:
       - "127.0.0.1:${NER_PROXY_CAPTURE_PORT:-14012}:8080"
     volumes:
       - ../..:/workspace:ro
+    networks: [default, test-ingress]
     healthcheck:
       test:
         [
@@ -33,14 +61,17 @@ services:
       retries: 30
 
   presidio-analyzer:
-    image: ${ANALYZER_IMAGE:-ru-llm-proxy-presidio-analyzer:latest}
+    image: ${ANALYZER_IMAGE:-ru-llm-proxy-ner-tests:analyzer}
     pull_policy: never
+    depends_on:
+      nginx:
+        condition: service_healthy
+      ner-triton:
+        condition: service_healthy
     environment:
       - PRESIDIO_ANALYZER_BASE64_POLICY=${PRESIDIO_ANALYZER_BASE64_POLICY:-content}
       - OMP_NUM_THREADS=1
       - MKL_NUM_THREADS=1
-    ports:
-      - "127.0.0.1:${NER_PROXY_ANALYZER_PORT:-15001}:5001"
     healthcheck:
       test:
         - CMD
@@ -54,9 +85,8 @@ services:
 
   litellm-mask:
     image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:v1.98.0@sha256:20b5044b619055374061a6d5b7b08754cad75aeabbf82ddf4f69cc0cf80ddaf4}
+    entrypoint: ["sh", "/app/litellm_guardrails/entrypoint.sh"]
     command: ["--config", "/app/config.yaml", "--port", "4000"]
-    ports:
-      - "127.0.0.1:${NER_PROXY_MASK_PORT:-14010}:4000"
     environment:
       - LITELLM_MASTER_KEY=sk-test-master
       - LITELLM_SALT_KEY=sk-test-salt-for-ner-integration
@@ -93,9 +123,8 @@ services:
 
   litellm-block:
     image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:v1.98.0@sha256:20b5044b619055374061a6d5b7b08754cad75aeabbf82ddf4f69cc0cf80ddaf4}
+    entrypoint: ["sh", "/app/litellm_guardrails/entrypoint.sh"]
     command: ["--config", "/app/config.yaml", "--port", "4000"]
-    ports:
-      - "127.0.0.1:${NER_PROXY_BLOCK_PORT:-14011}:4000"
     environment:
       - LITELLM_MASTER_KEY=sk-test-master
       - LITELLM_SALT_KEY=sk-test-salt-for-ner-integration
@@ -129,3 +158,8 @@ services:
       timeout: 5s
       retries: 40
       start_period: 10s
+
+networks:
+  default:
+    internal: true
+  test-ingress: {}

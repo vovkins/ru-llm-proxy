@@ -1,7 +1,8 @@
 # Проверка длинного контекста
 
-Исходные измерения и выводы приведены в
-[long-context-baseline.md](long-context-baseline.md).
+Прежние измерения сохранены в [long-context-baseline.md](long-context-baseline.md),
+новые Tiny2/Triton — в [Э10](tiny2-capacity.md). Методика ниже применима к
+текущему коду, но результаты разных моделей нельзя считать взаимозаменяемыми.
 
 Сценарий `scripts/benchmark_long_context.py` измеряет три разных случая:
 
@@ -12,13 +13,13 @@
   JSON и восстановление ответа, но не заменяет `one-shot` для большого нового
   текста.
 
-Результаты конкурентных серий и рекомендуемые настройки очереди приведены в
-[нагрузочном профиле Analyzer](analyzer-load-profile.md).
+Результаты конкурентных серий и выбранные настройки очереди приведены в
+[матрице очередей Tiny2](tiny2-queues.md).
 
 Генератор использует только синтетический текст. Размер задаётся числом слов,
-разделённых пробелами; фактическое число токенов BERT фиксирует Analyzer в
+разделённых пробелами; фактическое число токенов NER фиксирует Analyzer в
 `presidio_ner_inference`. Проверочные адреса электронной почты размещаются в
-начале, середине, около шага BERT-окон и в конце текста.
+начале, середине, около шага NER-окон и в конце текста.
 
 Необязательный `--tokenizer-encoding o200k_base` добавляет `text_token_count`
 по явно выбранной кодировке tiktoken. Это число токенов текстовых полей, не
@@ -53,11 +54,15 @@ python scripts/benchmark_long_context.py \
 Используйте состав `tests/e2e/docker-compose.ner-proxy.yml`, модель `mock-chat`
 и тестовый ключ `sk-test-master`. Он позволяет проверять объёмы до миллиона без
 стоимости и ограничения контекста внешней модели.
+Предварительно выполните `make test-hf-model`: нужны согласованные тестовые
+образы Analyzer и Triton. Для полного миллиона в ручном примере потребуется
+увеличить бюджет тестового LiteLLM: Compose этого контура задаёт 120 с;
+готовый профиль `tests/load/run.sh context` задаёт 1200 с.
 
 ```bash
 docker compose -p ru-llm-proxy-long-context \
   -f tests/e2e/docker-compose.ner-proxy.yml \
-  up -d redis mock-upstream presidio-analyzer litellm-mask
+  up -d nginx ner-triton redis mock-upstream presidio-analyzer litellm-mask
 
 LITELLM_BENCHMARK_API_KEY=sk-test-master \
 python scripts/benchmark_long_context.py \

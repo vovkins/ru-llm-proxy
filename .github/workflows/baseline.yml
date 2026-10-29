@@ -48,6 +48,10 @@ jobs:
           from pathlib import Path
           import yaml
 
+          class ComposeLoader(yaml.SafeLoader):
+              pass
+
+          ComposeLoader.add_constructor("!reset", lambda loader, node: loader.construct_sequence(node))
           for path in (
               "litellm-config.yaml",
               "docker-compose.yml",
@@ -57,13 +61,14 @@ jobs:
               "tests/e2e/litellm-config.ner-proxy.yaml",
               "tests/e2e/litellm-config.topologies.yaml",
               "tests/e2e/docker-compose.ner-proxy.yml",
+              "tests/docker-compose.unit.yml",
               "tests/load/litellm-config.yaml",
               "tests/load/docker-compose.yml",
               ".github/workflows/air-gapped-ca.yml",
               ".github/workflows/baseline.yml",
               ".github/workflows/ner-model-integration.yml",
           ):
-              yaml.safe_load(Path(path).read_text())
+              yaml.load(Path(path).read_text(), Loader=ComposeLoader)
               print(f"{path} ok")
           PY
 
@@ -139,6 +144,9 @@ jobs:
 
       - name: Run Analyzer API recognizer threshold tests
         run: make test-recognizer-api
+
+      - name: Run all Analyzer unit and regression tests without Tiny2 weights
+        run: make test-recognizers
 
   pre-egress-proxy:
     runs-on: ubuntu-latest

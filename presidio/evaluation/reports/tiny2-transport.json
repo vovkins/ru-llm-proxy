@@ -1,0 +1,70 @@
+{
+  "stage": "E6",
+  "date": "2026-10-25",
+  "status": "implemented_and_locally_verified",
+  "quality_acceptance": "pending_owner_decision_after_E9_E13",
+  "baseline_commit": "d9fbb592e3fd997559afe26e32e6feaafe35b00a",
+  "working_tree": "uncommitted E2-E6 changes",
+  "model_revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+  "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353",
+  "images": {
+    "analyzer": "sha256:992588853ba16d85719a1becd90cd4757d791237eb692c3b150adc65b71e1bbf",
+    "triton": "sha256:c52758e030d64c1371da8361028d7dee4875b87ce92f9ecd5d84af11969a220a",
+    "method": "derived test images from E5 Analyzer and E4 official CPU Triton; no re-export or dependency rebuild"
+  },
+  "source_sha256": {
+    "presidio/ner/triton_model.py": "20b02811acf698d0b7d47e60c28b2a382a163517631e9b62cb17b00d395b96d5",
+    "presidio/ner/triton_recognizer.py": "4eb53ab5f001471062a3128f4b7689198a00995cc2c93e829570369fe425b8d2",
+    "presidio/ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+    "presidio/analyzer_server.py": "5dcb656a7e96f28885d96177aacc2c436d0a374d8e3c2a3f737a7fcfa996641a",
+    "presidio/capacity.py": "e46b33167f53de4c6e2a9a89a8bdfe01efae628954002fe025ee8ba840181f66",
+    "presidio/triton_entrypoint.py": "e8289145a0142ef5a62e7213b85ef6cf93b833a156cff56d581d8e169d6740d4",
+    "litellm_guardrails/pii_guardrail.py": "3c3ea32ef065d4baee77ec942d36b99ef5acb8ff9b3bd1fa3763c1e7b9073d49"
+  },
+  "pytest": {
+    "analyzer": {"passed": 2591, "warnings": 1},
+    "guardrails_and_api": {"passed": 1508, "warnings": 2},
+    "affected_static_contracts": {"passed": 50},
+    "real_ner_litellm_parser_mock_provider": {
+      "passed": 24,
+      "apis": ["chat/completions", "responses"],
+      "stream": [false, true],
+      "outputs": ["text", "tool_arguments"],
+      "fixtures": ["password-slashes", "password-punctuation", "uri-components"],
+      "assertions": ["exact typed character coverage", "no additional masking", "full restoration"]
+    }
+  },
+  "isolated_cpu_stand": {
+    "analyzer": {"cpu_limit": 2, "memory_mib": 1536, "concurrency": 2, "queue_limit": 2, "queue_wait_seconds": 0.05},
+    "triton": {"cpu_limit": 2, "memory_mib": 2048, "model_instances": 1},
+    "production_recommendation": false,
+    "network": "internal Docker network, no external LLM access",
+    "checks": {
+      "outage": {"health_status": 503, "analyze_status": 503, "retry_after_seconds": 5, "failure_class": "triton_unavailable"},
+      "same_model_recovery": {"analyzer_restarted": false, "status": 200, "poll_elapsed_seconds": 0.9398, "not_a_recovery_SLA": true},
+      "parallel_burst": {"requests": 12, "success": 2, "controlled_overload": 10, "elapsed_seconds": 1.2305, "capacity_drained": true, "short_request_after": 200},
+      "cancel_during_preparation": {"local_drain_seconds": 0.8395, "short_request_after": 200},
+      "cancel_during_observed_triton_inference": {"local_drain_seconds": 0.2901, "short_request_after": 200, "local_inflight_after": 0, "remote_completion_unconfirmed_total": 1},
+      "expired_request_budget": {"budget_seconds": 0.001, "status": 503, "retry_after": false, "healthy_after": true},
+      "native_triton_queue_timeout": {"requests": 16, "timeout_microseconds": 1, "status_503": 16}
+    }
+  },
+  "initial_live_assertion_mismatch": {
+    "case": "password-punctuation",
+    "initial_failed_combinations": 8,
+    "reason": "fixture expected one mapping value; real NER returned two adjacent PASSWORD spans",
+    "E5_and_E6_spans": [[30, 37], [37, 38]],
+    "typed_mask_coverage": "complete and identical to E5",
+    "resolution": "retain strict unit fixture; live transport check asserts exact typed character coverage independently of fragment count and restores observed fragments",
+    "recognizer_rules_changed": false
+  },
+  "limits": [
+    "No platform patches, model/threshold changes, GPU or external LLM calls",
+    "Cooperative cancellation does not terminate an already accepted Triton computation",
+    "A started synchronous network phase can finish after the caller deadline; local capacity is held until it ends",
+    "Unconfirmed-completion gauge is cumulative, not an estimate of currently executing remote work",
+    "Queue sizes/timeouts are bounded internal E6 values, production tuning remains E10",
+    "One/two Triton topology and CI/Make integration remain E7/E8",
+    "Full quality comparison and final acceptance remain E9/E13"
+  ]
+}

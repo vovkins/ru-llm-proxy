@@ -6,6 +6,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/ner-model-integration.yml"
       - "Makefile"
+      - "litellm/Dockerfile"
       - "certs/**"
       - "docker-compose.yml"
       - "docker-compose.production*.yml"
@@ -16,6 +17,12 @@ on:
       - "scripts/deployment.py"
       - "scripts/setup_codex_lb.py"
       - "tests/e2e/deployment_topology_gate.py"
+      - "tests/e2e/model_smoke.py"
+      - "tests/e2e/ner_integration.py"
+      - "tests/e2e/ner_test_support.py"
+      - "tests/e2e/triton_routing_checks.py"
+      - "tests/e2e/topology-resources.env"
+      - "tests/e2e/nginx.ner-proxy.conf"
       - "tests/e2e/litellm-config.topologies.yaml"
       - "presidio/**"
       - "litellm_guardrails/**"
@@ -23,10 +30,14 @@ on:
       - "tests/e2e/litellm-config.ner-proxy.yaml"
       - "tests/e2e/mock_openai_upstream.py"
       - "tests/e2e/ner_instruction_checks.py"
+      - "tests/e2e/ner_model_limits.py"
+      - "tests/fixtures/ner-model-limitations.json"
+      - "tests/e2e/check_responses_history.py"
       - "tests/e2e/dkb_corpus_checks.py"
       - "tests/fixtures/dkb/**"
       - "tests/e2e/test_ner_proxy_flow.sh"
       - "tests/test_ner_integration_config.py"
+      - "tests/test_ner_test_harness.py"
   push:
     branches:
       - main
@@ -34,6 +45,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/ner-model-integration.yml"
       - "Makefile"
+      - "litellm/Dockerfile"
       - "certs/**"
       - "docker-compose.yml"
       - "docker-compose.production*.yml"
@@ -44,6 +56,12 @@ on:
       - "scripts/deployment.py"
       - "scripts/setup_codex_lb.py"
       - "tests/e2e/deployment_topology_gate.py"
+      - "tests/e2e/model_smoke.py"
+      - "tests/e2e/ner_integration.py"
+      - "tests/e2e/ner_test_support.py"
+      - "tests/e2e/triton_routing_checks.py"
+      - "tests/e2e/topology-resources.env"
+      - "tests/e2e/nginx.ner-proxy.conf"
       - "tests/e2e/litellm-config.topologies.yaml"
       - "presidio/**"
       - "litellm_guardrails/**"
@@ -51,10 +69,14 @@ on:
       - "tests/e2e/litellm-config.ner-proxy.yaml"
       - "tests/e2e/mock_openai_upstream.py"
       - "tests/e2e/ner_instruction_checks.py"
+      - "tests/e2e/ner_model_limits.py"
+      - "tests/fixtures/ner-model-limitations.json"
+      - "tests/e2e/check_responses_history.py"
       - "tests/e2e/dkb_corpus_checks.py"
       - "tests/fixtures/dkb/**"
       - "tests/e2e/test_ner_proxy_flow.sh"
       - "tests/test_ner_integration_config.py"
+      - "tests/test_ner_test_harness.py"
   workflow_dispatch:
 
 permissions:
@@ -67,11 +89,34 @@ concurrency:
 jobs:
   real-model-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
+      - name: Set up lightweight test controller
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test controller dependencies
+        run: python -m pip install pyyaml
+
+      - name: Check resources for the official CPU Triton image
+        run: |
+          df -h /
+          free -h
+          docker info --format 'Docker CPUs={{.NCPU}} RAM={{.MemTotal}}'
+          # Only disposable GitHub-hosted runner tools, never a developer host.
+          if [ "$(df --output=avail -k / | tail -1)" -lt 41943040 ]; then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          fi
+          df -h /
+          test "$(df --output=avail -k / | tail -1)" -ge 41943040 || {
+            echo 'Insufficient runner disk for verified export and official Triton; do not skip NER.' >&2
+            exit 1
+          }
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -83,17 +128,50 @@ jobs:
           file: ./presidio/Dockerfile
           target: analyzer
           load: true
-          tags: ru-llm-proxy-presidio-analyzer:latest
+          tags: ru-llm-proxy-ner-tests:analyzer
           cache-from: type=gha,scope=presidio-analyzer
           cache-to: type=gha,mode=max,scope=presidio-analyzer
 
-      - name: Run fixed model without network
+      - name: Build matching Triton image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./presidio/Dockerfile
+          target: ner-triton
+          load: true
+          tags: ru-llm-proxy-ner-tests:triton
+          cache-from: type=gha,scope=presidio-analyzer
+
+      - name: Run fixed model on isolated internal network
         run: make test-hf-model-run
 
       - name: Run real Analyzer proxy flow
+        id: proxy
         run: make test-ner-proxy
 
       - name: Run real Analyzer proxy flow with logistic Base64
+        if: ${{ !cancelled() && steps.proxy.outcome != 'skipped' }}
         env:
           PRESIDIO_ANALYZER_BASE64_POLICY: logistic
+          NER_TEST_REPORT_DIR: tmp/ner-integration
+          LITELLM_IMAGE: ru-llm-proxy-ner-tests:litellm
         run: bash tests/e2e/test_ner_proxy_flow.sh
+
+      - name: Save bounded test reports without credentials
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ner-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tmp/ner-integration/*.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove only this job's remaining test resources
+        if: always()
+        run: |
+          for prefix in ru-ner- ru-llm-proxy-ner- topology-gate-; do
+            docker ps -aq --filter "name=^${prefix}" | xargs -r docker rm -f
+          done
+          for kind in network volume; do
+            docker "$kind" ls --format '{{.Name}}' | grep -E '^(ru-ner-|ru-llm-proxy-ner-|topology-gate-)' | xargs -r docker "$kind" rm || true
+          done

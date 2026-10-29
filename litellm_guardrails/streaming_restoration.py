@@ -114,13 +114,125 @@ class _StreamingPlaceholderReplacer:
 
 
 def restore_text(text: str, mapping: dict[str, str]) -> str:
+    if getattr(mapping, 'json_numbers', ()):
+        restorer = _StreamingTypedTextRestorer(mapping)
+        return restorer.push(text) + restorer.flush()
     return _StreamingPlaceholderReplacer(mapping)._replace(text)
+
+
+def _number_prefixes(numbers):
+    return {key[:end] for key in numbers for end in range(len(key) + 1)}
+
+
+class _StreamingTypedTextRestorer:
+    """Restore quoted numeric atoms in JSON text, without reprinting prose."""
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+        self._numbers = mapping.json_numbers
+        self._prefixes = _number_prefixes(self._numbers)
+        self._replacer = _StreamingPlaceholderReplacer(mapping)
+        self._containers = []
+        self._in_string = False
+        self._escaped = False
+        self._seen_content = False
+        self._candidate = None
+        self._decoded = ''
+        self._candidate_escape = ''
+
+    def push(self, text):
+        output, raw = [], []
+
+        def emit_raw():
+            if raw:
+                output.append(self._replacer.push('text', ''.join(raw)))
+                raw.clear()
+
+        for char in text:
+            if self._candidate is not None:
+                self._candidate.append(char)
+                if self._candidate_escape:
+                    self._candidate_escape += char
+                    if self._candidate_escape == '\\u' or (
+                        self._candidate_escape.startswith('\\u') and len(self._candidate_escape) < 6
+                    ):
+                        continue
+                    try:
+                        self._decoded += json.loads('"' + self._candidate_escape + '"')
+                    except ValueError:
+                        # Arbitrary prose is not required to have JSON escapes.
+                        raw.extend(self._candidate)
+                        self._candidate = None
+                    self._candidate_escape = ''
+                elif char == '\\':
+                    self._candidate_escape = '\\'
+                    continue
+                elif char == '"':
+                    if self._decoded in self._numbers:
+                        emit_raw()
+                        output.append(self._replacer.flush('text'))
+                        output.append(self._mapping[self._decoded])
+                    else:
+                        raw.extend(self._candidate)
+                    self._candidate = None
+                    self._in_string = False
+                    self._decoded = ''
+                    continue
+                else:
+                    self._decoded += char
+                if self._candidate is not None and self._decoded not in self._prefixes:
+                    raw.extend(self._candidate)
+                    self._candidate = None
+                continue
+
+            if self._in_string:
+                raw.append(char)
+                if self._escaped:
+                    self._escaped = False
+                elif char == '\\':
+                    self._escaped = True
+                elif char == '"':
+                    self._in_string = False
+                continue
+
+            if char == '"':
+                self._in_string = True
+                is_key = bool(self._containers and self._containers[-1] == ['{', True])
+                if not is_key and (self._containers or not self._seen_content):
+                    self._candidate, self._decoded, self._candidate_escape = ['"'], '', ''
+                else:
+                    raw.append(char)
+            else:
+                raw.append(char)
+                if char in '{[':
+                    self._containers.append([char, char == '{'])
+                elif char in '}]' and self._containers:
+                    self._containers.pop()
+                elif char == ':' and self._containers:
+                    self._containers[-1][1] = False
+                elif char == ',' and self._containers and self._containers[-1][0] == '{':
+                    self._containers[-1][1] = True
+            if not char.isspace():
+                self._seen_content = True
+        emit_raw()
+        return ''.join(output)
+
+    def flush(self):
+        result = ''
+        if self._candidate is not None:
+            result = self._replacer.push('text', ''.join(self._candidate))
+            self._candidate = None
+        return result + self._replacer.flush('text')
 
 
 class _StreamingJSONRestorer:
     """Decode string-value fragments, restore them, and JSON-escape the result."""
 
     def __init__(self, mapping: dict[str, str]):
+        self._mapping = mapping
+        self._numbers = getattr(mapping, 'json_numbers', ())
+        self._number_prefixes = _number_prefixes(self._numbers)
+        self._number_candidate = None
         self._replacer = _StreamingPlaceholderReplacer(mapping)
         self._containers: list[list[Any]] = []
         self._in_string = False
@@ -153,19 +265,29 @@ class _StreamingJSONRestorer:
 
         def emit_decoded() -> None:
             if decoded:
-                output.append(
-                    self._encode(self._replacer.push("value", "".join(decoded)))
-                )
+                value = ''.join(decoded)
                 decoded.clear()
+                if self._number_candidate is not None:
+                    value = self._number_candidate + value
+                    if value in self._number_prefixes:
+                        self._number_candidate = value
+                        return
+                    self._number_candidate = None
+                    output.append('"')
+                output.append(
+                    self._encode(self._replacer.push("value", value))
+                )
 
         for char in text:
             if not self._in_string:
-                output.append(char)
                 if char == '"':
                     self._in_string = True
                     self._is_key = bool(
                         self._containers and self._containers[-1] == ["{", True]
                     )
+                    if self._numbers and not self._is_key:
+                        self._number_candidate = ''
+                        continue
                 elif char in "{[":
                     self._containers.append([char, char == "{"])
                 elif char in "}]":
@@ -177,6 +299,7 @@ class _StreamingJSONRestorer:
                     char == "," and self._containers and self._containers[-1][0] == "{"
                 ):
                     self._containers[-1][1] = True
+                output.append(char)
                 continue
 
             if self._is_key:
@@ -211,6 +334,14 @@ class _StreamingJSONRestorer:
                     decoded.append(self._surrogate)
                     self._surrogate = ""
                 emit_decoded()
+                if self._number_candidate is not None:
+                    candidate, self._number_candidate = self._number_candidate, None
+                    if candidate in self._numbers:
+                        output.append(self._mapping[candidate])
+                        self._in_string = False
+                        continue
+                    output.append('"')
+                    output.append(self._encode(self._replacer.push('value', candidate)))
                 output.append(self._encode(self._replacer.flush("value")))
                 output.append(char)
                 self._in_string = False
@@ -221,6 +352,9 @@ class _StreamingJSONRestorer:
 
     def flush(self) -> str:
         output = ""
+        if self._number_candidate is not None:
+            output += '"' + self._encode(self._replacer.push('value', self._number_candidate))
+            self._number_candidate = None
         if self._surrogate:
             output += self._encode(self._replacer.push("value", self._surrogate))
             self._surrogate = ""
@@ -256,6 +390,7 @@ class StreamingResponseRestorer:
         self.mapping = mapping
         self._text = _StreamingPlaceholderReplacer(mapping)
         self._json: dict[tuple, _StreamingJSONRestorer] = {}
+        self._typed_text: dict[tuple, _StreamingTypedTextRestorer] = {}
         self._templates: dict[tuple, Any] = {}
         self._sequence_offset = 0
         self._last_sequence = -1
@@ -267,6 +402,10 @@ class StreamingResponseRestorer:
             if key not in self._json:
                 self._json[key] = _StreamingJSONRestorer(self.mapping)
             result = self._json[key].push(text)
+        elif getattr(self.mapping, 'json_numbers', ()):
+            if key not in self._typed_text:
+                self._typed_text[key] = _StreamingTypedTextRestorer(self.mapping)
+            result = self._typed_text[key].push(text)
         else:
             result = self._text.push(key, text)
         if result != text:
@@ -275,7 +414,9 @@ class StreamingResponseRestorer:
 
     def _flush(self, key: tuple) -> str:
         arguments = self._json.pop(key, None)
-        result = arguments.flush() if arguments is not None else self._text.flush(key)
+        text = self._typed_text.pop(key, None)
+        result = (arguments.flush() if arguments is not None else
+                  text.flush() if text is not None else self._text.flush(key))
         if result:
             self.restored_fields += 1
         return result
@@ -375,7 +516,7 @@ class StreamingResponseRestorer:
         result = (
             restore_arguments(value, self.mapping)
             if arguments
-            else self._text._replace(value)
+            else restore_text(value, self.mapping)
         )
         if result != value:
             self.restored_fields += 1
@@ -571,5 +712,6 @@ class StreamingResponseRestorer:
         # Native done/terminal events flush their fields. Bare EOF is not one.
         self._text._pending.clear()
         self._json.clear()
+        self._typed_text.clear()
         self._templates.clear()
         return []

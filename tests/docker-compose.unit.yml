@@ -1,0 +1,9 @@
+services:
+  guardrail-tests:
+    image: ru-llm-proxy-ner-tests:guardrail-unit
+    networks: !reset []
+    network_mode: none
+  presidio-analyzer-tests:
+    image: ru-llm-proxy-ner-tests:analyzer-unit
+    networks: !reset []
+    network_mode: none

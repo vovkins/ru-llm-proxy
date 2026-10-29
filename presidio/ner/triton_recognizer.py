@@ -1,13 +1,15 @@
-"""Pinned Hugging Face token-classification adapter for Presidio."""
+"""Presidio token classification through the verified CPU Triton service."""
 
 from __future__ import annotations
 
 import logging
+import json
 import os
 import re
 import threading
 import time
-from contextlib import nullcontext
+
+import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -26,39 +28,55 @@ try:
 except ImportError:
     from presidio.entity_types import NER_ENTITY_TYPES
 
+from .decoding import classify_logits
+from .span_postprocessing import expand_value_spans, postprocess_spans
+from .boundary_recheck import (
+    RECHECK_SHELL_PROMPT, confirmed_prompt_edges, prediction_key, resolve_recheck,
+)
+from .backend_settings import resolve_backend
+from .work_budget import check_work, work_scope
 from .text_processing import TokenWindow, normalize_for_ner, plan_token_windows
 
 try:
     from model_artifact import (
-        MODEL_DIRECTORY,
         ModelManifest,
-        load_and_verify_embedded_manifest,
+        load_and_verify_runtime_artifact,
     )
 except ImportError:
     from presidio.model_artifact import (
-        MODEL_DIRECTORY,
         ModelManifest,
-        load_and_verify_embedded_manifest,
+        load_and_verify_runtime_artifact,
+    )
+
+try:
+    from model_profiles import (
+        NERModelProfile,
+        parse_o_logit_bias,
+        parse_span_postprocessing,
+        resolve_profile,
+    )
+except ImportError:
+    from presidio.model_profiles import (
+        NERModelProfile,
+        parse_o_logit_bias,
+        parse_span_postprocessing,
+        resolve_profile,
     )
 
 
 logger = logging.getLogger(__name__)
 
-MODEL_ID = "fef2/ner_rus_bert-secret_detection"
-MODEL_REVISION = "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4"
+# One pinned artifact; runtime selection settings are removed in the next stage.
+ACTIVE_PROFILE: NERModelProfile = resolve_profile()
+MODEL_ID = ACTIVE_PROFILE.model_id
+MODEL_REVISION = ACTIVE_PROFILE.revision
 MODEL_ARCHITECTURE = "BertForTokenClassification"
+O_LABEL_ID = 0
 MAX_CONTENT_TOKENS = 384
 WINDOW_OVERLAP_TOKENS = 64
 WINDOW_BOUNDARY_SEARCH_TOKENS = 64
 DEFAULT_INFERENCE_BATCH_SIZE = 4
-DEVICE_PROFILE_ENV = "PRESIDIO_ANALYZER_DEVICE_PROFILE"
-GPU_PRECISION_ENV = "PRESIDIO_ANALYZER_GPU_PRECISION"
 INFERENCE_BATCH_SIZE_ENV = "PRESIDIO_ANALYZER_NER_BATCH_SIZE"
-DEVICE_PROFILE_CPU = "cpu"
-DEVICE_PROFILE_GPU = "gpu"
-GPU_PRECISION_FP32 = "fp32"
-GPU_PRECISION_FP16 = "fp16"
-MINIMUM_CUDA_COMPUTE_CAPABILITY = (7, 5)
 
 EXPECTED_ID2LABEL = {
     0: "O",
@@ -154,7 +172,10 @@ NER_FAILURE_PHASES = frozenset(
         "inference",
         "decoding",
         "offset_mapping",
+        "postprocessing",
         "startup",
+        "triton_loading",
+        "triton_readiness",
     }
 )
 NER_FAILURE_CLASSES = frozenset(
@@ -164,12 +185,6 @@ NER_FAILURE_CLASSES = frozenset(
         "dependency_import_failed",
         "tokenizer_load_failed",
         "model_load_failed",
-        "device_profile_invalid",
-        "cuda_build_missing",
-        "cuda_device_unavailable",
-        "cuda_device_unsupported",
-        "cuda_model_placement_failed",
-        "cuda_out_of_memory",
         "runtime_contract_invalid",
         "warmup_failed",
         "not_ready",
@@ -180,8 +195,15 @@ NER_FAILURE_CLASSES = frozenset(
         "forward_pass_failed",
         "bio_decoding_failed",
         "offset_mapping_failed",
+        "span_postprocessing_failed",
         "unexpected_failure",
         "startup_failed",
+        "triton_load_failed",
+        "triton_unavailable",
+        "triton_inference_failed",
+        "triton_contract_invalid",
+        "triton_overloaded",
+        "analysis_deadline_exceeded",
     }
 )
 NER_INFERENCE_OUTCOMES = frozenset(
@@ -195,6 +217,9 @@ NER_REQUEST_SCOPED_FAILURE_CLASSES = frozenset(
         "window_boundary_unresolved",
         "bio_decoding_failed",
         "offset_mapping_failed",
+        "span_postprocessing_failed",
+        "triton_overloaded",
+        "analysis_deadline_exceeded",
     }
 )
 
@@ -540,118 +565,67 @@ def refine_organization_quotes(
     )
 
 
-class HuggingFaceNERRecognizer:
-    """NER recognizer backed by one immutable local Transformers model."""
+class TritonNERRecognizer:
+    """Presidio recognition with a verified tokenizer and CPU Triton execution."""
 
     def __init__(
-        self,
-        *,
-        model_directory: Path = MODEL_DIRECTORY,
-        tokenizer: Any | None = None,
-        model: Any | None = None,
+        self, *, model_directory: Path | None = None,
+        tokenizer: Any | None = None, model: Any | None = None,
         inference_batch_size: int | None = None,
-        device_profile: str | None = None,
-        gpu_precision: str | None = None,
+        profile: NERModelProfile | None = None,
+        o_logit_bias: float | None = None,
+        span_postprocessing: str | None = None,
     ):
         if (tokenizer is None) != (model is None):
             raise ValueError("tokenizer and model must be supplied together")
         if inference_batch_size is None:
-            raw_batch_size = os.getenv(
-                INFERENCE_BATCH_SIZE_ENV,
-                str(DEFAULT_INFERENCE_BATCH_SIZE),
-            )
             try:
-                inference_batch_size = int(raw_batch_size)
+                inference_batch_size = int(os.getenv(
+                    INFERENCE_BATCH_SIZE_ENV, str(DEFAULT_INFERENCE_BATCH_SIZE)
+                ))
             except (TypeError, ValueError) as exc:
                 raise ValueError("inference_batch_size must be an integer") from exc
-        if inference_batch_size < 1:
-            raise ValueError("inference_batch_size must be positive")
-        raw_device_profile = (
-            device_profile
-            if device_profile is not None
-            else os.getenv(DEVICE_PROFILE_ENV, DEVICE_PROFILE_CPU)
+        if not 1 <= inference_batch_size <= 32:
+            raise ValueError("inference_batch_size must be between 1 and 32")
+        self._profile = profile if profile is not None else ACTIVE_PROFILE
+        self._boundary_recheck = resolve_recheck(self._profile.name)
+        self._backend_settings = resolve_backend()
+        self._o_logit_bias = parse_o_logit_bias(
+            self._profile.o_logit_bias if o_logit_bias is None else o_logit_bias
         )
-        normalized_device_profile = str(raw_device_profile).strip().lower()
-        if normalized_device_profile not in {
-            DEVICE_PROFILE_CPU,
-            DEVICE_PROFILE_GPU,
-        }:
-            raise ValueError("device_profile must be cpu or gpu")
-        raw_gpu_precision = (
-            gpu_precision
-            if gpu_precision is not None
-            else os.getenv(GPU_PRECISION_ENV, GPU_PRECISION_FP32)
+        self._span_postprocessing = parse_span_postprocessing(
+            self._profile.span_postprocessing
+            if span_postprocessing is None else span_postprocessing
         )
-        normalized_gpu_precision = str(raw_gpu_precision).strip().lower()
-        if normalized_gpu_precision not in {
-            GPU_PRECISION_FP32,
-            GPU_PRECISION_FP16,
-        }:
-            raise ValueError("gpu_precision must be fp32 or fp16")
-        if (
-            normalized_device_profile == DEVICE_PROFILE_CPU
-            and normalized_gpu_precision != GPU_PRECISION_FP32
-        ):
-            raise ValueError("CPU profile only supports fp32 precision")
-        self.model_directory = Path(model_directory)
-        self._tokenizer = tokenizer
-        self._model = model
+        self.model_directory = Path(
+            model_directory if model_directory is not None else self._profile.directory
+        )
+        self._tokenizer, self._model = tokenizer, model
         self._manifest: ModelManifest | None = None
         self._inference_batch_size = inference_batch_size
-        self._device_profile = normalized_device_profile
-        self._gpu_precision = normalized_gpu_precision
-        self._device = DEVICE_PROFILE_CPU
-        self._device_name: str | None = None
-        self._compute_capability: tuple[int, int] | None = None
-        self._cuda_version: str | None = None
-        self._gpu_memory_total_bytes = 0
         self._warmed_up = False
         self._state = NER_STATE_NOT_LOADED
         self._failure_phase: str | None = None
         self._failure_class: str | None = None
+        self._state_lock = threading.RLock()
+        self._probe_lock = threading.Lock()
+        self._next_probe_at = 0.0
+        self._generation = 0
         if self.is_loaded():
             self._validate_runtime_components(tokenizer, model)
-            self._configure_model_runtime(model)
             self._warmed_up = True
             self._state = NER_STATE_READY
 
     def runtime_info(self) -> dict[str, Any]:
         """Return bounded, non-sensitive runtime information."""
-        compute_capability = (
-            ".".join(str(value) for value in self._compute_capability)
-            if self._compute_capability is not None
-            else None
-        )
         return {
-            "profile": self._device_profile,
-            "device": self._device,
-            "precision": self._gpu_precision,
-            "device_name": self._device_name,
-            "compute_capability": compute_capability,
-            "cuda_version": self._cuda_version,
-            "gpu_memory_total_bytes": self._gpu_memory_total_bytes,
+            "profile": "cpu", "device": "cpu", "precision": "fp32",
             "inference_batch_size": self._inference_batch_size,
+            "model_profile": self._profile.name, "o_logit_bias": self._o_logit_bias,
+            "span_postprocessing": self._span_postprocessing,
+            "backend": "triton", "boundary_recheck": self._boundary_recheck,
+            "onnx_sha256": getattr(self._model, "graph_digest", None),
         }
-
-    def gpu_memory_allocated_bytes(self) -> int:
-        return self._cuda_memory_value("memory_allocated")
-
-    def gpu_memory_reserved_bytes(self) -> int:
-        return self._cuda_memory_value("memory_reserved")
-
-    def gpu_peak_memory_allocated_bytes(self) -> int:
-        return self._cuda_memory_value("max_memory_allocated")
-
-    def _cuda_memory_value(self, function_name: str) -> int:
-        if self._device_profile != DEVICE_PROFILE_GPU:
-            return 0
-        try:
-            import torch
-
-            function = getattr(torch.cuda, function_name)
-            return max(0, int(function(0)))
-        except Exception:
-            return 0
 
     def is_loaded(self) -> bool:
         return self._tokenizer is not None and self._model is not None
@@ -660,11 +634,52 @@ class HuggingFaceNERRecognizer:
         return self._warmed_up
 
     def is_ready(self) -> bool:
-        return (
-            self._state == NER_STATE_READY
-            and self.is_loaded()
-            and self.is_warmed_up()
-        )
+        from .triton_model import CONTROL_SECONDS
+        with self._state_lock:
+            ready = self._state == NER_STATE_READY and self.is_loaded() and self.is_warmed_up()
+            recoverable = self._state == NER_STATE_FAILED and self._failure_class == "triton_unavailable"
+            if (not (ready or recoverable) or time.monotonic() < self._next_probe_at
+                    or not self._probe_lock.acquire(blocking=False)):
+                return ready
+            generation = self._generation
+        try:
+            with work_scope(seconds=CONTROL_SECONDS):
+                if hasattr(self._model, "check_contract"):
+                    self._model.check_contract()
+                elif not self._model.ready():
+                    raise NERUnavailableError(phase="triton_readiness", failure_class="triton_unavailable")
+                if recoverable:
+                    # Synthetic control input only; never repeat a user POST.
+                    self._predict_window_entities(normalize_for_ner("Проверка готовности NER.").text)
+            with self._state_lock:
+                if self._generation == generation:
+                    self._state = NER_STATE_READY
+                    self._warmed_up = True
+                    self._clear_failure()
+        except NERInferenceCancelled:
+            raise
+        except NERBackendError as error:
+            if error.failure_class == "analysis_deadline_exceeded":
+                # Distinguish a caller's expired budget from an unresponsive
+                # service that exhausted the independent control budget.
+                check_work()
+                self._mark_failed(phase="triton_readiness", failure_class="triton_unavailable", clear_components=False)
+            if error.failure_class not in NER_REQUEST_SCOPED_FAILURE_CLASSES:
+                self._mark_failed_if_service_wide(error)
+            elif recoverable:
+                # /ready uses 503 for model-not-ready as well as overload.
+                # An unsuccessful control check must not publish ready.
+                pass
+        except NERConfigurationError:
+            self._mark_failed(phase="triton_readiness", failure_class="triton_contract_invalid", clear_components=False)
+        except Exception:
+            self._mark_failed(phase="triton_readiness", failure_class="unexpected_failure", clear_components=False)
+        finally:
+            with self._state_lock:
+                self._next_probe_at = time.monotonic() + (2.0 if self._state == NER_STATE_READY else 5.0)
+            self._probe_lock.release()
+        with self._state_lock:
+            return self._state == NER_STATE_READY and self.is_loaded() and self.is_warmed_up()
 
     def state(self) -> str:
         return self._state
@@ -690,14 +705,35 @@ class HuggingFaceNERRecognizer:
         failure_class: str,
         clear_components: bool,
     ) -> None:
-        if clear_components:
-            self._tokenizer = None
-            self._model = None
-            self._manifest = None
-        self._warmed_up = False
-        self._state = NER_STATE_FAILED
-        self._failure_phase = phase
-        self._failure_class = failure_class
+        with self._state_lock:
+            # A concurrent transient failure must not erase a critical latch.
+            if (self._state == NER_STATE_FAILED and self._failure_class != "triton_unavailable"
+                    and failure_class == "triton_unavailable"):
+                return
+            if clear_components:
+                self._tokenizer = None
+                self._model = None
+                self._manifest = None
+            self._warmed_up = False
+            self._state = NER_STATE_FAILED
+            self._failure_phase = phase
+            self._failure_class = failure_class
+            self._generation += 1
+            self._next_probe_at = time.monotonic() + 5.0
+        logger.error("NER unavailable phase=%s failure_class=%s", phase, failure_class)
+
+    def close(self) -> None:
+        # ASGI lifespan shutdown runs after active request workers have drained.
+        with self._probe_lock:
+            model = self._model
+            if model is not None and hasattr(model, "close"):
+                model.close()
+
+    def transport_snapshot(self) -> dict[str, int]:
+        model = self._model
+        return model.transport_snapshot() if hasattr(model, "transport_snapshot") else {
+            "local_inflight": 0, "inference_completion_unconfirmed_total": 0,
+        }
 
     def _clear_failure(self) -> None:
         self._failure_phase = None
@@ -717,193 +753,67 @@ class HuggingFaceNERRecognizer:
             return
         if self._state == NER_STATE_FAILED:
             self.require_ready()
-        if self.is_loaded():
-            try:
-                self._warm_up()
-            except Exception as exc:
-                failure_class = (
-                    exc.failure_class
-                    if isinstance(exc, NERBackendError)
-                    else "warmup_failed"
-                )
-                self._mark_failed(
-                    phase="warmup",
-                    failure_class=failure_class,
-                    clear_components=True,
-                )
-                raise
-            self._state = NER_STATE_READY
-            return
-
         self._state = NER_STATE_LOADING
         self._clear_failure()
         try:
-            manifest = load_and_verify_embedded_manifest(self.model_directory)
+            manifest = load_and_verify_runtime_artifact(self.model_directory)
         except Exception:
-            self._mark_failed(
-                phase="artifact_verification",
-                failure_class="artifact_invalid",
-                clear_components=True,
-            )
+            self._mark_failed(phase="artifact_verification", failure_class="artifact_invalid",
+                              clear_components=True)
             raise
         try:
             self._validate_manifest(manifest)
         except Exception:
-            self._mark_failed(
-                phase="model_validation",
-                failure_class="manifest_contract_invalid",
-                clear_components=True,
-            )
+            self._mark_failed(phase="model_validation", failure_class="manifest_contract_invalid",
+                              clear_components=True)
             raise
+        self._load_triton(manifest)
 
-        try:
-            from transformers import AutoModelForTokenClassification, AutoTokenizer
-        except Exception:
-            self._mark_failed(
-                phase="model_loading",
-                failure_class="dependency_import_failed",
-                clear_components=True,
-            )
-            raise
-
-        logger.info(
-            "Loading pinned Hugging Face NER model: model_id=%s revision=%s",
-            MODEL_ID,
-            MODEL_REVISION,
+    def _postprocess_entities(
+        self,
+        text: str,
+        entities: list[EntityPrediction],
+    ) -> list[EntityPrediction]:
+        """Repair fragmented or partial spans according to the active profile."""
+        repaired = postprocess_spans(
+            text,
+            [
+                (entity.start, entity.end, entity.entity_type, entity.score)
+                for entity in entities
+            ],
+            self._span_postprocessing,
         )
+        return [
+            EntityPrediction(entity_type=label, start=start, end=end, score=score)
+            for start, end, label, score in repaired
+        ]
+
+    def _load_triton(self, manifest: ModelManifest) -> None:
+        from .tokenization import ContentTokenizer
+        from .triton_model import TritonModel
+        model = None
         try:
-            tokenizer = AutoTokenizer.from_pretrained(
-                str(self.model_directory),
-                local_files_only=True,
-                use_fast=True,
-                trust_remote_code=False,
-                # Transformers 4.57 misidentifies this BertPreTokenizer as Mistral.
-                fix_mistral_regex=False,
-            )
-        except Exception:
-            self._mark_failed(
-                phase="model_loading",
-                failure_class="tokenizer_load_failed",
-                clear_components=True,
-            )
-            raise
-        try:
-            model = AutoModelForTokenClassification.from_pretrained(
-                str(self.model_directory),
-                local_files_only=True,
-                trust_remote_code=False,
-                use_safetensors=True,
-            )
-        except Exception:
-            self._mark_failed(
-                phase="model_loading",
-                failure_class="model_load_failed",
-                clear_components=True,
-            )
-            raise
-        try:
+            tokenizer = ContentTokenizer(self.model_directory)
+            config = json.loads((self.model_directory / "config.json").read_text())
+            model = TritonModel(self._backend_settings, manifest, config)
             self._validate_runtime_components(tokenizer, model)
-        except Exception:
-            self._mark_failed(
-                phase="model_validation",
-                failure_class="runtime_contract_invalid",
-                clear_components=True,
-            )
-            raise
-        try:
-            model.eval()
-        except Exception:
-            self._mark_failed(
-                phase="model_validation",
-                failure_class="runtime_contract_invalid",
-                clear_components=True,
-            )
-            raise
-        try:
-            self._configure_model_runtime(model)
-        except NERBackendError as exc:
-            self._mark_failed(
-                phase=exc.phase,
-                failure_class=exc.failure_class,
-                clear_components=True,
-            )
-            raise
-        except Exception:
-            self._mark_failed(
-                phase="device_initialization",
-                failure_class="cuda_model_placement_failed",
-                clear_components=True,
-            )
-            raise
-
-        self._tokenizer = tokenizer
-        self._model = model
-        self._manifest = manifest
-        self._state = NER_STATE_WARMING_UP
-        try:
+            if len(tokenizer) != config["vocab_size"]:
+                raise NERConfigurationError("Tokenizer vocabulary does not match model config")
+            if self._inference_batch_size > model.max_batch_size:
+                raise NERConfigurationError("NER batch exceeds Triton maximum batch size")
+            self._tokenizer, self._model, self._manifest = tokenizer, model, manifest
+            self._state = NER_STATE_WARMING_UP
             self._warm_up()
+            self._state = NER_STATE_READY
+            logger.info("NER backend=triton model_profile=%s graph_sha256=%s",
+                        self._profile.name, model.graph_digest)
         except Exception as exc:
-            failure_class = (
-                exc.failure_class
-                if isinstance(exc, NERBackendError)
-                else "warmup_failed"
-            )
-            self._mark_failed(
-                phase="warmup",
-                failure_class=failure_class,
-                clear_components=True,
-            )
-            raise
-        self._state = NER_STATE_READY
-        logger.info(
-            "Pinned Hugging Face NER model loaded and warmed up: "
-            "model_id=%s revision=%s",
-            MODEL_ID,
-            MODEL_REVISION,
-        )
+            if model is not None:
+                model.close()
+            self._mark_failed(phase="triton_loading", failure_class="triton_load_failed",
+                              clear_components=True)
+            raise NERUnavailableError(phase="triton_loading", failure_class="triton_load_failed") from exc
 
-    def _configure_model_runtime(self, model: Any) -> None:
-        """Bind the fixed model to the selected runtime without fallback."""
-        import torch
-
-        self._cuda_version = str(torch.version.cuda) if torch.version.cuda else None
-        if self._device_profile == DEVICE_PROFILE_CPU:
-            self._device = DEVICE_PROFILE_CPU
-            return
-        if torch.version.cuda is None:
-            raise NERUnavailableError(
-                phase="device_initialization",
-                failure_class="cuda_build_missing",
-            )
-        if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
-            raise NERUnavailableError(
-                phase="device_initialization",
-                failure_class="cuda_device_unavailable",
-            )
-        capability = tuple(int(value) for value in torch.cuda.get_device_capability(0))
-        if capability < MINIMUM_CUDA_COMPUTE_CAPABILITY:
-            raise NERUnavailableError(
-                phase="device_initialization",
-                failure_class="cuda_device_unsupported",
-            )
-        try:
-            device = torch.device("cuda:0")
-            model.to(device)
-            properties = torch.cuda.get_device_properties(0)
-        except Exception as exc:
-            failure_class = (
-                "cuda_out_of_memory"
-                if isinstance(exc, torch.cuda.OutOfMemoryError)
-                else "cuda_model_placement_failed"
-            )
-            raise NERUnavailableError(
-                phase="device_initialization",
-                failure_class=failure_class,
-            ) from exc
-        self._device = str(device)
-        self._device_name = str(properties.name)
-        self._compute_capability = capability
-        self._gpu_memory_total_bytes = max(0, int(properties.total_memory))
 
     def _warm_up(self) -> None:
         if not self.is_loaded():
@@ -915,9 +825,11 @@ class HuggingFaceNERRecognizer:
         )
         self._warmed_up = True
 
-    @staticmethod
-    def _validate_manifest(manifest: ModelManifest) -> None:
-        if manifest.model_id != MODEL_ID or manifest.revision != MODEL_REVISION:
+    def _validate_manifest(self, manifest: ModelManifest) -> None:
+        if (
+            manifest.model_id != self._profile.model_id
+            or manifest.revision != self._profile.revision
+        ):
             raise NERConfigurationError("local NER model identity does not match code")
         if manifest.architecture != MODEL_ARCHITECTURE:
             raise NERConfigurationError("local NER model architecture is unsupported")
@@ -948,6 +860,7 @@ class HuggingFaceNERRecognizer:
         entities: Optional[list[str]] = None,
         telemetry_callback: Callable[[NERInferenceTelemetry], None] | None = None,
         cancellation_event: threading.Event | None = None,
+        protected_spans: tuple[tuple[int, int], ...] | None = None,
     ) -> list[RecognizerResult]:
         started_at = time.perf_counter()
         if not should_run_ner(entities, score_threshold):
@@ -960,12 +873,14 @@ class HuggingFaceNERRecognizer:
             return []
 
         try:
-            results, windows_processed, input_tokens = self._analyze_required(
-                text,
-                score_threshold=score_threshold,
-                entities=entities,
-                cancellation_event=cancellation_event,
-            )
+            with work_scope(cancellation=cancellation_event):
+                results, windows_processed, input_tokens = self._analyze_required(
+                    text,
+                    score_threshold=score_threshold,
+                    entities=entities,
+                    cancellation_event=cancellation_event,
+                    protected_spans=protected_spans,
+                )
         except NERInferenceCancelled:
             raise
         except NERBackendError as error:
@@ -1004,6 +919,10 @@ class HuggingFaceNERRecognizer:
         )
         return results
 
+    @property
+    def boundary_recheck_enabled(self) -> bool:
+        return self._boundary_recheck == RECHECK_SHELL_PROMPT
+
     @staticmethod
     def _emit_inference_telemetry(
         callback: Callable[[NERInferenceTelemetry], None] | None,
@@ -1040,6 +959,7 @@ class HuggingFaceNERRecognizer:
         score_threshold: float,
         entities: Optional[list[str]],
         cancellation_event: threading.Event | None,
+        protected_spans: tuple[tuple[int, int], ...] | None = None,
     ) -> tuple[list[RecognizerResult], int, int]:
         _raise_if_cancelled(cancellation_event)
         if self._state == NER_STATE_FAILED:
@@ -1132,9 +1052,22 @@ class HuggingFaceNERRecognizer:
                 filtered_recovery_predictions,
                 unresolved.unresolved_clusters,
             )
+            if self.boundary_recheck_enabled:
+                input_ids, offsets = self._tokenize_content(normalized.text)
+                withdrawn, additional_windows = confirmed_prompt_edges(
+                    normalized, input_ids, offsets, unresolved.unresolved_clusters,
+                    recovery_predictions, protected_spans, self._infer_window_batch,
+                    lambda: _raise_if_cancelled(cancellation_event),
+                )
+                windows_processed += additional_windows
+                filtered_predictions = [p for p in filtered_predictions
+                                        if prediction_key(p) not in withdrawn]
             try:
-                entity_predictions = merge_window_predictions(
-                    filtered_predictions + selected_recovery_predictions
+                entity_predictions = self._merge_rechecked_window_predictions(
+                    normalized.text,
+                    filtered_predictions + selected_recovery_predictions,
+                    filtered_recovery_predictions,
+                    cancellation_event=cancellation_event,
                 )
             except NERWindowBoundaryError as exc:
                 error = NERProcessingError(
@@ -1143,6 +1076,11 @@ class HuggingFaceNERRecognizer:
                     windows_processed=windows_processed,
                 )
                 raise error from exc
+            except NERInferenceCancelled:
+                raise
+            except NERBackendError as error:
+                error.windows_processed += windows_processed
+                raise
             except Exception as exc:
                 error = NERProcessingError(
                     phase="inference",
@@ -1178,6 +1116,19 @@ class HuggingFaceNERRecognizer:
                 failure_class="bio_decoding_failed",
                 windows_processed=windows_processed,
             ) from exc
+        try:
+            entity_predictions = self._postprocess_entities(
+                normalized.text,
+                entity_predictions,
+            )
+        except Exception as exc:
+            error = NERProcessingError(
+                phase="postprocessing",
+                failure_class="span_postprocessing_failed",
+                windows_processed=windows_processed,
+            )
+            raise error from exc
+
         results: list[RecognizerResult] = []
         for entity in entity_predictions:
             try:
@@ -1198,7 +1149,7 @@ class HuggingFaceNERRecognizer:
                     analysis_explanation=None,
                     recognition_metadata={
                         DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,
-                        NER_MODEL_METADATA_KEY: MODEL_ID,
+                        NER_MODEL_METADATA_KEY: self._profile.model_id,
                     },
                 )
             )
@@ -1316,15 +1267,13 @@ class HuggingFaceNERRecognizer:
                         for window in batch
                     ],
                 )
+            except NERBackendError as error:
+                error.windows_processed += windows_processed
+                raise
+            except NERInferenceCancelled:
+                raise
             except Exception as exc:
                 failure_class = "forward_pass_failed"
-                try:
-                    import torch
-
-                    if isinstance(exc, torch.cuda.OutOfMemoryError):
-                        failure_class = "cuda_out_of_memory"
-                except Exception:
-                    pass
                 raise NERProcessingError(
                     phase="inference",
                     failure_class=failure_class,
@@ -1422,6 +1371,57 @@ class HuggingFaceNERRecognizer:
             cancellation_event=cancellation_event,
         )
 
+    def _merge_rechecked_window_predictions(
+        self,
+        text: str,
+        predictions: list[WindowEntityPrediction],
+        recovery: list[WindowEntityPrediction],
+        *,
+        cancellation_event: threading.Event | None = None,
+    ) -> list[EntityPrediction]:
+        try:
+            return merge_window_predictions(predictions)
+        except NERWindowBoundaryError as unresolved:
+            clusters = unresolved.unresolved_clusters
+
+        candidates = []
+        for cluster in clusters:
+            _raise_if_cancelled(cancellation_event)
+            evidence = list(cluster.predictions) + [
+                p for p in recovery
+                if p.entity.entity_type == cluster.entity_type
+                and any(_spans_overlap(p.entity, original.entity) for original in cluster.predictions)
+            ]
+            candidates.append((
+                min(p.entity.start for p in evidence),
+                max(p.entity.end for p in evidence),
+                cluster.entity_type,
+                min(p.entity.score for p in evidence),
+            ))
+        # Reuse the existing lexical repair only after shifted inference fails.
+        # A value must contain all positive evidence and extend every cut edge.
+        try:
+            expanded = expand_value_spans(text, candidates, self._span_postprocessing)
+        except Exception as exc:
+            raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed") from exc
+        bounded = []
+        for cluster, candidate, repaired in zip(clusters, candidates, expanded):
+            _raise_if_cancelled(cancellation_event)
+            start, end, kind, score = repaired
+            left, right, _, original_score = candidate
+            if not (0 <= start <= left < right <= end <= len(text)
+                    and kind == cluster.entity_type and score == original_score):
+                continue
+            if any(p.touches_left_boundary for p in cluster.predictions) and start >= left:
+                continue
+            if any(p.touches_right_boundary for p in cluster.predictions) and end <= right:
+                continue
+            bounded.append(WindowEntityPrediction(
+                EntityPrediction(kind, start, end, score),
+                min(p.window_index for p in cluster.predictions), False, False,
+            ))
+        return merge_window_predictions(predictions + bounded)
+
     def _infer_window(
         self,
         input_ids: list[int],
@@ -1434,9 +1434,7 @@ class HuggingFaceNERRecognizer:
         input_id_batches: list[list[int]],
         offset_batches: list[list[tuple[int, int]]],
     ) -> list[list[TokenPrediction]]:
-        """Run one padded BERT forward pass for one or more token windows."""
-        import torch
-
+        """Run one fixed-length CPU Triton request for a batch of windows."""
         if not input_id_batches or len(input_id_batches) != len(offset_batches):
             raise NERConfigurationError("NER batch input is empty or inconsistent")
         prepared_batches: list[list[int]] = []
@@ -1478,6 +1476,9 @@ class HuggingFaceNERRecognizer:
         if pad_token_id is None:
             raise NERConfigurationError("NER tokenizer has no padding token")
         maximum_length = max(len(item) for item in prepared_batches)
+        if maximum_length > MAX_CONTENT_TOKENS + 2:
+            raise NERConfigurationError('Triton window exceeds content-token contract')
+        maximum_length = MAX_CONTENT_TOKENS + 2
         padded_ids = []
         padded_attention = []
         padded_token_types = []
@@ -1491,41 +1492,12 @@ class HuggingFaceNERRecognizer:
             padded_token_types.append([*token_type_ids, *([0] * padding)])
 
         model_inputs = {
-            "input_ids": torch.tensor(
-                padded_ids,
-                dtype=torch.long,
-                device=self._device,
-            ),
-            "attention_mask": torch.tensor(
-                padded_attention,
-                dtype=torch.long,
-                device=self._device,
-            ),
-            "token_type_ids": torch.tensor(
-                padded_token_types,
-                dtype=torch.long,
-                device=self._device,
-            ),
+            "input_ids": np.asarray(padded_ids, dtype=np.int64),
+            "attention_mask": np.asarray(padded_attention, dtype=np.int64),
+            "token_type_ids": np.asarray(padded_token_types, dtype=np.int64),
         }
-
-        precision_context = (
-            torch.autocast(device_type="cuda", dtype=torch.float16)
-            if self._device_profile == DEVICE_PROFILE_GPU
-            and self._gpu_precision == GPU_PRECISION_FP16
-            else nullcontext()
-        )
-        with torch.inference_mode(), precision_context:
-            logits = self._model(**model_inputs).logits
-            probabilities = torch.softmax(logits, dim=-1)
-            predicted_ids = torch.argmax(probabilities, dim=-1)
-            predicted_scores = probabilities.gather(
-                2,
-                predicted_ids.unsqueeze(2),
-            ).squeeze(2)
-
-        # A single transfer avoids synchronizing the GPU once per token.
-        predicted_ids = predicted_ids.detach().cpu()
-        predicted_scores = predicted_scores.detach().cpu()
+        logits = self._model(**model_inputs).logits
+        predicted_ids, predicted_scores = classify_logits(logits, self._o_logit_bias)
 
         if len(predicted_ids) != len(prepared_batches):
             raise NERConfigurationError("NER model output batch does not match input")
@@ -1566,5 +1538,6 @@ class HuggingFaceNERRecognizer:
 
 
 def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
+    check_work()
     if cancellation_event is not None and cancellation_event.is_set():
         raise NERInferenceCancelled("NER inference was cancelled")

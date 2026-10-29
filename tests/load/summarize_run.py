@@ -44,6 +44,15 @@ PROMETHEUS_COUNTERS = frozenset(
         "ru_pii_guardrail_post_calls_total",
         "ru_pii_guardrail_fail_closed_total",
         "ru_pii_guardrail_analysis_cache_requests_total",
+        "nv_inference_request_success",
+        "nv_inference_request_failure",
+        "nv_inference_count",
+        "nv_inference_exec_count",
+        "nv_inference_request_duration_us",
+        "nv_inference_queue_duration_us",
+        "nv_inference_compute_input_duration_us",
+        "nv_inference_compute_infer_duration_us",
+        "nv_inference_compute_output_duration_us",
     }
 )
 PROMETHEUS_LINE = re.compile(
@@ -172,6 +181,9 @@ def main() -> None:
             ),
             "guardrail": prometheus_counters(
                 sorted(args.results_dir.glob("guardrail-metrics-*.prom"))
+            ),
+            "triton": prometheus_counters(
+                sorted(args.results_dir.glob("triton-metrics-*.prom"))
             ),
         },
         "sampler_failed_samples": len(sampler_status),

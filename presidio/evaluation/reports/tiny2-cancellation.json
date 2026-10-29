@@ -1,0 +1,548 @@
+{
+  "date": "2026-10-28",
+  "issue": 110,
+  "platform": "LiteLLM 1.98.0",
+  "platform_patched": false,
+  "external_llm": false,
+  "entrypoint": "litellm_guardrails.server -> litellm.run_server",
+  "groups": [
+    {
+      "name": "baseline",
+      "replicas_litellm_analyzer_triton": [
+        1,
+        1,
+        1
+      ],
+      "ordinary_controls": 4,
+      "raw_report_sha256": "b3fba4274af08f12ae22fbd49f7bf2cc8a596c03e00f3b170a55d53cc025e610",
+      "cases": [
+        {
+          "name": "analyzer-analyzer-False-prepare-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 1.0729,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "analyzer-analyzer-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 0.1719,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "analyzer-analyzer-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 22.7103,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "nginx-analyzer-analyzer-False-prepare-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 0.8998,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "nginx-analyzer-analyzer-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 0.2799,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "nginx-analyzer-analyzer-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 21.29,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-chat-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.236,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-chat-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 21.1033,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-chat-True-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.2808,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-chat-True-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 24.1048,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-responses-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.1169,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-responses-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 23.234,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-responses-True-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.2191,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "litellm-responses-True-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 24.5537,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.2778,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 25.1245,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-True-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.3512,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-True-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 22.2697,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-False-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.114,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-False-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 21.9737,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-True-model-tcp",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.2321,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-True-queued",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 0,
+          "restored_controls": 0,
+          "seconds_to_drain": 23.6342,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-False-model-timeout",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.7579,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-chat-True-model-timeout",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.3679,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-False-model-timeout",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.9331,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "full-responses-True-model-timeout",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": 0.7061,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "shared-cancel-all=False-different-keys=False",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 1
+          },
+          "provider_calls": 1,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "shared-cancel-all=True-different-keys=False",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 0,
+          "restored_controls": 1,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "shared-cancel-all=False-different-keys=True",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 1,
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 1,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "wave20-cancel10",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 10,
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 10,
+          "restored_controls": 10,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        }
+      ]
+    },
+    {
+      "name": "pool",
+      "replicas_litellm_analyzer_triton": [
+        1,
+        1,
+        1
+      ],
+      "ordinary_controls": 4,
+      "raw_report_sha256": "faccf19943ac83c3b957fd9dec5d9b11f338b9bf691394864a8dc2b71e058e7e",
+      "cases": [
+        {
+          "name": "pool2-chat-False-cancel-pending",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 2,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "pool2-chat-True-cancel-pending",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 2,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "pool2-responses-False-cancel-pending",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 2,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "pool2-responses-True-cancel-pending",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 2
+          },
+          "provider_calls": 2,
+          "restored_controls": 2,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "ready-cache-repeat",
+          "analyzer_outcomes": {},
+          "provider_calls": 1,
+          "restored_controls": 1,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        }
+      ]
+    },
+    {
+      "name": "budget",
+      "replicas_litellm_analyzer_triton": [
+        1,
+        1,
+        1
+      ],
+      "ordinary_controls": 4,
+      "raw_report_sha256": "e6194036a9a22191de0cebed9c4f55b9de8b5f641c8a325bc38031819914bc05",
+      "cases": [
+        {
+          "name": "budget-control-no-disconnect-0",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 3
+          },
+          "provider_calls": 1,
+          "restored_controls": 1,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "budget-control-no-disconnect-1",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 3
+          },
+          "provider_calls": 1,
+          "restored_controls": 1,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "budget-control-no-disconnect-2",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 3
+          },
+          "provider_calls": 1,
+          "restored_controls": 1,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        }
+      ]
+    },
+    {
+      "name": "multi",
+      "replicas_litellm_analyzer_triton": [
+        2,
+        2,
+        2
+      ],
+      "ordinary_controls": 4,
+      "raw_report_sha256": "bb64ad5f2d9b0478dbe5f2b5fa36f5ec55cd2264cd646244fc49ed953e3acb00",
+      "cases": [
+        {
+          "name": "wave20-cancel10",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 10,
+            "ru_presidio_analyzer_requests_total{outcome=\"timeout_or_cancelled\"}": 1
+          },
+          "provider_calls": 10,
+          "restored_controls": 10,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        },
+        {
+          "name": "mixed-wave20-no-cancellation",
+          "analyzer_outcomes": {
+            "ru_presidio_analyzer_requests_total{outcome=\"success\"}": 20
+          },
+          "provider_calls": 20,
+          "restored_controls": 20,
+          "seconds_to_drain": null,
+          "raw_test_phone_at_provider": false,
+          "final_active": 0,
+          "final_waiting": 0
+        }
+      ]
+    }
+  ],
+  "open_observation": "CANCEL-OBS-01: not reproduced in three no-disconnect controls; historical cause unknown",
+  "diagnostic_scenarios": 40,
+  "ordinary_controls": 16,
+  "runtime_sources_sha256": {
+    "litellm_guardrails/server.py": "300658f151fd575ad0025f13674207e60b0cc39c6ee5da5c30c3d0021cfdc91c",
+    "litellm_guardrails/entrypoint.sh": "aa3746a3598851bd6b0b98a9632c0e956f8ff945db57bdd3802e9d1737d9ddd5",
+    "litellm_guardrails/request_cancellation.py": "0a470166184c4d9ce56007091a637538f3e8cdf3d0b1bce6a4fc98fdbaabfee5",
+    "litellm_guardrails/pii_guardrail.py": "66e9b3c5412b3fa315d8d19a6639f8aed88e836c5241f92bd24602d469d46995"
+  }
+}

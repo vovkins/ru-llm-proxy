@@ -113,6 +113,7 @@ def test_policy_participates_in_cache_signature_without_loading_a_model():
         for t in n.targets)]
     selected += [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_build_analysis_signature"]
     namespace = {"Path": Path, "__file__": str(source), "hashlib": hashlib, "json": json, "os": os,
+                 "EXPORT_MANIFEST_PATH": Path("/nonexistent/test-export-manifest.json"),
                  "_analysis_source_files": lambda: [source, Path(cascade.__file__)],
                  "_distribution_version": lambda name: "fixed", "MODEL_ID": "fixed", "MODEL_REVISION": "fixed"}
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), "exec"), namespace)

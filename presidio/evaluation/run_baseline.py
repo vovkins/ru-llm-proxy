@@ -15,17 +15,20 @@ from typing import Any
 
 from .corpus import DEFAULT_CORPUS_PATH, CorpusCase, load_corpus
 from .metrics import evaluate_predictions
+from ..model_artifact import load_manifest
+from ..model_contract import MODEL_ID, MODEL_REVISION
+from ..onnx_artifact import validate_export_manifest
 
 
 DEFAULT_ANALYZER_URL = "http://localhost:5001"
 DEFAULT_JSON_REPORT = (
-    Path(__file__).with_name("reports") / "huggingface-candidate.json"
+    Path(__file__).with_name("reports") / "tiny2-candidate.json"
 )
 DEFAULT_MARKDOWN_REPORT = (
     Path(__file__).resolve().parents[2]
     / "docs"
     / "research"
-    / "ner-migration-candidate.md"
+    / "ner-tiny2-candidate.md"
 )
 DEFAULT_BASELINE_REPORT = (
     Path(__file__).with_name("reports") / "deeppavlov-baseline.json"
@@ -172,6 +175,7 @@ def _container_runtime_metadata(container_name: str) -> dict[str, Any]:
 import importlib.metadata
 import json
 import platform
+from pathlib import Path
 
 packages = {}
 for distribution in (
@@ -190,13 +194,14 @@ for distribution in (
     except importlib.metadata.PackageNotFoundError:
         packages[distribution] = "not-installed"
 
-import torch
+from model_artifact import load_manifest
+from onnx_artifact import load_export_manifest
+artifact = load_export_manifest(source_manifest=load_manifest(Path('/app/model_manifest.json')))
 
 print(json.dumps({
     "python": platform.python_version(),
     "packages": packages,
-    "torch_cuda_build": torch.version.cuda,
-    "torch_cuda_available": torch.cuda.is_available(),
+    "export": artifact,
 }, sort_keys=True))
 """.strip()
     try:
@@ -226,12 +231,30 @@ def _safe_health_metadata(health: dict[str, Any]) -> dict[str, Any]:
         "ner_model",
         "ner_required",
         "ner_revision",
+        "ner_onnx_sha256",
         "ner_state",
         "ner_warmed_up",
     }
     return {
         field: health[field]
         for field in sorted(allowed_fields.intersection(health))
+    }
+
+
+def _model_metadata(health, runtime):
+    """Identify the live model from its independently built local metadata."""
+    artifact = validate_export_manifest(runtime["export"], load_manifest(
+        Path(__file__).resolve().parents[1] / "model_manifest.json")) if runtime else None
+    if artifact is not None and any(health.get(key) != expected for key, expected in (
+        ("ner_model", MODEL_ID), ("ner_revision", MODEL_REVISION),
+        ("ner_onnx_sha256", artifact["onnx_sha256"]), ("ner_backend", "triton_onnxruntime"),
+    )):
+        raise RuntimeError("Analyzer health does not match the trusted evaluated artifact")
+    return {
+        "system": f"{health.get('ner_model', 'unknown')} / {health.get('ner_backend', 'unknown')} + recognizers",
+        "model_artifact_sha256": artifact["onnx_sha256"] if artifact else health.get("ner_onnx_sha256"),
+        "model_checksum_enforced": artifact is not None,
+        "runtime": runtime,
     }
 
 
@@ -331,15 +354,14 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     ]
     model_sha256 = metadata.get("model_artifact_sha256")
     if model_sha256:
-        lines.append(f"- SHA-256 файла весов модели: `{model_sha256}`")
+        lines.append(f"- SHA-256 артефакта модели: `{model_sha256}`")
         lines.append(
             "- Проверка SHA-256 при сборке: "
             + ("включена" if metadata.get("model_checksum_enforced") else "не включена")
         )
     else:
         lines.append(
-            "- Контрольная сумма файла весов не передана в отчёт; текущий "
-            "health API её не сообщает."
+            "- Контрольная сумма артефакта модели недоступна для этого отчёта."
         )
 
     runtime = metadata.get("runtime")
@@ -348,13 +370,14 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         lines.append(f"- Python: `{runtime.get('python', 'unknown')}`")
         for package, version in runtime.get("packages", {}).items():
             lines.append(f"- `{package}`: `{version}`")
-        lines.append(
-            f"- Сборка CUDA в Torch: `{runtime.get('torch_cuda_build') or 'нет'}`"
-        )
-        lines.append(
-            "- CUDA доступна во время запуска: "
-            + ("да" if runtime.get("torch_cuda_available") else "нет")
-        )
+        artifact = runtime.get("export")
+        if artifact:
+            lines.append(f"- Экспорт ONNX: `{artifact['precision']}`, opset `{artifact['opset']}`")
+            lines.append(f"- Ревизия источника: `{artifact['source_revision']}`")
+        if "torch_cuda_build" in runtime:
+            lines.append(f"- Сборка CUDA в Torch: `{runtime['torch_cuda_build'] or 'нет'}`")
+            lines.append("- CUDA доступна во время запуска: "
+                         + ("да" if runtime.get("torch_cuda_available") else "нет"))
 
     lines.extend(
         [
@@ -470,6 +493,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         or health.get("ner_warmed_up") is not True
     ):
         raise RuntimeError("Analyzer must be healthy with warmed-up NER for baseline run")
+    model_metadata = _model_metadata(
+        health, _container_runtime_metadata(args.runtime_container) if args.runtime_container else None,
+    )
 
     predictions_by_case: dict[str, list[dict[str, Any]]] = {}
     case_errors: list[dict[str, str]] = []
@@ -500,19 +526,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     report = {
         "metadata": {
-            "system": args.system,
+            **model_metadata,
             **git_metadata,
             "corpus_sha256": _file_sha256(corpus_path),
             "case_count": len(cases),
             "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "analyzer_health": _safe_health_metadata(health),
-            "model_artifact_sha256": args.model_artifact_sha256 or None,
-            "model_checksum_enforced": args.model_checksum_enforced,
-            "runtime": (
-                _container_runtime_metadata(args.runtime_container)
-                if args.runtime_container
-                else None
-            ),
         },
         "metrics": metrics,
         "quality_gate": evaluate_quality_gate(
@@ -547,13 +566,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ANALYZER_URL,
     )
     parser.add_argument("--timeout", type=float, default=60.0)
-    parser.add_argument(
-        "--system",
-        default="fef2 secret-detection BERT + current recognizers",
-    )
     parser.add_argument("--runtime-container", default="")
-    parser.add_argument("--model-artifact-sha256", default="")
-    parser.add_argument("--model-checksum-enforced", action="store_true")
     parser.add_argument("--json-output", default=str(DEFAULT_JSON_REPORT))
     parser.add_argument("--markdown-output", default=str(DEFAULT_MARKDOWN_REPORT))
     parser.add_argument(

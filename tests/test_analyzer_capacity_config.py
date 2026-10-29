@@ -30,9 +30,9 @@ def test_configuration_docs_document_analyzer_capacity_env():
     configuration = (ROOT / "docs" / "configuration.md").read_text()
 
     assert "`PRESIDIO_ANALYZER_WORKERS` | `1`" in configuration
-    assert "`PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `1`" in configuration
-    assert "`PRESIDIO_ANALYZER_QUEUE_LIMIT` | `8`" in configuration
-    assert "`PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `1`" in configuration
+    assert "`PRESIDIO_ANALYZER_CONCURRENCY_LIMIT` | `2`" in configuration
+    assert "`PRESIDIO_ANALYZER_QUEUE_LIMIT` | `32`" in configuration
+    assert "`PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS` | `30`" in configuration
     assert "research/analyzer-load-profile.md" in configuration
 
 

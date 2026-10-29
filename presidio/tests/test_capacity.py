@@ -7,6 +7,35 @@ import pytest
 from presidio.capacity import AnalyzerCapacityLimiter, CapacityRejected
 
 
+def test_standard_capacity_defaults_and_explicit_overrides(monkeypatch):
+    from presidio.capacity import load_capacity_settings
+
+    values = {"PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "1",
+              "PRESIDIO_ANALYZER_QUEUE_LIMIT": "0",
+              "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "0.5"}
+    for name in values:
+        monkeypatch.delenv(name, raising=False)
+    settings = load_capacity_settings()
+    assert (settings.concurrency_limit, settings.queue_limit, settings.queue_timeout_seconds) == (2, 32, 30)
+    assert AnalyzerCapacityLimiter().snapshot()["concurrency_limit"] == 2
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    settings = load_capacity_settings()
+    assert (settings.concurrency_limit, settings.queue_limit, settings.queue_timeout_seconds) == (1, 0, 0.5)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("PRESIDIO_ANALYZER_CONCURRENCY_LIMIT", "0"), ("PRESIDIO_ANALYZER_QUEUE_LIMIT", "-1"),
+    ("PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", "nan"),
+    ("PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", "inf"),
+])
+def test_invalid_capacity_settings_do_not_silently_use_defaults(monkeypatch, key, value):
+    from presidio.capacity import load_capacity_settings
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=key):
+        load_capacity_settings()
+
+
 def test_rejects_when_active_and_waiting_limits_are_full():
     asyncio.run(_rejects_when_active_and_waiting_limits_are_full())
 

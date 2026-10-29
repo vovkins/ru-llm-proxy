@@ -796,3 +796,37 @@ def test_prometheus_summary_aggregates_only_allowlisted_counters(tmp_path):
     assert summarize_run.prometheus_counters((first, second)) == {
         'ru_presidio_analyzer_requests_total{outcome="success"}': 5.0
     }
+
+
+def test_unfinished_requests_are_not_reported_as_success(tmp_path):
+    writer = load_support.SafeReportWriter(tmp_path, node="unfinished", metadata={})
+    writer.request_started()
+    writer.request_started()
+    writer.record({"status_code": 200, "total_ms": 10})
+    summary = writer.close()
+    assert summary["started_request_count"] == 2
+    assert summary["request_count"] == summary["success_count"] == 1
+    assert summary["unfinished_request_count"] == 1
+
+
+def test_triton_metrics_allowlist_drops_arbitrary_labels(tmp_path):
+    path = tmp_path / "triton.prom"
+    path.write_text('nv_inference_exec_count{model="tiny2",version="1"} 3\n'
+                    'arbitrary_prompt{value="secret"} 1\n')
+    assert summarize_run.prometheus_counters([path]) == {
+        'nv_inference_exec_count{model="tiny2",version="1"}': 3.0
+    }
+
+
+def test_matrix_keeps_triton_topology_and_unfinished_work(tmp_path, monkeypatch):
+    import compare_runs
+    directory = tmp_path / 'case'
+    directory.mkdir()
+    value = {'request_summary': {'parameters': {'triton_replicas': 2, 'triton_model_instances': 3},
+                                 'started_request_count': 10, 'unfinished_request_count': 2}}
+    (directory / 'run-summary.json').write_text(json.dumps(value))
+    monkeypatch.setattr(sys, 'argv', ['compare_runs.py', str(tmp_path)])
+    compare_runs.main()
+    row = json.loads((tmp_path / 'matrix-summary.json').read_text())['runs'][0]
+    assert row['triton_replicas'] == 2 and row['triton_model_instances'] == 3
+    assert row['started_request_count'] == 10 and row['unfinished_request_count'] == 2

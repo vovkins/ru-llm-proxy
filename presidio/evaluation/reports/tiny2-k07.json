@@ -1,0 +1,3996 @@
+{
+  "status": "K07_verified_with_explicit_F01_limit_Q02_retained_not_migration_acceptance",
+  "source": {
+    "case_count": 2318,
+    "corpus_counts": {
+      "ner_migration": 77,
+      "instruction_regressions": 70,
+      "name_context_regressions": 32,
+      "name_field_header_control": 8,
+      "name_field_holdout": 12,
+      "person_dialogue_research": 46,
+      "person_organization_regressions": 36,
+      "deterministic_rules_review": 75,
+      "tiny2_component_study": 32,
+      "all_class_context": 52,
+      "value_repair": 8,
+      "dkb_plain": 18,
+      "dkb_json": 18,
+      "windows": 24,
+      "pii_entity": 910,
+      "pii_domain": 900
+    },
+    "unique_texts": 2296,
+    "duplicate_text_occurrences": 22,
+    "manifest_sha256": "5badf1c99e31d3cc92129fe22cb3284c55ad3b06ed0edfc5a78dfc0b1755ad5d",
+    "public_dataset": {
+      "repository": "hivetrace/pii-bench",
+      "revision": "cd6a18ace16daf23e79247ccf1e2b245d4054654",
+      "license": "apache-2.0",
+      "files_sha256": {
+        "entity.parquet": "6e0c77d566c2f04e7213917b26f1038336e28fc006551fac7a7f44f7627d5f96",
+        "domain.parquet": "7ef3574273c0fe3a987981e38e32cd2764031a82766ca5b235bfccd1f27058eb"
+      },
+      "type_mapping": {
+        "NAME": "PERSON",
+        "ADDRESS": "RU_ADDRESS",
+        "EMAIL": "EMAIL_ADDRESS",
+        "PHONE_NUMBER": "PHONE_NUMBER",
+        "BANK_CARD_NUMBER": "CREDIT_CARD",
+        "INN": "RU_INN",
+        "KPP": "RU_KPP",
+        "OGRN": "RU_OGRN",
+        "OGRNIP": "RU_OGRNIP",
+        "SNILS": "RU_SNILS",
+        "PASSPORT_NUMBER": "RU_PASSPORT",
+        "TOKEN": "AUTH_TOKEN",
+        "CVC": "CVC_OUT_OF_SCOPE"
+      },
+      "notes": [
+        "Not proven identical to author validation (8224 rows).",
+        "Author already evaluated PII-Bench; not independent of model selection.",
+        "ADDRESS full address maps to RU_ADDRESS; LOCATION constituents may still cover characters.",
+        "TOKEN maps strictly to AUTH_TOKEN; alternate secret classes remain visible in untyped coverage.",
+        "CVC is explicitly outside approved product scope; no new detector is added.",
+        "Clean/extra character counts refer only to annotation scope, not every project class."
+      ]
+    }
+  },
+  "changed_runtime_sources": [
+    "recognizers/credential_rules.py"
+  ],
+  "packages_unchanged": true,
+  "runtime_source_sha256": {
+    "analyzer_server.py": "d86c584f02eb5996426ade70cd9e07b5a48ea118f8909c59cdee1f87587f433e",
+    "result_merging.py": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+    "string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+    "ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+    "ner/backend_settings.py": "246441f57a7359f46fd1336531ab55862bbcb8309b2419ef1555f88980c716e2",
+    "ner/boundary_recheck.py": "a2cd01b745e12ba6da0af76c1a35f7070f69be2bf8cd45e88f7400252a9403ce",
+    "ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+    "ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f",
+    "ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+    "ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+    "ner/triton_model.py": "4691b539345ee67aa8e92437630422f8bc1c3e1cd951a172aec55af7fc625d2f",
+    "ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+    "ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+    "recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+    "recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+    "recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+    "recognizers/credential_rules.py": "13a352b0b5baec941d190d0bce30986c9ef541cc2ffcb6fdebb12ee6495a517b",
+    "recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+    "recognizers/json_strings.py": "c4aeaf5b53196e8018a88447cae375f5811e8f5053f983acff5487dc9eb8b7f6",
+    "recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+    "recognizers/ru_address_chain.py": "846ac32fa364b34ea988bd64221d32a1acfa6ad288590f30c67e3b5b77ea7fa0",
+    "recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+    "recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+    "recognizers/ru_email.py": "907560dcb04c3a407c541e945d6ec477fcfd08265586b3f300844172dc8f4eb2",
+    "recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+    "recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+    "recognizers/ru_passport_ext.py": "1b1d46174fc92315e7983e1a86a9e44293d6ae3382e8bf0269fa2f19bf76c802",
+    "recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+    "recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+    "recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc"
+  },
+  "comparison": {
+    "before_k07": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1733,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40742,
+        "in_scope_extra_masked_characters": 7019,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1917,
+        "partially_covered": 76,
+        "typed_fully_covered": 1763,
+        "significant_fully_covered": 1932,
+        "significant_partially_covered": 61,
+        "typed_significant_fully_covered": 1765,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39326,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2049,
+        "true_positives": 1740,
+        "false_positives": 309,
+        "false_negatives": 364
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 5,
+          "partially_covered": 0,
+          "typed_fully_covered": 4,
+          "significant_fully_covered": 5,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 4,
+          "gold_characters": 187,
+          "covered_gold_characters": 187,
+          "significant_characters": 187,
+          "covered_significant_characters": 187,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "fully_covered": 122,
+          "partially_covered": 0,
+          "typed_fully_covered": 41,
+          "significant_fully_covered": 122,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 41,
+          "gold_characters": 7456,
+          "covered_gold_characters": 7401,
+          "significant_characters": 7456,
+          "covered_significant_characters": 7401,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "fully_covered": 17,
+          "partially_covered": 0,
+          "typed_fully_covered": 17,
+          "significant_fully_covered": 17,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 17,
+          "gold_characters": 506,
+          "covered_gold_characters": 506,
+          "significant_characters": 506,
+          "covered_significant_characters": 506,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 0,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "gold_characters": 28,
+          "covered_gold_characters": 28,
+          "significant_characters": 28,
+          "covered_significant_characters": 28,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "fully_covered": 31,
+          "partially_covered": 0,
+          "typed_fully_covered": 31,
+          "significant_fully_covered": 31,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 31,
+          "gold_characters": 343,
+          "covered_gold_characters": 343,
+          "significant_characters": 343,
+          "covered_significant_characters": 343,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 95,
+          "partially_covered": 0,
+          "typed_fully_covered": 95,
+          "significant_fully_covered": 95,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 95,
+          "gold_characters": 1565,
+          "covered_gold_characters": 1565,
+          "significant_characters": 1520,
+          "covered_significant_characters": 1520,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "fully_covered": 0,
+          "partially_covered": 0,
+          "typed_fully_covered": 0,
+          "significant_fully_covered": 0,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "gold_characters": 231,
+          "covered_gold_characters": 0,
+          "significant_characters": 231,
+          "covered_significant_characters": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "fully_covered": 4,
+          "partially_covered": 0,
+          "typed_fully_covered": 4,
+          "significant_fully_covered": 4,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 4,
+          "gold_characters": 202,
+          "covered_gold_characters": 202,
+          "significant_characters": 202,
+          "covered_significant_characters": 202,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 182,
+          "true_positives": 182,
+          "false_positives": 0,
+          "false_negatives": 2,
+          "gold_values_all_requests": 184,
+          "fully_covered": 184,
+          "partially_covered": 0,
+          "typed_fully_covered": 182,
+          "significant_fully_covered": 184,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 182,
+          "gold_characters": 3889,
+          "covered_gold_characters": 3889,
+          "significant_characters": 3889,
+          "covered_significant_characters": 3889,
+          "precision": 1.0,
+          "recall": 0.9891304347826086,
+          "f1": 0.994535519125683
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "fully_covered": 6,
+          "partially_covered": 0,
+          "typed_fully_covered": 6,
+          "significant_fully_covered": 6,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 6,
+          "gold_characters": 80,
+          "covered_gold_characters": 80,
+          "significant_characters": 80,
+          "covered_significant_characters": 80,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 2,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 2,
+          "gold_characters": 52,
+          "covered_gold_characters": 52,
+          "significant_characters": 52,
+          "covered_significant_characters": 52,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 3,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 3,
+          "gold_characters": 31,
+          "covered_gold_characters": 31,
+          "significant_characters": 31,
+          "covered_significant_characters": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 53,
+          "covered_gold_characters": 53,
+          "significant_characters": 53,
+          "covered_significant_characters": 53,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "fully_covered": 13,
+          "partially_covered": 0,
+          "typed_fully_covered": 13,
+          "significant_fully_covered": 13,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 13,
+          "gold_characters": 114,
+          "covered_gold_characters": 114,
+          "significant_characters": 111,
+          "covered_significant_characters": 111,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "fully_covered": 40,
+          "partially_covered": 0,
+          "typed_fully_covered": 40,
+          "significant_fully_covered": 40,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 40,
+          "gold_characters": 378,
+          "covered_gold_characters": 378,
+          "significant_characters": 378,
+          "covered_significant_characters": 378,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "fully_covered": 52,
+          "partially_covered": 0,
+          "typed_fully_covered": 52,
+          "significant_fully_covered": 52,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 52,
+          "gold_characters": 689,
+          "covered_gold_characters": 689,
+          "significant_characters": 629,
+          "covered_significant_characters": 629,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 83,
+          "true_positives": 56,
+          "false_positives": 27,
+          "false_negatives": 8,
+          "gold_values_all_requests": 64,
+          "fully_covered": 60,
+          "partially_covered": 0,
+          "typed_fully_covered": 58,
+          "significant_fully_covered": 60,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 58,
+          "gold_characters": 1092,
+          "covered_gold_characters": 1078,
+          "significant_characters": 1087,
+          "covered_significant_characters": 1073,
+          "precision": 0.6746987951807228,
+          "recall": 0.875,
+          "f1": 0.7619047619047619
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "fully_covered": 308,
+          "partially_covered": 2,
+          "typed_fully_covered": 306,
+          "significant_fully_covered": 310,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 306,
+          "gold_characters": 4265,
+          "covered_gold_characters": 4251,
+          "significant_characters": 3956,
+          "covered_significant_characters": 3944,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "fully_covered": 220,
+          "partially_covered": 0,
+          "typed_fully_covered": 220,
+          "significant_fully_covered": 220,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 220,
+          "gold_characters": 2872,
+          "covered_gold_characters": 2872,
+          "significant_characters": 2772,
+          "covered_significant_characters": 2772,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 5,
+          "partially_covered": 0,
+          "typed_fully_covered": 5,
+          "significant_fully_covered": 5,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 5,
+          "gold_characters": 3795,
+          "covered_gold_characters": 3795,
+          "significant_characters": 3689,
+          "covered_significant_characters": 3689,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 159,
+          "true_positives": 95,
+          "false_positives": 64,
+          "false_negatives": 84,
+          "fully_covered": 108,
+          "partially_covered": 58,
+          "typed_fully_covered": 97,
+          "significant_fully_covered": 120,
+          "significant_partially_covered": 46,
+          "typed_significant_fully_covered": 99,
+          "gold_characters": 5686,
+          "covered_gold_characters": 4757,
+          "significant_characters": 4853,
+          "covered_significant_characters": 4125,
+          "precision": 0.5974842767295597,
+          "recall": 0.5307262569832403,
+          "f1": 0.5621301775147929
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 9,
+          "covered_gold_characters": 9,
+          "significant_characters": 9,
+          "covered_significant_characters": 9,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 20,
+          "covered_gold_characters": 20,
+          "significant_characters": 20,
+          "covered_significant_characters": 20,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "fully_covered": 119,
+          "partially_covered": 0,
+          "typed_fully_covered": 107,
+          "significant_fully_covered": 119,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 107,
+          "gold_characters": 1380,
+          "covered_gold_characters": 1370,
+          "significant_characters": 1380,
+          "covered_significant_characters": 1370,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "fully_covered": 95,
+          "partially_covered": 0,
+          "typed_fully_covered": 86,
+          "significant_fully_covered": 95,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 86,
+          "gold_characters": 864,
+          "covered_gold_characters": 855,
+          "significant_characters": 864,
+          "covered_significant_characters": 855,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "fully_covered": 94,
+          "partially_covered": 0,
+          "typed_fully_covered": 89,
+          "significant_fully_covered": 94,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 89,
+          "gold_characters": 1222,
+          "covered_gold_characters": 1222,
+          "significant_characters": 1222,
+          "covered_significant_characters": 1222,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "fully_covered": 88,
+          "partially_covered": 0,
+          "typed_fully_covered": 80,
+          "significant_fully_covered": 88,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 80,
+          "gold_characters": 1320,
+          "covered_gold_characters": 1320,
+          "significant_characters": 1320,
+          "covered_significant_characters": 1320,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "fully_covered": 107,
+          "partially_covered": 14,
+          "typed_fully_covered": 99,
+          "significant_fully_covered": 108,
+          "significant_partially_covered": 13,
+          "typed_significant_fully_covered": 99,
+          "gold_characters": 1434,
+          "covered_gold_characters": 1329,
+          "significant_characters": 1332,
+          "covered_significant_characters": 1245,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 3,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 3,
+          "gold_characters": 74,
+          "covered_gold_characters": 74,
+          "significant_characters": 60,
+          "covered_significant_characters": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "fully_covered": 96,
+          "partially_covered": 2,
+          "typed_fully_covered": 87,
+          "significant_fully_covered": 96,
+          "significant_partially_covered": 2,
+          "typed_significant_fully_covered": 87,
+          "gold_characters": 1264,
+          "covered_gold_characters": 1258,
+          "significant_characters": 1202,
+          "covered_significant_characters": 1198,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "fully_covered": 35,
+          "partially_covered": 0,
+          "typed_fully_covered": 33,
+          "significant_fully_covered": 35,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 33,
+          "gold_characters": 1014,
+          "covered_gold_characters": 1014,
+          "significant_characters": 1014,
+          "covered_significant_characters": 1014,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    },
+    "after_k07": {
+      "counts": {
+        "cases": 2318,
+        "gold_values_all_requests": 2104,
+        "successful_cases": 2318,
+        "negative_cases": 546,
+        "negative_cases_with_in_scope_mask": 34,
+        "negative_cases_with_any_mask": 59,
+        "cases_with_any_mask": 1734,
+        "gold_characters": 42115,
+        "covered_gold_characters": 40745,
+        "in_scope_extra_masked_characters": 7019,
+        "in_scope_clean_characters": 464676,
+        "fully_covered": 1918,
+        "partially_covered": 76,
+        "typed_fully_covered": 1764,
+        "significant_fully_covered": 1933,
+        "significant_partially_covered": 61,
+        "typed_significant_fully_covered": 1766,
+        "significant_characters": 40476,
+        "covered_significant_characters": 39329,
+        "partial_annotation_cases": 2248,
+        "complete_annotation_cases": 70,
+        "extra_masked_characters": 37,
+        "clean_characters": 2681,
+        "false_block_cases": 4,
+        "expected": 2104,
+        "predicted": 2050,
+        "true_positives": 1741,
+        "false_positives": 309,
+        "false_negatives": 363
+      },
+      "per_entity": {
+        "API_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 4,
+          "true_positives": 4,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 5,
+          "partially_covered": 0,
+          "typed_fully_covered": 4,
+          "significant_fully_covered": 5,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 4,
+          "gold_characters": 187,
+          "covered_gold_characters": 187,
+          "significant_characters": 187,
+          "covered_significant_characters": 187,
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.8888888888888888
+        },
+        "AUTH_TOKEN": {
+          "expected": 131,
+          "predicted": 124,
+          "true_positives": 40,
+          "false_positives": 84,
+          "false_negatives": 91,
+          "gold_values_all_requests": 131,
+          "fully_covered": 122,
+          "partially_covered": 0,
+          "typed_fully_covered": 41,
+          "significant_fully_covered": 122,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 41,
+          "gold_characters": 7456,
+          "covered_gold_characters": 7401,
+          "significant_characters": 7456,
+          "covered_significant_characters": 7401,
+          "precision": 0.3225806451612903,
+          "recall": 0.3053435114503817,
+          "f1": 0.3137254901960784
+        },
+        "BASE64_DATA": {
+          "gold_values_all_requests": 17,
+          "expected": 17,
+          "predicted": 17,
+          "true_positives": 15,
+          "false_positives": 2,
+          "false_negatives": 2,
+          "fully_covered": 17,
+          "partially_covered": 0,
+          "typed_fully_covered": 17,
+          "significant_fully_covered": 17,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 17,
+          "gold_characters": 506,
+          "covered_gold_characters": 506,
+          "significant_characters": 506,
+          "covered_significant_characters": 506,
+          "precision": 0.8823529411764706,
+          "recall": 0.8823529411764706,
+          "f1": 0.8823529411764706
+        },
+        "BEARER_TOKEN": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 0,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "gold_characters": 28,
+          "covered_gold_characters": 28,
+          "significant_characters": 28,
+          "covered_significant_characters": 28,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "CONTRACT_NUMBER": {
+          "expected": 31,
+          "predicted": 31,
+          "true_positives": 31,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 31,
+          "fully_covered": 31,
+          "partially_covered": 0,
+          "typed_fully_covered": 31,
+          "significant_fully_covered": 31,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 31,
+          "gold_characters": 343,
+          "covered_gold_characters": 343,
+          "significant_characters": 343,
+          "covered_significant_characters": 343,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CREDIT_CARD": {
+          "gold_values_all_requests": 95,
+          "expected": 95,
+          "predicted": 95,
+          "true_positives": 95,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 95,
+          "partially_covered": 0,
+          "typed_fully_covered": 95,
+          "significant_fully_covered": 95,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 95,
+          "gold_characters": 1565,
+          "covered_gold_characters": 1565,
+          "significant_characters": 1520,
+          "covered_significant_characters": 1520,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "CVC_OUT_OF_SCOPE": {
+          "expected": 77,
+          "predicted": 0,
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 77,
+          "gold_values_all_requests": 77,
+          "fully_covered": 0,
+          "partially_covered": 0,
+          "typed_fully_covered": 0,
+          "significant_fully_covered": 0,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 0,
+          "gold_characters": 231,
+          "covered_gold_characters": 0,
+          "significant_characters": 231,
+          "covered_significant_characters": 0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "DB_URL": {
+          "gold_values_all_requests": 4,
+          "expected": 4,
+          "predicted": 4,
+          "true_positives": 3,
+          "false_positives": 1,
+          "false_negatives": 1,
+          "fully_covered": 4,
+          "partially_covered": 0,
+          "typed_fully_covered": 4,
+          "significant_fully_covered": 4,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 4,
+          "gold_characters": 202,
+          "covered_gold_characters": 202,
+          "significant_characters": 202,
+          "covered_significant_characters": 202,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        "EMAIL_ADDRESS": {
+          "expected": 184,
+          "predicted": 182,
+          "true_positives": 182,
+          "false_positives": 0,
+          "false_negatives": 2,
+          "gold_values_all_requests": 184,
+          "fully_covered": 184,
+          "partially_covered": 0,
+          "typed_fully_covered": 182,
+          "significant_fully_covered": 184,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 182,
+          "gold_characters": 3889,
+          "covered_gold_characters": 3889,
+          "significant_characters": 3889,
+          "covered_significant_characters": 3889,
+          "precision": 1.0,
+          "recall": 0.9891304347826086,
+          "f1": 0.994535519125683
+        },
+        "HOSTNAME": {
+          "expected": 6,
+          "predicted": 6,
+          "true_positives": 6,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "gold_values_all_requests": 6,
+          "fully_covered": 6,
+          "partially_covered": 0,
+          "typed_fully_covered": 6,
+          "significant_fully_covered": 6,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 6,
+          "gold_characters": 80,
+          "covered_gold_characters": 80,
+          "significant_characters": 80,
+          "covered_significant_characters": 80,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "INTERNAL_DOMAIN": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 2,
+          "true_positives": 2,
+          "false_positives": 0,
+          "false_negatives": 1,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 2,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 2,
+          "gold_characters": 52,
+          "covered_gold_characters": 52,
+          "significant_characters": 52,
+          "covered_significant_characters": 52,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "INTERNAL_IP": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 3,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 3,
+          "gold_characters": 31,
+          "covered_gold_characters": 31,
+          "significant_characters": 31,
+          "covered_significant_characters": 31,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "JWT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 53,
+          "covered_gold_characters": 53,
+          "significant_characters": 53,
+          "covered_significant_characters": 53,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "LOCATION": {
+          "expected": 13,
+          "predicted": 15,
+          "true_positives": 13,
+          "false_positives": 2,
+          "false_negatives": 0,
+          "gold_values_all_requests": 13,
+          "fully_covered": 13,
+          "partially_covered": 0,
+          "typed_fully_covered": 13,
+          "significant_fully_covered": 13,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 13,
+          "gold_characters": 114,
+          "covered_gold_characters": 114,
+          "significant_characters": 111,
+          "covered_significant_characters": 111,
+          "precision": 0.8666666666666667,
+          "recall": 1.0,
+          "f1": 0.9285714285714286
+        },
+        "LOGIN": {
+          "expected": 40,
+          "predicted": 68,
+          "true_positives": 39,
+          "false_positives": 29,
+          "false_negatives": 1,
+          "gold_values_all_requests": 40,
+          "fully_covered": 40,
+          "partially_covered": 0,
+          "typed_fully_covered": 40,
+          "significant_fully_covered": 40,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 40,
+          "gold_characters": 378,
+          "covered_gold_characters": 378,
+          "significant_characters": 378,
+          "covered_significant_characters": 378,
+          "precision": 0.5735294117647058,
+          "recall": 0.975,
+          "f1": 0.7222222222222222
+        },
+        "ORGANIZATION": {
+          "expected": 52,
+          "predicted": 58,
+          "true_positives": 51,
+          "false_positives": 7,
+          "false_negatives": 1,
+          "gold_values_all_requests": 52,
+          "fully_covered": 52,
+          "partially_covered": 0,
+          "typed_fully_covered": 52,
+          "significant_fully_covered": 52,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 52,
+          "gold_characters": 689,
+          "covered_gold_characters": 689,
+          "significant_characters": 629,
+          "covered_significant_characters": 629,
+          "precision": 0.8793103448275862,
+          "recall": 0.9807692307692307,
+          "f1": 0.9272727272727272
+        },
+        "PASSWORD": {
+          "expected": 64,
+          "predicted": 84,
+          "true_positives": 57,
+          "false_positives": 27,
+          "false_negatives": 7,
+          "gold_values_all_requests": 64,
+          "fully_covered": 61,
+          "partially_covered": 0,
+          "typed_fully_covered": 59,
+          "significant_fully_covered": 61,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 59,
+          "gold_characters": 1092,
+          "covered_gold_characters": 1081,
+          "significant_characters": 1087,
+          "covered_significant_characters": 1076,
+          "precision": 0.6785714285714286,
+          "recall": 0.890625,
+          "f1": 0.7702702702702703
+        },
+        "PERSON": {
+          "gold_values_all_requests": 313,
+          "expected": 313,
+          "predicted": 347,
+          "true_positives": 293,
+          "false_positives": 54,
+          "false_negatives": 20,
+          "fully_covered": 308,
+          "partially_covered": 2,
+          "typed_fully_covered": 306,
+          "significant_fully_covered": 310,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 306,
+          "gold_characters": 4265,
+          "covered_gold_characters": 4251,
+          "significant_characters": 3956,
+          "covered_significant_characters": 3944,
+          "precision": 0.8443804034582133,
+          "recall": 0.9361022364217252,
+          "f1": 0.8878787878787879
+        },
+        "PHONE_NUMBER": {
+          "gold_values_all_requests": 220,
+          "expected": 220,
+          "predicted": 229,
+          "true_positives": 220,
+          "false_positives": 9,
+          "false_negatives": 0,
+          "fully_covered": 220,
+          "partially_covered": 0,
+          "typed_fully_covered": 220,
+          "significant_fully_covered": 220,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 220,
+          "gold_characters": 2872,
+          "covered_gold_characters": 2872,
+          "significant_characters": 2772,
+          "covered_significant_characters": 2772,
+          "precision": 0.9606986899563319,
+          "recall": 1.0,
+          "f1": 0.9799554565701559
+        },
+        "PRIVATE_KEY": {
+          "gold_values_all_requests": 5,
+          "expected": 5,
+          "predicted": 5,
+          "true_positives": 5,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 5,
+          "partially_covered": 0,
+          "typed_fully_covered": 5,
+          "significant_fully_covered": 5,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 5,
+          "gold_characters": 3795,
+          "covered_gold_characters": 3795,
+          "significant_characters": 3689,
+          "covered_significant_characters": 3689,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_ADDRESS": {
+          "gold_values_all_requests": 179,
+          "expected": 179,
+          "predicted": 159,
+          "true_positives": 95,
+          "false_positives": 64,
+          "false_negatives": 84,
+          "fully_covered": 108,
+          "partially_covered": 58,
+          "typed_fully_covered": 97,
+          "significant_fully_covered": 120,
+          "significant_partially_covered": 46,
+          "typed_significant_fully_covered": 99,
+          "gold_characters": 5686,
+          "covered_gold_characters": 4757,
+          "significant_characters": 4853,
+          "covered_significant_characters": 4125,
+          "precision": 0.5974842767295597,
+          "recall": 0.5307262569832403,
+          "f1": 0.5621301775147929
+        },
+        "RU_BIK": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 9,
+          "covered_gold_characters": 9,
+          "significant_characters": 9,
+          "covered_significant_characters": 9,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_CORRESPONDENT_ACCOUNT": {
+          "gold_values_all_requests": 1,
+          "expected": 1,
+          "predicted": 1,
+          "true_positives": 1,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 1,
+          "partially_covered": 0,
+          "typed_fully_covered": 1,
+          "significant_fully_covered": 1,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 1,
+          "gold_characters": 20,
+          "covered_gold_characters": 20,
+          "significant_characters": 20,
+          "covered_significant_characters": 20,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_INN": {
+          "gold_values_all_requests": 120,
+          "expected": 120,
+          "predicted": 107,
+          "true_positives": 107,
+          "false_positives": 0,
+          "false_negatives": 13,
+          "fully_covered": 119,
+          "partially_covered": 0,
+          "typed_fully_covered": 107,
+          "significant_fully_covered": 119,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 107,
+          "gold_characters": 1380,
+          "covered_gold_characters": 1370,
+          "significant_characters": 1380,
+          "covered_significant_characters": 1370,
+          "precision": 1.0,
+          "recall": 0.8916666666666667,
+          "f1": 0.9427312775330396
+        },
+        "RU_KPP": {
+          "gold_values_all_requests": 96,
+          "expected": 96,
+          "predicted": 86,
+          "true_positives": 86,
+          "false_positives": 0,
+          "false_negatives": 10,
+          "fully_covered": 95,
+          "partially_covered": 0,
+          "typed_fully_covered": 86,
+          "significant_fully_covered": 95,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 86,
+          "gold_characters": 864,
+          "covered_gold_characters": 855,
+          "significant_characters": 864,
+          "covered_significant_characters": 855,
+          "precision": 1.0,
+          "recall": 0.8958333333333334,
+          "f1": 0.945054945054945
+        },
+        "RU_OGRN": {
+          "gold_values_all_requests": 94,
+          "expected": 94,
+          "predicted": 89,
+          "true_positives": 89,
+          "false_positives": 0,
+          "false_negatives": 5,
+          "fully_covered": 94,
+          "partially_covered": 0,
+          "typed_fully_covered": 89,
+          "significant_fully_covered": 94,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 89,
+          "gold_characters": 1222,
+          "covered_gold_characters": 1222,
+          "significant_characters": 1222,
+          "covered_significant_characters": 1222,
+          "precision": 1.0,
+          "recall": 0.9468085106382979,
+          "f1": 0.9726775956284153
+        },
+        "RU_OGRNIP": {
+          "gold_values_all_requests": 88,
+          "expected": 88,
+          "predicted": 80,
+          "true_positives": 80,
+          "false_positives": 0,
+          "false_negatives": 8,
+          "fully_covered": 88,
+          "partially_covered": 0,
+          "typed_fully_covered": 80,
+          "significant_fully_covered": 88,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 80,
+          "gold_characters": 1320,
+          "covered_gold_characters": 1320,
+          "significant_characters": 1320,
+          "covered_significant_characters": 1320,
+          "precision": 1.0,
+          "recall": 0.9090909090909091,
+          "f1": 0.9523809523809523
+        },
+        "RU_PASSPORT": {
+          "gold_values_all_requests": 124,
+          "expected": 124,
+          "predicted": 110,
+          "true_positives": 99,
+          "false_positives": 11,
+          "false_negatives": 25,
+          "fully_covered": 107,
+          "partially_covered": 14,
+          "typed_fully_covered": 99,
+          "significant_fully_covered": 108,
+          "significant_partially_covered": 13,
+          "typed_significant_fully_covered": 99,
+          "gold_characters": 1434,
+          "covered_gold_characters": 1329,
+          "significant_characters": 1332,
+          "covered_significant_characters": 1245,
+          "precision": 0.9,
+          "recall": 0.7983870967741935,
+          "f1": 0.8461538461538461
+        },
+        "RU_SETTLEMENT_ACCOUNT": {
+          "gold_values_all_requests": 3,
+          "expected": 3,
+          "predicted": 3,
+          "true_positives": 3,
+          "false_positives": 0,
+          "false_negatives": 0,
+          "fully_covered": 3,
+          "partially_covered": 0,
+          "typed_fully_covered": 3,
+          "significant_fully_covered": 3,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 3,
+          "gold_characters": 74,
+          "covered_gold_characters": 74,
+          "significant_characters": 60,
+          "covered_significant_characters": 60,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "RU_SNILS": {
+          "gold_values_all_requests": 98,
+          "expected": 98,
+          "predicted": 87,
+          "true_positives": 87,
+          "false_positives": 0,
+          "false_negatives": 11,
+          "fully_covered": 96,
+          "partially_covered": 2,
+          "typed_fully_covered": 87,
+          "significant_fully_covered": 96,
+          "significant_partially_covered": 2,
+          "typed_significant_fully_covered": 87,
+          "gold_characters": 1264,
+          "covered_gold_characters": 1258,
+          "significant_characters": 1202,
+          "covered_significant_characters": 1198,
+          "precision": 1.0,
+          "recall": 0.8877551020408163,
+          "f1": 0.9405405405405406
+        },
+        "SECRET_KEY": {
+          "expected": 35,
+          "predicted": 52,
+          "true_positives": 33,
+          "false_positives": 19,
+          "false_negatives": 2,
+          "gold_values_all_requests": 35,
+          "fully_covered": 35,
+          "partially_covered": 0,
+          "typed_fully_covered": 33,
+          "significant_fully_covered": 35,
+          "significant_partially_covered": 0,
+          "typed_significant_fully_covered": 33,
+          "gold_characters": 1014,
+          "covered_gold_characters": 1014,
+          "significant_characters": 1014,
+          "covered_significant_characters": 1014,
+          "precision": 0.6346153846153846,
+          "recall": 0.9428571428571428,
+          "f1": 0.7586206896551724
+        }
+      }
+    }
+  },
+  "agreed_classes_excluding_cvc": {
+    "before_k07": {
+      "gold_values_all_requests": 2027,
+      "significant_fully_covered": 1932,
+      "typed_significant_fully_covered": 1765
+    },
+    "after_k07": {
+      "gold_values_all_requests": 2027,
+      "significant_fully_covered": 1933,
+      "typed_significant_fully_covered": 1766
+    }
+  },
+  "changed_cases": [
+    {
+      "case_id": "tiny2_component_study__ctrl_labeled_prompt",
+      "corpus": "tiny2_component_study",
+      "complete_annotation": false,
+      "before": [],
+      "after": [
+        {
+          "entity_type": "PASSWORD",
+          "start": 8,
+          "end": 11,
+          "score": 0.9,
+          "text": "!?$"
+        }
+      ],
+      "added_significant_characters": 3
+    }
+  ],
+  "significant_coverage_losses": [],
+  "strict_instruction_span_audit": {
+    "before_k07": [
+      "login_instruction_email_original",
+      "login_instruction_email_lowercase",
+      "login_instruction_email_uppercase",
+      "login_instruction_email_polite",
+      "login_instruction_email_respond",
+      "login_instruction_email_return",
+      "login_instruction_email_russian",
+      "dialogue_role_which",
+      "dialogue_role_write",
+      "dialogue_role_where",
+      "dialogue_role_email",
+      "dialogue_role_nested_credentials",
+      "dialogue_role_user_assignment"
+    ],
+    "after_k07": [
+      "login_instruction_email_original",
+      "login_instruction_email_lowercase",
+      "login_instruction_email_uppercase",
+      "login_instruction_email_polite",
+      "login_instruction_email_respond",
+      "login_instruction_email_return",
+      "login_instruction_email_russian",
+      "dialogue_role_which",
+      "dialogue_role_write",
+      "dialogue_role_where",
+      "dialogue_role_email",
+      "dialogue_role_nested_credentials",
+      "dialogue_role_user_assignment"
+    ]
+  },
+  "owner_decisions": {
+    "implementation_explicitly_approved": true,
+    "policy": "Add question mark only to existing explicit unquoted punctuation-password alphabet.",
+    "accepted_extra_mask": "An explicitly assigned ??? may be a password or unknown-value marker; mask it in either case.",
+    "platform_code_changed": false,
+    "reference": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6453312384",
+    "test_scenario_adjustment_explicitly_approved": true,
+    "K07_F01_policy_unchanged_limitation_explicitly_accepted": true
+  },
+  "regressions": {
+    "new_question_mark_cases": 63,
+    "before_fix": {
+      "tests": 63,
+      "failures": 19,
+      "errors": 0,
+      "skipped": 0
+    },
+    "all_credential_rules": {
+      "tests": 286,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "analyzer": {
+      "tests": 3145,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "guardrail_flow": {
+      "tests": 1570,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "burst_helper": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "static_pytest": 577,
+    "evaluation_pytest_overlaps_other_suites": 75,
+    "make_unittest": 18,
+    "direct_k07_http": 32,
+    "dkb": {
+      "files": 18,
+      "plain_annotations": 53,
+      "json_annotations": 53,
+      "echo": 112,
+      "block": 144,
+      "expected_final_blocks": 32
+    },
+    "base64_boundaries": {
+      "cases": 3,
+      "echo": 24,
+      "block": 24
+    },
+    "base64_content": {
+      "cases": 2,
+      "echo": 16,
+      "block": 16
+    },
+    "guardrail_flow_including_burst_helper": {
+      "tests": 1576,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "new_mock_selection_cases": {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "full_corpus_repeat_unchanged": true,
+    "protocol_scenarios": 220,
+    "new_k07_protocol_scenarios": 80,
+    "protocol_counts": {
+      "matrix": 8,
+      "blocked": 8,
+      "history": 12,
+      "encrypted": 2,
+      "overlap_mask": 4,
+      "overlap_block": 4,
+      "entrance_mask": 4,
+      "entrance_block": 4,
+      "postfix_mask": 4,
+      "postfix_block": 4,
+      "boundary_mask": 4,
+      "boundary_block": 4,
+      "context_mask": 4,
+      "context_block": 4,
+      "email_mask": 4,
+      "email_block": 4,
+      "passport_mask": 4,
+      "passport_block": 4,
+      "native_number_mask": 24,
+      "native_number_block": 24,
+      "native_number_history": 6,
+      "punctuation_password_mask": 24,
+      "punctuation_password_policy_block": 16,
+      "punctuation_password_block": 40
+    },
+    "full_corpus_repeat_unchanged_from_independent_run": true
+  },
+  "independent_http": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k07",
+        "status": "passed",
+        "seconds": 2.444,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.627,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol-existing-only",
+        "status": "passed",
+        "seconds": 2.762,
+        "result": 0
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 164.415,
+        "result": 0
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 89.981,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true,
+    "excluded_pending_approval": [
+      "new K07 protocol scenario; original failed attempt retained"
+    ]
+  },
+  "failed_initial_http_attempt": {
+    "images": {
+      "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k07",
+        "status": "passed",
+        "seconds": 2.419,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.672,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "failed",
+        "error_type": "CalledProcessError"
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true
+  },
+  "open_findings": [],
+  "qualifications": [
+    "Full 2318-case HTTP inference used real Tiny2/Triton, not only frozen NER replay.",
+    "The comparator is the verified K06-J01 run, not a new run of main/BERT.",
+    "Only credential_rules.py changed among recorded Analyzer runtime sources; dependencies, model, annotation, configuration and platform code are unchanged.",
+    "Mask/BLOCK checks use a mock LLM provider; no external LLM or actual client application was called.",
+    "Other unresolved Q items, strict dialogue-span failures and final migration decision remain open.",
+    "Test counts overlap. Existing Starlette deprecation and Pydantic serializer warnings remain.",
+    "Disposable containers/networks were removed; the seven main containers were unchanged.",
+    "The PASSWORD-only mock scenario was corrected after explicit owner approval; extra PERSON remains unresolved Q02.",
+    "All failed attempts and independent subsets are retained; only the complete final repeat without exclusions is accepted for K07.",
+    "K07-F01 is explicitly accepted, not fixed: standalone env assignments have 16 expected final-policy MASK blocks; 24 allowed MASK flows restore exactly and 40 BLOCK requests never reach provider.",
+    "The extra PERSON in the synthetic prefix context remains a Q02 example, not an accepted general NER limitation or a fixed model result.",
+    "The PASSWORD-only mock selector acts after upstream payload observation and does not modify the request; eight tests cover regular/selected text/tool streaming/nonstreaming behavior."
+  ],
+  "followup_independent_http": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k07",
+        "status": "passed",
+        "seconds": 2.463,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.58,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "passed",
+        "seconds": 3.23,
+        "result": {
+          "matrix": 8,
+          "blocked": 8,
+          "history": 12,
+          "encrypted": 2,
+          "overlap_mask": 4,
+          "overlap_block": 4,
+          "entrance_mask": 4,
+          "entrance_block": 4,
+          "postfix_mask": 4,
+          "postfix_block": 4,
+          "boundary_mask": 4,
+          "boundary_block": 4,
+          "context_mask": 4,
+          "context_block": 4,
+          "email_mask": 4,
+          "email_block": 4,
+          "passport_mask": 4,
+          "passport_block": 4,
+          "native_number_mask": 24,
+          "native_number_block": 24,
+          "native_number_history": 6,
+          "punctuation_password_mask": 24,
+          "punctuation_password_block": 24
+        }
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 163.405,
+        "result": 0
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 89.864,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true,
+    "excluded_pending_approval": [
+      "Unprefixed DB_PASSWORD/PASSWORD assignments conflict with unchanged final-payload policy; not claimed successful MASK flows"
+    ]
+  },
+  "failed_followup_attempts": [
+    {
+      "images": {
+        "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+        "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+        "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+      },
+      "checks": [
+        {
+          "name": "actual-k07",
+          "status": "passed",
+          "seconds": 2.448,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "json-string",
+          "status": "passed",
+          "seconds": 1.612,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "protocol",
+          "status": "failed",
+          "error_type": "AssertionError"
+        }
+      ],
+      "cleanup_ok": true,
+      "main_unchanged": true,
+      "explanation": "A selector in analyzed text changed NER context and added a label PASSWORD."
+    },
+    {
+      "images": {
+        "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+        "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+        "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+      },
+      "checks": [
+        {
+          "name": "actual-k07",
+          "status": "passed",
+          "seconds": 2.408,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "json-string",
+          "status": "passed",
+          "seconds": 1.566,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "protocol",
+          "status": "failed",
+          "error_type": "AssertionError"
+        }
+      ],
+      "cleanup_ok": true,
+      "main_unchanged": true,
+      "explanation": "Echoing all history PASSWORD markers did not represent an answer to the last user message."
+    },
+    {
+      "images": {
+        "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+        "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+        "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+      },
+      "checks": [
+        {
+          "name": "actual-k07",
+          "status": "passed",
+          "seconds": 2.488,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "json-string",
+          "status": "passed",
+          "seconds": 1.642,
+          "result": [
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "chat/completions",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": false,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": false,
+              "mode": "block",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "mask",
+              "passed": true
+            },
+            {
+              "api": "responses",
+              "stream": true,
+              "arguments": true,
+              "mode": "block",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "protocol",
+          "status": "failed",
+          "error_type": "HTTPError"
+        }
+      ],
+      "cleanup_ok": true,
+      "main_unchanged": true,
+      "explanation": "Fixture corrected; standalone DB_PASSWORD assignment hit unchanged final-payload env_secret_assignment policy."
+    }
+  ],
+  "retained_quality_findings": [
+    {
+      "id": "K07-test-Q02",
+      "status": "retained_for_Q02_no_model_or_filter_change",
+      "text": "STOCK_BRIDGE_ECHO Пароль: !?$",
+      "extra_ner": {
+        "entity_type": "PERSON",
+        "start": 21,
+        "end": 24,
+        "value": "оль",
+        "score": 0.6940186023712158
+      },
+      "full_analyzer_password": {
+        "entity_type": "PASSWORD",
+        "start": 26,
+        "end": 29,
+        "score": 0.9
+      },
+      "unprefixed_case": {
+        "text": "Пароль: !?$",
+        "ner": [],
+        "analyzer": [
+          {
+            "entity_type": "PASSWORD",
+            "start": 8,
+            "end": 11,
+            "score": 0.9
+          }
+        ]
+      },
+      "captured_upstream": "STOCK_BRIDGE_ECHO Пар<PERSON_1>: <PASSWORD_1>",
+      "effect": "Mock echoes all placeholders, whereas new test expected only password; no raw password reached provider.",
+      "proposed_action": "Keep model/filter unchanged; retain extra PERSON for Q02 and make the K07 mock scenario echo PASSWORD placeholders only.",
+      "blocks_k07": false
+    }
+  ],
+  "resolved_test_findings": [
+    {
+      "id": "K07-test-scenario",
+      "status": "fixed_after_explicit_owner_approval",
+      "action": "Only the K07 mock response selects PASSWORD from the last user message via a boolean extra_body field; analyzed text, raw-request capture and exact-restoration assertions remain unchanged.",
+      "not_a_model_fix": true
+    }
+  ],
+  "test_sources_sha256": {
+    "tests/e2e/mock_openai_upstream.py": "72c295a99b8d01a251d8056396e334da9c04594e858cbff3fe2726b1a20dab55",
+    "tests/e2e/ner_protocol_checks.py": "369cdd54a2e04390ef16ea8a48161435d88a5dd7c2ccd95c2e0d46f2ad1f2b0c",
+    "tests/test_ner_test_harness.py": "c3fa3dae3c8fc6bbd42f8473e7b0a7c4b68458c42060ee8afe91f87034c842b2",
+    "presidio/tests/test_credential_rules.py": "14adb0f0fec6ef48a9a51e95398a0ec1b36884b9a1dd317f176aa02131edf0d9"
+  },
+  "historical_regressions_before_policy_acceptance": {
+    "new_question_mark_cases": 63,
+    "before_fix": {
+      "tests": 63,
+      "failures": 19,
+      "errors": 0,
+      "skipped": 0
+    },
+    "all_credential_rules": {
+      "tests": 286,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "analyzer": {
+      "tests": 3145,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "guardrail_flow": {
+      "tests": 1570,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "burst_helper": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "static_pytest": 577,
+    "evaluation_pytest_overlaps_other_suites": 75,
+    "make_unittest": 18,
+    "direct_k07_http": 32,
+    "existing_protocols_excluding_new_pending_k07": 140,
+    "dkb": {
+      "files": 18,
+      "plain_annotations": 53,
+      "json_annotations": 53,
+      "echo": 112,
+      "block": 144,
+      "expected_final_blocks": 32
+    },
+    "base64_boundaries": {
+      "cases": 3,
+      "echo": 24,
+      "block": 24
+    },
+    "base64_content": {
+      "cases": 2,
+      "echo": 16,
+      "block": 16
+    },
+    "guardrail_flow_including_burst_helper": {
+      "tests": 1576,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "new_mock_selection_cases": {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "followup_protocol_counts": {
+      "matrix": 8,
+      "blocked": 8,
+      "history": 12,
+      "encrypted": 2,
+      "overlap_mask": 4,
+      "overlap_block": 4,
+      "entrance_mask": 4,
+      "entrance_block": 4,
+      "postfix_mask": 4,
+      "postfix_block": 4,
+      "boundary_mask": 4,
+      "boundary_block": 4,
+      "context_mask": 4,
+      "context_block": 4,
+      "email_mask": 4,
+      "email_block": 4,
+      "passport_mask": 4,
+      "passport_block": 4,
+      "native_number_mask": 24,
+      "native_number_block": 24,
+      "native_number_history": 6,
+      "punctuation_password_mask": 24,
+      "punctuation_password_block": 24
+    },
+    "approved_forms_followup_protocols": 48,
+    "existing_followup_protocols": 140,
+    "full_corpus_repeat_unchanged": true
+  },
+  "final_http": {
+    "status": "passed",
+    "images": {
+      "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k07",
+        "status": "passed",
+        "seconds": 2.415,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.56,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "env-assignment-detection",
+        "status": "passed",
+        "seconds": 0.069,
+        "result": {
+          "DB_PASSWORD": {
+            "entity_type": "PASSWORD",
+            "complete_value": true
+          },
+          "PASSWORD": {
+            "entity_type": "PASSWORD",
+            "complete_value": true
+          }
+        }
+      },
+      {
+        "name": "protocol",
+        "status": "passed",
+        "seconds": 3.709,
+        "result": {
+          "matrix": 8,
+          "blocked": 8,
+          "history": 12,
+          "encrypted": 2,
+          "overlap_mask": 4,
+          "overlap_block": 4,
+          "entrance_mask": 4,
+          "entrance_block": 4,
+          "postfix_mask": 4,
+          "postfix_block": 4,
+          "boundary_mask": 4,
+          "boundary_block": 4,
+          "context_mask": 4,
+          "context_block": 4,
+          "email_mask": 4,
+          "email_block": 4,
+          "passport_mask": 4,
+          "passport_block": 4,
+          "native_number_mask": 24,
+          "native_number_block": 24,
+          "native_number_history": 6,
+          "punctuation_password_mask": 24,
+          "punctuation_password_policy_block": 16,
+          "punctuation_password_block": 40
+        }
+      },
+      {
+        "name": "dkb",
+        "status": "passed",
+        "seconds": 165.743,
+        "result": 0
+      },
+      {
+        "name": "corpus-2318",
+        "status": "passed",
+        "seconds": 90.563,
+        "result": 0
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true
+  },
+  "accepted_limits": [
+    {
+      "id": "K07-F01",
+      "status": "explicitly_accepted_policy_limitation_not_fixed",
+      "reference": "https://github.com/vovkins/ru-llm-proxy/issues/110#issuecomment-6462062174",
+      "observed_http": {
+        "input": "DB_PASSWORD=??!",
+        "mode": "MASK",
+        "api": "chat/completions",
+        "stream": false,
+        "status": 422,
+        "error": "final_payload_leak_check_blocked",
+        "provider_called": false
+      },
+      "isolated_final_classifier": [
+        {
+          "text": "DB_PASSWORD=??!",
+          "findings": [
+            "env_secret_assignment"
+          ]
+        },
+        {
+          "text": "DB_PASSWORD=<PASSWORD_1>",
+          "findings": [
+            "env_secret_assignment"
+          ]
+        },
+        {
+          "text": "PASSWORD=<PASSWORD_1>",
+          "findings": [
+            "env_secret_assignment"
+          ]
+        },
+        {
+          "text": "Пароль: <PASSWORD_1>",
+          "findings": []
+        },
+        {
+          "text": "Учётные данные DB_PASSWORD=<PASSWORD_1>",
+          "findings": []
+        }
+      ],
+      "production_guardrail_code_changed": false,
+      "note": "Owner explicitly retained the current policy: standalone env assignments may be blocked after masking. Accepted for K07; no final-filter fix or bypass.",
+      "blocks_k07": false
+    }
+  ],
+  "failed_fixture_adjustment_attempt": {
+    "images": {
+      "analyzer": "sha256:c467e437ccdca0d56f372651766ff761b96367c1b2f17975d6e82d70668a07e6",
+      "triton": "sha256:a44671d33974621e64659f2376cfd42d6be24c40343aaeb492fd9caa8b992223",
+      "litellm": "sha256:182754ffd7ecb56ad9be5201b8dc2c93cf7c698742caa6d52ab8e031ec815527"
+    },
+    "checks": [
+      {
+        "name": "actual-k07",
+        "status": "passed",
+        "seconds": 2.448,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "json-string",
+        "status": "passed",
+        "seconds": 1.612,
+        "result": [
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "chat/completions",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": false,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": false,
+            "mode": "block",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "mask",
+            "passed": true
+          },
+          {
+            "api": "responses",
+            "stream": true,
+            "arguments": true,
+            "mode": "block",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "protocol",
+        "status": "failed",
+        "error_type": "AssertionError"
+      }
+    ],
+    "cleanup_ok": true,
+    "main_unchanged": true,
+    "explanation": "Putting the selector in analyzed text changed NER predictions and added a second PASSWORD on the label. Moved fixture control to the standard extra_body field instead; no model/filter/runtime fix."
+  }
+}

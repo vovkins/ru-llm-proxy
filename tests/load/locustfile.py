@@ -51,7 +51,6 @@ REPORT_NODE = os.getenv("LOAD_REPORT_NODE", "local")
 CONTOUR = os.getenv("LOAD_CONTOUR", "mock")
 INPUT_VARIATION = os.getenv("LOAD_INPUT_VARIATION", "repeat")
 ANALYZER_BACKEND = os.getenv("LOAD_ANALYZER_BACKEND", "real")
-ANALYZER_PROFILE = os.getenv("LOAD_ANALYZER_PROFILE", "cpu")
 ANALYZER_REPLICAS = int(os.getenv("LOAD_ANALYZER_REPLICAS", "1"))
 LITELLM_REPLICAS = int(os.getenv("LOAD_LITELLM_REPLICAS", "1"))
 
@@ -108,17 +107,27 @@ def initialize_reporter(environment, **_kwargs) -> None:
             "contour": CONTOUR,
             "input_variation": INPUT_VARIATION,
             "analyzer_backend": ANALYZER_BACKEND,
-            "analyzer_profile": ANALYZER_PROFILE,
             "analyzer_replicas": ANALYZER_REPLICAS,
             "litellm_replicas": LITELLM_REPLICAS,
+            "triton_replicas": int(os.getenv("LOAD_TRITON_REPLICAS", "1")),
+            "triton_model_instances": int(os.getenv("TRITON_MODEL_INSTANCES", "2")),
+            "triton_cpus": os.getenv("TRITON_CPUS", "2.0"),
+            "triton_memory": os.getenv("TRITON_MEMORY", "2g"),
+            "ner_batch_size": int(os.getenv("PRESIDIO_ANALYZER_NER_BATCH_SIZE", "4")),
+            "cpu_threads": {name: os.getenv(name, "2") for name in (
+                "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"
+            )},
+            "arrival_model": "closed_loop",
+            "nominal_requests_per_second": EXPECTED_USERS / PACE_SECONDS
+                if PROFILE == "steady" and PACE_SECONDS > 0 else None,
             "analyzer_concurrency_limit": int(
-                os.getenv("LOAD_ANALYZER_CONCURRENCY_LIMIT", "1")
+                os.getenv("LOAD_ANALYZER_CONCURRENCY_LIMIT", "2")
             ),
             "analyzer_queue_limit": int(
-                os.getenv("LOAD_ANALYZER_QUEUE_LIMIT", "8")
+                os.getenv("LOAD_ANALYZER_QUEUE_LIMIT", "32")
             ),
             "analyzer_queue_timeout_seconds": float(
-                os.getenv("LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS", "1")
+                os.getenv("LOAD_ANALYZER_QUEUE_TIMEOUT_SECONDS", "30")
             ),
             "guardrail_analyzer_max_connections": int(
                 os.getenv("LOAD_GUARDRAIL_ANALYZER_MAX_CONNECTIONS", "20")
@@ -212,6 +221,8 @@ class ProxyUser(HttpUser):
         error_type = ""
         retry_after_seconds = ""
         deployment_id = ""
+        if REPORTER is not None:
+            REPORTER.request_started()
 
         try:
             with self.client.post(

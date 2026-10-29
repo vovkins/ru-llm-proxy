@@ -1,5 +1,9 @@
 # GPU-профиль Analyzer
 
+Исторический отчёт прежнего исполнения PyTorch. GPU-профиль и команды ниже
+не поддерживаются текущим комплектом:
+[Tiny2/Triton](../ner-triton.md) использует только CPU.
+
 Отчёт фиксирует проверку задачи #71 на одном сервере Ubuntu 24.04 `x86_64`:
 8 vCPU, 31 GB RAM и NVIDIA Tesla T4 16 GB (compute capability 7.5). Использованы
 драйвер 595.71.05, NVIDIA Container Toolkit 1.20.0, PyTorch 2.13.0 и CUDA 12.6.

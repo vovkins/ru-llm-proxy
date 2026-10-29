@@ -988,32 +988,6 @@ def _is_statistical(result: RecognizerResult) -> bool:
     )
 
 
-def _fragment_mode(
-    result: RecognizerResult,
-    kept: list[RecognizerResult],
-) -> str | None:
-    """Which characters of an overlapped result no winner covers may stay masked.
-
-    Additive address/passport rules complete what other detections leave
-    open. A model span keeps its whole remainder when every overlapping winner
-    is statistical too. Against a deterministic winner, which defines the value
-    boundaries, it keeps only a token glued to the right of a winner: a value
-    cut short at ``&`` continues there, while labels such as ``token=``,
-    ``Bearer`` or ``no.`` precede the value and stay visible.
-    """
-    if _recognizer_name(result) in _ADDITIVE_RECOGNIZERS:
-        return "remainder"
-    if detection_source(result) != SOURCE_NER:
-        return None
-    if all(
-        _is_statistical(winner)
-        for winner in kept
-        if _spans_overlap(result.start, result.end, winner.start, winner.end)
-    ):
-        return "remainder"
-    return "glued_right"
-
-
 def _uncovered_fragments(
     text: str,
     kept: list[RecognizerResult],
@@ -1025,15 +999,16 @@ def _uncovered_fragments(
     longer than the winner, so its other characters would reach the provider.
     Every overlapped result already passed the source filters above; each
     uncovered run keeps its type, score and metadata, trimmed of edge spaces.
+    NER and additive rules keep all their remaining coverage even when that
+    also masks a field label or ordinary words included by the model.
     """
-    modes = {id(r): _fragment_mode(r, kept) for r in overlapped}
-    overlapped = [r for r in overlapped if modes[id(r)] is not None]
+    overlapped = [r for r in overlapped if detection_source(r) == SOURCE_NER
+                  or _recognizer_name(r) in _ADDITIVE_RECOGNIZERS]
     if not overlapped:
         return []
     covered = bytearray(len(text))
     for result in kept:
         covered[result.start : result.end] = b"\x01" * (result.end - result.start)
-    winner_ends = {result.end for result in kept}
     fragments = []
     for result in sorted(overlapped, key=lambda r: (r.start, r.start - r.end)):
         index = result.start
@@ -1045,22 +1020,13 @@ def _uncovered_fragments(
             while run_end < result.end and not covered[run_end]:
                 run_end += 1
             start, end = index, run_end
-            if modes[id(result)] == "glued_right":
-                if start not in winner_ends or text[start].isspace():
-                    index = run_end
-                    continue
-                end = start
-                while end < run_end and not text[end].isspace():
-                    end += 1
             while start < end and text[start].isspace():
                 start += 1
             while end > start and text[end - 1].isspace():
                 end -= 1
             if start < end:
                 fragments.append(_copy_name(result, start=start, end=end))
-                # Trimming or glued_right may shorten the uncovered run. Only
-                # the emitted span is covered; later eligible findings still
-                # need to see its unmasked remainder.
+                # Mark only emitted coverage, not the trimmed edge whitespace.
                 covered[start:end] = b"\x01" * (end - start)
             index = run_end
     return fragments

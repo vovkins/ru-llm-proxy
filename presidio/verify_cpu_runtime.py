@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import re
 import shutil
+from pathlib import Path
 
-import torch
 
-
-EXPECTED_TORCH_VERSION = "2.13.0+cpu"
+FORBIDDEN_MODULES = ("torch", "transformers", "onnx", "onnxruntime", "safetensors")
 FORBIDDEN_EXECUTABLES = ("curl", "gcc", "g++")
 
 
@@ -25,21 +25,17 @@ def _forbidden_packages() -> list[str]:
         if not raw_name:
             continue
         name = _canonical_package_name(raw_name)
-        if name.startswith(("nvidia-", "cuda-", "triton")):
+        if name in FORBIDDEN_MODULES or name.startswith(("nvidia-", "cuda-", "triton")):
             forbidden.append(name)
     return sorted(set(forbidden))
 
 
 def verify_cpu_runtime() -> None:
-    actual_version = str(torch.__version__)
-    if actual_version != EXPECTED_TORCH_VERSION:
-        raise RuntimeError(
-            f"expected torch {EXPECTED_TORCH_VERSION}, got {actual_version}"
-        )
-    if torch.version.cuda is not None:
-        raise RuntimeError(f"CPU image contains CUDA build {torch.version.cuda}")
-    if torch.cuda.is_available():
-        raise RuntimeError("CPU image unexpectedly reports CUDA as available")
+    for name in FORBIDDEN_MODULES:
+        if importlib.util.find_spec(name) is not None:
+            raise RuntimeError("Analyzer contains forbidden execution module: " + name)
+    if any(Path("/opt/models").rglob("*.safetensors")) or any(Path("/opt/models").rglob("*.onnx")):
+        raise RuntimeError("Analyzer contains model execution weights")
 
     forbidden_packages = _forbidden_packages()
     if forbidden_packages:
@@ -60,7 +56,7 @@ def verify_cpu_runtime() -> None:
         )
 
     print(
-        f"CPU runtime verified: torch={actual_version}, "
+        "CPU Analyzer verified: local execution libraries/weights=absent, "
         "CUDA packages=absent, build tools=absent",
         flush=True,
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import io
 from pathlib import Path
 
 import pytest
@@ -70,13 +71,13 @@ def test_project_manifest_pins_only_runtime_model_files():
     manifest_path = Path(__file__).resolve().parents[1] / "model_manifest.json"
     manifest = load_manifest(manifest_path)
 
-    assert manifest.model_id == "fef2/ner_rus_bert-secret_detection"
-    assert manifest.revision == "52b5b0745aac14f73fcf2ac0f91d9b5001a85ae4"
+    assert manifest.model_id == "Katerina-Bir/rubert-tiny2-secret-detection"
+    assert manifest.revision == "4137142e79d52b0b69370e0e3dceb2d6ad82591d"
     assert manifest.architecture == "BertForTokenClassification"
     assert {model_file.path for model_file in manifest.files} == EXPECTED_MODEL_FILES
     weights = next(item for item in manifest.files if item.path == "model.safetensors")
-    assert weights.size == 709127044
-    assert weights.sha256 == "6a2c875d02398554ec69384f489a0bf4fe3505fc347c6cdd3385d4fd31ef21a4"
+    assert weights.size == 116412100
+    assert weights.sha256 == "dcbacfba6daeb68cf87bfcf229fbb29f9639b8cc81383e631262247d07bd1d7d"
 
 
 @pytest.mark.parametrize(
@@ -176,3 +177,48 @@ def test_download_model_rejects_existing_different_revision(tmp_path):
 
     with pytest.raises(ModelArtifactError, match="does not match"):
         download_model(changed_manifest, output_directory)
+
+
+def test_download_model_rejects_partial_download_atomically(tmp_path, monkeypatch):
+    files = {name: f"{name}-content".encode() for name in EXPECTED_MODEL_FILES}
+    manifest_path = _write_manifest(tmp_path / "manifest.json", files)
+    def fail_download(_url, destination, expected):
+        destination.write_bytes(files[expected.path][:1])
+        raise OSError("interrupted")
+
+    monkeypatch.setattr("presidio.download_hf_model.download_file", fail_download)
+    with pytest.raises(OSError, match="interrupted"):
+        download_model(manifest_path, tmp_path / "model")
+    assert not (tmp_path / "model").exists()
+    assert not list(tmp_path.glob("hf-ner-model-*"))
+
+
+def test_removed_profile_and_local_artifact_options_are_rejected():
+    from presidio.download_hf_model import build_parser
+
+    for args in (["--profile", "bert"], ["--local-artifacts-root", "/tmp/models"]):
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(args)
+
+
+def test_existing_artifact_is_reverified_without_network(tmp_path, monkeypatch):
+    files = {"config.json": b"{}"}
+    path = _write_manifest(tmp_path / "manifest.json", files)
+    directory = _write_model_directory(tmp_path / "model", path, files)
+    monkeypatch.setattr("presidio.download_hf_model.download_file", lambda *_: pytest.fail("network"))
+    download_model(path, directory)
+    (directory / "config.json").write_bytes(b"[]")
+    with pytest.raises(ModelArtifactError, match="SHA-256"):
+        download_model(path, directory)
+
+
+@pytest.mark.parametrize("content,error", [(b"x", "size"), (b"xxx", "size"), (b"[]", "SHA-256")])
+def test_download_file_checks_size_and_hash(tmp_path, monkeypatch, content, error):
+    from presidio.download_hf_model import download_file
+
+    path = _write_manifest(tmp_path / "manifest.json", {"config.json": b"{}"})
+    expected = load_manifest(path).files[0]
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_kw: io.BytesIO(content))
+    with pytest.raises(ModelArtifactError, match=error):
+        download_file("https://example.invalid/model", tmp_path / "file", expected)
+    assert (tmp_path / "file").stat().st_size <= expected.size

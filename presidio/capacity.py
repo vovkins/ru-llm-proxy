@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from typing import Any
 
 
-DEFAULT_CONCURRENCY_LIMIT = 1
-DEFAULT_QUEUE_LIMIT = 8
-DEFAULT_QUEUE_TIMEOUT_SECONDS = 1.0
+DEFAULT_CONCURRENCY_LIMIT = 2
+DEFAULT_QUEUE_LIMIT = 32
+DEFAULT_QUEUE_TIMEOUT_SECONDS = 30.0
 DEFAULT_RETRY_AFTER_SECONDS = 1
 SERVICE_TIME_EWMA_ALPHA = 0.2
 
@@ -50,8 +50,10 @@ def _get_int_env(name: str, default: int, minimum: int) -> int:
     try:
         value = int(raw_value)
     except ValueError:
-        return default
-    return value if value >= minimum else default
+        raise ValueError(f"{name} must be an integer >= {minimum}") from None
+    if value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
+    return value
 
 
 def _get_float_env(name: str, default: float, minimum: float) -> float:
@@ -61,8 +63,10 @@ def _get_float_env(name: str, default: float, minimum: float) -> float:
     try:
         value = float(raw_value)
     except ValueError:
-        return default
-    return value if value >= minimum else default
+        raise ValueError(f"{name} must be finite and >= {minimum}") from None
+    if not math.isfinite(value) or value < minimum:
+        raise ValueError(f"{name} must be finite and >= {minimum}")
+    return value
 
 
 def load_capacity_settings() -> CapacitySettings:
@@ -136,7 +140,7 @@ class AnalyzerCapacityLimiter:
         )
         return min(3_600, max(1, math.ceil(estimate)))
 
-    async def acquire(self) -> AnalyzerCapacitySlot:
+    async def acquire(self, *, timeout_seconds: float | None = None) -> AnalyzerCapacitySlot:
         """Acquire a capacity slot or reject when queue policy is exceeded."""
         waiter: asyncio.Future[None] | None = None
         async with self._condition:
@@ -155,7 +159,10 @@ class AnalyzerCapacityLimiter:
             self._waiters.append(waiter)
 
         try:
-            await asyncio.wait_for(waiter, timeout=self.queue_timeout_seconds)
+            timeout = self.queue_timeout_seconds
+            if timeout_seconds is not None:
+                timeout = min(timeout, max(0.0, timeout_seconds))
+            await asyncio.wait_for(waiter, timeout=timeout)
             return AnalyzerCapacitySlot(self)
         except (TimeoutError, asyncio.TimeoutError) as exc:
             await self._cancel_waiter_or_release_reserved_slot(waiter)

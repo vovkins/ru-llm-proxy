@@ -16,16 +16,18 @@
 | Компонент | Ответственность |
 | --- | --- |
 | LiteLLM | Клиентские API и ключи, публичные имена моделей, защитные обработчики и выбор направления |
-| PII Guardrail и Presidio Analyzer | Проверка, блокировка или маскирование до выхода из прокси; восстановление ответа |
+| PII Guardrail | Защитные политики, маскирование до выхода из прокси и восстановление ответа |
+| Presidio Analyzer и Tiny2/Triton | Поиск сущностей, правила и контекст spaCy, очереди и вычисления модели |
 | `codex-lb` | OAuth-подписки ChatGPT, каталог моделей, квоты, выбор учётной записи и привязка по диалогу/кэшу |
 | PostgreSQL LiteLLM | Пользователи, ключи, бюджеты и состояние LiteLLM |
 | PostgreSQL `codex-lb` | Учётные записи, настройки, маршрутизация и журналы `codex-lb` |
 | Redis | Временные `pii_mapping:*`, ограниченное состояние Responses и привязки LiteLLM для моделей, обслуживаемых напрямую |
 
 ```text
-Клиент -> LiteLLM -> PII Guardrail -> Presidio Analyzer
-       -> PII Guardrail -> codex-lb -> OAuth-подписка -> OpenAI
-       -> PII Guardrail -> клиент
+Клиент -> Nginx -> LiteLLM + PII Guardrail
+  анализ: Presidio -> правила/лёгкий spaCy + Tiny2/Triton через Nginx:8000
+  вызов:  подготовленный запрос -> codex-lb -> OAuth-подписка -> OpenAI
+  ответ:  codex-lb -> LiteLLM + восстановление -> Nginx -> клиент
 
 Клиент -> LiteLLM -> тот же защитный путь -> Z.AI/другой провайдер напрямую
 ```
@@ -39,7 +41,7 @@ LiteLLM передаёт `codex-lb` уже подготовленный запр
 
 | Значение `STACK` | Компоненты |
 | --- | --- |
-| `litellm-presidio` | Nginx, LiteLLM, Analyzer, Redis и PostgreSQL LiteLLM |
+| `litellm-presidio` | Nginx, LiteLLM, Presidio Analyzer, Triton, Redis и PostgreSQL LiteLLM |
 | `litellm-presidio-codex-lb` | Базовый состав, `codex-lb` и его отдельный PostgreSQL |
 
 Расширенный состав уже включает базовый. Последовательно выполнять `setup` для

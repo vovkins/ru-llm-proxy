@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import json
 
-from ner import MODEL_ID, MODEL_REVISION, HuggingFaceNERRecognizer
+from ner import MODEL_ID, MODEL_REVISION, TritonNERRecognizer
 
 
 def main() -> None:
-    recognizer = HuggingFaceNERRecognizer()
+    recognizer = TritonNERRecognizer()
     short_text = "Клиент Иван Петров подписал договор номер AB-12345."
     short_results = recognizer.analyze(
         short_text,
