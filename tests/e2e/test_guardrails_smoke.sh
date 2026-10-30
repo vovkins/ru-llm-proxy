@@ -334,14 +334,32 @@ expect_responses_stream_events() {
 
 expect_chat_tool_restoration() {
     local label="$1"
+    local summary
 
-    if jq -e --arg marker "$SMOKE_PII_MARKER" \
+    if ! jq -e 'type == "object" and (.choices | type == "array") and
+        (.choices[0] | type == "object") and (.choices[0].message | type == "object")' \
+        "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label returned invalid Chat response JSON"
+        return
+    fi
+    summary=$(jq -r '.choices[0] | .finish_reason as $reason |
+        "finish_reason=\(if ["stop", "length", "tool_calls", "function_call", "content_filter"] |
+            index($reason) then $reason else "unknown" end), tool_calls=\(
+            .message.tool_calls | if type == "array" then length else 0 end)"' "$BODY_FILE")
+    if ! jq -e '.choices[0].message.tool_calls | type == "array" and length > 0' \
+        "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label did not return a function call ($summary)"
+    elif ! jq -e '.choices[0].message.tool_calls[0].function.arguments | fromjson |
+        type == "object"' "$BODY_FILE" >/dev/null 2>&1; then
+        fail "$label returned invalid tool argument JSON ($summary)"
+    elif grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        fail "$label left an email placeholder in the response ($summary)"
+    elif jq -e --arg marker "$SMOKE_PII_MARKER" \
         '.choices[0].message.tool_calls[0].function.arguments | fromjson | .email == $marker' \
-        "$BODY_FILE" >/dev/null &&
-        ! grep -Eq '<EMAIL_ADDRESS_[0-9]+>' "$BODY_FILE"; then
+        "$BODY_FILE" >/dev/null 2>&1; then
         pass "$label restored the tool argument"
     else
-        fail "$label did not restore the tool argument"
+        fail "$label returned a different tool argument value ($summary)"
     fi
 }
 
@@ -456,6 +474,10 @@ run_protocol_smoke() {
 
     if ! resolve_responses_profile; then return; fi
 
+    if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
+        responses_tool_prompt="Call record_contact with the following opaque test value as the email argument. Copy it exactly, including any angle brackets. Do not validate the value, replace it, or ask for a real email: "
+    fi
+
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
         model: $model,
         stream: true,
@@ -468,11 +490,12 @@ run_protocol_smoke() {
         expect_responses_stream_restoration
     fi
 
-    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" '{
+    payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" \
+        --arg prompt "$responses_tool_prompt" '{
         model: $model,
         messages: [{
             role: "user",
-            content: ("Call record_contact with this exact email: " + $marker)
+            content: ($prompt + $marker)
         }],
         tools: [{
             type: "function",
@@ -504,9 +527,6 @@ run_protocol_smoke() {
         fi
     done
 
-    if [ "$RESPONSES_PROFILE" = chat_bridge ]; then
-        responses_tool_prompt="Call record_contact with the following opaque test value as the email argument. Copy it exactly, including any angle brackets. Do not validate the value, replace it, or ask for a real email: "
-    fi
     payload=$(jq -nc --arg model "$RESPONSES_MODEL" --arg marker "$SMOKE_PII_MARKER" \
         --arg prompt "$responses_tool_prompt" '{
         model: $model,

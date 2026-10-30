@@ -32,6 +32,28 @@ from ner_test_support import (
 MASTER = "sk-topology-test-only"
 PHONE = "+79031234567"
 OTHER_PHONE = "+79031234568"
+DIAGNOSTIC_LOG_BYTES = 256 * 1024
+DIAGNOSTIC_BODY_BYTES = 64 * 1024
+
+
+class HTTPStatusFailure(AssertionError):
+    """Keep response evidence private instead of embedding it in a traceback."""
+
+    def __init__(self, status, expected, body, path, stream=None):
+        self.details = {"http_status": status, "expected_status": expected, "path": path, "stream": stream}
+        self.response_body = body.encode()
+        super().__init__(f"Unexpected HTTP {status} for {path} (stream={stream}); expected {expected}")
+
+
+def require_http_status(status, body, expected, path, stream=None):
+    if status != expected:
+        raise HTTPStatusFailure(status, expected, body, path, stream)
+
+
+def private_diagnostic_file(path, data):
+    with path.open("xb") as output:
+        os.fchmod(output.fileno(), 0o600)
+        output.write(data)
 
 
 def docker(*args):
@@ -54,11 +76,10 @@ def assert_request(url, mode, api, stream, token, phone=PHONE):
     payload = {"model": "mock-chat" if api == "chat/completions" else "mock-responses", "stream": stream}
     payload.update({"messages": [{"role": "user", "content": text}]} if api == "chat/completions" else {"input": text})
     status, body = request(url, "/v1/" + api, payload, token)
+    require_http_status(status, body, 422 if mode == "block" else 200, "/v1/" + api, stream)
     if mode == "block":
-        assert status == 422, (status, body[:300])
         assert phone not in body, "Blocked error disclosed PII"
     else:
-        assert status == 200, (status, body[:300])
         assert phone in body, "Original value was not restored"
         assert (OTHER_PHONE if phone == PHONE else PHONE) not in body, "Cross-user mapping leaked"
         assert "<PII_" not in body, "Placeholder escaped to client"
@@ -111,6 +132,7 @@ class Gate:
         return [line for line in self.env_file.read_text().splitlines() if not line.startswith("PII_GUARDRAIL_MODE=")]
 
     def context(self, stack, topology, mode, resources_file=None, triton_replicas=1):
+        self.result["operation"] = "configure"
         if self.ipv4_subnet is None:
             raise RuntimeError("Test IPv4 subnet must be collected before creating the topology")
         networks = topology_networks(self.ipv4_subnet, stack.endswith("codex-lb"))
@@ -198,6 +220,7 @@ class Gate:
         return ctx.compose("exec", "-T", "redis", "redis-cli", "--raw", *args, capture=True).strip()
 
     def verify_state(self, ctx, first=False):
+        self.result["operation"] = "verify-state"
         if first:
             self.redis(ctx, "SET", "topology-gate:sentinel", "preserved")
             ctx.compose("exec", "-T", "db", "psql", "-U", "litellm", "-c", "CREATE TABLE topology_gate (value text); INSERT INTO topology_gate VALUES ('preserved');", capture=True)
@@ -254,7 +277,7 @@ class Gate:
                 if previous:
                     payload["previous_response_id"] = previous
                 result = self.replica_request(ctx, replicas[index % 2], payload, token, "responses")
-                assert result["status"] == 200, result
+                require_http_status(result["status"], result["body"], 200, "/v1/responses", stream)
                 previous, restored = decode(result["body"], stream)
                 assert all(value in restored for value in expected), restored
                 assert "<PHONE_NUMBER_" not in restored, restored
@@ -263,6 +286,7 @@ class Gate:
         )
 
     def exercise(self, ctx, token, other_token):
+        self.result["operation"] = "exercise"
         url = self.url(ctx, "nginx", 80)
         mock = self.url(ctx, "mock-upstream", 8080)
         request(mock, "/capture/reset", {})
@@ -286,7 +310,8 @@ class Gate:
             if item["Config"]["Labels"].get("com.docker.compose.service") == "litellm":
                 hits = self.cache_hits(item)
                 result = self.replica_request(ctx, item, payload, token)
-                assert result["status"] == (422 if ctx.mode == "block" else 200)
+                require_http_status(result["status"], result["body"], 422 if ctx.mode == "block" else 200,
+                                    "/v1/chat/completions", False)
                 assert (PHONE in result["body"]) == (ctx.mode == "mask")
                 assert self.cache_hits(item) > hits, "Replica did not reuse shared analysis cache"
         assert self.redis(ctx, "KEYS", "pii_mapping:*") == "", "Mapping not cleaned after response"
@@ -301,6 +326,7 @@ class Gate:
         print("CASE PASSED", ctx.stack, ctx.topology, ctx.mode, flush=True)
 
     def resilience(self, ctx, token):
+        self.result["operation"] = "resilience"
         url = self.url(ctx, "nginx", 80)
         lite = [item for item in ctx.containers() if item["Config"]["Labels"].get("com.docker.compose.service") == "litellm"]
         docker("stop", lite[0]["Id"])
@@ -313,7 +339,8 @@ class Gate:
         mock = self.url(ctx, "mock-upstream", 8080)
         request(mock, "/capture/reset", {})
         status, body = request(url, "/v1/chat/completions", {"model": "mock-chat", "messages": [{"role": "user", "content": "Телефон другого клиента +79031234569."}]}, token)
-        assert status == 503 and "+79031234569" not in body
+        require_http_status(status, body, 503, "/v1/chat/completions")
+        assert "+79031234569" not in body
         assert json.loads(request(mock, "/capture")[1])["provider_requests"] == 0
         before_restart = {item["Id"] for item in ctx.containers() if item["Config"]["Labels"].get("com.docker.compose.service") in ctx.counts}
         ctx.start(force=True)
@@ -358,19 +385,20 @@ class Gate:
                     assert not ctx.model["services"]["ner-triton"].get("container_name")
                     assert not ctx.model["services"]["ner-triton"].get("ports")
                     ctx.compose("up", "-d", "--no-build", "--no-deps", "mock-upstream")
+                    self.result["operation"] = "start"
                     ctx.start()
                     check_internal_network(ctx.model["networks"]["ru-llm-proxy"]["name"])
                     self.verify_state(ctx, first=token is None)
                     url = self.url(ctx, "nginx", 80)
                     if token is None:
                         status, body = request(url, "/key/generate", {"models": ["mock-chat", "mock-responses"], "key_alias": "topology-gate"})
-                        assert status == 200, (status, body[:200])
+                        require_http_status(status, body, 200, "/key/generate")
                         token = json.loads(body)["key"]
                         status, body = request(url, "/key/generate", {"models": ["mock-chat", "mock-responses"], "key_alias": "topology-gate-other"})
-                        assert status == 200
+                        require_http_status(status, body, 200, "/key/generate")
                         other_token = json.loads(body)["key"]
                     status, body, headers = request(url, "/v1/chat/completions", {"model": "mock-chat", "messages": [{"role": "user", "content": "ok"}]}, token, headers=True)
-                    assert status == 200
+                    require_http_status(status, body, 200, "/v1/chat/completions")
                     current = headers.get("x-litellm-model-id")
                     assert current and (affinity is None or affinity == current), "Affinity changed after topology/policy switch"
                     affinity = current
@@ -380,7 +408,8 @@ class Gate:
                         ctx = self.resilience(ctx, token)
                     self.exercise(ctx, token, other_token)
                     if ctx.extended:
-                        assert request(self.url(ctx, "nginx", 2455), "/health/ready")[0] == 200
+                        status, body = request(self.url(ctx, "nginx", 2455), "/health/ready")
+                        require_http_status(status, body, 200, "/health/ready")
                 ctx.compose("down", "-v", "--remove-orphans")
             self.result["checks"].append("Both topologies, both policies, both stacks, both APIs/stream modes; state/secrets, shared analysis cache hits, limits, per-replica readiness/metrics and mapping cleanup")
             self.result.update(status="passed", phase="completed")
@@ -393,11 +422,52 @@ class Gate:
                 self.result["failure_origin"] = {"file": Path(origin.tb_frame.f_code.co_filename).name,
                                                  "function": origin.tb_frame.f_code.co_name,
                                                  "line": origin.tb_lineno}
+            try:
+                self.capture_failure(exc)
+            except Exception as diagnostic_error:
+                self.result["diagnostics"] = {"status": "failed", "error_type": type(diagnostic_error).__name__}
             raise
         finally:
             self.stop.set()
             monitor.join(timeout=15)
             self.cleanup()
+
+    def capture_failure(self, exc):
+        # Outside the disposable Compose directory and public CI JSON artifacts.
+        directory = Path(tempfile.mkdtemp(prefix="ru-proxy-topology-diagnostics-"))
+        report = {"directory": str(directory), "phase": self.result.get("phase"),
+                  "operation": self.result.get("operation"), "status": "saved", "containers": [], "errors": []}
+        self.result["diagnostics"] = report
+        if isinstance(exc, HTTPStatusFailure):
+            report["http_failure"] = dict(exc.details, response_bytes=len(exc.response_body),
+                                          response_truncated=len(exc.response_body) > DIAGNOSTIC_BODY_BYTES)
+            private_diagnostic_file(directory / "response.body", exc.response_body[:DIAGNOSTIC_BODY_BYTES])
+        rows = []
+        if self.last_context is not None:
+            try:
+                rows = self.last_context.containers()
+            except Exception as error:
+                report["errors"].append({"operation": "inspect", "error_type": type(error).__name__})
+        for row in rows:
+            item = {"id": row["Id"], "name": row["Name"].lstrip("/"), "image_id": row["Image"],
+                    "service": row["Config"]["Labels"].get("com.docker.compose.service"),
+                    "status": row["State"]["Status"], "health": row["State"].get("Health", {}).get("Status"),
+                    "oom_killed": row["State"].get("OOMKilled"), "restarts": row["RestartCount"],
+                    "addresses": {name: {key: value.get(key) for key in ("IPAddress", "GlobalIPv6Address")}
+                                  for name, value in row["NetworkSettings"]["Networks"].items()}}
+            report["containers"].append(item)
+            try:
+                log = subprocess.run(["docker", "logs", "--timestamps", "--tail", "200", row["Id"]],
+                                     capture_output=True, timeout=15)
+                data = log.stdout + log.stderr
+                item.update(log_exit_code=log.returncode, log_truncated=len(data) > DIAGNOSTIC_LOG_BYTES)
+                private_diagnostic_file(directory / (row["Id"][:12] + ".log"), data[-DIAGNOSTIC_LOG_BYTES:])
+            except (OSError, subprocess.SubprocessError) as error:
+                report["errors"].append({"operation": "logs", "container_id": row["Id"],
+                                         "error_type": type(error).__name__})
+        if report["errors"]:
+            report["status"] = "partial"
+        private_diagnostic_file(directory / "state.json", (json.dumps(report, indent=2) + "\n").encode())
 
     def cleanup(self):
         ctx = self.last_context

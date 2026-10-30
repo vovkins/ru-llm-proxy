@@ -343,7 +343,36 @@ class GuardrailsSmokeProtocolTest(unittest.TestCase):
                             event = {"choices": [{"delta": message}]}
                             self.reply("data: " + json.dumps(event, separators=(",", ":")) + "\n\ndata: [DONE]\n\n", stream=True)
                         else:
-                            self.reply({"choices": [{"message": message}]})
+                            choice = {"message": message, "finish_reason": "tool_calls" if tool else "stop"}
+                            response = {"choices": [choice]}
+                            if tool:
+                                response["metadata"] = {"private": "DO_NOT_PRINT_RESPONSE_CONTENT"}
+                                if fault == "chat_invalid_response":
+                                    self.reply("not-json DO_NOT_PRINT_RESPONSE_CONTENT")
+                                    return
+                                if fault == "chat_no_choices":
+                                    response["choices"] = []
+                                elif fault in {"chat_missing_tool_call", "chat_length_without_call", "chat_untrusted_finish"}:
+                                    choice["message"] = {"content": "DO_NOT_PRINT_RESPONSE_CONTENT"}
+                                    choice["finish_reason"] = {
+                                        "chat_missing_tool_call": "stop", "chat_length_without_call": "length",
+                                        "chat_untrusted_finish": "DO_NOT_PRINT_RESPONSE_CONTENT",
+                                    }[fault]
+                                elif fault == "chat_invalid_arguments":
+                                    message["tool_calls"][0]["function"]["arguments"] = '{"email":"DO_NOT_PRINT_RESPONSE_CONTENT'
+                                elif fault == "chat_null_arguments":
+                                    message["tool_calls"][0]["function"]["arguments"] = None
+                                elif fault == "chat_nonobject_arguments":
+                                    message["tool_calls"][0]["function"]["arguments"] = '[]'
+                                elif fault == "chat_wrong_arguments":
+                                    message["tool_calls"][0]["function"]["arguments"] = json.dumps({"email": "wrong@example.test"})
+                                elif fault == "chat_missing_email":
+                                    message["tool_calls"][0]["function"]["arguments"] = json.dumps({"contact": marker})
+                                elif fault == "chat_argument_placeholder":
+                                    message["tool_calls"][0]["function"]["arguments"] = json.dumps({"email": "<EMAIL_ADDRESS_1>"})
+                                elif fault == "chat_other_placeholder":
+                                    message["content"] = "<EMAIL_ADDRESS_2>"
+                            self.reply(response)
 
             server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -384,6 +413,28 @@ class GuardrailsSmokeProtocolTest(unittest.TestCase):
             if payload.get("tools"):
                 self.assertEqual(payload["input"], "Call record_contact with this exact email: protocol-smoke@example.test")
                 self.assertEqual(payload["max_output_tokens"], 512)
+        self.assert_chat_tool_payloads(requests, bridge=False)
+
+    def assert_chat_tool_payloads(self, requests, *, bridge):
+        tools = [p for path, p in requests if path == "/v1/chat/completions" and p.get("tools")]
+        self.assertEqual(len(tools), 2)
+        self.assertEqual([p["stream"] for p in tools], [False, True])
+        for payload in tools:
+            prompt = payload["messages"][0]["content"]
+            if bridge:
+                self.assertIn("opaque test value", prompt)
+                self.assertIn("Do not validate the value", prompt)
+                self.assertTrue(prompt.endswith("protocol-smoke@example.test"))
+            else:
+                self.assertEqual(prompt, "Call record_contact with this exact email: protocol-smoke@example.test")
+            self.assertEqual(payload["max_tokens"], 512)
+            self.assertEqual(payload["tool_choice"], {"type": "function", "function": {"name": "record_contact"}})
+            self.assertEqual(payload["tools"], [{"type": "function", "function": {
+                "name": "record_contact", "description": "Store a synthetic contact", "parameters": {
+                    "type": "object", "properties": {"email": {"type": "string"}},
+                    "required": ["email"], "additionalProperties": False,
+                },
+            }}])
 
     def test_bridge_routes_check_rejections_and_supported_alternatives(self):
         for profile in ("bridge", "bridge_prefix", "bridge_custom_provider"):
@@ -414,10 +465,32 @@ class GuardrailsSmokeProtocolTest(unittest.TestCase):
                     "type": "object", "properties": {"email": {"type": "string"}},
                     "required": ["email"], "additionalProperties": False,
                 })
-                chat_tools = [p for path, p in requests if path == "/v1/chat/completions" and p.get("tools")]
-                self.assertTrue(all(p["messages"][0]["content"] ==
-                                    "Call record_contact with this exact email: protocol-smoke@example.test"
-                                    for p in chat_tools))
+                self.assert_chat_tool_payloads(requests, bridge=True)
+
+    def test_chat_tool_failures_are_distinct_private_and_never_retried(self):
+        faults = {
+            "chat_invalid_response": "returned invalid Chat response JSON",
+            "chat_no_choices": "returned invalid Chat response JSON",
+            "chat_missing_tool_call": "did not return a function call (finish_reason=stop, tool_calls=0)",
+            "chat_length_without_call": "did not return a function call (finish_reason=length, tool_calls=0)",
+            "chat_untrusted_finish": "did not return a function call (finish_reason=unknown, tool_calls=0)",
+            "chat_invalid_arguments": "returned invalid tool argument JSON",
+            "chat_null_arguments": "returned invalid tool argument JSON",
+            "chat_nonobject_arguments": "returned invalid tool argument JSON",
+            "chat_wrong_arguments": "returned a different tool argument value",
+            "chat_missing_email": "returned a different tool argument value",
+            "chat_argument_placeholder": "left an email placeholder in the response",
+            "chat_other_placeholder": "left an email placeholder in the response",
+        }
+        for profile in ("bridge", "native"):
+            for fault, message in faults.items():
+                with self.subTest(profile=profile, fault=fault):
+                    result, requests = self.run_smoke(profile, fault)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    label = "Chat Completions tool request (non-stream) "
+                    self.assertIn(label + message, result.stdout)
+                    self.assertNotIn(label + "restored the tool argument", result.stdout)
+                    self.assert_chat_tool_payloads(requests, bridge=profile != "native")
 
     def test_nonstream_tool_failures_are_distinct_and_never_accept_plain_text(self):
         faults = {
