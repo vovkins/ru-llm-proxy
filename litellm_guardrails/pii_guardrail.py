@@ -2601,13 +2601,16 @@ class RuPIIGuardrail(CustomGuardrail):
         started_at = time.perf_counter()
         try:
             redis = await self._get_redis()
-            await redis.setex(cache_key, self.mapping_ttl_seconds, serialized)
-            await redis.zadd(ANALYSIS_CACHE_INDEX_KEY, {cache_key: time.time()})
-            await redis.expire(
+            pipeline = redis.pipeline(transaction=False)
+            pipeline.setex(cache_key, self.mapping_ttl_seconds, serialized)
+            pipeline.zadd(ANALYSIS_CACHE_INDEX_KEY, {cache_key: time.time()})
+            pipeline.expire(
                 ANALYSIS_CACHE_INDEX_KEY,
                 self.mapping_ttl_seconds * 2,
             )
-            entry_count = await redis.zcard(ANALYSIS_CACHE_INDEX_KEY)
+            pipeline.zcard(ANALYSIS_CACHE_INDEX_KEY)
+            results = await pipeline.execute()
+            entry_count = results[-1]
             if isinstance(entry_count, int) and entry_count > ANALYSIS_CACHE_MAX_ENTRIES:
                 evicted = await redis.zpopmin(
                     ANALYSIS_CACHE_INDEX_KEY,
