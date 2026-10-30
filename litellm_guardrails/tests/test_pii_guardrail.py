@@ -78,7 +78,37 @@ def _mock_redis(get_value=None):
     redis.expire = AsyncMock()
     redis.zcard = AsyncMock(return_value=0)
     redis.zpopmin = AsyncMock(return_value=[])
+    redis._pipelines = []
+
+    def create_pipeline(**_kwargs):
+        pipeline = _RedisPipeline(redis)
+        redis._pipelines.append(pipeline)
+        return pipeline
+
+    redis.pipeline = MagicMock(side_effect=create_pipeline)
     return redis
+
+
+class _RedisPipeline:
+    def __init__(self, redis):
+        self.redis = redis
+        self.commands = []
+
+    def __getattr__(self, name):
+        if name not in {"setex", "zadd", "expire", "zcard"}:
+            raise AttributeError(name)
+
+        def queue(*args):
+            self.commands.append((name, args))
+            return self
+
+        return queue
+
+    async def execute(self):
+        results = []
+        for name, args in self.commands:
+            results.append(await getattr(self.redis, name)(*args))
+        return results
 
 
 class _MemoryRedis:
@@ -112,6 +142,9 @@ class _MemoryRedis:
         for key, _score in ordered:
             self.index.pop(key, None)
         return ordered
+
+    def pipeline(self, **_kwargs):
+        return _RedisPipeline(self)
 
 
 def _responses_api_response(output):
@@ -1116,12 +1149,21 @@ class TestAnalysisCache:
 
         assert result == entities
         analyze.assert_awaited_once_with(source)
-        cache_key, ttl, serialized = guardrail._redis.setex.await_args.args
+        pipeline = guardrail._redis._pipelines[0]
+        assert pipeline.commands[0][0] == "setex"
+        cache_key, ttl, serialized = pipeline.commands[0][1]
         assert cache_key.startswith(pii_guardrail.ANALYSIS_CACHE_KEY_PREFIX)
         assert ttl == guardrail.mapping_ttl_seconds
         assert source not in cache_key
         assert source not in serialized
         assert "+79031234567" not in serialized
+        assert [name for name, _args in pipeline.commands] == [
+            "setex",
+            "zadd",
+            "expire",
+            "zcard",
+        ]
+        guardrail._redis.pipeline.assert_called_once_with(transaction=False)
 
     @pytest.mark.asyncio
     async def test_changed_signature_does_not_reuse_false_positive(self, guardrail):
