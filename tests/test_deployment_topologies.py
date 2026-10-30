@@ -3,10 +3,12 @@
 import importlib.util
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -652,13 +654,18 @@ def test_documentation_and_mock_gate_cover_context_contract():
 
 
 @pytest.fixture
-def topology_gate():
+def topology_module():
     module_spec = importlib.util.spec_from_file_location(
         "deployment_topology_gate", ROOT / "tests/e2e/deployment_topology_gate.py",
     )
     module = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(module)
-    return module.Gate
+    return module
+
+
+@pytest.fixture
+def topology_gate(topology_module):
+    return topology_module.Gate
 
 
 def gate_container(host="127.0.0.1", published="54321", *, running=True, service="nginx"):
@@ -692,3 +699,108 @@ def test_invalid_local_gate_binding_fails_explicitly(topology_gate, binding):
     context.containers.return_value = [binding]
     with pytest.raises(RuntimeError, match="No local published TCP port"):
         topology_gate.url(None, context, "nginx", 80)
+
+
+@pytest.mark.parametrize("api", ["chat/completions", "responses"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("mode,expected", [("mask", 200), ("block", 422)])
+def test_topology_http_failure_keeps_status_without_disclosing_body(topology_module, monkeypatch, api, stream, mode, expected):
+    monkeypatch.setattr(topology_module, "request", lambda *args: (502, "DO_NOT_PRINT_RESPONSE_BODY"))
+    with pytest.raises(topology_module.HTTPStatusFailure) as failure:
+        topology_module.assert_request("http://localhost", mode, api, stream, "sk-private-test")
+    assert failure.value.details == {"http_status": 502, "expected_status": expected,
+                                     "path": "/v1/" + api, "stream": stream}
+    assert failure.value.response_body == b"DO_NOT_PRINT_RESPONSE_BODY"
+    assert "DO_NOT_PRINT" not in str(failure.value)
+    assert "sk-private-test" not in str(failure.value)
+
+
+@pytest.mark.parametrize("body", ["Not restored", "+79031234567 <PII_1>", "+79031234567 +79031234568"])
+def test_topology_success_status_does_not_weaken_restoration_checks(topology_module, monkeypatch, body):
+    monkeypatch.setattr(topology_module, "request", lambda *args: (200, body))
+    with pytest.raises(AssertionError):
+        topology_module.assert_request("http://localhost", "mask", "responses", False, "sk-private-test")
+
+
+def make_diagnostic_gate(topology_module, tmp_path, monkeypatch):
+    work = tmp_path / "compose-work"
+    work.mkdir()
+    gate = topology_module.Gate(work)
+    gate.result.update(phase="test/production/mask/triton=2", operation="exercise")
+    original_mkdtemp = topology_module.tempfile.mkdtemp
+    monkeypatch.setattr(topology_module.tempfile, "mkdtemp", lambda **kwargs: original_mkdtemp(dir=tmp_path, **kwargs))
+    return gate
+
+
+def test_topology_failure_evidence_is_private_bounded_and_outlives_cleanup(topology_module, tmp_path, monkeypatch):
+    gate = make_diagnostic_gate(topology_module, tmp_path, monkeypatch)
+    sentinel = "DO_NOT_PRINT_RESPONSE_BODY"
+    row = {"Id": "a" * 64, "Name": "/test-litellm-1", "Image": "sha256:test",
+           "Config": {"Labels": {"com.docker.compose.service": "litellm"}, "Env": [sentinel]},
+           "State": {"Status": "running", "Health": {"Status": "healthy", "Log": [sentinel]}, "OOMKilled": False},
+           "RestartCount": 0, "NetworkSettings": {"Networks": {"test-network": {
+               "IPAddress": "172.20.0.2", "GlobalIPv6Address": "", "Aliases": [sentinel]}}}}
+    gate.last_context = SimpleNamespace(containers=lambda: [row])
+    logs = (sentinel + "\n").encode() * topology_module.DIAGNOSTIC_LOG_BYTES
+    collect = MagicMock(return_value=subprocess.CompletedProcess([], 0, stdout=logs, stderr=b""))
+    monkeypatch.setattr(topology_module.subprocess, "run", collect)
+    response = sentinel * topology_module.DIAGNOSTIC_BODY_BYTES
+    failure = topology_module.HTTPStatusFailure(503, 200, response, "/v1/responses", True)
+    gate.capture_failure(failure)
+    report = gate.result["diagnostics"]
+    directory = Path(report["directory"])
+    assert directory.parent == tmp_path and directory != gate.directory
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    for path in directory.iterdir():
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert (directory / "response.body").stat().st_size == topology_module.DIAGNOSTIC_BODY_BYTES
+    assert (directory / ("a" * 12 + ".log")).stat().st_size == topology_module.DIAGNOSTIC_LOG_BYTES
+    assert report["http_failure"]["response_truncated"]
+    assert report["containers"][0]["log_truncated"]
+    assert report["containers"][0]["addresses"] == {"test-network": {"IPAddress": "172.20.0.2", "GlobalIPv6Address": ""}}
+    assert sentinel not in json.dumps(gate.result)
+    assert sentinel not in (directory / "state.json").read_text()
+    collect.assert_called_once_with(["docker", "logs", "--timestamps", "--tail", "200", "a" * 64],
+                                    capture_output=True, timeout=15)
+    shutil.rmtree(gate.directory)
+    assert (directory / "response.body").is_file()
+
+
+def test_topology_inspection_failure_preserves_http_evidence(topology_module, tmp_path, monkeypatch):
+    gate = make_diagnostic_gate(topology_module, tmp_path, monkeypatch)
+    gate.last_context = MagicMock()
+    gate.last_context.containers.side_effect = RuntimeError("DO_NOT_PRINT_INSPECT_ERROR")
+    gate.capture_failure(topology_module.HTTPStatusFailure(502, 200, "private-body", "/v1/responses"))
+    report = gate.result["diagnostics"]
+    assert report["status"] == "partial"
+    assert report["http_failure"]["http_status"] == 502
+    assert report["errors"] == [{"operation": "inspect", "error_type": "RuntimeError"}]
+    assert "DO_NOT_PRINT" not in json.dumps(gate.result)
+
+
+@pytest.mark.parametrize("collection_fails", [False, True])
+def test_topology_captures_before_cleanup_without_masking_original_failure(topology_module, tmp_path, monkeypatch, collection_fails):
+    gate = make_diagnostic_gate(topology_module, tmp_path, monkeypatch)
+    events = []
+    failure = topology_module.HTTPStatusFailure(503, 200, "private-body", "/v1/chat/completions")
+    monkeypatch.setitem(sys.modules, "triton_routing_checks", SimpleNamespace(
+        check_no_replay=MagicMock(), check_replica_recovery=MagicMock()))
+    monkeypatch.setattr(topology_module.threading, "Thread", MagicMock())
+    monkeypatch.setattr(topology_module, "image_id", lambda image: image)
+    monkeypatch.setattr(topology_module, "identities", MagicMock(side_effect=failure))
+
+    def capture(exc):
+        assert exc is failure
+        events.append("capture")
+        if collection_fails:
+            raise OSError("DO_NOT_PRINT_DIAGNOSTIC_ERROR")
+
+    monkeypatch.setattr(gate, "capture_failure", capture)
+    monkeypatch.setattr(gate, "cleanup", lambda: events.append("cleanup"))
+    with pytest.raises(topology_module.HTTPStatusFailure) as caught:
+        gate.run()
+    assert caught.value is failure
+    assert events == ["capture", "cleanup"]
+    assert gate.result["status"] == "failed"
+    if collection_fails:
+        assert gate.result["diagnostics"] == {"status": "failed", "error_type": "OSError"}

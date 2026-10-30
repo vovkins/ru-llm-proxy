@@ -1,6 +1,7 @@
 """Deterministic guardrail flow test without external LLM calls."""
 
 import asyncio
+from copy import deepcopy
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -427,6 +428,7 @@ async def _round_trip_through_litellm_parser(
         if required_tool_choice:
             tool_options["tool_choice"] = "required"
         data.update(tool_options)
+    expected_tool_options = deepcopy(tool_options)
     entities = [] if dictionary else [_entity(prompt, original, entity_type)]
     if behavior and instruction == "repeat":
         start = prompt.rindex(original)
@@ -446,6 +448,8 @@ async def _round_trip_through_litellm_parser(
         **({"side_effect": analyzer} if analyzer is not None else {"return_value": entities}),
     ):
         masked = await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+    for key, value in expected_tool_options.items():
+        assert masked[key] == value
     provider_value = "Зетта Групп" if dictionary else f"<{entity_type}_1>"
     mapping_id = masked["metadata"]["pii_request_id"]
     mapping = json.loads(store[f"pii_mapping:{mapping_id}"])
@@ -598,6 +602,8 @@ async def _round_trip_through_litellm_parser(
         requests.append(body)
         assert body.get("stream", False) is stream
         if require_tool:
+            if api == "chat":
+                assert body["tools"] == expected_tool_options["tools"]
             expected_tool_choice = (
                 {"type": "function", "function": {"name": "get_city_code"}}
                 if provider_api == "chat" and not required_tool_choice
