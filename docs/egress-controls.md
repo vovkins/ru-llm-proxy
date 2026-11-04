@@ -61,7 +61,7 @@ Triton — ONNX из образа; Hugging Face при обработке не �
 | `litellm` | `api.z.ai:443` | Провайдер Z.AI GLM (`api_base: https://api.z.ai/api/coding/paas/v4`) |
 | `litellm` | `api.openai.com:443` | Имена моделей OpenAI, когда `api_base` не переопределён |
 | `litellm` | `api.anthropic.com:443` | Имена моделей Anthropic, когда `api_base` не переопределён |
-| `presidio-analyzer` | нет | Анализ выполняется локально после сборки образа |
+| `presidio-analyzer` | нет внешних направлений | Только внутренний маршрут к Triton через Nginx, указанный выше |
 | `redis` | нет | Только внутренняя зависимость |
 | `db` | нет | Только внутренняя зависимость |
 

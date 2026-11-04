@@ -195,7 +195,7 @@ make up STACK=litellm-presidio-codex-lb TOPOLOGY=production TOPOLOGY_ENV=/secure
    `deploy/topologies/production.env` старой копией.
 3. Проверьте `.env` и экспортированное окружение. Уберите явную
    `PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=30`, чтобы production унаследовал 45 с.
-   Ранее изменённые workers/concurrency/batch/queue и HTTP-пул также не сбрасываются:
+   Ранее изменённые число процессов, параллельность, размеры пакета/очереди и HTTP-пул не сбрасываются:
    сверьте их со [стандартными профилями](#стандартные-профили) и справочником.
    `TRITON_REPLICAS=2` противоречит новому пресету: удалите запись из `.env`/оболочки
    либо перенесите намеренное уменьшение пула в `TOPOLOGY_ENV`.
