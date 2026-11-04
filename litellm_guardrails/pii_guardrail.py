@@ -31,7 +31,7 @@ from litellm_guardrails.dictionary_policy import (
     DictionarySubstitutionResult,
 )
 from litellm_guardrails.restoration_mapping import (
-    RestorationMapping, decode_mapping, encode_mapping, json_number_spans,
+    RestorationMapping, decode_mapping, encode_mapping, json_atom_spans, json_escape_spans,
 )
 from litellm_guardrails.streaming_restoration import (
     ResponsesStreamNormalizer,
@@ -2840,7 +2840,32 @@ class RuPIIGuardrail(CustomGuardrail):
         parts = []
         mapping = RestorationMapping()
         last_end = 0
-        numbers = json_number_spans(text)
+        numbers, strings = json_atom_spans(text)
+        string_starts = [start for start, _end in strings]
+        escapes_by_string = {}
+        aligned = []
+        for start, end, entity_type in normalized_entities:
+            index = bisect_right(string_starts, start) - 1
+            if index >= 0 and end <= strings[index][1]:
+                if index not in escapes_by_string:
+                    spans = json_escape_spans(text, *strings[index])
+                    escapes_by_string[index] = (spans, [left for left, _right in spans])
+                spans, starts = escapes_by_string[index]
+                left_index = bisect_right(starts, start) - 1
+                if left_index >= 0 and start < spans[left_index][1]:
+                    start = spans[left_index][0]
+                right_index = bisect_right(starts, end - 1) - 1
+                if right_index >= 0 and end < spans[right_index][1]:
+                    end = spans[right_index][1]
+            if aligned and start < aligned[-1]['end']:
+                # Expansion to one atomic escape can join adjacent findings.
+                aligned[-1]['start'] = min(aligned[-1]['start'], start)
+                aligned[-1]['end'] = max(aligned[-1]['end'], end)
+            else:
+                aligned.append({'start': start, 'end': end, 'entity_type': entity_type})
+        normalized_entities = self._normalize_entities(
+            text, aligned, exclusion_spans=exclusion_spans,
+        )
         number_starts = [start for start, _end in numbers]
         for start, end, entity_type in normalized_entities:
             number_index = bisect_right(number_starts, start) - 1
@@ -2856,7 +2881,11 @@ class RuPIIGuardrail(CustomGuardrail):
             if is_number:
                 mapping.add_number(placeholder, text[start:end])
             else:
-                mapping[placeholder] = text[start:end]
+                index = bisect_right(string_starts, start) - 1
+                if index >= 0 and end <= strings[index][1] and '\\' in text[start:end]:
+                    mapping.add_string(placeholder, text[start:end])
+                else:
+                    mapping[placeholder] = text[start:end]
             last_end = end
 
         parts.append(text[last_end:])
@@ -2870,6 +2899,7 @@ class RuPIIGuardrail(CustomGuardrail):
     ) -> list[tuple[int, int, str]]:
         """Return valid non-overlapping entity spans with normalized types."""
         normalized_entities = []
+        exclusions = sorted(exclusion_spans or ())
         for entity in entities:
             try:
                 start = int(entity["start"])
@@ -2879,13 +2909,23 @@ class RuPIIGuardrail(CustomGuardrail):
 
             if start < 0 or end > len(text) or start >= end:
                 continue
-            if self._span_overlaps_any(start, end, exclusion_spans or ()):
-                continue
-
             entity_type = self._normalize_entity_type(
                 str(entity.get("entity_type") or "PII")
             )
-            normalized_entities.append((start, end, entity_type))
+            # A dictionary value owns only its range, never adjacent NER evidence.
+            cursor = start
+            for left, right in exclusions:
+                if right <= cursor:
+                    continue
+                if left >= end:
+                    break
+                if cursor < left:
+                    normalized_entities.append((cursor, min(left, end), entity_type))
+                cursor = max(cursor, min(right, end))
+                if cursor >= end:
+                    break
+            if cursor < end:
+                normalized_entities.append((cursor, end, entity_type))
 
         if not normalized_entities:
             return []
@@ -2901,18 +2941,6 @@ class RuPIIGuardrail(CustomGuardrail):
             last_end = end
 
         return non_overlapping_entities
-
-    @staticmethod
-    def _span_overlaps_any(
-        start: int,
-        end: int,
-        spans: Iterable[tuple[int, int]],
-    ) -> bool:
-        """Return whether a span overlaps any excluded provider-bound range."""
-        return any(
-            start < span_end and end > span_start
-            for span_start, span_end in spans
-        )
 
     @staticmethod
     def _synthetic_pii_rule_matches(

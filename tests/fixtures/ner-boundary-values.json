@@ -1,0 +1,8 @@
+[
+  {"id":"relative-encoded-path","text":"Reference (/docs/%D0%9F%D0%B5) next","pieces":[["D0","ORGANIZATION"]],"expected":[["%D0%9F%D0%B5","ORGANIZATION"]]},
+  {"id":"encoded-query-value","text":"See https://example.test/?value=ab%2Fcd&other=visible next","pieces":[["2F","AUTH_TOKEN"]],"expected":[["ab%2Fcd","AUTH_TOKEN"]]},
+  {"id":"quoted-name","text":"{\"person\":\"Ivan Petrov\",\"keep\":\"visible\"}","pieces":[["Pet","PERSON"]],"expected":[["Ivan Petrov","PERSON"]]},
+  {"id":"separate-paragraph","text":"Header\n\nOTHER\n\nTail","pieces":[["THE","PERSON"]],"expected":[["OTHER","PERSON"]]},
+  {"id":"link-delimiter","text":"Header\n\nReference (/docs/item)\n\nTail","pieces":[[")","PERSON"]],"expected":[["(/docs/item)","PERSON"]]},
+  {"id":"unicode-source-value","text":"{\"person\":\"Ame\u0301lie Petrov\",\"keep\":\"visible\"}","pieces":[["Pet","PERSON"]],"expected":[["Ame\u0301lie Petrov","PERSON"]]}
+]
