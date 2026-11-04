@@ -1,0 +1,382 @@
+{
+  "schema_version": 1,
+  "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
+  "scope": "experiment_only_container_local_tcp_probes",
+  "status": "incomplete_harness_control_routing",
+  "raw_trial_status": "failed",
+  "single_docker_host": true,
+  "two_physical_hosts_validated": false,
+  "platform_changes": false,
+  "guardrail_changes": false,
+  "production_defaults_changed": false,
+  "external_provider_calls": 0,
+  "nginx_version": "1.27.5",
+  "configuration": {
+    "socket_keepalive_enabled_only_node_level_route": true,
+    "http_idle_cache_remains_disabled": true,
+    "sysctls": {
+      "net.ipv4.tcp_keepalive_time": "10",
+      "net.ipv4.tcp_keepalive_intvl": "5",
+      "net.ipv4.tcp_keepalive_probes": "3"
+    },
+    "worker_configuration_byte_identical": true,
+    "health_and_other_routes_byte_identical": true,
+    "post_timeout_and_retry_policy_unchanged": true,
+    "inference_replay_policy_unchanged": true,
+    "analysis_budgets_seconds": [
+      240,
+      1200
+    ],
+    "new_env_settings": [],
+    "new_make_commands": []
+  },
+  "isolation": {
+    "host_parameters_before": {
+      "net.ipv4.tcp_keepalive_time": "7200",
+      "net.ipv4.tcp_keepalive_intvl": "75",
+      "net.ipv4.tcp_keepalive_probes": "9"
+    },
+    "host_parameters_during": {
+      "net.ipv4.tcp_keepalive_time": "7200",
+      "net.ipv4.tcp_keepalive_intvl": "75",
+      "net.ipv4.tcp_keepalive_probes": "9"
+    },
+    "coordinator_parameters": {
+      "net.ipv4.tcp_keepalive_time": "10",
+      "net.ipv4.tcp_keepalive_intvl": "5",
+      "net.ipv4.tcp_keepalive_probes": "3"
+    },
+    "worker_parameters_before": {
+      "net.ipv4.tcp_keepalive_time": "7200",
+      "net.ipv4.tcp_keepalive_intvl": "75",
+      "net.ipv4.tcp_keepalive_probes": "9"
+    },
+    "network_namespaces_distinct": true,
+    "privileged": false,
+    "host_network": false
+  },
+  "host_parameters_after_cleanup": {
+    "net.ipv4.tcp_keepalive_time": "7200",
+    "net.ipv4.tcp_keepalive_intvl": "75",
+    "net.ipv4.tcp_keepalive_probes": "9"
+  },
+  "worker_after_sample_available": false,
+  "counts": {
+    "requests": 32,
+    "successes": 32,
+    "protective_503": 0,
+    "transport_errors": 0
+  },
+  "steps": [
+    {
+      "name": "prepare",
+      "status": "passed"
+    },
+    {
+      "name": "protocol-mask",
+      "status": "passed"
+    },
+    {
+      "name": "healthy-burst",
+      "status": "passed"
+    },
+    {
+      "name": "healthy-long-control",
+      "status": "failed",
+      "error_type": "RuntimeError"
+    }
+  ],
+  "series": [
+    {
+      "phase": "protocol-mask",
+      "requests": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "http_statuses": {
+        "200": 8
+      },
+      "first_text_seconds": {
+        "p50": 1.0455,
+        "p95": 1.0867,
+        "max": 1.0867
+      },
+      "all_success_within_60": 8,
+      "provider_capture": {
+        "provider_requests": 8,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "triton_success_requests": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-burst",
+      "requests": 20,
+      "outcomes": {
+        "success": 20
+      },
+      "http_statuses": {
+        "200": 20
+      },
+      "first_text_seconds": {
+        "p50": 9.3,
+        "p95": 11.8804,
+        "max": 12.766
+      },
+      "all_success_within_60": 20,
+      "provider_capture": {
+        "provider_requests": 20,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 10.0,
+        "b": 10.0
+      },
+      "triton_success_requests": {
+        "a": 70.0,
+        "b": 70.0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-long-local",
+      "requests": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "http_statuses": {
+        "200": 1
+      },
+      "first_text_seconds": {
+        "p50": 46.0315,
+        "p95": 46.0315,
+        "max": 46.0315
+      },
+      "all_success_within_60": 1,
+      "provider_capture": {
+        "provider_requests": 1,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 1.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 112.0,
+        "b": 0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-long-local",
+      "requests": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "http_statuses": {
+        "200": 1
+      },
+      "first_text_seconds": {
+        "p50": 45.754,
+        "p95": 45.754,
+        "max": 45.754
+      },
+      "all_success_within_60": 1,
+      "provider_capture": {
+        "provider_requests": 1,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 1.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 112.0,
+        "b": 0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-long-local",
+      "requests": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "http_statuses": {
+        "200": 1
+      },
+      "first_text_seconds": {
+        "p50": 46.3149,
+        "p95": 46.3149,
+        "max": 46.3149
+      },
+      "all_success_within_60": 1,
+      "provider_capture": {
+        "provider_requests": 1,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 1.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 112.0,
+        "b": 0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-long-local",
+      "requests": 1,
+      "outcomes": {
+        "success": 1
+      },
+      "http_statuses": {
+        "200": 1
+      },
+      "first_text_seconds": {
+        "p50": 46.1782,
+        "p95": 46.1782,
+        "max": 46.1782
+      },
+      "all_success_within_60": 1,
+      "provider_capture": {
+        "provider_requests": 1,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 1.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 112.0,
+        "b": 0
+      },
+      "strict_success_required": true
+    }
+  ],
+  "block_cases": [],
+  "same_input_comparisons": [
+    {
+      "phase": "protocol-mask",
+      "requests": 8,
+      "matched": true
+    },
+    {
+      "phase": "healthy-burst",
+      "requests": 20,
+      "matched": true
+    }
+  ],
+  "tcp": {
+    "captured_packets": 960,
+    "dropped_packets": 0,
+    "connections": {
+      "outgoing_syn_flows": 30,
+      "http_request_flows": 30,
+      "get_requests": 16,
+      "post_requests": 14,
+      "every_observed_http_request_has_fresh_syn": true,
+      "maximum_requests_per_tcp_connection": 1
+    },
+    "matched_probe_reply_pairs": 0,
+    "long_remote_control_verified": false,
+    "active_link_loss_verified": false
+  },
+  "harness_observation": {
+    "code": "TCP-CONTROL-ROUTING-01",
+    "classification": "test_coverage_not_product_failure",
+    "limit": 4,
+    "controls_succeeded": 4,
+    "controls_reached_worker": 0,
+    "correlated_routes": [
+      {
+        "health_target": "worker pool",
+        "analysis_target": "local pool",
+        "analysis_seconds": 45.435,
+        "health_to_post_gap_seconds": 0.013
+      },
+      {
+        "health_target": "worker pool",
+        "analysis_target": "local pool",
+        "analysis_seconds": 45.193,
+        "health_to_post_gap_seconds": 0.012
+      },
+      {
+        "health_target": "worker pool",
+        "analysis_target": "local pool",
+        "analysis_seconds": 45.733,
+        "health_to_post_gap_seconds": 0.013
+      },
+      {
+        "health_target": "worker pool",
+        "analysis_target": "local pool",
+        "analysis_seconds": 45.619,
+        "health_to_post_gap_seconds": 0.011
+      }
+    ],
+    "runtime_harness_fix_applied": false
+  },
+  "redis_checks": [
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    }
+  ],
+  "preservation": {
+    "previous_containers": 44,
+    "all_unchanged": true,
+    "host_sysctl_unchanged": true,
+    "host_parameters_after_cleanup": {
+      "net.ipv4.tcp_keepalive_time": "7200",
+      "net.ipv4.tcp_keepalive_intvl": "75",
+      "net.ipv4.tcp_keepalive_probes": "9"
+    },
+    "temporary_containers_remaining": 0
+  },
+  "final_state_verified": false,
+  "new_harness_regressions": 15,
+  "previous_failed_artifacts_preserved": true,
+  "static_verification": {
+    "python": "3.12.3",
+    "pytest_passed": 820,
+    "make_tests_passed": 32,
+    "total_private_regressions_passed": 54
+  },
+  "unfinished_checks": [
+    "healthy long remote control with probe ACKs",
+    "BLOCK on TCP candidate",
+    "new requests during link loss and return on TCP candidate",
+    "active analysis link loss and return on TCP candidate",
+    "final full test state verification",
+    "worker sysctl after sample",
+    "real two host acceptance"
+  ]
+}

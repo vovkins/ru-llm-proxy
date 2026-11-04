@@ -420,6 +420,7 @@
     "diagnostic_report": "production-two-node-link-diagnostic.json",
     "followup_report": "production-two-node-health-fix.json",
     "latest_report": "production-two-node-idle-fix.json",
+    "tcp_probe_trial_report": "production-two-node-tcp-probes.json",
     "skipped_checks": [
       "link restoration after active analysis loss",
       "final full test state verification",
