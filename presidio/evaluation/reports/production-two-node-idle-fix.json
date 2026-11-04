@@ -282,8 +282,9 @@
   ],
   "new_observation": {
     "code": "TWO-NODE-LINK-03",
-    "status": "approved_tcp_probe_trial_incomplete_harness_coverage",
+    "status": "tcp_probe_followup_passed_in_disposable_prototype",
     "followup_report": "production-two-node-tcp-probes.json",
+    "resolution_report": "production-two-node-tcp-probes-paired.json",
     "scenario": "link loss after Analyzer B is already active",
     "api": "chat",
     "stream": false,

@@ -415,16 +415,16 @@
   },
   "unresolved_observation": {
     "code": "TWO-NODE-LINK-01",
-    "status": "health_and_new_request_link_checks_passed_active_link_observation_open",
-    "summary": "earlier outcomes preserved; LINK-02 wave and link return passed without idle reuse; loss during active analysis produced TWO-NODE-LINK-03",
+    "status": "bounded_prototype_link_checks_passed_owner_architecture_choice_pending",
+    "summary": "earlier failures preserved; TCP probe followup passed 52 MASK and 4 BLOCK checks including active loss and restoration, without production delivery",
     "diagnostic_report": "production-two-node-link-diagnostic.json",
     "followup_report": "production-two-node-health-fix.json",
-    "latest_report": "production-two-node-idle-fix.json",
+    "latest_report": "production-two-node-tcp-probes-paired.json",
     "tcp_probe_trial_report": "production-two-node-tcp-probes.json",
+    "resolution_report": "production-two-node-tcp-probes-paired.json",
     "skipped_checks": [
-      "link restoration after active analysis loss",
-      "final full test state verification",
-      "real two host acceptance"
+      "real two host acceptance",
+      "full two node production delivery and capacity measurement"
     ]
   },
   "harness_tests": 8,

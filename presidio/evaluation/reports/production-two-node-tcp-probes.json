@@ -3,6 +3,8 @@
   "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
   "scope": "experiment_only_container_local_tcp_probes",
   "status": "incomplete_harness_control_routing",
+  "followup_report": "production-two-node-tcp-probes-paired.json",
+  "followup_status": "passed_in_new_disposable_trial_original_failure_preserved",
   "raw_trial_status": "failed",
   "single_docker_host": true,
   "two_physical_hosts_validated": false,
