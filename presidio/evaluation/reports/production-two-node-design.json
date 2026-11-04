@@ -415,13 +415,15 @@
   },
   "unresolved_observation": {
     "code": "TWO-NODE-LINK-01",
-    "status": "diagnosed_fix_plan_pending_approval",
-    "summary": "earlier timeout outcomes preserved; three-request diagnostic reproduced readiness GET stalled on a cached TCP connection to the disconnected worker",
+    "status": "focused_health_fix_passed_broader_post_observation_open",
+    "summary": "earlier outcomes preserved; health-only fix passed three-request scenario but broader acceptance found two stalled POSTs, TWO-NODE-LINK-02",
     "diagnostic_report": "production-two-node-link-diagnostic.json",
+    "followup_report": "production-two-node-health-fix.json",
     "skipped_checks": [
-      "individual Triton outage",
-      "link restoration",
-      "whole worker stop and return"
+      "link restoration after the new failed wave",
+      "final full test state verification",
+      "loss during already executing inference",
+      "real two host acceptance"
     ]
   },
   "harness_tests": 8,

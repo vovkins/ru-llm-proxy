@@ -1,0 +1,435 @@
+{
+  "schema_version": 1,
+  "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
+  "scope": "experimental_nginx_health_fix_not_production_delivery",
+  "status": "partial_new_post_observation",
+  "single_docker_host": true,
+  "two_physical_hosts_validated": false,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "guardrail_code_changed": false,
+  "new_env_settings": [],
+  "new_make_commands": [],
+  "candidate": {
+    "location": "/api/v1/health",
+    "connect_seconds": 5,
+    "read_seconds": 5,
+    "send_seconds": 5,
+    "maximum_peer_attempts": 2,
+    "retry_admission_window_seconds": 10,
+    "strict_total_deadline_seconds": null,
+    "retry_conditions": [
+      "error",
+      "timeout",
+      "http_502"
+    ],
+    "retry_semantic_503": false,
+    "analysis_post_and_triton_routes_byte_identical": true
+  },
+  "focused_diagnostic": {
+    "api_requests": 3,
+    "unchanged_payload_hashes": true,
+    "client_timeout_seconds": 90,
+    "cases": [
+      {
+        "name": "healthy-chat",
+        "api": "chat",
+        "stream": false,
+        "outcome": "success",
+        "seconds": 0.7417,
+        "http_status": 200,
+        "response_bytes": 347
+      },
+      {
+        "name": "fault-chat",
+        "api": "chat",
+        "stream": false,
+        "outcome": "success",
+        "seconds": 5.243,
+        "http_status": 200,
+        "response_bytes": 347
+      },
+      {
+        "name": "fault-responses-sse",
+        "api": "responses",
+        "stream": true,
+        "outcome": "success",
+        "seconds": 0.2987,
+        "http_status": 200,
+        "response_bytes": 960
+      }
+    ],
+    "provider_capture": {
+      "provider_requests": 3,
+      "provider_saw_raw_phone": false,
+      "provider_saw_phone_placeholder": true
+    },
+    "confirmed_health_failover_seconds": [
+      5.003
+    ],
+    "redis_checks": [
+      {
+        "remaining": 0
+      }
+    ]
+  },
+  "acceptance": {
+    "status": "failed",
+    "steps": [
+      {
+        "name": "prepare",
+        "status": "passed"
+      },
+      {
+        "name": "protocol-mask",
+        "status": "passed"
+      },
+      {
+        "name": "healthy-burst",
+        "status": "passed"
+      },
+      {
+        "name": "block-both-apis-stream-modes",
+        "status": "passed"
+      },
+      {
+        "name": "individual-triton",
+        "status": "passed"
+      },
+      {
+        "name": "whole-worker",
+        "status": "passed"
+      },
+      {
+        "name": "link-loss-and-return",
+        "status": "failed",
+        "error_type": "AssertionError"
+      }
+    ],
+    "series": [
+      {
+        "phase": "protocol-mask",
+        "requests": 8,
+        "outcomes": {
+          "success": 8
+        },
+        "http_statuses": {
+          "200": 8
+        },
+        "first_text_seconds": {
+          "p50": 0.995,
+          "p95": 1.0658,
+          "max": 1.0658
+        },
+        "all_success_within_60": 8,
+        "provider_capture": {
+          "provider_requests": 8,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 4.0,
+          "b": 4.0
+        },
+        "triton_success_requests": {
+          "a": 4.0,
+          "b": 4.0
+        },
+        "strict_success_required": true
+      },
+      {
+        "phase": "healthy-burst",
+        "requests": 20,
+        "outcomes": {
+          "success": 20
+        },
+        "http_statuses": {
+          "200": 20
+        },
+        "first_text_seconds": {
+          "p50": 10.1726,
+          "p95": 12.4404,
+          "max": 12.4691
+        },
+        "all_success_within_60": 20,
+        "provider_capture": {
+          "provider_requests": 20,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 10.0,
+          "b": 10.0
+        },
+        "triton_success_requests": {
+          "a": 70.0,
+          "b": 70.0
+        },
+        "strict_success_required": true
+      },
+      {
+        "phase": "worker-triton-stopped",
+        "requests": 8,
+        "outcomes": {
+          "success": 6,
+          "error": 2
+        },
+        "http_statuses": {
+          "200": 6,
+          "503": 2
+        },
+        "first_text_seconds": {
+          "p50": 1.0695,
+          "p95": 5.5254,
+          "max": 5.5254
+        },
+        "all_success_within_60": 6,
+        "provider_capture": {
+          "provider_requests": 6,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 6.0,
+          "b": 0
+        },
+        "triton_success_requests": {
+          "a": 6.0,
+          "b": 0
+        },
+        "strict_success_required": false
+      },
+      {
+        "phase": "worker-triton-returned",
+        "requests": 4,
+        "outcomes": {
+          "success": 4
+        },
+        "http_statuses": {
+          "200": 4
+        },
+        "first_text_seconds": {
+          "p50": 0.3056,
+          "p95": 0.3525,
+          "max": 0.3525
+        },
+        "all_success_within_60": 4,
+        "provider_capture": {
+          "provider_requests": 4,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 2.0,
+          "b": 2.0
+        },
+        "triton_success_requests": {
+          "a": 2.0,
+          "b": 2.0
+        },
+        "strict_success_required": true
+      },
+      {
+        "phase": "worker-stopped",
+        "requests": 8,
+        "outcomes": {
+          "success": 7,
+          "error": 1
+        },
+        "http_statuses": {
+          "200": 7,
+          "503": 1
+        },
+        "first_text_seconds": {
+          "p50": 0.6192,
+          "p95": 5.3703,
+          "max": 5.3703
+        },
+        "all_success_within_60": 7,
+        "provider_capture": {
+          "provider_requests": 7,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 7.0,
+          "b": 0
+        },
+        "triton_success_requests": {
+          "a": 7.0,
+          "b": 0
+        },
+        "strict_success_required": false
+      },
+      {
+        "phase": "worker-returned",
+        "requests": 8,
+        "outcomes": {
+          "success": 8
+        },
+        "http_statuses": {
+          "200": 8
+        },
+        "first_text_seconds": {
+          "p50": 0.5305,
+          "p95": 0.6713,
+          "max": 0.6713
+        },
+        "all_success_within_60": 8,
+        "provider_capture": {
+          "provider_requests": 8,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 4.0,
+          "b": 4.0
+        },
+        "triton_success_requests": {
+          "a": 4.0,
+          "b": 4.0
+        },
+        "strict_success_required": true
+      },
+      {
+        "phase": "interconnect-disconnected",
+        "requests": 8,
+        "outcomes": {
+          "success": 6,
+          "transport_error": 2
+        },
+        "http_statuses": {
+          "200": 6,
+          "none": 2
+        },
+        "first_text_seconds": {
+          "p50": 0.4862,
+          "p95": 5.2767,
+          "max": 5.2767
+        },
+        "all_success_within_60": 6,
+        "provider_capture": {
+          "provider_requests": 6,
+          "provider_saw_raw_phone": false,
+          "provider_saw_phone_placeholder": true
+        },
+        "analyzer_success_fields": {
+          "a": 6.0,
+          "b": 0
+        },
+        "triton_success_requests": {
+          "a": 6.0,
+          "b": 0
+        },
+        "strict_success_required": false
+      }
+    ],
+    "mask_api_requests": 64,
+    "block_cases": [
+      {
+        "api": "chat/completions",
+        "stream": false,
+        "expected_status": 422,
+        "status": "passed"
+      },
+      {
+        "api": "chat/completions",
+        "stream": true,
+        "expected_status": 422,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": false,
+        "expected_status": 422,
+        "status": "passed"
+      },
+      {
+        "api": "responses",
+        "stream": true,
+        "expected_status": 422,
+        "status": "passed"
+      }
+    ],
+    "block_no_provider_call_assertion_passed": true,
+    "observed_analysis_503_not_replayed_at_coordinator": 2,
+    "observed_health_503": 0,
+    "redis_checks": [
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      },
+      {
+        "remaining": 0
+      }
+    ]
+  },
+  "new_observation": {
+    "code": "TWO-NODE-LINK-02",
+    "status": "awaiting_additional_fix_approval",
+    "mechanism": "both stalled analysis POSTs target disconnected remote pool; one has directly correlated successful local health immediately before POST",
+    "evidence": [
+      {
+        "successful_immediate_health_target": null,
+        "health_correlation": "no immediate same-connection match",
+        "post_target": "disconnected worker gateway",
+        "health_seconds": null,
+        "post_wait_seconds": 89.97,
+        "received_post_headers": false,
+        "received_post_body_bytes": 0
+      },
+      {
+        "successful_immediate_health_target": "local pool",
+        "health_correlation": "same incoming connection, immediately before POST",
+        "post_target": "disconnected worker gateway",
+        "health_seconds": 0.001,
+        "post_wait_seconds": 90.042,
+        "received_post_headers": false,
+        "received_post_body_bytes": 0
+      }
+    ],
+    "client_timeout_seconds": 90,
+    "automatic_fix_applied": false,
+    "not_proven": [
+      "packet-level proof of idle socket reuse in this run",
+      "immediate successful health for the other stalled POST",
+      "fault during already executing inference",
+      "effectiveness of disabling inter-node idle connection reuse"
+    ]
+  },
+  "unfinished_checks": [
+    "link return after failed wave",
+    "final full test state verification",
+    "already executing analysis during loss",
+    "real two host acceptance"
+  ],
+  "preservation": {
+    "previous_containers": 44,
+    "all_unchanged": true,
+    "temporary_containers_remaining": 0
+  },
+  "harness_regressions": 26,
+  "static_verification": {
+    "python": "3.12.3",
+    "pytest_passed": 820,
+    "make_tests_passed": 32,
+    "runtime_source_changes_from_v060": false
+  }
+}

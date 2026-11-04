@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
   "observation": "TWO-NODE-LINK-01",
-  "status": "cause_reproduced_fix_not_implemented",
+  "status": "original_diagnostic_preserved_followup_trial_completed",
+  "followup_report": "production-two-node-health-fix.json",
   "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
   "single_docker_host": true,
   "api_request_limit": 3,
@@ -103,5 +104,5 @@
     "effectiveness of a fix",
     "two physical hosts"
   ],
-  "next_action": "approve config-only health timeout/failover experiment; do not change production or platforms"
+  "next_action": "health experiment passed focused scenario; review new POST observation TWO-NODE-LINK-02 before further changes"
 }
