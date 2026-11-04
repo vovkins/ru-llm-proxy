@@ -458,7 +458,9 @@ class AnalyzerUnavailableError(RuntimeError):
             if failure_class in ANALYZER_FAILURE_CLASSES
             else "unexpected_failure"
         )
-        self.retryable = self.failure_class not in {"analysis_deadline_exceeded", "triton_contract_invalid"}
+        self.retryable = self.failure_class not in {
+            "analysis_deadline_exceeded", "triton_contract_invalid", "window_boundary_unresolved",
+        }
         self.retry_after_seconds = _normalize_analyzer_retry_after(retry_after_seconds)
 
 

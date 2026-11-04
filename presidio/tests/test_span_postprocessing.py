@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from presidio.ner.span_postprocessing import expand_value_spans, postprocess_spans
+from presidio.ner.span_postprocessing import (
+    expand_value_spans, expand_value_spans_with_evidence, postprocess_spans,
+)
 
 
 def _spans(text, pieces, score=0.9):
@@ -24,6 +26,44 @@ def test_none_mode_returns_model_spans_unchanged():
     spans = _spans(text, [("2020", "CONTRACT_NUMBER"), ("АГ/6581", "CONTRACT_NUMBER")])
 
     assert postprocess_spans(text, spans, "none") == spans
+
+
+@pytest.mark.parametrize("source,value,label", [
+    ("prefix 12345678 suffix", "12345678", "CONTRACT_NUMBER"),
+    ('{"token":"abc+def"}', "abc+def", "AUTH_TOKEN"),
+    ('token="abc def"', "abc def", "SECRET_KEY"),
+    ("postgresql://svc:pass@host/db", "pass", "PASSWORD"),
+    ("https://host/api?token=abc+def&other=ok", "abc+def", "AUTH_TOKEN"),
+    ("Договор № АБ-123/25 подписан", "АБ-123/25", "CONTRACT_NUMBER"),
+    (" prefix token=abc+def suffix", "abc+def", "AUTH_TOKEN"),
+])
+def test_bounded_value_evidence_reuses_existing_span_expansion(source, value, label):
+    start = source.index(value)
+    span = (start, start + 1, label, .8)
+    result, = expand_value_spans_with_evidence(source, [span], "secrets-contracts")
+    assert result.span == (start, start + len(value), label, .8)
+    assert result.left_confirmed and result.right_confirmed
+    assert expand_value_spans(source, [span], "secrets-contracts") == [result.span]
+
+
+@pytest.mark.parametrize("source,start,end,label", [
+    ("abcdef", 0, 6, "AUTH_TOKEN"),
+    ("abc def", 0, 7, "AUTH_TOKEN"),
+    ('{"a":"abc","b":"def"}', 7, 19, "AUTH_TOKEN"),
+    ("https://svc:pass@host/db", 0, 5, "AUTH_TOKEN"),
+    ('{"person":"Ivan"}', 11, 15, "PERSON"),
+])
+def test_unknown_ranges_do_not_masquerade_as_confirmed_internal_edges(source, start, end, label):
+    result, = expand_value_spans_with_evidence(source, [(start, end, label, .8)], "secrets-contracts")
+    assert not result.left_confirmed and not result.right_confirmed
+
+
+def test_credential_label_coverage_is_not_relabelled_as_value_boundary():
+    source = " prefix PASSWORD=abcdef suffix"
+    start = source.index("WORD")
+    result, = expand_value_spans_with_evidence(source, [(start, start + 4, "PASSWORD", .8)], "secrets-contracts")
+    assert result.span == (start, source.index(" suffix"), "PASSWORD", .8)
+    assert not result.left_confirmed and result.right_confirmed
 
 
 def test_contract_fragments_expand_without_guessing_an_unconfirmed_final_dot():

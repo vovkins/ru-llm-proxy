@@ -721,7 +721,7 @@ async def _analyze_with_capacity_budgeted(request: AnalyzeRequest) -> AnalyzeRes
                 "phase": e.phase,
                 "failure_class": e.failure_class,
                 **({"retryable": False} if e.failure_class in {
-                    "analysis_deadline_exceeded", "triton_contract_invalid"} else {}),
+                    "analysis_deadline_exceeded", "triton_contract_invalid", "window_boundary_unresolved"} else {}),
             },
             headers=({"Retry-After": "5"} if e.failure_class == "triton_unavailable" else
                      {"Retry-After": str(capacity_limiter.retry_after_seconds)}

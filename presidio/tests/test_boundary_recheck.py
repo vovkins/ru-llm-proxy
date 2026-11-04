@@ -10,7 +10,7 @@ from presidio.ner.boundary_recheck import (
 from presidio.ner.text_processing import normalize_for_ner
 from presidio.ner.triton_recognizer import (
     EntityPrediction, WindowEntityPrediction, UnresolvedWindowEntityCluster,
-    TokenPrediction, NERWindowAnalysis, NER_STATE_READY, NERProcessingError,
+    TokenPrediction, NERWindowAnalysis, NER_STATE_READY,
     TritonNERRecognizer, NERInferenceCancelled,
 )
 
@@ -173,8 +173,8 @@ def test_config_keeps_the_e6_default_without_a_public_switch():
         resolve_recheck("bert")
 
 
-@pytest.mark.parametrize("enabled,protected,success", [(True, (), True), (True, None, False), (False, (), False)])
-def test_real_recognizer_merge_is_opt_in_and_requires_native_evidence(monkeypatch, enabled, protected, success):
+@pytest.mark.parametrize("enabled,protected,withdrawn", [(True, (), True), (True, None, False), (False, (), False)])
+def test_prompt_withdrawal_requires_opt_in_and_native_evidence(monkeypatch, enabled, protected, withdrawn):
     monkeypatch.setattr("presidio.ner.triton_recognizer.resolve_recheck",
                         lambda _: "shell-prompt" if enabled else "off")
     normalized, ids, offsets, clusters = setup_case()
@@ -190,8 +190,17 @@ def test_real_recognizer_merge_is_opt_in_and_requires_native_evidence(monkeypatc
     monkeypatch.setattr(r, "_recover_window_boundaries", lambda *_a, **_k: ([], 0))
     monkeypatch.setattr(r, "_tokenize_content", lambda _: (ids, offsets))
     monkeypatch.setattr(r, "_infer_window_batch", inference())
-    if success:
-        assert r.analyze(normalized.original, protected_spans=protected) == []
+    results = r.analyze(normalized.original, protected_spans=protected)
+    if withdrawn:
+        assert results == []
     else:
-        with pytest.raises(NERProcessingError) as exc:r.analyze(normalized.original, protected_spans=protected)
-        assert exc.value.failure_class == "window_boundary_unresolved"
+        start = normalized.original.index("bash-$")
+        assert [(item.entity_type, item.start, item.end, item.score) for item in results] == [
+            ("PASSWORD", start, start + len("bash-$"), .7),
+        ]
+        for original in clusters[0].predictions:
+            assert any(item.entity_type == original.entity.entity_type
+                       and item.start <= original.entity.start < original.entity.end <= item.end
+                       for item in results)
+        assert normalized.original[results[0].start:results[0].end] == "bash-$"
+    assert r.is_ready()

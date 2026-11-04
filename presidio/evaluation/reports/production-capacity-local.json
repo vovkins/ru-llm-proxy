@@ -1,0 +1,5788 @@
+{
+  "schema_version": 1,
+  "issue": 116,
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "architecture": "aarch64",
+  "docker_cpus": 10,
+  "docker_memory_bytes": 8321515520,
+  "generator_unit": "whitespace_token",
+  "provider": "synthetic_SSE_echo",
+  "model_images": {
+    "litellm": "sha256:78c24314ea4b2f4e2968da3da31eea27a4a0aa99b3d51cb573a16f7296247363",
+    "presidio-analyzer": "sha256:a0304100b93e70735e7745c26892133b2ee4a125e731270af53533c70f57d8f7",
+    "ner-triton": "sha256:73c0f56f99ec6c20cfa5dad1cbc572db7de106b0704a998c4ba71917c4582441"
+  },
+  "statistical_limit": "one run per case; relative local measurements, not 32CPU/64GB capacity",
+  "cpu_window": "per-replica monotonic interval, includes metric collection and post-client drain",
+  "measurement_source_sha256": {
+    "tests/load/burst_probe.py": "17bb6270fe1ffa57ef15e5e43c69a1ae0ff9f3d7e20cf15cc0a59f8e0e1d92c7",
+    "tests/load/sample_metrics.py": "e3eb95093abf92a520e932409f09939bc3126a847066b3db0e8aafe527c45857",
+    "tests/load/ner_capacity_probe.py": "a4a266f3899db4f4cb48964806473935665ad4fa2e91556ff266bce082db3406"
+  },
+  "lab_overrides": {
+    "healthcheck_interval_seconds": 3,
+    "restart": "no",
+    "provider": "synthetic_mock"
+  },
+  "status": "partial",
+  "external_provider_calls": 0,
+  "platform_changes": false,
+  "server_capacity_claim": false,
+  "runs": [
+    {
+      "status": "failed",
+      "error_type": "FileNotFoundError",
+      "totals": {
+        "scheduled": 224,
+        "successful": 188,
+        "failed": 36,
+        "cancelled": 0,
+        "provider_requests": 188
+      },
+      "cleanup_ok": true,
+      "primary_restoration": {
+        "files_preserved": true,
+        "database_counts_preserved": true,
+        "volumes_preserved": true,
+        "all_volumes_preserved": true,
+        "container_ids_preserved": true,
+        "images_preserved": true,
+        "healthy_containers": 8
+      }
+    },
+    {
+      "status": "failed",
+      "error_type": "CalledProcessError",
+      "totals": {
+        "scheduled": 694,
+        "successful": 597,
+        "failed": 89,
+        "cancelled": 8,
+        "provider_requests": 597
+      },
+      "cleanup_ok": true,
+      "primary_restoration": {
+        "files_preserved": true,
+        "database_counts_preserved": true,
+        "volumes_preserved": true,
+        "all_volumes_preserved": true,
+        "container_ids_preserved": true,
+        "images_preserved": true,
+        "healthy_containers": 8
+      }
+    }
+  ],
+  "initial_interruption": "Local temporary Python dependencies disappeared; seventh wave was not sent. Continued in dedicated environment.",
+  "arrival_note": "Sequential waves with metrics/drain between; passive Nginx failure state may carry over. No independent statistical repeats.",
+  "profiles": [
+    {
+      "run_index": 0,
+      "name": "production-control",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "2.0",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2.0",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "production-control-continued",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "2.0",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2.0",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A1x4-T2x1",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 1,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "1",
+        "ANALYZER_CPUS": "4",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-T2x1",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A4x1-T2x1",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 4,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-T1x2",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 1
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "1",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-T4x0.5",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 4
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "4",
+        "TRITON_CPUS": "0.5",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "increased-A2x2-T2x2",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-C4-B4",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "4"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-C4-B8",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "4",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "8"
+      }
+    },
+    {
+      "run_index": 1,
+      "name": "fixed-A2x2-C4-B16",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 1,
+        "presidio-analyzer": 2,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "1",
+        "LITELLM_CPUS": "1",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "2",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "0.5",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "0.5",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "0.5",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "4",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "16"
+      }
+    }
+  ],
+  "waves": [
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 3.278,
+        "p95": 5.053,
+        "p99": 5.053
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 3.283,
+        "p95": 5.064,
+        "p99": 5.064
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 3.283,
+        "p95": 5.064,
+        "p99": 5.064
+      },
+      "elapsed_seconds": 6.150512291118503,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.36335404170677066,
+      "max_client_start_delay_seconds": 0.02772979112342,
+      "metric_deltas": {
+        "ner_windows": 416.0,
+        "ner_tokens": 131471.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 13.551596464021713,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 9.433611755972379,
+        "ner_phase_seconds": 29.222762638048152,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 3034525,
+        "triton_compute_microseconds": 20510578,
+        "triton_executions": 102,
+        "client_preprocessing_seconds": 53.630341608979506
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.15540733161348036,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.14257915595772042,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.2979864875712008
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.42457001475023876,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.43303937785531627,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4247538324888053,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.2924425754510174,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5748058005453778
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.1421464276146047,
+              "throttled_seconds": 0.095853,
+              "throttled_period_fraction": 0.13846153846153847,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.1023618135655666,
+              "throttled_seconds": 0.050203,
+              "throttled_period_fraction": 0.125,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.2445082411801716
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 5056432695,
+      "sampled_peak_active_analyzers": 6.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-32x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 32
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 6.001,
+        "p95": 10.248,
+        "p99": 10.549
+      },
+      "successful_sse_within_60_seconds": 32,
+      "latency_seconds_success": {
+        "p50": 6.022,
+        "p95": 10.258,
+        "p99": 10.552
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 6.022,
+        "p95": 10.258,
+        "p99": 10.552
+      },
+      "elapsed_seconds": 12.196850082837045,
+      "provider_requests": 32,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3181521249935031,
+      "max_client_start_delay_seconds": 0.00734504172578454,
+      "metric_deltas": {
+        "ner_windows": 863.0,
+        "ner_tokens": 270725.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 32.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 113.24644126201747,
+        "queue_attempts": 32.0,
+        "presidio_phase_seconds": 24.365899006967084,
+        "ner_phase_seconds": 63.76660932404047,
+        "triton_successful_requests": 224,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 9578560,
+        "triton_compute_microseconds": 41883440,
+        "triton_executions": 206,
+        "client_preprocessing_seconds": 204.07554980799614
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09970712380790815,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.0963758817107224,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.19608300551863056
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47340672036510745,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.47284691339222445,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.47906723592425005,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.41038767381456487,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.8357085434961469
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.3289725818407145,
+              "throttled_seconds": 0.107202,
+              "throttled_period_fraction": 0.15702479338842976,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.3006379823824696,
+              "throttled_seconds": 0.190025,
+              "throttled_period_fraction": 0.18181818181818182,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.629610564223184
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 5427041399,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 9.0
+    },
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-64x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 64,
+      "successful": 64,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 64
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 12.663,
+        "p95": 22.885,
+        "p99": 22.962
+      },
+      "successful_sse_within_60_seconds": 64,
+      "latency_seconds_success": {
+        "p50": 12.666,
+        "p95": 22.89,
+        "p99": 22.979
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 12.666,
+        "p95": 22.89,
+        "p99": 22.979
+      },
+      "elapsed_seconds": 24.95027962513268,
+      "provider_requests": 64,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.348964957986027,
+      "max_client_start_delay_seconds": 0.008397500030696392,
+      "metric_deltas": {
+        "ner_windows": 1727.0,
+        "ner_tokens": 541715.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 64.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 519.8953794330446,
+        "queue_attempts": 64.0,
+        "presidio_phase_seconds": 64.483330523115,
+        "ner_phase_seconds": 126.46336372397491,
+        "triton_successful_requests": 448,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 13307316,
+        "triton_compute_microseconds": 87057058,
+        "triton_executions": 416,
+        "client_preprocessing_seconds": 836.3948096559761
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0991955335419528,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.09668785608208535,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.19588338962403817
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5231855804420994,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5179169653582597,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5183462951779128,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5230160986091751,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.082464939587447
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.4228660804312798,
+              "throttled_seconds": 0.325151,
+              "throttled_period_fraction": 0.11587982832618025,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.441090137960899,
+              "throttled_seconds": 0.343703,
+              "throttled_period_fraction": 0.1148936170212766,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.863956218392179
+        }
+      },
+      "resource_samples": 5,
+      "sampled_peak_memory_bytes": 5473881290,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 32.0
+    },
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 16.589,
+        "p95": 29.183,
+        "p99": 29.183
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 16.592,
+        "p95": 29.188,
+        "p99": 29.188
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 16.592,
+        "p95": 29.188,
+        "p99": 29.188
+      },
+      "elapsed_seconds": 30.437827249988914,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.34927020920440555,
+      "max_client_start_delay_seconds": 0.007099208887666464,
+      "metric_deltas": {
+        "ner_windows": 1821.0,
+        "ner_tokens": 577532.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 109.31442854796478,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 78.9611713309423,
+        "ner_phase_seconds": 142.41078672696312,
+        "triton_successful_requests": 478,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 19496913,
+        "triton_compute_microseconds": 93948126,
+        "triton_executions": 446,
+        "client_preprocessing_seconds": 335.0242414000095
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06623352418693498,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.06578779579635477,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.13202131998328975
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5377516073670383,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5410306814641302,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5535761513314207,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.49403724628549095,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.12639568644808
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.2880370451330208,
+              "throttled_seconds": 0.450906,
+              "throttled_period_fraction": 0.15185185185185185,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.288462232366379,
+              "throttled_seconds": 0.601265,
+              "throttled_period_fraction": 0.1897810218978102,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.5764992774993996
+        }
+      },
+      "resource_samples": 5,
+      "sampled_peak_memory_bytes": 5757489640,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-32x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 32,
+      "successful": 28,
+      "failed": 4,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 28,
+        "503": 4
+      },
+      "error_codes": {
+        "503": 4
+      },
+      "error_reasons": {
+        "": 4
+      },
+      "failure_classes": {
+        "unexpected_failure": 4
+      },
+      "error_phases": {
+        "readiness": 4
+      },
+      "message_families": {
+        "analyzer_unavailable": 4
+      },
+      "sse_first_text_seconds": {
+        "p50": 31.61,
+        "p95": 55.885,
+        "p99": 60.513
+      },
+      "successful_sse_within_60_seconds": 27,
+      "latency_seconds_success": {
+        "p50": 31.666,
+        "p95": 55.927,
+        "p99": 60.515
+      },
+      "latency_seconds_failure": {
+        "p50": 30.228,
+        "p95": 30.377,
+        "p99": 30.377
+      },
+      "latency_seconds_all": {
+        "p50": 30.377,
+        "p95": 55.927,
+        "p99": 60.515
+      },
+      "elapsed_seconds": 62.130600332748145,
+      "provider_requests": 28,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.34386999998241663,
+      "max_client_start_delay_seconds": 0.00517254089936614,
+      "metric_deltas": {
+        "ner_windows": 3189.0,
+        "ner_tokens": 1011476.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 32.0,
+        "queue_rejections": 11.0,
+        "queue_wait_seconds": 680.2997776809789,
+        "queue_attempts": 39.0,
+        "presidio_phase_seconds": 129.13177696595085,
+        "ner_phase_seconds": 232.53781523196085,
+        "triton_successful_requests": 838,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 25518725,
+        "triton_compute_microseconds": 163463689,
+        "triton_executions": 785,
+        "client_preprocessing_seconds": 1052.370713885044
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06557764805444152,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.06275741186716398,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.1283350599216055
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5249735448712992,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.2961468700196064,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.6330815620809239,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.34698486564529185,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.8011868426171214
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.1378958236404337,
+              "throttled_seconds": 0.779975,
+              "throttled_period_fraction": 0.12567324955116696,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.1490643034039962,
+              "throttled_seconds": 0.998879,
+              "throttled_period_fraction": 0.10288808664259928,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.2869601270444297
+        }
+      },
+      "resource_samples": 11,
+      "sampled_peak_memory_bytes": 5830910928,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 24.0
+    },
+    {
+      "run_index": 0,
+      "profile": "production-control",
+      "name": "cold-64x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 64,
+      "successful": 32,
+      "failed": 32,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 32,
+        "503": 32
+      },
+      "error_codes": {
+        "503": 32
+      },
+      "error_reasons": {
+        "": 31,
+        "queue_timeout": 1
+      },
+      "failure_classes": {
+        "unexpected_failure": 31,
+        "": 1
+      },
+      "error_phases": {
+        "readiness": 31,
+        "": 1
+      },
+      "message_families": {
+        "analyzer_unavailable": 31,
+        "analyzer_overloaded": 1
+      },
+      "sse_first_text_seconds": {
+        "p50": 32.972,
+        "p95": 70.346,
+        "p99": 70.384
+      },
+      "successful_sse_within_60_seconds": 27,
+      "latency_seconds_success": {
+        "p50": 33.03,
+        "p95": 70.392,
+        "p99": 70.435
+      },
+      "latency_seconds_failure": {
+        "p50": 31.307,
+        "p95": 45.798,
+        "p99": 61.056
+      },
+      "latency_seconds_all": {
+        "p50": 31.754,
+        "p95": 61.214,
+        "p99": 70.435
+      },
+      "elapsed_seconds": 71.02833154099062,
+      "provider_requests": 32,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3893506252206862,
+      "max_client_start_delay_seconds": 0.008190665859729052,
+      "metric_deltas": {
+        "ner_windows": 3645.0,
+        "ner_tokens": 1156124.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 64.0,
+        "queue_rejections": 26.0,
+        "queue_wait_seconds": 1244.1254227350582,
+        "queue_attempts": 58.0,
+        "presidio_phase_seconds": 163.69144744303776,
+        "ner_phase_seconds": 306.1769257700362,
+        "triton_successful_requests": 958,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 48254928,
+        "triton_compute_microseconds": 202760881,
+        "triton_executions": 870,
+        "client_preprocessing_seconds": 2338.8903877830453
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09339697935324932,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.08632067151256242,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.17971765086581176
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47946985875410025,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4373541256669986,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5650555590032618,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.420160635826289,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.9020401792506496
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.1673787954959078,
+              "throttled_seconds": 1.369833,
+              "throttled_period_fraction": 0.16047297297297297,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.18599180455709,
+              "throttled_seconds": 1.432806,
+              "throttled_period_fraction": 0.15905245346869712,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.353370600052998
+        }
+      },
+      "resource_samples": 13,
+      "sampled_peak_memory_bytes": 5919861631,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 32.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "cold-16x50000",
+      "sizes": [
+        50000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 22.39,
+        "p95": 40.437,
+        "p99": 40.437
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 22.514,
+        "p95": 40.441,
+        "p99": 40.441
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 22.514,
+        "p95": 40.441,
+        "p99": 40.441
+      },
+      "elapsed_seconds": 41.771773292217404,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3492099577561021,
+      "max_client_start_delay_seconds": 0.0021230001312990687,
+      "metric_deltas": {
+        "ner_windows": 2872.0,
+        "ner_tokens": 913301.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 152.9307040330168,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 92.63945129400236,
+        "ner_phase_seconds": 212.82969618400966,
+        "triton_successful_requests": 742,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 22763465,
+        "triton_compute_microseconds": 148490144,
+        "triton_executions": 688,
+        "client_preprocessing_seconds": 464.5186948019691
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07604840638916151,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.07388302431548877,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.14993143070465026
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5436828446041331,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4477987917972764,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5425007175569007,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5199762179699402,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.0539585719282503
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.4980858060682896,
+              "throttled_seconds": 0.758279,
+              "throttled_period_fraction": 0.15113350125944586,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.4839463449958705,
+              "throttled_seconds": 0.866252,
+              "throttled_period_fraction": 0.14646464646464646,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.98203215106416
+        }
+      },
+      "resource_samples": 8,
+      "sampled_peak_memory_bytes": 5614716579,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "cold-32x50000",
+      "sizes": [
+        50000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 32,
+      "successful": 19,
+      "failed": 13,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 19,
+        "503": 13
+      },
+      "error_codes": {
+        "503": 13
+      },
+      "error_reasons": {
+        "": 13
+      },
+      "failure_classes": {
+        "unexpected_failure": 13
+      },
+      "error_phases": {
+        "readiness": 13
+      },
+      "message_families": {
+        "analyzer_unavailable": 13
+      },
+      "sse_first_text_seconds": {
+        "p50": 38.995,
+        "p95": 53.682,
+        "p99": 53.682
+      },
+      "successful_sse_within_60_seconds": 19,
+      "latency_seconds_success": {
+        "p50": 39.089,
+        "p95": 53.693,
+        "p99": 53.693
+      },
+      "latency_seconds_failure": {
+        "p50": 30.59,
+        "p95": 30.773,
+        "p99": 30.773
+      },
+      "latency_seconds_all": {
+        "p50": 30.606,
+        "p95": 53.599,
+        "p99": 53.693
+      },
+      "elapsed_seconds": 54.7629932500422,
+      "provider_requests": 19,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3473708340898156,
+      "max_client_start_delay_seconds": 0.002124329968806238,
+      "metric_deltas": {
+        "ner_windows": 3406.0,
+        "ner_tokens": 1082690.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 32.0,
+        "queue_rejections": 16.0,
+        "queue_wait_seconds": 675.0063486050931,
+        "queue_attempts": 35.0,
+        "presidio_phase_seconds": 103.52880454694969,
+        "ner_phase_seconds": 277.11104641902784,
+        "triton_successful_requests": 880,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 41569969,
+        "triton_compute_microseconds": 192011914,
+        "triton_executions": 798,
+        "client_preprocessing_seconds": 1070.5362532080617
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.08821539424968604,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.08656437533046983,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.17477976958015587
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.48963902313695223,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4349260106187151,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5576029447746036,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4287741888189817,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.9109421673492526
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.4428675832728672,
+              "throttled_seconds": 1.218883,
+              "throttled_period_fraction": 0.1579961464354528,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.44644060095105,
+              "throttled_seconds": 1.328073,
+              "throttled_period_fraction": 0.19767441860465115,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.889308184223917
+        }
+      },
+      "resource_samples": 10,
+      "sampled_peak_memory_bytes": 5700413549,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 24.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "cold-64x50000",
+      "sizes": [
+        50000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 64,
+      "successful": 31,
+      "failed": 33,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 31,
+        "503": 33
+      },
+      "error_codes": {
+        "503": 33
+      },
+      "error_reasons": {
+        "queue_timeout": 24,
+        "": 9
+      },
+      "failure_classes": {
+        "": 24,
+        "unexpected_failure": 9
+      },
+      "error_phases": {
+        "": 24,
+        "readiness": 9
+      },
+      "message_families": {
+        "analyzer_overloaded": 24,
+        "analyzer_unavailable": 9
+      },
+      "sse_first_text_seconds": {
+        "p50": 55.741,
+        "p95": 91.266,
+        "p99": 93.567
+      },
+      "successful_sse_within_60_seconds": 18,
+      "latency_seconds_success": {
+        "p50": 55.833,
+        "p95": 91.27,
+        "p99": 93.57
+      },
+      "latency_seconds_failure": {
+        "p50": 63.829,
+        "p95": 64.444,
+        "p99": 64.467
+      },
+      "latency_seconds_all": {
+        "p50": 63.573,
+        "p95": 83.855,
+        "p99": 93.57
+      },
+      "elapsed_seconds": 94.74675574991852,
+      "provider_requests": 31,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3790390002541244,
+      "max_client_start_delay_seconds": 0.0021952836079492943,
+      "metric_deltas": {
+        "ner_windows": 5562.0,
+        "ner_tokens": 1768532.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 64.0,
+        "queue_rejections": 58.0,
+        "queue_wait_seconds": 1951.0998475889937,
+        "queue_attempts": 89.0,
+        "presidio_phase_seconds": 184.640268873889,
+        "ner_phase_seconds": 435.6051203149109,
+        "triton_successful_requests": 1437,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 51039772,
+        "triton_compute_microseconds": 303453444,
+        "triton_executions": 1357,
+        "client_preprocessing_seconds": 3558.213318100068
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09321544323168567,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.09957037874505696,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.19278582197674263
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.49631006596455424,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4764529122393208,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.49874623431976006,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.43740167213573566,
+              "throttled_seconds": 0.04159,
+              "throttled_period_fraction": 0.0011933174224343676,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.9089108846593708
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.426517576708247,
+              "throttled_seconds": 1.99317,
+              "throttled_period_fraction": 0.1319290465631929,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.4202752476723315,
+              "throttled_seconds": 1.853346,
+              "throttled_period_fraction": 0.13596491228070176,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.8467928243805787
+        }
+      },
+      "resource_samples": 17,
+      "sampled_peak_memory_bytes": 5897177786,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 33.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "cold-shared-64x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": true,
+      "scheduled": 64,
+      "successful": 37,
+      "failed": 27,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 37,
+        "503": 27
+      },
+      "error_codes": {
+        "503": 27
+      },
+      "error_reasons": {
+        "queue_timeout": 1,
+        "": 26
+      },
+      "failure_classes": {
+        "": 1,
+        "unexpected_failure": 26
+      },
+      "error_phases": {
+        "": 1,
+        "readiness": 26
+      },
+      "message_families": {
+        "analyzer_overloaded": 1,
+        "analyzer_unavailable": 26
+      },
+      "sse_first_text_seconds": {
+        "p50": 46.849,
+        "p95": 73.813,
+        "p99": 74.087
+      },
+      "successful_sse_within_60_seconds": 27,
+      "latency_seconds_success": {
+        "p50": 46.923,
+        "p95": 73.852,
+        "p99": 74.139
+      },
+      "latency_seconds_failure": {
+        "p50": 31.904,
+        "p95": 45.726,
+        "p99": 61.604
+      },
+      "latency_seconds_all": {
+        "p50": 32.059,
+        "p95": 70.201,
+        "p99": 74.139
+      },
+      "elapsed_seconds": 75.5684374999255,
+      "provider_requests": 37,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3801740831695497,
+      "max_client_start_delay_seconds": 0.0023217519065217296,
+      "metric_deltas": {
+        "ner_windows": 4334.0,
+        "ner_tokens": 1377459.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 64.0,
+        "queue_rejections": 26.0,
+        "queue_wait_seconds": 1348.991849150072,
+        "queue_attempts": 63.0,
+        "presidio_phase_seconds": 159.44757724695955,
+        "ner_phase_seconds": 376.50249795705895,
+        "triton_successful_requests": 1146,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 52699728,
+        "triton_compute_microseconds": 263465203,
+        "triton_executions": 1052,
+        "client_preprocessing_seconds": 2522.4531461909355
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0915035554807146,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.08658152966889136,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.17808508514960597
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.45039421184242545,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5461514046363037,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.42142730553643576,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5352805148840593,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.9532534368992243
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.4785683104751555,
+              "throttled_seconds": 1.917548,
+              "throttled_period_fraction": 0.14325068870523416,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.4659613800622364,
+              "throttled_seconds": 2.015145,
+              "throttled_period_fraction": 0.15862068965517243,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.944529690537392
+        }
+      },
+      "resource_samples": 14,
+      "sampled_peak_memory_bytes": 5899613629,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 32.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "history-prime",
+      "sizes": [
+        51000
+      ],
+      "history_units": 50000,
+      "shared_key": true,
+      "scheduled": 2,
+      "successful": 2,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 2
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 9.83,
+        "p95": 9.975,
+        "p99": 9.975
+      },
+      "successful_sse_within_60_seconds": 2,
+      "latency_seconds_success": {
+        "p50": 9.899,
+        "p95": 9.979,
+        "p99": 9.979
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 9.899,
+        "p95": 9.979,
+        "p99": 9.979
+      },
+      "elapsed_seconds": 11.982087709009647,
+      "provider_requests": 2,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.4132775831967592,
+      "max_client_start_delay_seconds": 0.0021952087990939617,
+      "metric_deltas": {
+        "ner_windows": 342.0,
+        "ner_tokens": 107567.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 8.158301352523267e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 6.282357587988372,
+        "ner_phase_seconds": 12.95773533899046,
+        "triton_successful_requests": 90,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 133620,
+        "triton_compute_microseconds": 11782735,
+        "triton_executions": 90,
+        "client_preprocessing_seconds": 19.714366008003708
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.03858541341527154,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.03481919753097886,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07340461094625039
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.2810024187024746,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.02671490086748258,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.29567571064125237,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.02974035949326225,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.6331333897044717
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47897238373909046,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4332688651471993,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.9122412488862898
+        }
+      },
+      "resource_samples": 3,
+      "sampled_peak_memory_bytes": 5905412255,
+      "sampled_peak_active_analyzers": 2.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "history-64x50k-plus1k",
+      "sizes": [
+        51000
+      ],
+      "history_units": 50000,
+      "shared_key": true,
+      "scheduled": 64,
+      "successful": 64,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 64
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 5.43,
+        "p95": 6.562,
+        "p99": 6.934
+      },
+      "successful_sse_within_60_seconds": 64,
+      "latency_seconds_success": {
+        "p50": 5.606,
+        "p95": 6.725,
+        "p99": 7.062
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 5.606,
+        "p95": 6.725,
+        "p99": 7.062
+      },
+      "elapsed_seconds": 8.404042417183518,
+      "provider_requests": 64,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.40313433296978474,
+      "max_client_start_delay_seconds": 0.0021473836848542316,
+      "metric_deltas": {
+        "ner_windows": 256.0,
+        "ner_tokens": 67673.0,
+        "analysis_cache_hit": 64.0,
+        "analysis_cache_miss": 64.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 63.751607404090464,
+        "queue_attempts": 64.0,
+        "presidio_phase_seconds": 8.289026958955219,
+        "ner_phase_seconds": 22.591087427121238,
+        "triton_successful_requests": 64,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 3274648,
+        "triton_compute_microseconds": 16204676,
+        "triton_executions": 58,
+        "client_preprocessing_seconds": 266.1716823580209
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7546456200289413,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7780477581446242,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5326933781735654
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.19332020799446345,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.24246405850673308,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.22040777354264404,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.23178656455400357,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.8879786045978442
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.6719240064081814,
+              "throttled_seconds": 0.099819,
+              "throttled_period_fraction": 0.03508771929824561,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.6811579531056742,
+              "throttled_seconds": 0.108411,
+              "throttled_period_fraction": 0.08064516129032258,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.3530819595138555
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 5921937813,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 22.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "sustained-mixed-128-over60s",
+      "sizes": [
+        1000,
+        8000,
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 128,
+      "successful": 125,
+      "failed": 3,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 125,
+        "503": 3
+      },
+      "error_codes": {
+        "503": 3
+      },
+      "error_reasons": {
+        "": 2,
+        "queue_timeout": 1
+      },
+      "failure_classes": {
+        "window_boundary_unresolved": 2,
+        "": 1
+      },
+      "error_phases": {
+        "windowing": 2,
+        "": 1
+      },
+      "message_families": {
+        "analyzer_unavailable": 2,
+        "analyzer_overloaded": 1
+      },
+      "sse_first_text_seconds": {
+        "p50": 23.363,
+        "p95": 50.126,
+        "p99": 57.189
+      },
+      "successful_sse_within_60_seconds": 124,
+      "latency_seconds_success": {
+        "p50": 23.444,
+        "p95": 50.146,
+        "p99": 57.211
+      },
+      "latency_seconds_failure": {
+        "p50": 60.266,
+        "p95": 61.538,
+        "p99": 61.538
+      },
+      "latency_seconds_all": {
+        "p50": 23.584,
+        "p95": 54.503,
+        "p99": 61.538
+      },
+      "elapsed_seconds": 112.14346408378333,
+      "provider_requests": 125,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.38843849999830127,
+      "max_client_start_delay_seconds": 0.00866471651545453,
+      "metric_deltas": {
+        "ner_windows": 6092.0,
+        "ner_tokens": 1870874.0,
+        "analysis_cache_hit": 0.0,
+        "analysis_cache_miss": 128.0,
+        "queue_rejections": 14.0,
+        "queue_wait_seconds": 2088.420516915983,
+        "queue_attempts": 143.0,
+        "presidio_phase_seconds": 212.25013668199244,
+        "ner_phase_seconds": 547.1060452828824,
+        "triton_successful_requests": 1597,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 69277216,
+        "triton_compute_microseconds": 407188007,
+        "triton_executions": 1499,
+        "client_preprocessing_seconds": 3201.501081876995
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09202337381142149,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.09349027363693373,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.18551364744835522
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.49590501393383246,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.48129229060694406,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5079592664899646,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5458814799793226,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.031038051010064
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.5954480246197558,
+              "throttled_seconds": 2.946779,
+              "throttled_period_fraction": 0.1441523118766999,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.5879531619034668,
+              "throttled_seconds": 2.82401,
+              "throttled_period_fraction": 0.15808491418247517,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 3.1834011865232226
+        }
+      },
+      "resource_samples": 20,
+      "sampled_peak_memory_bytes": 5937729369,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 33.0
+    },
+    {
+      "run_index": 1,
+      "profile": "production-control-continued",
+      "name": "cancel-half-16x50k",
+      "sizes": [
+        50000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 8,
+      "failed": 0,
+      "cancelled": 8,
+      "http_statuses": {
+        "None": 8,
+        "200": 8
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 23.0,
+        "p95": 31.478,
+        "p99": 31.478
+      },
+      "successful_sse_within_60_seconds": 8,
+      "latency_seconds_success": {
+        "p50": 23.008,
+        "p95": 31.48,
+        "p99": 31.48
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 1.004,
+        "p95": 31.48,
+        "p99": 31.48
+      },
+      "elapsed_seconds": 33.482918583322316,
+      "provider_requests": 8,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.4097899170592427,
+      "max_client_start_delay_seconds": 0.0021924585414429543,
+      "metric_deltas": {
+        "ner_windows": 1440.0,
+        "ner_tokens": 458308.0,
+        "analysis_cache_hit": 0.0,
+        "analysis_cache_miss": 11.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 23.94636951002758,
+        "queue_attempts": 11.0,
+        "presidio_phase_seconds": 56.17445948494424,
+        "ner_phase_seconds": 103.9057757990231,
+        "triton_successful_requests": 373,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6607615,
+        "triton_compute_microseconds": 79032203,
+        "triton_executions": 365,
+        "client_preprocessing_seconds": 189.81284009097726
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.05557877866522425,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.05357744443212569,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.10915622309734994
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.16301998611735224,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4378561588702261,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5071889035562535,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4019474303295231,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5100124788733549
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.0765749095881958,
+              "throttled_seconds": 0.807276,
+              "throttled_period_fraction": 0.08441558441558442,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.0792746270431324,
+              "throttled_seconds": 0.739624,
+              "throttled_period_fraction": 0.1038961038961039,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.155849536631328
+        }
+      },
+      "resource_samples": 7,
+      "sampled_peak_memory_bytes": 5941042865,
+      "sampled_peak_active_analyzers": 7.0,
+      "sampled_peak_waiting_analyses": 2.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A1x4-T2x1",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.263,
+        "p95": 0.496,
+        "p99": 0.496
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.265,
+        "p95": 0.5,
+        "p99": 0.5
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.265,
+        "p95": 0.5,
+        "p99": 0.5
+      },
+      "elapsed_seconds": 2.2723183748312294,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.1748115001246333,
+      "max_client_start_delay_seconds": 0.002560792025178671,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4234.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 5.045901343692094e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.2410159580031177,
+        "ner_phase_seconds": 0.5931256669864524,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6391,
+        "triton_compute_microseconds": 551125,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8921399989922065
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.13031386900150874,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.13031386900150874
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.12195370743414417,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 4.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.12195370743414417
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11983015500107255,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.12536765093639912,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.24519780593747167
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 2067295891,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A1x4-T2x1",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 6.533,
+        "p95": 12.589,
+        "p99": 12.589
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 6.544,
+        "p95": 12.609,
+        "p99": 12.609
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 6.544,
+        "p95": 12.609,
+        "p99": 12.609
+      },
+      "elapsed_seconds": 14.480639582965523,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.13374108308926225,
+      "max_client_start_delay_seconds": 0.002129749425997307,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 85.79549120897718,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 10.250610587012488,
+        "ner_phase_seconds": 18.07880421706068,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 165880,
+        "triton_compute_microseconds": 14427713,
+        "triton_executions": 112,
+        "client_preprocessing_seconds": 115.70826280597248
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.05970076277084815,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.05970076277084815
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5332073801386312,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 4.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.5332073801386312
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47592285043631416,
+              "throttled_seconds": 0.349629,
+              "throttled_period_fraction": 0.21428571428571427,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4794590241582605,
+              "throttled_seconds": 0.214712,
+              "throttled_period_fraction": 0.16326530612244897,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.9553818745945747
+        }
+      },
+      "resource_samples": 3,
+      "sampled_peak_memory_bytes": 2479180739,
+      "sampled_peak_active_analyzers": 2.0,
+      "sampled_peak_waiting_analyses": 10.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A1x4-T2x1",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 10,
+      "failed": 6,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 10,
+        "503": 6
+      },
+      "error_codes": {
+        "503": 6
+      },
+      "error_reasons": {
+        "queue_timeout": 6
+      },
+      "failure_classes": {
+        "": 6
+      },
+      "error_phases": {
+        "": 6
+      },
+      "message_families": {
+        "analyzer_overloaded": 6
+      },
+      "sse_first_text_seconds": {
+        "p50": 22.57,
+        "p95": 37.971,
+        "p99": 37.971
+      },
+      "successful_sse_within_60_seconds": 10,
+      "latency_seconds_success": {
+        "p50": 22.61,
+        "p95": 38.008,
+        "p99": 38.008
+      },
+      "latency_seconds_failure": {
+        "p50": 30.144,
+        "p95": 30.203,
+        "p99": 30.203
+      },
+      "latency_seconds_all": {
+        "p50": 30.121,
+        "p95": 38.008,
+        "p99": 38.008
+      },
+      "elapsed_seconds": 39.07777991704643,
+      "provider_requests": 10,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.16368799982592463,
+      "max_client_start_delay_seconds": 0.0021898753630618106,
+      "metric_deltas": {
+        "ner_windows": 1158.0,
+        "ner_tokens": 367767.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 6.0,
+        "queue_wait_seconds": 328.3102945679566,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 28.563040222987183,
+        "ner_phase_seconds": 48.454586644947995,
+        "triton_successful_requests": 306,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 443204,
+        "triton_compute_microseconds": 39280085,
+        "triton_executions": 306,
+        "client_preprocessing_seconds": 409.2411665219697
+      },
+      "cpu_by_service": {
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.05752583427684989,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.007142857142857143,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.05752583427684989
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5434131476533157,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 4.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.5434131476533157
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.4968806512457162,
+              "throttled_seconds": 0.629848,
+              "throttled_period_fraction": 0.21862348178137653,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4974538014981731,
+              "throttled_seconds": 0.677334,
+              "throttled_period_fraction": 0.18875502008032127,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.9943344527438893
+        }
+      },
+      "resource_samples": 8,
+      "sampled_peak_memory_bytes": 2577793021,
+      "sampled_peak_active_analyzers": 2.0,
+      "sampled_peak_waiting_analyses": 14.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T2x1",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.227,
+        "p95": 0.231,
+        "p99": 0.231
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.23,
+        "p95": 0.233,
+        "p99": 0.233
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.23,
+        "p95": 0.233,
+        "p99": 0.233
+      },
+      "elapsed_seconds": 2.2354730828665197,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.18375649955123663,
+      "max_client_start_delay_seconds": 0.0022164581653972837,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 4.629300383385271e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.2160492920083925,
+        "ner_phase_seconds": 0.5739680830010911,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6749,
+        "triton_compute_microseconds": 535643,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8378713750134921
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11923349759037347,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.03071995961031711,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.1499534572006906
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06128242293115682,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06128242293115682
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11483882523960312,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.11865341979353179,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.23349224503313493
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 2732526137,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T2x1",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 5.002,
+        "p95": 9.329,
+        "p99": 9.329
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 5.005,
+        "p95": 9.33,
+        "p99": 9.33
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 5.005,
+        "p95": 9.33,
+        "p99": 9.33
+      },
+      "elapsed_seconds": 11.066751499660313,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.20401891693472862,
+      "max_client_start_delay_seconds": 0.002205458531777005,
+      "metric_deltas": {
+        "ner_windows": 447.0,
+        "ner_tokens": 139237.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 50.15108369200607,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 10.491734253038885,
+        "ner_phase_seconds": 31.58225714103901,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 251987,
+        "triton_compute_microseconds": 27164862,
+        "triton_executions": 108,
+        "client_preprocessing_seconds": 93.27947158596362
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.3868168644915298,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3973841307947364,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.7842009952862662
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07902178529704725,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07902178529704725
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.6772112714729418,
+              "throttled_seconds": 4.670944,
+              "throttled_period_fraction": 0.5591397849462365,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.6800965019149315,
+              "throttled_seconds": 6.079892,
+              "throttled_period_fraction": 0.6881720430107527,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.3573077733878733
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 3302269907,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T2x1",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 13,
+      "failed": 3,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 13,
+        "503": 3
+      },
+      "error_codes": {
+        "503": 3
+      },
+      "error_reasons": {
+        "": 3
+      },
+      "failure_classes": {
+        "unexpected_failure": 3
+      },
+      "error_phases": {
+        "readiness": 3
+      },
+      "message_families": {
+        "analyzer_unavailable": 3
+      },
+      "sse_first_text_seconds": {
+        "p50": 23.823,
+        "p95": 40.121,
+        "p99": 40.121
+      },
+      "successful_sse_within_60_seconds": 13,
+      "latency_seconds_success": {
+        "p50": 23.876,
+        "p95": 40.162,
+        "p99": 40.162
+      },
+      "latency_seconds_failure": {
+        "p50": 30.132,
+        "p95": 30.136,
+        "p99": 30.136
+      },
+      "latency_seconds_all": {
+        "p50": 24.163,
+        "p95": 40.162,
+        "p99": 40.162
+      },
+      "elapsed_seconds": 41.762982291169465,
+      "provider_requests": 13,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.18345808377489448,
+      "max_client_start_delay_seconds": 0.0021419585992892287,
+      "metric_deltas": {
+        "ner_windows": 1500.0,
+        "ner_tokens": 476193.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 4.0,
+        "queue_wait_seconds": 261.63125640997896,
+        "queue_attempts": 17.0,
+        "presidio_phase_seconds": 40.32277373097895,
+        "ner_phase_seconds": 105.70758546394063,
+        "triton_successful_requests": 396,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 616929,
+        "triton_compute_microseconds": 91631940,
+        "triton_executions": 395,
+        "client_preprocessing_seconds": 411.60111497796606
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.3699269656863955,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.42311640175597354,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.793043367442369
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06717556698509414,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06717556698509414
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.6488972500544241,
+              "throttled_seconds": 19.877168,
+              "throttled_period_fraction": 0.6515151515151515,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.6516494491742023,
+              "throttled_seconds": 19.360932,
+              "throttled_period_fraction": 0.6287425149700598,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.3005466992286263
+        }
+      },
+      "resource_samples": 8,
+      "sampled_peak_memory_bytes": 3443963982,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 12.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A4x1-T2x1",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.223,
+        "p95": 0.261,
+        "p99": 0.261
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.225,
+        "p95": 0.263,
+        "p99": 0.263
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.225,
+        "p95": 0.263,
+        "p99": 0.263
+      },
+      "elapsed_seconds": 2.2656015418469906,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3828289592638612,
+      "max_client_start_delay_seconds": 0.0021865838207304478,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 5.362600495573133e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.22864445800951216,
+        "ner_phase_seconds": 0.5978589160076808,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6812,
+        "triton_compute_microseconds": 556925,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8763761649897788
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07030474165303548,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.04290710482081575,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.0765784302580363,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.03405620912992148,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.223846485861809
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.05125165072220504,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.05125165072220504
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11557285048503138,
+              "throttled_seconds": 0.000159,
+              "throttled_period_fraction": 0.05555555555555555,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.11152539080114485,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.22709824128617623
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 3748814385,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A4x1-T2x1",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 5.307,
+        "p95": 8.247,
+        "p99": 8.247
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 5.319,
+        "p95": 8.257,
+        "p99": 8.257
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 5.319,
+        "p95": 8.257,
+        "p99": 8.257
+      },
+      "elapsed_seconds": 9.326987000182271,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.40482237469404936,
+      "max_client_start_delay_seconds": 0.002125625715901469,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 23.71551592697506,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 9.49699392200273,
+        "ner_phase_seconds": 53.57355369103607,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 8561229,
+        "triton_compute_microseconds": 41511238,
+        "triton_executions": 95,
+        "client_preprocessing_seconds": 87.87076341800275
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.25464932262333595,
+              "throttled_seconds": 0.264229,
+              "throttled_period_fraction": 0.11363636363636363,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.2686195143835995,
+              "throttled_seconds": 0.134494,
+              "throttled_period_fraction": 0.08602150537634409,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.23681652578674076,
+              "throttled_seconds": 0.016426,
+              "throttled_period_fraction": 0.056179775280898875,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.24578001617632955,
+              "throttled_seconds": 0.124559,
+              "throttled_period_fraction": 0.16455696202531644,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.0058653789700058
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09330202789424917,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.09330202789424917
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7845699396475752,
+              "throttled_seconds": 7.521127,
+              "throttled_period_fraction": 0.8666666666666667,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7915799355776255,
+              "throttled_seconds": 8.259357,
+              "throttled_period_fraction": 0.8315789473684211,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5761498752252008
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 4446318752,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 3.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A4x1-T2x1",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 21.817,
+        "p95": 39.504,
+        "p99": 39.504
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 21.874,
+        "p95": 39.506,
+        "p99": 39.506
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 21.874,
+        "p95": 39.506,
+        "p99": 39.506
+      },
+      "elapsed_seconds": 40.84471349976957,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.3778943340294063,
+      "max_client_start_delay_seconds": 0.002110624282310347,
+      "metric_deltas": {
+        "ner_windows": 1842.0,
+        "ner_tokens": 584619.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 150.127438445008,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 51.4616416850331,
+        "ner_phase_seconds": 256.9712601180654,
+        "triton_successful_requests": 486,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 51674303,
+        "triton_compute_microseconds": 179870424,
+        "triton_executions": 425,
+        "client_preprocessing_seconds": 462.7235793409927
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.2808422964873568,
+              "throttled_seconds": 0.581917,
+              "throttled_period_fraction": 0.10975609756097561,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.31804191755290856,
+              "throttled_seconds": 1.401689,
+              "throttled_period_fraction": 0.19658119658119658,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.319457095182545,
+              "throttled_seconds": 1.40774,
+              "throttled_period_fraction": 0.19101123595505617,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3028545031459593,
+              "throttled_seconds": 0.940711,
+              "throttled_period_fraction": 0.13736263736263737,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.2211958123687696
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0819261611347259,
+              "throttled_seconds": 0.04803,
+              "throttled_period_fraction": 0.011904761904761904,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.0819261611347259
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.8869133948244492,
+              "throttled_seconds": 35.902846,
+              "throttled_period_fraction": 0.9151670951156813,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.8874436664130911,
+              "throttled_seconds": 36.703189,
+              "throttled_period_fraction": 0.9141414141414141,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.7743570612375403
+        }
+      },
+      "resource_samples": 8,
+      "sampled_peak_memory_bytes": 4778738315,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T1x2",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.243,
+        "p95": 0.263,
+        "p99": 0.263
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.246,
+        "p95": 0.265,
+        "p99": 0.265
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.246,
+        "p95": 0.265,
+        "p99": 0.265
+      },
+      "elapsed_seconds": 2.2679983326233923,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.2520264587365091,
+      "max_client_start_delay_seconds": 0.0022273329086601734,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 9.729199518915266e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.23908970897900872,
+        "ner_phase_seconds": 0.589870375013561,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6210,
+        "triton_compute_microseconds": 549394,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8910009589890251
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11405939193948203,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.030208928555529403,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.14426832049501143
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.18733762316191915,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.18733762316191915
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06693067513038886,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06693067513038886
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 2188393837,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T1x2",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 4.806,
+        "p95": 7.735,
+        "p99": 7.735
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 4.809,
+        "p95": 7.737,
+        "p99": 7.737
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 4.809,
+        "p95": 7.737,
+        "p99": 7.737
+      },
+      "elapsed_seconds": 9.738388207741082,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.20566800003871322,
+      "max_client_start_delay_seconds": 0.0021519578061997002,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 43.276912606015685,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 7.387695459969109,
+        "ner_phase_seconds": 28.522224302010727,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 5445997,
+        "triton_compute_microseconds": 19885207,
+        "triton_executions": 100,
+        "client_preprocessing_seconds": 80.25773595398641
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.4265272361218843,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.4320445691424448,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.8585718052643292
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.5200558237917907,
+              "throttled_seconds": 0.321452,
+              "throttled_period_fraction": 0.26881720430107525,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5200558237917907
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09260692976536627,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.09260692976536627
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 2761613635,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T1x2",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 15,
+      "failed": 1,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 15,
+        "503": 1
+      },
+      "error_codes": {
+        "503": 1
+      },
+      "error_reasons": {
+        "": 1
+      },
+      "failure_classes": {
+        "unexpected_failure": 1
+      },
+      "error_phases": {
+        "readiness": 1
+      },
+      "message_families": {
+        "analyzer_unavailable": 1
+      },
+      "sse_first_text_seconds": {
+        "p50": 22.802,
+        "p95": 38.373,
+        "p99": 38.373
+      },
+      "successful_sse_within_60_seconds": 15,
+      "latency_seconds_success": {
+        "p50": 22.854,
+        "p95": 38.411,
+        "p99": 38.411
+      },
+      "latency_seconds_failure": {
+        "p50": 30.114,
+        "p95": 30.114,
+        "p99": 30.114
+      },
+      "latency_seconds_all": {
+        "p50": 22.854,
+        "p95": 38.411,
+        "p99": 38.411
+      },
+      "elapsed_seconds": 40.2803257079795,
+      "provider_requests": 15,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.22145983297377825,
+      "max_client_start_delay_seconds": 0.0022277500480413215,
+      "metric_deltas": {
+        "ner_windows": 1728.0,
+        "ner_tokens": 548477.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 2.0,
+        "queue_wait_seconds": 240.89498032200208,
+        "queue_attempts": 17.0,
+        "presidio_phase_seconds": 36.50485130895686,
+        "ner_phase_seconds": 113.74030551500618,
+        "triton_successful_requests": 456,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 20123939,
+        "triton_compute_microseconds": 78659755,
+        "triton_executions": 417,
+        "client_preprocessing_seconds": 394.856011394033
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5046187171139462,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.45410136176582233,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.9587200788797685
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.6267883850977574,
+              "throttled_seconds": 0.940539,
+              "throttled_period_fraction": 0.2421875,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.6267883850977574
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07422756002383388,
+              "throttled_seconds": 0.020989,
+              "throttled_period_fraction": 0.005988023952095809,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07422756002383388
+        }
+      },
+      "resource_samples": 9,
+      "sampled_peak_memory_bytes": 2879484064,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 12.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T4x0.5",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.347,
+        "p95": 0.396,
+        "p99": 0.396
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.349,
+        "p95": 0.398,
+        "p99": 0.398
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.349,
+        "p95": 0.398,
+        "p99": 0.398
+      },
+      "elapsed_seconds": 2.398739832919091,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.19290699996054173,
+      "max_client_start_delay_seconds": 0.0021327074306707328,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 7.85409938544035e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.23984887500409968,
+        "ner_phase_seconds": 1.0019063350046054,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6879,
+        "triton_compute_microseconds": 953039,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 1.3054708749987185
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.02640124885083548,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.09901805879970729,
+              "throttled_seconds": 0.18807,
+              "throttled_period_fraction": 0.38461538461538464,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.11563171656147858,
+              "throttled_seconds": 0.228823,
+              "throttled_period_fraction": 0.3125,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.039384469580191594,
+              "throttled_seconds": 0.036057,
+              "throttled_period_fraction": 0.14285714285714285,
+              "quota_cores": 0.5
+            }
+          ],
+          "sum_mean_usage_cores": 0.28043549379221294
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.12230503949348882,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.04401132839207266,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.16631636788556148
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07101136708755468,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07101136708755468
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 3265713400,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T4x0.5",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 5.614,
+        "p95": 10.168,
+        "p99": 10.168
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 5.616,
+        "p95": 10.17,
+        "p99": 10.17
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 5.616,
+        "p95": 10.17,
+        "p99": 10.17
+      },
+      "elapsed_seconds": 11.906399707775563,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.21546766720712185,
+      "max_client_start_delay_seconds": 0.002239291928708531,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 56.18964002600114,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 10.819184254971333,
+        "ner_phase_seconds": 34.85791818400321,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 162091,
+        "triton_compute_microseconds": 30476756,
+        "triton_executions": 112,
+        "client_preprocessing_seconds": 103.12496642601036
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.2905740643967189,
+              "throttled_seconds": 3.79782,
+              "throttled_period_fraction": 0.7692307692307693,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3022198606379841,
+              "throttled_seconds": 4.446141,
+              "throttled_period_fraction": 0.8351648351648352,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.33608893016411756,
+              "throttled_seconds": 4.193385,
+              "throttled_period_fraction": 0.8316831683168316,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3188627056990092,
+              "throttled_seconds": 3.923141,
+              "throttled_period_fraction": 0.797979797979798,
+              "quota_cores": 0.5
+            }
+          ],
+          "sum_mean_usage_cores": 1.2477455608978298
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.36949037306525284,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3707280089201133,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.7402183819853662
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0770890237748414,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.0770890237748414
+        }
+      },
+      "resource_samples": 3,
+      "sampled_peak_memory_bytes": 4165866614,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 12.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-T4x0.5",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 13,
+      "failed": 3,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 13,
+        "503": 3
+      },
+      "error_codes": {
+        "503": 3
+      },
+      "error_reasons": {
+        "": 3
+      },
+      "failure_classes": {
+        "unexpected_failure": 3
+      },
+      "error_phases": {
+        "readiness": 3
+      },
+      "message_families": {
+        "analyzer_unavailable": 3
+      },
+      "sse_first_text_seconds": {
+        "p50": 25.057,
+        "p95": 44.333,
+        "p99": 44.333
+      },
+      "successful_sse_within_60_seconds": 13,
+      "latency_seconds_success": {
+        "p50": 25.107,
+        "p95": 44.369,
+        "p99": 44.369
+      },
+      "latency_seconds_failure": {
+        "p50": 30.125,
+        "p95": 30.158,
+        "p99": 30.158
+      },
+      "latency_seconds_all": {
+        "p50": 25.191,
+        "p95": 44.369,
+        "p99": 44.369
+      },
+      "elapsed_seconds": 45.97189679183066,
+      "provider_requests": 13,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.2229532920755446,
+      "max_client_start_delay_seconds": 0.002213541387269896,
+      "metric_deltas": {
+        "ner_windows": 1500.0,
+        "ner_tokens": 476193.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 4.0,
+        "queue_wait_seconds": 269.07298595798784,
+        "queue_attempts": 17.0,
+        "presidio_phase_seconds": 41.500001685970346,
+        "ner_phase_seconds": 116.8654243460478,
+        "triton_successful_requests": 396,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 703485,
+        "triton_compute_microseconds": 102815462,
+        "triton_executions": 396,
+        "client_preprocessing_seconds": 431.03052694900543
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.2896757040947216,
+              "throttled_seconds": 13.20313,
+              "throttled_period_fraction": 0.7530120481927711,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.29754288728065054,
+              "throttled_seconds": 14.468735,
+              "throttled_period_fraction": 0.7669616519174042,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.301858780071793,
+              "throttled_seconds": 13.629983,
+              "throttled_period_fraction": 0.7571428571428571,
+              "quota_cores": 0.5
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3094571548648621,
+              "throttled_seconds": 13.856606,
+              "throttled_period_fraction": 0.7784256559766763,
+              "quota_cores": 0.5
+            }
+          ],
+          "sum_mean_usage_cores": 1.1985345263120273
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.3903922398641276,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.34342151818842515,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.7338137580525528
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.061334191009356775,
+              "throttled_seconds": 0.053777,
+              "throttled_period_fraction": 0.011627906976744186,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.061334191009356775
+        }
+      },
+      "resource_samples": 10,
+      "sampled_peak_memory_bytes": 4198078867,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 12.0
+    },
+    {
+      "run_index": 1,
+      "profile": "increased-A2x2-T2x2",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.222,
+        "p95": 0.299,
+        "p99": 0.299
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.223,
+        "p95": 0.3,
+        "p99": 0.3
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.223,
+        "p95": 0.3,
+        "p99": 0.3
+      },
+      "elapsed_seconds": 2.303204166237265,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.25503483274951577,
+      "max_client_start_delay_seconds": 0.0023106252774596214,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 4.379299934953451e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.22112995899806265,
+        "ner_phase_seconds": 0.6225730409933021,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6390,
+        "triton_compute_microseconds": 531476,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8901477489998797
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0989904929303077,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.11689500036931642,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.21588549329962414
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.12751039539395378,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.03794571008600483,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.16545610547995862
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.05271816606644166,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.05271816606644166
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 2762991464,
+      "sampled_peak_active_analyzers": 0.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "increased-A2x2-T2x2",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 3.648,
+        "p95": 7.648,
+        "p99": 7.648
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 3.651,
+        "p95": 7.652,
+        "p99": 7.652
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 3.651,
+        "p95": 7.652,
+        "p99": 7.652
+      },
+      "elapsed_seconds": 9.65275195799768,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.2463839165866375,
+      "max_client_start_delay_seconds": 0.0022847494731346174,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 37.066399225004716,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 9.32836112898076,
+        "ner_phase_seconds": 22.523939010992763,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 160038,
+        "triton_compute_microseconds": 17832654,
+        "triton_executions": 110,
+        "client_preprocessing_seconds": 70.19258120199083
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.8191766399667693,
+              "throttled_seconds": 0.067486,
+              "throttled_period_fraction": 0.05194805194805195,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.8028188512744227,
+              "throttled_seconds": 0.141459,
+              "throttled_period_fraction": 0.06329113924050633,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.6219954912411918
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47855880729607236,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.3768289044024794,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.8553877116985518
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.09464435863242043,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.09464435863242043
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 3138954195,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "increased-A2x2-T2x2",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 18.607,
+        "p95": 34.157,
+        "p99": 34.157
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 18.669,
+        "p95": 34.159,
+        "p99": 34.159
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 18.669,
+        "p95": 34.159,
+        "p99": 34.159
+      },
+      "elapsed_seconds": 36.16014354117215,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.22624558303505182,
+      "max_client_start_delay_seconds": 0.0023356243347127936,
+      "metric_deltas": {
+        "ner_windows": 1842.0,
+        "ner_tokens": 584619.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0.0,
+        "queue_wait_seconds": 200.8570773429965,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 39.63417843490606,
+        "ner_phase_seconds": 98.93086912998115,
+        "triton_successful_requests": 486,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 708039,
+        "triton_compute_microseconds": 80501799,
+        "triton_executions": 479,
+        "client_preprocessing_seconds": 343.12313049101795
+      },
+      "cpu_by_service": {
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 1.0615375475646676,
+              "throttled_seconds": 0.24314,
+              "throttled_period_fraction": 0.03571428571428571,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 1.08413997653436,
+              "throttled_seconds": 0.037629,
+              "throttled_period_fraction": 0.008849557522123894,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 2.1456775240990273
+        },
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5875925061523467,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5883690246831235,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.1759615308354703
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.08788462564850591,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.08788462564850591
+        }
+      },
+      "resource_samples": 7,
+      "sampled_peak_memory_bytes": 3683820499,
+      "sampled_peak_active_analyzers": 4.0,
+      "sampled_peak_waiting_analyses": 12.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B4",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.232,
+        "p95": 0.249,
+        "p99": 0.249
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.235,
+        "p95": 0.252,
+        "p99": 0.252
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.235,
+        "p95": 0.252,
+        "p99": 0.252
+      },
+      "elapsed_seconds": 2.2548738750629127,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.1991932918317616,
+      "max_client_start_delay_seconds": 0.0022353332800170156,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 5.8250981965102255e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.22786320900195278,
+        "ner_phase_seconds": 0.5722100430284627,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6407,
+        "triton_compute_microseconds": 531622,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8543005830142647
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.1281101705582633,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.04062930606623267,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.16873947662449595
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11019125939618489,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.12204871872852847,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.23223997812471336
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06984107235171584,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06984107235171584
+        }
+      },
+      "resource_samples": 1,
+      "sampled_peak_memory_bytes": 2418120061,
+      "sampled_peak_active_analyzers": 1.0,
+      "sampled_peak_waiting_analyses": 0.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B4",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 6.67,
+        "p95": 9.842,
+        "p99": 9.842
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 6.683,
+        "p95": 9.853,
+        "p99": 9.853
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 6.683,
+        "p95": 9.853,
+        "p99": 9.853
+      },
+      "elapsed_seconds": 11.14263412496075,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.24715054128319025,
+      "max_client_start_delay_seconds": 0.002336291844646121,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 35.35879897400446,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 17.77171588098281,
+        "ner_phase_seconds": 56.07879506702011,
+        "triton_successful_requests": 112,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6748139,
+        "triton_compute_microseconds": 36150565,
+        "triton_executions": 104,
+        "client_preprocessing_seconds": 110.87289967905963
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.4767842071458714,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.535845250538046,
+              "throttled_seconds": 0.041009,
+              "throttled_period_fraction": 0.008620689655172414,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.0126294576839174
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7130121985211525,
+              "throttled_seconds": 7.582672,
+              "throttled_period_fraction": 0.8061224489795918,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7024361259337526,
+              "throttled_seconds": 7.045397,
+              "throttled_period_fraction": 0.7524752475247525,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.4154483244549052
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07953370155349057,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07953370155349057
+        }
+      },
+      "resource_samples": 3,
+      "sampled_peak_memory_bytes": 3657763385,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B4",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 28.1,
+        "p95": 48.616,
+        "p99": 48.616
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 28.147,
+        "p95": 48.618,
+        "p99": 48.618
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 28.147,
+        "p95": 48.618,
+        "p99": 48.618
+      },
+      "elapsed_seconds": 50.008717332966626,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.21595025015994906,
+      "max_client_start_delay_seconds": 0.0021935408003628254,
+      "metric_deltas": {
+        "ner_windows": 1842.0,
+        "ner_tokens": 584619.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 191.4668007940345,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 75.94893781800056,
+        "ner_phase_seconds": 293.5742231339973,
+        "triton_successful_requests": 486,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 52087745,
+        "triton_compute_microseconds": 176242608,
+        "triton_executions": 434,
+        "client_preprocessing_seconds": 567.5017797150358
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5220449462126784,
+              "throttled_seconds": 0.041962,
+              "throttled_period_fraction": 0.006437768240343348,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5891024261365436,
+              "throttled_seconds": 0.167208,
+              "throttled_period_fraction": 0.012320328542094456,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.111147372349222
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7624432424427671,
+              "throttled_seconds": 34.915475,
+              "throttled_period_fraction": 0.7912844036697247,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7630134827158425,
+              "throttled_seconds": 34.9873,
+              "throttled_period_fraction": 0.8045977011494253,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5254567251586095
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06432021606152138,
+              "throttled_seconds": 0.008973,
+              "throttled_period_fraction": 0.005050505050505051,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06432021606152138
+        }
+      },
+      "resource_samples": 10,
+      "sampled_peak_memory_bytes": 4095895138,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B8",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.236,
+        "p95": 0.342,
+        "p99": 0.342
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.238,
+        "p95": 0.345,
+        "p99": 0.345
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.238,
+        "p95": 0.345,
+        "p99": 0.345
+      },
+      "elapsed_seconds": 2.216339583043009,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.23801425006240606,
+      "max_client_start_delay_seconds": 0.002187791590889332,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 4.866598465014249e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.3131981249898672,
+        "ner_phase_seconds": 0.585626334985136,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6217,
+        "triton_compute_microseconds": 544379,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.9481534590013325
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.15525710918224483,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.04072976901228033,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.19598687819452515
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11432521573457355,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.12145714219849191,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.23578235793306546
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06769569071788345,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06769569071788345
+        }
+      },
+      "resource_samples": 0,
+      "sampled_peak_memory_bytes": null,
+      "sampled_peak_active_analyzers": null,
+      "sampled_peak_waiting_analyses": null
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B8",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 7.149,
+        "p95": 11.449,
+        "p99": 11.449
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 7.152,
+        "p95": 11.461,
+        "p99": 11.461
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 7.152,
+        "p95": 11.461,
+        "p99": 11.461
+      },
+      "elapsed_seconds": 12.719326834194362,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.22146791592240334,
+      "max_client_start_delay_seconds": 0.002115458870927567,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 37.637737890996505,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 15.569026715995278,
+        "ner_phase_seconds": 77.7826841189817,
+        "triton_successful_requests": 64,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 14417243,
+        "triton_compute_microseconds": 46545327,
+        "triton_executions": 56,
+        "client_preprocessing_seconds": 132.54009560703707
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.4718716163179543,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.49137287472887853,
+              "throttled_seconds": 0.037355,
+              "throttled_period_fraction": 0.016129032258064516,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.9632444910468329
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.6757843104673024,
+              "throttled_seconds": 9.01171,
+              "throttled_period_fraction": 0.8446601941747572,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.6823554999044644,
+              "throttled_seconds": 8.451656,
+              "throttled_period_fraction": 0.7980769230769231,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.3581398103717668
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.07720937699247045,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.07720937699247045
+        }
+      },
+      "resource_samples": 3,
+      "sampled_peak_memory_bytes": 4758718903,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B8",
+      "name": "cold-16x32000",
+      "sizes": [
+        32000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 32.483,
+        "p95": 50.342,
+        "p99": 50.342
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 32.485,
+        "p95": 50.344,
+        "p99": 50.344
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 32.485,
+        "p95": 50.344,
+        "p99": 50.344
+      },
+      "elapsed_seconds": 52.34667345881462,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.20652724988758564,
+      "max_client_start_delay_seconds": 0.002273416674385409,
+      "metric_deltas": {
+        "ner_windows": 1842.0,
+        "ner_tokens": 584619.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 1.0,
+        "queue_wait_seconds": 209.25393075900502,
+        "queue_attempts": 17.0,
+        "presidio_phase_seconds": 64.68030960504257,
+        "ner_phase_seconds": 282.31924925002386,
+        "triton_successful_requests": 262,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 50143770,
+        "triton_compute_microseconds": 175923796,
+        "triton_executions": 237,
+        "client_preprocessing_seconds": 562.1716789100319
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.5856886154754958,
+              "throttled_seconds": 0.032276,
+              "throttled_period_fraction": 0.004056795131845842,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.44282393543319065,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.0285125509086863
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7548685477822435,
+              "throttled_seconds": 33.965339,
+              "throttled_period_fraction": 0.7583892617449665,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7711012790095682,
+              "throttled_seconds": 34.778732,
+              "throttled_period_fraction": 0.7439293598233996,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.5259698267918118
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.06657104630812329,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.06657104630812329
+        }
+      },
+      "resource_samples": 10,
+      "sampled_peak_memory_bytes": 5356895859,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 8.0
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B16",
+      "name": "warmup-4x1k",
+      "sizes": [
+        1000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 4
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 0.226,
+        "p95": 0.247,
+        "p99": 0.247
+      },
+      "successful_sse_within_60_seconds": 4,
+      "latency_seconds_success": {
+        "p50": 0.229,
+        "p95": 0.248,
+        "p99": 0.248
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 0.229,
+        "p95": 0.248,
+        "p99": 0.248
+      },
+      "elapsed_seconds": 2.2268521250225604,
+      "provider_requests": 4,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.2229030830785632,
+      "max_client_start_delay_seconds": 0.0022580412526925775,
+      "metric_deltas": {
+        "ner_windows": 16.0,
+        "ner_tokens": 4230.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 4.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 5.625000630971044e-05,
+        "queue_attempts": 4.0,
+        "presidio_phase_seconds": 0.22414254101749975,
+        "ner_phase_seconds": 0.585528332987451,
+        "triton_successful_requests": 4,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6365,
+        "triton_compute_microseconds": 543874,
+        "triton_executions": 4,
+        "client_preprocessing_seconds": 0.8593489580089226
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.12192817146177583,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.04202550705122901,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.16395367851300485
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.11543274927011295,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.11669102137101661,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.23212377064112955
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.057081447663311614,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.057081447663311614
+        }
+      },
+      "resource_samples": 0,
+      "sampled_peak_memory_bytes": null,
+      "sampled_peak_active_analyzers": null,
+      "sampled_peak_waiting_analyses": null
+    },
+    {
+      "run_index": 1,
+      "profile": "fixed-A2x2-C4-B16",
+      "name": "cold-16x8000",
+      "sizes": [
+        8000
+      ],
+      "history_units": 0,
+      "shared_key": false,
+      "scheduled": 16,
+      "successful": 16,
+      "failed": 0,
+      "cancelled": 0,
+      "http_statuses": {
+        "200": 16
+      },
+      "error_codes": {},
+      "error_reasons": {},
+      "failure_classes": {},
+      "error_phases": {},
+      "message_families": {},
+      "sse_first_text_seconds": {
+        "p50": 7.717,
+        "p95": 11.325,
+        "p99": 11.325
+      },
+      "successful_sse_within_60_seconds": 16,
+      "latency_seconds_success": {
+        "p50": 7.721,
+        "p95": 11.336,
+        "p99": 11.336
+      },
+      "latency_seconds_failure": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "latency_seconds_all": {
+        "p50": 7.721,
+        "p95": 11.336,
+        "p99": 11.336
+      },
+      "elapsed_seconds": 12.404890124686062,
+      "provider_requests": 16,
+      "raw_marker_seen": false,
+      "drain_seconds": 0.19256300013512373,
+      "max_client_start_delay_seconds": 0.002164083098371794,
+      "metric_deltas": {
+        "ner_windows": 438.0,
+        "ner_tokens": 136987.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 16.0,
+        "queue_rejections": 0,
+        "queue_wait_seconds": 39.842635895023705,
+        "queue_attempts": 16.0,
+        "presidio_phase_seconds": 17.333878674995503,
+        "ner_phase_seconds": 66.69024603300204,
+        "triton_successful_requests": 32,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 6583198,
+        "triton_compute_microseconds": 43309870,
+        "triton_executions": 29,
+        "client_preprocessing_seconds": 125.5968821849965
+      },
+      "cpu_by_service": {
+        "presidio-analyzer": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.47624692712356925,
+              "throttled_seconds": 0.006725,
+              "throttled_period_fraction": 0.009433962264150943,
+              "quota_cores": 2.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.5239404208972981,
+              "throttled_seconds": 0.069027,
+              "throttled_period_fraction": 0.017094017094017096,
+              "quota_cores": 2.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.0001873480208674
+        },
+        "ner-triton": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.7326538726466976,
+              "throttled_seconds": 9.58742,
+              "throttled_period_fraction": 0.8363636363636363,
+              "quota_cores": 1.0
+            },
+            {
+              "available": true,
+              "usage_cores": 0.7446104469555963,
+              "throttled_seconds": 8.586361,
+              "throttled_period_fraction": 0.7927927927927928,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 1.4772643196022939
+        },
+        "litellm": {
+          "replicas": [
+            {
+              "available": true,
+              "usage_cores": 0.0824636798399183,
+              "throttled_seconds": 0.0,
+              "throttled_period_fraction": 0.0,
+              "quota_cores": 1.0
+            }
+          ],
+          "sum_mean_usage_cores": 0.0824636798399183
+        }
+      },
+      "resource_samples": 2,
+      "sampled_peak_memory_bytes": 5401942684,
+      "sampled_peak_active_analyzers": 8.0,
+      "sampled_peak_waiting_analyses": 4.0
+    }
+  ],
+  "totals": {
+    "scheduled": 918,
+    "successful": 785,
+    "failed": 125,
+    "cancelled": 8,
+    "provider_requests": 785
+  },
+  "sampled_peak_memory_bytes": 6419954791,
+  "unrecorded_case": {
+    "profile": "fixed-A2x2-C4-B16",
+    "name": "cold-16x32000",
+    "scheduled": 16,
+    "cause": "triton_processes_oom_killed_under_experimental_batch16_profile",
+    "memory_limit_bytes_per_triton": 2147483648,
+    "global_memory_pressure_not_excluded_by_periodic_samples": true,
+    "triton_oom_killed": 2,
+    "exit_codes": [
+      137,
+      137
+    ],
+    "outcomes_available": false,
+    "note": "Client wave finished but rows were not persisted before post-wave metric collection failed. Excluded from totals; no successful capacity claim."
+  }
+}

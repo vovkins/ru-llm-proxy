@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-02",
+  "status": "single_transition_completed_startup_failure_not_reproduced",
+  "original_failure_resolved": false,
+  "root_cause_established": false,
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "source_manifest_sha256": "00f2d7734c97912e7cccab6e025444a451931b916e1a4911135bc12ea9696b9d",
+  "verified_source_files": 382,
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "external_provider_calls": 0,
+  "load_waves": 0,
+  "synthetic_warmups_skipped": 2,
+  "transition_count": 1,
+  "transition_start_at": 1793615522.4198074,
+  "transition_finish_at": 1793615713.3757176,
+  "reload_count": 0,
+  "gateway_same_during_transition": true,
+  "old_and_new_triton_ids_disjoint": true,
+  "samples": 79,
+  "direct_statuses": {
+    "200": 279,
+    "None": 6
+  },
+  "proxy_statuses": {
+    "200": 248
+  },
+  "proxy_probe_condition": "Only after the complete desired Triton set answers direct GET with 200",
+  "eligible_samples": 62,
+  "eligible_dns_address_mismatches": 0,
+  "probe_observer_error": null,
+  "baseline": {
+    "at": 1793615521.8590827,
+    "utc": "2026-11-02T10:32:01.859083+00:00",
+    "phase": "bootstrap_6",
+    "dns_addresses": [
+      "172.27.0.10",
+      "172.27.0.11",
+      "172.27.0.6",
+      "172.27.0.7",
+      "172.27.0.8",
+      "172.27.0.9"
+    ],
+    "direct": [
+      {
+        "at": 1793615521.9282768,
+        "ip": "172.27.0.11",
+        "status": 200,
+        "seconds": 0.026377201080322266,
+        "id": "92856dc62bde"
+      },
+      {
+        "at": 1793615521.9546688,
+        "ip": "172.27.0.10",
+        "status": 200,
+        "seconds": 0.024448871612548828,
+        "id": "66cc830b6f0c"
+      },
+      {
+        "at": 1793615521.979135,
+        "ip": "172.27.0.9",
+        "status": 200,
+        "seconds": 0.024262189865112305,
+        "id": "2023484b43dd"
+      },
+      {
+        "at": 1793615522.0034132,
+        "ip": "172.27.0.8",
+        "status": 200,
+        "seconds": 0.0288999080657959,
+        "id": "ca438548dbb1"
+      },
+      {
+        "at": 1793615522.0323305,
+        "ip": "172.27.0.7",
+        "status": 200,
+        "seconds": 0.04314684867858887,
+        "id": "1ccb166af3d8"
+      },
+      {
+        "at": 1793615522.0754955,
+        "ip": "172.27.0.6",
+        "status": 200,
+        "seconds": 0.044847965240478516,
+        "id": "3846eb01a69a"
+      }
+    ],
+    "proxy_statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "gateway_id": "572b5a8251d9"
+  },
+  "final": {
+    "at": 1793615713.3757176,
+    "utc": "2026-11-02T10:35:13.375718+00:00",
+    "phase": "transition_6_to_2",
+    "dns_addresses": [
+      "172.27.0.6",
+      "172.27.0.7"
+    ],
+    "direct": [
+      {
+        "at": 1793615713.440588,
+        "ip": "172.27.0.7",
+        "status": 200,
+        "seconds": 0.024399757385253906,
+        "id": "f75423b879c6"
+      },
+      {
+        "at": 1793615713.4650028,
+        "ip": "172.27.0.6",
+        "status": 200,
+        "seconds": 0.02402973175048828,
+        "id": "5546bfeb2698"
+      }
+    ],
+    "proxy_statuses": [
+      200,
+      200
+    ],
+    "gateway_id": "572b5a8251d9"
+  },
+  "transition_timeline": [
+    {
+      "at": 1793615527.6011527,
+      "utc": "2026-11-02T10:32:07.601153+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.10",
+        "172.27.0.11",
+        "172.27.0.6",
+        "172.27.0.7",
+        "172.27.0.8",
+        "172.27.0.9"
+      ],
+      "direct": [
+        {
+          "at": 1793615527.6683824,
+          "ip": "172.27.0.11",
+          "status": null,
+          "error_type": "URLError",
+          "seconds": 0.024160385131835938,
+          "id": "92856dc62bde"
+        },
+        {
+          "at": 1793615527.6925573,
+          "ip": "172.27.0.10",
+          "status": null,
+          "error_type": "URLError",
+          "seconds": 0.02539205551147461,
+          "id": "66cc830b6f0c"
+        },
+        {
+          "at": 1793615527.7179642,
+          "ip": "172.27.0.9",
+          "status": null,
+          "error_type": "URLError",
+          "seconds": 0.02407979965209961,
+          "id": "2023484b43dd"
+        },
+        {
+          "at": 1793615527.7420626,
+          "ip": "172.27.0.8",
+          "status": null,
+          "error_type": "URLError",
+          "seconds": 6.031332492828369,
+          "id": "ca438548dbb1"
+        },
+        {
+          "at": 1793615533.773415,
+          "ip": "172.27.0.7",
+          "status": null,
+          "error_type": "URLError",
+          "seconds": 6.0292675495147705,
+          "id": "1ccb166af3d8"
+        },
+        {
+          "at": 1793615539.8027031,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.021526813507080078,
+          "id": "3846eb01a69a"
+        }
+      ],
+      "proxy_statuses": [],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615544.9070442,
+      "utc": "2026-11-02T10:32:24.907044+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6"
+      ],
+      "direct": [
+        {
+          "at": 1793615544.972425,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.024293899536132812,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615550.0799718,
+      "utc": "2026-11-02T10:32:30.079972+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6"
+      ],
+      "direct": [
+        {
+          "at": 1793615550.1474142,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.02399301528930664,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615555.2510996,
+      "utc": "2026-11-02T10:32:35.251100+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6"
+      ],
+      "direct": [
+        {
+          "at": 1793615555.3165276,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.024263620376586914,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615560.419577,
+      "utc": "2026-11-02T10:32:40.419577+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6",
+        "172.27.0.7"
+      ],
+      "direct": [
+        {
+          "at": 1793615560.5003464,
+          "ip": "172.27.0.7",
+          "status": 200,
+          "seconds": 0.0245206356048584,
+          "id": "f75423b879c6"
+        },
+        {
+          "at": 1793615560.5248854,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.02736830711364746,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [
+        200,
+        200
+      ],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615565.68105,
+      "utc": "2026-11-02T10:32:45.681050+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6",
+        "172.27.0.7"
+      ],
+      "direct": [
+        {
+          "at": 1793615565.7525263,
+          "ip": "172.27.0.7",
+          "status": 200,
+          "seconds": 0.024946928024291992,
+          "id": "f75423b879c6"
+        },
+        {
+          "at": 1793615565.7774887,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.02335953712463379,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [
+        200,
+        200
+      ],
+      "gateway_id": "572b5a8251d9"
+    },
+    {
+      "at": 1793615570.9355211,
+      "utc": "2026-11-02T10:32:50.935521+00:00",
+      "phase": "transition_6_to_2",
+      "dns_addresses": [
+        "172.27.0.6",
+        "172.27.0.7"
+      ],
+      "direct": [
+        {
+          "at": 1793615571.0018678,
+          "ip": "172.27.0.7",
+          "status": 200,
+          "seconds": 0.02499675750732422,
+          "id": "f75423b879c6"
+        },
+        {
+          "at": 1793615571.0268817,
+          "ip": "172.27.0.6",
+          "status": 200,
+          "seconds": 0.02309870719909668,
+          "id": "5546bfeb2698"
+        }
+      ],
+      "proxy_statuses": [
+        200,
+        200
+      ],
+      "gateway_id": "572b5a8251d9"
+    }
+  ],
+  "nginx_transition_readiness_aborts": [
+    {
+      "source": "127.0.0.1",
+      "at": 1793615541.0,
+      "method": "GET",
+      "path": "/v2/models/tiny2/versions/1/ready",
+      "status": 499,
+      "utc": "2026-11-02T10:32:21+00:00"
+    },
+    {
+      "source": "127.0.0.1",
+      "at": 1793615548.0,
+      "method": "GET",
+      "path": "/v2/models/tiny2/versions/1/ready",
+      "status": 499,
+      "utc": "2026-11-02T10:32:28+00:00"
+    },
+    {
+      "source": "127.0.0.1",
+      "at": 1793615554.0,
+      "method": "GET",
+      "path": "/v2/models/tiny2/versions/1/ready",
+      "status": 499,
+      "utc": "2026-11-02T10:32:34+00:00"
+    }
+  ],
+  "nginx_transition_access_statuses": {
+    "499": 3,
+    "200": 741
+  },
+  "nginx_client_api_posts": 0,
+  "minimum_sampled_host_available_bytes": 57567543296,
+  "abort_reason": null,
+  "oom_kill_observed": false,
+  "private_tests_passed": 71,
+  "focused_source_tests_passed": 136,
+  "remaining_comparison_waves": 4,
+  "endurance_started": false,
+  "limitations": [
+    "One transition, no preceding heavy traffic or repeated profile churn",
+    "Probes may affect connection and resolver timing",
+    "248 proxy successes do not cover the partial-pool interval",
+    "Nginx 499 means the readiness client closed the connection, not a model API reply",
+    "No upstream peer identity for aborted GET; stale DNS/peer attribution is unproven",
+    "No workload or production capacity acceptance in this diagnostic"
+  ]
+}

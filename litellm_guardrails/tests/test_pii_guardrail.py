@@ -705,7 +705,7 @@ class TestAnalyzeText:
         assert exc_info.value.phase == "readiness"
         assert exc_info.value.failure_class == "unexpected_failure"
 
-    @pytest.mark.parametrize("kind", ["analysis_deadline_exceeded", "triton_contract_invalid"])
+    @pytest.mark.parametrize("kind", ["analysis_deadline_exceeded", "triton_contract_invalid", "window_boundary_unresolved"])
     def test_nonretryable_ner_failure_has_no_retry_after(self, guardrail, kind):
         with pytest.raises(ProxyException) as error:
             guardrail._raise_analyzer_unavailable(AnalyzerUnavailableError(
@@ -714,11 +714,29 @@ class TestAnalyzeText:
         assert not error.value.headers
         assert error.value.param["analyzer_unavailable"]["details"]["retryable"] is False
 
-    def test_transient_ner_failure_preserves_retry_delay(self, guardrail):
+    @pytest.mark.parametrize("kind", ["triton_unavailable", "triton_overloaded", "forward_pass_failed"])
+    def test_transient_ner_failure_preserves_retry_delay(self, guardrail, kind):
         with pytest.raises(ProxyException) as error:
             guardrail._raise_analyzer_unavailable(AnalyzerUnavailableError(
-                phase="triton_readiness", failure_class="triton_unavailable", retry_after_seconds=5))
+                phase="triton_readiness", failure_class=kind, retry_after_seconds=5))
         assert error.value.headers == {"Retry-After": "5"}
+
+    @pytest.mark.asyncio
+    async def test_window_failure_does_not_forward_upstream_retry_header(self, guardrail):
+        response = MagicMock(status_code=503)
+        response.headers = {"Retry-After": "45"}
+        response.json.return_value = {"detail": {"code": "required_ner_unavailable",
+            "phase": "windowing", "failure_class": "window_boundary_unresolved", "retryable": False}}
+        client = AsyncMock()
+        client.post.return_value = response
+        with patch("litellm_guardrails.pii_guardrail._get_shared_analyzer_http_client", return_value=client):
+            with pytest.raises(AnalyzerUnavailableError) as captured:
+                await guardrail._analyze_text("synthetic source")
+        assert captured.value.retryable is False
+        with pytest.raises(ProxyException) as error:
+            guardrail._raise_analyzer_unavailable(captured.value)
+        assert error.value.status_code == 503 and not error.value.headers
+        assert error.value.param["analyzer_unavailable"]["details"]["retryable"] is False
 
     @pytest.mark.asyncio
     async def test_unknown_analyzer_503_is_always_unavailable(self, guardrail):
@@ -2477,7 +2495,10 @@ class TestPreCallHook:
 
         assert "required analyzer unavailable" in exc_info.value.message
         assert exc_info.value.status_code == 503
-        assert exc_info.value.headers == {"Retry-After": "1"}
+        assert exc_info.value.headers == ({} if failure_class == "window_boundary_unresolved"
+                                         else {"Retry-After": "1"})
+        if failure_class == "window_boundary_unresolved":
+            assert exc_info.value.param["analyzer_unavailable"]["details"]["retryable"] is False
         assert data["messages"][0]["content"] == f"Мой телефон {secret}"
         assert "metadata" not in data
         guardrail._redis.setex.assert_not_called()

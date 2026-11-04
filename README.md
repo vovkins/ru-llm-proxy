@@ -81,7 +81,7 @@ make health STACK=litellm-presidio
 ```
 
 По умолчанию запускается `TOPOLOGY=functional`: один LiteLLM, один Analyzer и один Triton.
-`TOPOLOGY=production` включает CPU-пул из двух LiteLLM, четырёх Analyzer и двух Triton через
+`TOPOLOGY=production` включает CPU-пул из двух LiteLLM, 24 Analyzer и 12 Triton через
 тот же Nginx. Выбор BLOCK/MASK, ресурсы и переключение описаны в
 [руководстве по развёртыванию](docs/deployment.md).
 

@@ -1,0 +1,1056 @@
+{
+  "status": "completed",
+  "scope": "approved_stock_production_delivery",
+  "architecture": "x86_64",
+  "host_cpu_count": 32,
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:0a28cc722d6665825bdb128fd440572782b912b007f7a0814c968d9207afd94c",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "runtime_patch": {
+    "files": {
+      "presidio/analyzer_server.py": "4df58f8c1c5670a905fee50c0114694d951d9f1ab0ba60bdabb71668f2b44c1b",
+      "presidio/ner/span_postprocessing.py": "247bf27fb54b61a6082e25fdcff8a7a9faa569df5bd10878d4f3b77bd69a7aea",
+      "presidio/ner/triton_recognizer.py": "92b2a4c6cb9bc4d75f3b805de00f2b579a3c610dfc0389ea593c576a70b0d6f4",
+      "litellm_guardrails/pii_guardrail.py": "50bdc8c8f16d2569f8d0d32f0edb998f5eac37336b2fe1f0caa759499f4e7ff0"
+    },
+    "patch_sha256": "b2a9f4eb63ed2fc4063c0b65b7e0146a58b63d9abf53ee96b6cd1808b5d23c3a"
+  },
+  "profiles": [
+    {
+      "name": "stock-production",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "24",
+        "ANALYZER_CPUS": "1.0",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "12",
+        "TRITON_CPUS": "2.0",
+        "TRITON_MEMORY": "4g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 24,
+        "ner-triton": 12,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "administrative_overrides": false
+    }
+  ],
+  "effective_operational": {
+    "PRESIDIO_ANALYZER_WORKERS": "1",
+    "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+    "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+    "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+    "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45",
+    "PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS": "10",
+    "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS": "240.0",
+    "PII_GUARDRAIL_ANALYZER_CONNECT_TIMEOUT_SECONDS": "5.0",
+    "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS": "20"
+  },
+  "runtime_inventory": {
+    "litellm": {
+      "count": 2,
+      "images": [
+        "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5"
+      ],
+      "cpu_limits": [
+        2.0
+      ],
+      "memory_limits": [
+        4294967296
+      ],
+      "healthcheck_interval_seconds": [
+        30.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {
+        "PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS": [
+          "240.0"
+        ],
+        "PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS": [
+          "20"
+        ],
+        "PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS": [
+          "10"
+        ]
+      }
+    },
+    "codex-lb": {
+      "count": 1,
+      "images": [
+        "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+      ],
+      "cpu_limits": [
+        2.0
+      ],
+      "memory_limits": [
+        4294967296
+      ],
+      "healthcheck_interval_seconds": [
+        30.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {}
+    },
+    "codex-lb-db": {
+      "count": 1,
+      "images": [
+        "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685"
+      ],
+      "cpu_limits": [
+        1.0
+      ],
+      "memory_limits": [
+        2147483648
+      ],
+      "healthcheck_interval_seconds": [
+        10.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {}
+    },
+    "presidio-analyzer": {
+      "count": 24,
+      "images": [
+        "sha256:0a28cc722d6665825bdb128fd440572782b912b007f7a0814c968d9207afd94c"
+      ],
+      "cpu_limits": [
+        1.0
+      ],
+      "memory_limits": [
+        2147483648
+      ],
+      "healthcheck_interval_seconds": [
+        30.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": [
+          "2"
+        ],
+        "PRESIDIO_ANALYZER_WORKERS": [
+          "1"
+        ],
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": [
+          "32"
+        ],
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": [
+          "45"
+        ],
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": [
+          "4"
+        ]
+      }
+    },
+    "ner-triton": {
+      "count": 12,
+      "images": [
+        "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e"
+      ],
+      "cpu_limits": [
+        2.0
+      ],
+      "memory_limits": [
+        4294967296
+      ],
+      "healthcheck_interval_seconds": [
+        10.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {
+        "TRITON_MODEL_INSTANCES": [
+          "2"
+        ]
+      }
+    },
+    "db": {
+      "count": 1,
+      "images": [
+        "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab"
+      ],
+      "cpu_limits": [
+        2.0
+      ],
+      "memory_limits": [
+        4294967296
+      ],
+      "healthcheck_interval_seconds": [
+        10.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {}
+    },
+    "redis": {
+      "count": 1,
+      "images": [
+        "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f"
+      ],
+      "cpu_limits": [
+        1.0
+      ],
+      "memory_limits": [
+        17179869184
+      ],
+      "healthcheck_interval_seconds": [
+        10.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {}
+    },
+    "nginx": {
+      "count": 1,
+      "images": [
+        "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "cpu_limits": [
+        1.0
+      ],
+      "memory_limits": [
+        268435456
+      ],
+      "healthcheck_interval_seconds": [
+        30.0
+      ],
+      "restart_policy": [
+        "unless-stopped"
+      ],
+      "selected_environment": {}
+    },
+    "mock-upstream": {
+      "count": 1,
+      "images": [
+        "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159"
+      ],
+      "cpu_limits": [
+        0.0
+      ],
+      "memory_limits": [
+        0
+      ],
+      "healthcheck_interval_seconds": [
+        null
+      ],
+      "restart_policy": [
+        "no"
+      ],
+      "selected_environment": {}
+    }
+  },
+  "protocol_cases": [
+    {
+      "stack": "litellm-presidio-codex-lb",
+      "topology": "production",
+      "mode": "mask",
+      "replicas": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 24,
+        "ner-triton": 12,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "status": "passed",
+      "resources_scope": "stock production defaults; no resource overrides"
+    },
+    {
+      "stack": "litellm-presidio-codex-lb",
+      "topology": "production",
+      "mode": "block",
+      "replicas": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 24,
+        "ner-triton": 12,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "status": "passed",
+      "resources_scope": "stock production defaults; no resource overrides"
+    }
+  ],
+  "metrics_verified": {
+    "mask": {
+      "litellm": 2,
+      "presidio-analyzer": 24,
+      "ner-triton": 12
+    },
+    "block": {
+      "litellm": 2,
+      "presidio-analyzer": 24,
+      "ner-triton": 12
+    }
+  },
+  "cleanup_ok": true,
+  "production_defaults_changed": true,
+  "private_resource_overrides": false,
+  "private_healthcheck_overrides": false,
+  "private_restart_policy_overrides": false,
+  "platform_changes": false,
+  "external_provider_calls": 0,
+  "schema_version": 1,
+  "report_date": "2026-11-04",
+  "host_memory_total_bytes": 67417702400,
+  "limits_are_reservations": false,
+  "source_base_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "tested_source_archive_sha256": "4a9b8f3724e7dda79d55ecab47e46fdffe6256e49c2a5b7b078d1631aec2f4e2",
+  "tested_source_manifest_sha256": "f2700133fce93c83901c0e7315368bc732fee8ad6b1869e8163faf9fe2ad8d80",
+  "source_files": {
+    "deploy/topologies/production.env": "45bc31bcde23b82e35c7290036fd91d6a728f05e5ba47f21ad2be6d1b6e968e4",
+    "docker-compose.production.yml": "ef87810792fcc3007dc830a72baa7b727475fd5697e33f7b394f17afda34a30a",
+    "docker-compose.yml": "75e136e5cf08d530a6db6177206257118d0ec5b9dce418719ea09d99ae597978",
+    "scripts/deployment.py": "14fbdadf07705c9c95999c651144a5f8d984a1cf6fcd7dae9e91217152667eac",
+    "nginx/conf.d/production.conf": "f310279e384af85541fced5088e582b03f11e5eba1e3b90b9b6ef3518683a62a"
+  },
+  "raw_artifact_hashes": {
+    "results.json": "a7486ecb3b33f0b10779f9332db871d0d4fb35afefc720456f6b5b9b27bc3011",
+    "telemetry.jsonl": "73e28a869068180658c8294d221b9777692937910d6923b16693ba7ae7d86d16"
+  },
+  "strict_protocol": [
+    {
+      "index": 0,
+      "api": "chat",
+      "stream": false,
+      "units": 1000,
+      "utf8_bytes": 16396,
+      "owner_index": 0,
+      "payload_sha256": "14895b64d84ec28914315b7cc10aa94981367c03d05b8db804a158397edf160d",
+      "offset": 0,
+      "started": true,
+      "outcome": "success",
+      "actual_start_offset": 0.00023450198932550848,
+      "start_delay_seconds": 0.00023450198932550848,
+      "http_status": 200,
+      "first_text_seconds": 0.484635030006757,
+      "restored": true,
+      "seconds": 0.4847080920008011,
+      "completed_offset": 0.48494321599719115,
+      "first_text_from_due_seconds": 0.4848695319960825
+    },
+    {
+      "index": 0,
+      "api": "chat",
+      "stream": true,
+      "units": 1000,
+      "utf8_bytes": 16395,
+      "owner_index": 0,
+      "payload_sha256": "58d046e6df3c2e232e9c981a84f1e45227c5dddf7d978970eb970d3a2820a2d1",
+      "offset": 0,
+      "started": true,
+      "outcome": "success",
+      "actual_start_offset": 0.0002088189939968288,
+      "start_delay_seconds": 0.0002088189939968288,
+      "http_status": 200,
+      "first_text_seconds": 0.48311986299813725,
+      "restored": true,
+      "seconds": 0.49358698099968024,
+      "completed_offset": 0.49379670998314396,
+      "first_text_from_due_seconds": 0.4833286819921341
+    },
+    {
+      "index": 0,
+      "api": "responses",
+      "stream": false,
+      "units": 1000,
+      "utf8_bytes": 16370,
+      "owner_index": 0,
+      "payload_sha256": "392150f1164006518a5a745684e87fd88c9cb5fd66d1e57e2931230dc88572cc",
+      "offset": 0,
+      "started": true,
+      "outcome": "success",
+      "actual_start_offset": 0.00018483100575394928,
+      "start_delay_seconds": 0.00018483100575394928,
+      "http_status": 200,
+      "first_text_seconds": 0.43682194501161575,
+      "restored": true,
+      "seconds": 0.4368869769969024,
+      "completed_offset": 0.43707250501029193,
+      "first_text_from_due_seconds": 0.4370067760173697
+    },
+    {
+      "index": 0,
+      "api": "responses",
+      "stream": true,
+      "units": 1000,
+      "utf8_bytes": 16369,
+      "owner_index": 0,
+      "payload_sha256": "baa96b55afd9c5d36b1afed9b08848d1aae7cca46b48a9073eec5e344490b870",
+      "offset": 0,
+      "started": true,
+      "outcome": "success",
+      "actual_start_offset": 0.00018408201867714524,
+      "start_delay_seconds": 0.00018408201867714524,
+      "http_status": 200,
+      "first_text_seconds": 0.4687695500033442,
+      "restored": true,
+      "seconds": 0.4742474789964035,
+      "completed_offset": 0.4744319380261004,
+      "first_text_from_due_seconds": 0.46895363202202134
+    }
+  ],
+  "waves": [
+    {
+      "name": "delivery-burst20",
+      "payload_sha256": "5721e93b43a874069a345e18468ad790ed107b87a974ed74cf2f7e568f542562",
+      "ner_tokens": 458859.0,
+      "ner_windows": 1449.0,
+      "provider_requests": 20,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "profile": "stock-production",
+      "profile_index": 0,
+      "comparison_repeat": null,
+      "comparison_input_size": null,
+      "endurance_repeat": null,
+      "client": {
+        "scheduled": 20,
+        "started": 20,
+        "successful": 20,
+        "failed": 0,
+        "cancelled": 0,
+        "successful_sse_within_60_seconds": 20,
+        "http_statuses": {
+          "200": 20
+        },
+        "error_reasons": {},
+        "failure_classes": {},
+        "sse_first_text_seconds": {
+          "p50": 4.1,
+          "p95": 14.207,
+          "p99": 14.472
+        },
+        "elapsed_seconds": 15.669926258997293,
+        "max_client_start_delay_seconds": 0.047075315000256523
+      },
+      "retry_after_counts": {},
+      "apis": {
+        "chat": {
+          "scheduled": 10,
+          "successful": 10
+        },
+        "responses": {
+          "scheduled": 10,
+          "successful": 10
+        }
+      },
+      "cpu_by_service": {
+        "litellm": [
+          {
+            "usage_cores": 0.11981914061141967,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.11878069844108821,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          }
+        ],
+        "codex-lb": [
+          {
+            "usage_cores": 0.034469927408783824,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          }
+        ],
+        "codex-lb-db": [
+          {
+            "usage_cores": 0.0073494143583203685,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          }
+        ],
+        "presidio-analyzer": [
+          {
+            "usage_cores": 0.37527802344443295,
+            "throttled_seconds": 0.125379,
+            "throttled_period_fraction": 0.16666666666666666,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.003490815483885035,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.09352028096225463,
+            "throttled_seconds": 0.003496,
+            "throttled_period_fraction": 0.034482758620689655,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3792187653195289,
+            "throttled_seconds": 0.014019,
+            "throttled_period_fraction": 0.13286713286713286,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.009003250240383908,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.09916158980549378,
+            "throttled_seconds": 0.006915,
+            "throttled_period_fraction": 0.0759493670886076,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.08851148872618529,
+            "throttled_seconds": 0.005859,
+            "throttled_period_fraction": 0.047058823529411764,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3570926320518787,
+            "throttled_seconds": 0.011019,
+            "throttled_period_fraction": 0.14583333333333334,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.12178510246047322,
+            "throttled_seconds": 0.007927,
+            "throttled_period_fraction": 0.1276595744680851,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.37775691350159535,
+            "throttled_seconds": 0.01051,
+            "throttled_period_fraction": 0.16891891891891891,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.08315505980125466,
+            "throttled_seconds": 0.003604,
+            "throttled_period_fraction": 0.0375,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.10905436174774917,
+            "throttled_seconds": 0.009479,
+            "throttled_period_fraction": 0.08433734939759036,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.35260320556537533,
+            "throttled_seconds": 0.016095,
+            "throttled_period_fraction": 0.07194244604316546,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3535559134061534,
+            "throttled_seconds": 0.013063,
+            "throttled_period_fraction": 0.14482758620689656,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.086612449846654,
+            "throttled_seconds": 0.001342,
+            "throttled_period_fraction": 0.013157894736842105,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.35976087943005225,
+            "throttled_seconds": 0.012044,
+            "throttled_period_fraction": 0.16901408450704225,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3328099857538953,
+            "throttled_seconds": 0.062121,
+            "throttled_period_fraction": 0.1388888888888889,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3707914305281979,
+            "throttled_seconds": 0.013778,
+            "throttled_period_fraction": 0.2108843537414966,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.0857610836833632,
+            "throttled_seconds": 4.7e-05,
+            "throttled_period_fraction": 0.023809523809523808,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.10214931094989847,
+            "throttled_seconds": 0.008893,
+            "throttled_period_fraction": 0.09195402298850575,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.3516229620138163,
+            "throttled_seconds": 0.007632,
+            "throttled_period_fraction": 0.1048951048951049,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.0032291495356181637,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.004620863062721425,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          },
+          {
+            "usage_cores": 0.10336178763115361,
+            "throttled_seconds": 0.009927,
+            "throttled_period_fraction": 0.12195121951219512,
+            "quota_cores": 1.0
+          }
+        ],
+        "ner-triton": [
+          {
+            "usage_cores": 0.44912461303208834,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4468631131066898,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4630410018209693,
+            "throttled_seconds": 0.001176,
+            "throttled_period_fraction": 0.008403361344537815,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4868569994564728,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.46076821440836463,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4787816652912606,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.49262811509429755,
+            "throttled_seconds": 0.000323,
+            "throttled_period_fraction": 0.00819672131147541,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4948188018569606,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.45683592911596427,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.4744910434094669,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.44221852992930544,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          },
+          {
+            "usage_cores": 0.46137653720793226,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          }
+        ],
+        "db": [
+          {
+            "usage_cores": 0.008216358608937154,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 2.0
+          }
+        ],
+        "redis": [
+          {
+            "usage_cores": 0.009078825721772274,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          }
+        ],
+        "nginx": [
+          {
+            "usage_cores": 0.03216947726589959,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": 0.0,
+            "quota_cores": 1.0
+          }
+        ],
+        "mock-upstream": [
+          {
+            "usage_cores": 0.02639722757916489,
+            "throttled_seconds": 0.0,
+            "throttled_period_fraction": null,
+            "quota_cores": null
+          }
+        ]
+      },
+      "sampled_host_cpu": {
+        "average_busy_cores": 12.181998807868071,
+        "iowait_fraction": 6.622955162593549e-05,
+        "steal_fraction": 2.2076517208645165e-05
+      },
+      "memory": {
+        "samples": 6,
+        "minimum_host_available_bytes": 47771693056,
+        "maximum_sampled_container_sum_bytes": 17389338624,
+        "container_rows": 264,
+        "rows_with_memory_stat": 0,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 375443456,
+            "maximum_kernel_peak_bytes": 385798144,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 22577152,
+            "maximum_kernel_peak_bytes": 32501760,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 174166016,
+            "maximum_kernel_peak_bytes": 188051456,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 43065344,
+            "maximum_kernel_peak_bytes": 45846528,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 579837952,
+            "maximum_kernel_peak_bytes": 581660672,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 869900288,
+            "maximum_kernel_peak_bytes": 1282310144,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 117571584,
+            "maximum_kernel_peak_bytes": 123404288,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 108015616,
+            "maximum_kernel_peak_bytes": 112422912,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 4497408,
+            "maximum_kernel_peak_bytes": 10334208,
+            "maximum_sampled_anon_bytes": null,
+            "maximum_sampled_file_bytes": null,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 6,
+        "maximum_total_active_fields": 19.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "triton_inference": {
+        "successful_requests": 380,
+        "queue_microseconds": 440054,
+        "execution_microseconds": 93959160,
+        "elements": 1449,
+        "executions": 380,
+        "average_queue_seconds_per_request": 0.0011580368421052632,
+        "average_executed_batch_size": 3.8131578947368423
+      }
+    }
+  ],
+  "resources_all_phases": {
+    "samples": 279,
+    "minimum_host_available_bytes": 47552974848,
+    "maximum_sampled_container_sum_bytes": 17608769536,
+    "container_rows": 8597,
+    "rows_with_memory_stat": 0,
+    "memory_stat_errors": {},
+    "triton_statistics_errors": {},
+    "roles": {
+      "mock-upstream": {
+        "maximum_sampled_current_bytes": 31346688,
+        "maximum_kernel_peak_bytes": 33824768,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "presidio-analyzer": {
+        "maximum_sampled_current_bytes": 375443456,
+        "maximum_kernel_peak_bytes": 385798144,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "codex-lb": {
+        "maximum_sampled_current_bytes": 187744256,
+        "maximum_kernel_peak_bytes": 188456960,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "nginx": {
+        "maximum_sampled_current_bytes": 43065344,
+        "maximum_kernel_peak_bytes": 45846528,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "ner-triton": {
+        "maximum_sampled_current_bytes": 579837952,
+        "maximum_kernel_peak_bytes": 582078464,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "litellm": {
+        "maximum_sampled_current_bytes": 1278640128,
+        "maximum_kernel_peak_bytes": 1282310144,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "codex-lb-db": {
+        "maximum_sampled_current_bytes": 119500800,
+        "maximum_kernel_peak_bytes": 124616704,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "db": {
+        "maximum_sampled_current_bytes": 108015616,
+        "maximum_kernel_peak_bytes": 113106944,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "redis": {
+        "maximum_sampled_current_bytes": 8732672,
+        "maximum_kernel_peak_bytes": 10428416,
+        "maximum_sampled_anon_bytes": null,
+        "maximum_sampled_file_bytes": null,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      }
+    }
+  },
+  "host_cpu_all_phases": {
+    "valid_intervals": 274,
+    "invalid_intervals": 0,
+    "skipped_trial_boundaries": 4,
+    "average_busy_cores": 1.9374026971174658,
+    "average_iowait_fraction": 0.000496622477067967,
+    "average_steal_fraction": 1.1435385985117662e-05,
+    "observed_peak": {
+      "busy_cores": 18.42472318625021,
+      "busy_percent": 57.5772599570319,
+      "interval_seconds": 3.7753650929953437
+    },
+    "sample_interval_seconds": {
+      "minimum": 2.001054975000443,
+      "median": 2.0868704760068795,
+      "maximum": 3.7753650929953437
+    }
+  },
+  "fixture_changes": [
+    "Synthetic secrets and mock provider",
+    "Pinned verified image IDs",
+    "Disposable project, ports and isolated networks"
+  ],
+  "limitations": [
+    "Single stock production cold start and short burst, not another endurance matrix",
+    "No real provider or subscription load on the server",
+    "No demonstration of 400 concurrently active users or full Redis quota",
+    "Previously accepted cache limitations and saturation remain",
+    "Runtime/config files were frozen before the final documentation and evidence export"
+  ]
+}

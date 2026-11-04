@@ -49,7 +49,7 @@ help:
 	@echo "  STACK=$(STACK_LITELLM_PRESIDIO)"
 	@echo "  STACK=$(STACK_CODEX_LB)"
 	@echo "  NER: обязательный CPU Tiny2/Triton, без выбора модели и устройства"
-	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 4 Analyzer / 2 Triton"
+	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 24 Analyzer / 12 Triton"
 	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
 	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
 	@echo "  Приоритет режима: параметр make, окружение, ENV_FILE, mask"
@@ -144,6 +144,7 @@ test-static: test-routing-diagnostics
 		tests/test_analyzer_telemetry_config.py \
 		tests/test_long_context_benchmark.py \
 		tests/test_load_profile.py \
+		tests/test_http_pool_timing.py \
 		tests/test_ner_capacity_probe.py \
 		tests/test_load_compose_config.py \
 		tests/test_model_profile_config.py \

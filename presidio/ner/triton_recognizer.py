@@ -29,7 +29,7 @@ except ImportError:
     from presidio.entity_types import NER_ENTITY_TYPES
 
 from .decoding import classify_logits
-from .span_postprocessing import expand_value_spans, postprocess_spans
+from .span_postprocessing import expand_value_spans_with_evidence, postprocess_spans
 from .boundary_recheck import (
     RECHECK_SHELL_PROMPT, confirmed_prompt_edges, prediction_key, resolve_recheck,
 )
@@ -1015,6 +1015,7 @@ class TritonNERRecognizer:
         try:
             entity_predictions = merge_window_predictions(filtered_predictions)
         except NERWindowBoundaryError as unresolved:
+            initial_windows_processed = windows_processed
             try:
                 recovery_predictions, recovery_windows_processed = (
                     self._recover_window_boundaries(
@@ -1070,6 +1071,17 @@ class TritonNERRecognizer:
                     cancellation_event=cancellation_event,
                 )
             except NERWindowBoundaryError as exc:
+                logger.warning(json.dumps({
+                    "event": "presidio_ner_window_boundary_unresolved",
+                    "phase": "windowing",
+                    "failure_class": "window_boundary_unresolved",
+                    "entity_types": sorted({c.entity_type for c in exc.unresolved_clusters
+                                            if c.entity_type in NER_ENTITY_TYPES}),
+                    "cluster_count": len(exc.unresolved_clusters),
+                    "initial_windows_processed": initial_windows_processed,
+                    "recovery_windows_processed": recovery_windows_processed,
+                    "windows_processed_total": windows_processed,
+                }, sort_keys=True))
                 error = NERProcessingError(
                     phase="windowing",
                     failure_class="window_boundary_unresolved",
@@ -1399,22 +1411,24 @@ class TritonNERRecognizer:
                 min(p.entity.score for p in evidence),
             ))
         # Reuse the existing lexical repair only after shifted inference fails.
-        # A value must contain all positive evidence and extend every cut edge.
+        # Every cut edge must expand or have independent syntactic evidence.
         try:
-            expanded = expand_value_spans(text, candidates, self._span_postprocessing)
+            expanded = expand_value_spans_with_evidence(text, candidates, self._span_postprocessing)
         except Exception as exc:
             raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed") from exc
         bounded = []
         for cluster, candidate, repaired in zip(clusters, candidates, expanded):
             _raise_if_cancelled(cancellation_event)
-            start, end, kind, score = repaired
+            start, end, kind, score = repaired.span
             left, right, _, original_score = candidate
             if not (0 <= start <= left < right <= end <= len(text)
                     and kind == cluster.entity_type and score == original_score):
                 continue
-            if any(p.touches_left_boundary for p in cluster.predictions) and start >= left:
+            if (any(p.touches_left_boundary for p in cluster.predictions)
+                    and start >= left and not repaired.left_confirmed):
                 continue
-            if any(p.touches_right_boundary for p in cluster.predictions) and end <= right:
+            if (any(p.touches_right_boundary for p in cluster.predictions)
+                    and end <= right and not repaired.right_confirmed):
                 continue
             bounded.append(WindowEntityPrediction(
                 EntityPrediction(kind, start, end, score),

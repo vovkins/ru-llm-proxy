@@ -56,6 +56,25 @@ def private_diagnostic_file(path, data):
         output.write(data)
 
 
+def error_field(payload, name):
+    """Read structured nested error details without relying on message text."""
+    stack = [(payload, 0)]
+    while stack:
+        value, depth = stack.pop()
+        if depth > 6:
+            continue
+        if isinstance(value, dict):
+            if name in value:
+                return value[name]
+            stack.extend((child, depth + 1) for child in value.values())
+        elif isinstance(value, str) and value.startswith("{"):
+            try:
+                stack.append((json.loads(value), depth + 1))
+            except ValueError:
+                pass
+    return None
+
+
 def docker(*args):
     return subprocess.check_output(["docker", *args], text=True, stderr=subprocess.DEVNULL, timeout=90).strip()
 
@@ -120,6 +139,7 @@ class Gate:
         self.original = self.secrets()
         self.overlay = self.directory / "test.json"
         self.ports_reset = self.directory / "ports-reset.yml"
+        self.production_config = self.directory / "production.conf"
         self.stop = threading.Event()
         self.peak_memory = {}
         self.result = {"cases": [], "checks": [], "peak_container_memory_bytes": self.peak_memory, "peak_total_memory_bytes": 0}
@@ -163,6 +183,8 @@ class Gate:
             services[service]["restart"] = "no"
         services["nginx"]["ports"] = ["127.0.0.1:0:80"]
         if topology == "production":
+            self.production_config.write_bytes((ROOT / "nginx/conf.d/production.conf").read_bytes())
+            services["nginx"]["volumes"] = [f"{self.production_config}:/etc/nginx/conf.d/default.conf:ro"]
             services["nginx"]["ports"] += ["127.0.0.1:0:4000", "127.0.0.1:0:5001"]
         if stack.endswith("codex-lb"):
             services["nginx"]["ports"].append("127.0.0.1:0:2455")
@@ -285,6 +307,77 @@ class Gate:
             f"{ctx.stack}: Responses history restored across two LiteLLM processes, both stream modes"
         )
 
+    def analyzer_failure_responses(self, ctx, token):
+        from analyzer_routing_checks import fixture_request
+        from ner_test_support import wait_ready
+
+        self.result["operation"] = "analyzer-failure-responses"
+        url, route = self.url(ctx, "nginx", 80), self.url(ctx, "nginx", 5001)
+        status, body = request(route, "/api/v1/health")
+        require_http_status(status, body, 200, "/api/v1/health")
+        health = json.loads(body)
+        original = self.production_config.read_bytes()
+        target = b"server presidio-analyzer:5001 resolve;"
+        assert original.count(target) == 1
+        fixture = self.project + "-failure-fixture"
+        network = ctx.model["networks"]["ru-llm-proxy"]["name"]
+        mock = self.url(ctx, "mock-upstream", 8080)
+        request(mock, "/capture/reset", {})
+        try:
+            docker("run", "-d", "--name", fixture, "--network", network,
+                   "--network-alias", "analyzer-failure-fixture",
+                   "--label", "com.docker.compose.project=" + self.project,
+                   "--label", "com.docker.compose.oneoff=True",
+                   "-v", f"{ROOT}/tests/e2e/mock_capacity_analyzer.py:/fixture.py:ro",
+                   "python:3.12-slim", "python", "/fixture.py")
+
+            def fixture_ready():
+                try:
+                    return fixture_request(fixture, "http://127.0.0.1:5001/_stats")["status"] == 200
+                except (RuntimeError, subprocess.SubprocessError):
+                    return False
+
+            wait_ready(fixture_ready, 30)
+            fixture_request(fixture, "http://127.0.0.1:5001/_control", {"mode": "overloaded", "health": health})
+            self.production_config.write_bytes(original.replace(target, b"server analyzer-failure-fixture:5001 resolve;"))
+            ctx.compose("exec", "-T", "nginx", "nginx", "-t", capture=True)
+            ctx.compose("exec", "-T", "nginx", "nginx", "-s", "reload", capture=True)
+            time.sleep(2)
+            for mode, expected, field, value, retry in (
+                ("overloaded", "analyzer_overloaded", "reason", "queue_timeout", "7"),
+                ("unavailable", "analyzer_unavailable", "failure_class", "not_ready", "1"),
+            ):
+                fixture_request(fixture, "http://127.0.0.1:5001/_control", {"mode": mode, "health": health})
+                for api in ("chat/completions", "responses"):
+                    for stream in (False, True):
+                        text = f"Телефон клиента {PHONE}. {ctx.stack} {ctx.mode} {mode} {api} {stream}."
+                        payload = {"model": "mock-chat" if api == "chat/completions" else "mock-responses", "stream": stream}
+                        payload.update({"messages": [{"role": "user", "content": text}]} if api == "chat/completions" else {"input": text})
+                        status, body, headers = request(url, "/v1/" + api, payload, token, headers=True)
+                        require_http_status(status, body, 503, "/v1/" + api, stream)
+                        error = json.loads(body)["error"]
+                        assert error["type"] == expected and error_field(error, field) == value
+                        assert headers.get("Retry-After") == retry
+                        assert PHONE not in body
+            assert json.loads(request(mock, "/capture")[1])["provider_requests"] == 0
+        finally:
+            self.production_config.write_bytes(original)
+            try:
+                ctx.compose("exec", "-T", "nginx", "nginx", "-s", "reload", capture=True)
+            finally:
+                subprocess.run(["docker", "rm", "-f", fixture], capture_output=True, timeout=30)
+        time.sleep(2)
+        ctx.health(60)
+        for api in ("chat/completions", "responses"):
+            for stream in (False, True):
+                assert_request(url, ctx.mode, api, stream, token)
+        capture = json.loads(request(mock, "/capture")[1])
+        assert capture["provider_requests"] == (4 if ctx.mode == "mask" else 0)
+        assert not capture["provider_saw_raw_phone"]
+        self.result["checks"].append({"check": "analyzer_failure_responses", "stack": ctx.stack,
+            "mode": ctx.mode, "status": "passed", "failed_requests": 8,
+            "failed_provider_requests": 0, "recovered_requests": 4})
+
     def exercise(self, ctx, token, other_token):
         self.result["operation"] = "exercise"
         url = self.url(ctx, "nginx", 80)
@@ -360,6 +453,7 @@ class Gate:
         return ctx
 
     def run(self):
+        from analyzer_routing_checks import check_analyzer_responses
         from triton_routing_checks import check_no_replay, check_replica_recovery
 
         monitor = threading.Thread(target=self.sample_memory, daemon=True)
@@ -373,6 +467,8 @@ class Gate:
             no_replay = check_no_replay()
             self.ipv4_subnet = no_replay["ipv4_subnet"]
             self.result["checks"].append(no_replay)
+            self.result["phase"] = "analyzer-routing"
+            self.result["checks"].append(check_analyzer_responses())
             for stack in ("litellm-presidio", "litellm-presidio-codex-lb"):
                 token = None
                 affinity = None
@@ -407,6 +503,8 @@ class Gate:
                         check_replica_recovery(self, ctx, token)
                         ctx = self.resilience(ctx, token)
                     self.exercise(ctx, token, other_token)
+                    if topology == "production" and count == 2:
+                        self.analyzer_failure_responses(ctx, token)
                     if ctx.extended:
                         status, body = request(self.url(ctx, "nginx", 2455), "/health/ready")
                         require_http_status(status, body, 200, "/health/ready")

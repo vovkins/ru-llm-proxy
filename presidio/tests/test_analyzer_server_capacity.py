@@ -1334,7 +1334,9 @@ async def _request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog):
         "code": "required_ner_unavailable",
         "phase": "windowing",
         "failure_class": "window_boundary_unresolved",
+        "retryable": False,
     }
+    assert not exc_info.value.headers
     health = await analyzer_server.health()
     assert health["status"] == "ok"
     assert health["ner_state"] == "ready"

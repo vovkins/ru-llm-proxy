@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "tests/e2e"))
 import model_smoke
 import ner_integration
 import ner_test_support as support
+import mock_capacity_analyzer as capacity_fixture
 from deployment_topology_gate import Gate
 from presidio.tests.test_onnx_artifact import fixture_metadata
 from presidio.model_artifact import ModelArtifactError
@@ -24,6 +25,51 @@ from presidio.model_artifact import ModelArtifactError
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch):
     monkeypatch.setattr(os, "environ", dict(os.environ))
+
+
+@pytest.mark.parametrize("mode,status,code,retry", [
+    ("overloaded", 503, "analyzer_overloaded", 7),
+    ("unavailable", 503, "required_ner_unavailable", 5),
+    ("ready", 200, None, None),
+])
+def test_capacity_fixture_does_not_echo_input_or_simulate_detection(monkeypatch, mode, status, code, retry):
+    from io import BytesIO
+    monkeypatch.setattr(capacity_fixture, "STATE", {"mode": mode, "calls": 0, "health": {}})
+    body = b'{"text":"private-synthetic-input"}'
+    output = {}
+    handler = SimpleNamespace(path="/api/v1/analyze", headers={"Content-Length": str(len(body))},
+        rfile=BytesIO(body), _json=lambda status, body, retry_after=None:
+            output.update(status=status, body=body, retry_after=retry_after))
+    capacity_fixture.Handler.do_POST(handler)
+    assert output["status"] == status and output["retry_after"] == retry
+    assert capacity_fixture.STATE["calls"] == 1
+    assert "private-synthetic-input" not in json.dumps(output)
+    if mode == "ready":
+        assert output["body"] == {"entities": []}
+    else:
+        assert output["body"]["detail"]["code"] == code
+
+
+def test_capacity_fixture_keeps_overload_ready_but_model_failure_unready(monkeypatch):
+    health = {"status": "ok", "ner_state": "ready", "analysis_signature": "a" * 64}
+    monkeypatch.setattr(capacity_fixture, "STATE", {"mode": "overloaded", "calls": 0, "health": health})
+    output = {}
+    handler = SimpleNamespace(path="/api/v1/health", _json=lambda status, body:
+                              output.update(status=status, body=body))
+    capacity_fixture.Handler.do_GET(handler)
+    assert output == {"status": 200, "body": health}
+    capacity_fixture.STATE["mode"] = "unavailable"
+    capacity_fixture.Handler.do_GET(handler)
+    assert output["status"] == 503 and output["body"]["ner_state"] == "failed"
+    assert health["ner_state"] == "ready"
+
+
+def test_ner_ci_tracks_analyzer_routing_fixtures():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    for trigger in ("pull_request", "push"):
+        assert "tests/e2e/analyzer_routing_checks.py" in triggers[trigger]["paths"]
+        assert "tests/e2e/mock_capacity_analyzer.py" in triggers[trigger]["paths"]
 
 
 def test_wait_ready_has_a_total_deadline():
@@ -384,6 +430,7 @@ def test_no_replay_subnet_is_returned_only_after_successful_check_and_cleanup(mo
 def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_path, cleanup_failed):
     import deployment_topology_gate as topology
     import triton_routing_checks as routing
+    import analyzer_routing_checks as analyzer_routing
     gate = Gate(tmp_path, images=dict(support.IMAGE_TAGS))
     calls = []
     result = {"check": "single_post_no_replay", "status": "passed", "ipv4_subnet": "172.28.0.0/16"}
@@ -399,11 +446,12 @@ def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_
     monkeypatch.setattr(topology, "image_id", lambda value: value)
     monkeypatch.setattr(topology, "identities", lambda images: {})
     monkeypatch.setattr(routing, "check_no_replay", no_replay)
+    monkeypatch.setattr(analyzer_routing, "check_analyzer_responses", lambda: {"status": "passed"})
     with pytest.raises(RuntimeError):
         gate.run()
     assert calls == ([] if cleanup_failed else ["172.28.0.0/16"])
     assert gate.ipv4_subnet == (None if cleanup_failed else "172.28.0.0/16")
-    assert gate.result["checks"] == ([] if cleanup_failed else [result])
+    assert gate.result["checks"] == ([] if cleanup_failed else [result, {"status": "passed"}])
 
 
 def test_all_new_analyzer_tests_run_in_baseline_ci():

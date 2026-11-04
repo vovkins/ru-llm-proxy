@@ -37,7 +37,7 @@ Tiny2 определяет восемь NER-классов; правила Presi
 ## Компонентная схема
 
 Схема показывает функциональные компоненты. В `TOPOLOGY=production` работают
-два экземпляра LiteLLM, четыре Analyzer и два Triton; тот же Nginx балансирует пулы.
+два экземпляра LiteLLM, 24 Analyzer и 12 Triton; тот же Nginx балансирует пулы.
 Redis и PostgreSQL остаются общими, codex-lb и его база — одиночными.
 Настройки и границы одно-серверной топологии: [deployment.md](deployment.md).
 

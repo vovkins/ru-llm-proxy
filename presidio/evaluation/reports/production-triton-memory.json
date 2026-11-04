@@ -1,0 +1,4231 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-02",
+  "timezone": "Europe/Moscow",
+  "status": "bounded_diagnostic_completed_not_profile_acceptance",
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "source_manifest_sha256": "00f2d7734c97912e7cccab6e025444a451931b916e1a4911135bc12ea9696b9d",
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "configuration": {
+    "name": "a8t2",
+    "values": {
+      "LITELLM_REPLICAS": "2",
+      "LITELLM_CPUS": "2.0",
+      "LITELLM_MEMORY": "4g",
+      "ANALYZER_REPLICAS": "8",
+      "ANALYZER_CPUS": "1",
+      "ANALYZER_MEMORY": "2g",
+      "TRITON_REPLICAS": "2",
+      "TRITON_CPUS": "2",
+      "TRITON_MEMORY": "4g",
+      "TRITON_MODEL_INSTANCES": "2",
+      "NGINX_CPUS": "1.0",
+      "NGINX_MEMORY": "256m",
+      "REDIS_CPUS": "1.0",
+      "REDIS_MEMORY": "16g",
+      "DB_CPUS": "2.0",
+      "DB_MEMORY": "4g",
+      "CODEX_LB_CPUS": "2.0",
+      "CODEX_LB_MEMORY": "4g",
+      "CODEX_LB_DB_CPUS": "1.0",
+      "CODEX_LB_DB_MEMORY": "2g"
+    },
+    "ner": {
+      "PRESIDIO_ANALYZER_WORKERS": "1",
+      "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+      "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+      "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+      "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+    },
+    "pool": 20,
+    "mock_stream_hold_seconds": 0,
+    "counts": {
+      "nginx": 1,
+      "db": 1,
+      "redis": 1,
+      "litellm": 2,
+      "presidio-analyzer": 8,
+      "ner-triton": 2,
+      "codex-lb": 1,
+      "codex-lb-db": 1
+    },
+    "memory_caps_bytes": 62545461248,
+    "runtime": [
+      {
+        "service": "litellm",
+        "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "ner-triton",
+        "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "ner-triton",
+        "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "nginx",
+        "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+        "cpus": 1.0,
+        "memory_limit": 268435456
+      },
+      {
+        "service": "presidio-analyzer",
+        "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "litellm",
+        "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "codex-lb",
+        "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "codex-lb-db",
+        "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+        "cpus": 1.0,
+        "memory_limit": 2147483648
+      },
+      {
+        "service": "db",
+        "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+        "cpus": 2.0,
+        "memory_limit": 4294967296
+      },
+      {
+        "service": "redis",
+        "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+        "cpus": 1.0,
+        "memory_limit": 17179869184
+      },
+      {
+        "service": "mock-upstream",
+        "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+        "cpus": 0.0,
+        "memory_limit": 0
+      }
+    ]
+  },
+  "external_provider_calls": 0,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "memory_guard_fraction": 0.9,
+  "host_min_available_bytes": 6442450944,
+  "historical_2g_profile_remains_unpassed": true,
+  "waves": [
+    {
+      "name": "memory-replay-1",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 28,
+      "first_text_p95_seconds": 62.599,
+      "elapsed_seconds": 64.09829715299566,
+      "payload_sha256": "6961a66f030b3d02df6e8d46a021de5a043f2adebbbf7ff94470ee51975c863f",
+      "http_statuses": {
+        "200": 32
+      },
+      "error_reasons": {},
+      "provider_requests": 32,
+      "raw_marker_seen": false,
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "retry_after_counts": {}
+    },
+    {
+      "name": "memory-replay-2",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 24,
+      "first_text_p95_seconds": 63.273,
+      "elapsed_seconds": 64.87072149899905,
+      "payload_sha256": "6961a66f030b3d02df6e8d46a021de5a043f2adebbbf7ff94470ee51975c863f",
+      "http_statuses": {
+        "200": 32
+      },
+      "error_reasons": {},
+      "provider_requests": 32,
+      "raw_marker_seen": false,
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "retry_after_counts": {}
+    },
+    {
+      "name": "memory-replay-3",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 27,
+      "first_text_p95_seconds": 61.792,
+      "elapsed_seconds": 63.52030827699491,
+      "payload_sha256": "6961a66f030b3d02df6e8d46a021de5a043f2adebbbf7ff94470ee51975c863f",
+      "http_statuses": {
+        "200": 32
+      },
+      "error_reasons": {},
+      "provider_requests": 32,
+      "raw_marker_seen": false,
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "retry_after_counts": {}
+    }
+  ],
+  "snapshots": [
+    {
+      "phase": "after-warmup",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 7703902,
+            "user_usec": 6262228,
+            "system_usec": 1441674,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 335,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 393383936,
+          "memory_peak": 406429696,
+          "memory_stat": {
+            "anon": 390361088,
+            "file": 32768,
+            "kernel": 2990080,
+            "kernel_stack": 458752,
+            "pagetables": 1253376,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 390356992,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570872,
+            "slab_unreclaimable": 645000,
+            "slab": 1215872,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 393351168,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 10,
+            "execution_count": 6,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 165702
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 303099011
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 240923
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 11785246,
+            "user_usec": 9751837,
+            "system_usec": 2033408,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 402,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 393728000,
+          "memory_peak": 394248192,
+          "memory_stat": {
+            "anon": 390713344,
+            "file": 36864,
+            "kernel": 2977792,
+            "kernel_stack": 458752,
+            "pagetables": 1249280,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 390713344,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570984,
+            "slab_unreclaimable": 643592,
+            "slab": 1214576,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 393691136,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 10,
+            "execution_count": 6,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 132718
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 303936427
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 243863
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      }
+    },
+    {
+      "phase": "replay-1-drained",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 114391073,
+            "user_usec": 111918476,
+            "system_usec": 2472596,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 932,
+            "nr_throttled": 240,
+            "throttled_usec": 3447425,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1283334144,
+          "memory_peak": 1297059840,
+          "memory_stat": {
+            "anon": 1278562304,
+            "file": 32768,
+            "kernel": 4739072,
+            "kernel_stack": 458752,
+            "pagetables": 3010560,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1278562304,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 569832,
+            "slab_unreclaimable": 644504,
+            "slab": 1214336,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1283301376,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 1837,
+            "execution_count": 308,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 399515
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 861455054
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 577483
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 123325
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 359147279
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 129589
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 168,
+                  "ns": 4713454
+                },
+                "compute_infer": {
+                  "count": 168,
+                  "ns": 38062455969
+                },
+                "compute_output": {
+                  "count": 168,
+                  "ns": 8336641
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 780759
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 3779982371
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 682213
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 56991
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 366303911
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 56903
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 59,
+                  "ns": 3832877
+                },
+                "compute_infer": {
+                  "count": 59,
+                  "ns": 26917176322
+                },
+                "compute_output": {
+                  "count": 59,
+                  "ns": 3790444
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 283804
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 2230277338
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 313233
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 42,
+                  "ns": 3121357
+                },
+                "compute_infer": {
+                  "count": 42,
+                  "ns": 29405766029
+                },
+                "compute_output": {
+                  "count": 42,
+                  "ns": 3725265
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 77094
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 770878126
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 127515
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 72903
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1008737350
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 169018
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 118424990,
+            "user_usec": 115147424,
+            "system_usec": 3277566,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1003,
+            "nr_throttled": 273,
+            "throttled_usec": 3396323,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1898598400,
+          "memory_peak": 1912766464,
+          "memory_stat": {
+            "anon": 1892589568,
+            "file": 36864,
+            "kernel": 5967872,
+            "kernel_stack": 458752,
+            "pagetables": 4231168,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1892589568,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570984,
+            "slab_unreclaimable": 643592,
+            "slab": 1214576,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1898561536,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 1837,
+            "execution_count": 301,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 19,
+                  "ns": 510720
+                },
+                "compute_infer": {
+                  "count": 19,
+                  "ns": 1293398852
+                },
+                "compute_output": {
+                  "count": 19,
+                  "ns": 798036
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 143,
+                  "ns": 4085977
+                },
+                "compute_infer": {
+                  "count": 143,
+                  "ns": 32574113463
+                },
+                "compute_output": {
+                  "count": 143,
+                  "ns": 7002723
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 11,
+                  "ns": 662901
+                },
+                "compute_infer": {
+                  "count": 11,
+                  "ns": 3265492243
+                },
+                "compute_output": {
+                  "count": 11,
+                  "ns": 592946
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 64172
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 346871195
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 59726
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 83,
+                  "ns": 5403010
+                },
+                "compute_infer": {
+                  "count": 83,
+                  "ns": 37806784357
+                },
+                "compute_output": {
+                  "count": 83,
+                  "ns": 5532157
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 211602
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1567745875
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 191296
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 34,
+                  "ns": 2433093
+                },
+                "compute_infer": {
+                  "count": 34,
+                  "ns": 24114932070
+                },
+                "compute_output": {
+                  "count": 34,
+                  "ns": 2993009
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 5,
+                  "ns": 377826
+                },
+                "compute_infer": {
+                  "count": 5,
+                  "ns": 4798971812
+                },
+                "compute_output": {
+                  "count": 5,
+                  "ns": 679315
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      },
+      "batch_executions_since_before": {
+        "T1": {
+          "1": 8,
+          "2": 3,
+          "4": 168,
+          "5": 12,
+          "6": 1,
+          "8": 59,
+          "9": 4,
+          "10": 2,
+          "12": 42,
+          "13": 1,
+          "14": 1,
+          "16": 1
+        },
+        "T2": {
+          "1": 15,
+          "4": 143,
+          "5": 11,
+          "6": 1,
+          "8": 83,
+          "9": 3,
+          "12": 34,
+          "16": 5
+        }
+      }
+    },
+    {
+      "phase": "replay-1-idle30",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 115755900,
+            "user_usec": 113076236,
+            "system_usec": 2679664,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1020,
+            "nr_throttled": 240,
+            "throttled_usec": 3447425,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1283338240,
+          "memory_peak": 1297059840,
+          "memory_stat": {
+            "anon": 1278562304,
+            "file": 32768,
+            "kernel": 4739072,
+            "kernel_stack": 458752,
+            "pagetables": 3010560,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1278562304,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570872,
+            "slab_unreclaimable": 645000,
+            "slab": 1215872,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1283305472,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 1837,
+            "execution_count": 308,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 399515
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 861455054
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 577483
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 123325
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 359147279
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 129589
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 168,
+                  "ns": 4713454
+                },
+                "compute_infer": {
+                  "count": 168,
+                  "ns": 38062455969
+                },
+                "compute_output": {
+                  "count": 168,
+                  "ns": 8336641
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 780759
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 3779982371
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 682213
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 56991
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 366303911
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 56903
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 59,
+                  "ns": 3832877
+                },
+                "compute_infer": {
+                  "count": 59,
+                  "ns": 26917176322
+                },
+                "compute_output": {
+                  "count": 59,
+                  "ns": 3790444
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 283804
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 2230277338
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 313233
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 42,
+                  "ns": 3121357
+                },
+                "compute_infer": {
+                  "count": 42,
+                  "ns": 29405766029
+                },
+                "compute_output": {
+                  "count": 42,
+                  "ns": 3725265
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 77094
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 770878126
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 127515
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 72903
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1008737350
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 169018
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 119744335,
+            "user_usec": 116250095,
+            "system_usec": 3494240,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1073,
+            "nr_throttled": 273,
+            "throttled_usec": 3396323,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1898586112,
+          "memory_peak": 1912766464,
+          "memory_stat": {
+            "anon": 1892589568,
+            "file": 36864,
+            "kernel": 5959680,
+            "kernel_stack": 458752,
+            "pagetables": 4231168,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1892589568,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570984,
+            "slab_unreclaimable": 643592,
+            "slab": 1214576,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1898549248,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 1837,
+            "execution_count": 301,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 19,
+                  "ns": 510720
+                },
+                "compute_infer": {
+                  "count": 19,
+                  "ns": 1293398852
+                },
+                "compute_output": {
+                  "count": 19,
+                  "ns": 798036
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 143,
+                  "ns": 4085977
+                },
+                "compute_infer": {
+                  "count": 143,
+                  "ns": 32574113463
+                },
+                "compute_output": {
+                  "count": 143,
+                  "ns": 7002723
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 11,
+                  "ns": 662901
+                },
+                "compute_infer": {
+                  "count": 11,
+                  "ns": 3265492243
+                },
+                "compute_output": {
+                  "count": 11,
+                  "ns": 592946
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 64172
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 346871195
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 59726
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 83,
+                  "ns": 5403010
+                },
+                "compute_infer": {
+                  "count": 83,
+                  "ns": 37806784357
+                },
+                "compute_output": {
+                  "count": 83,
+                  "ns": 5532157
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 211602
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1567745875
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 191296
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 34,
+                  "ns": 2433093
+                },
+                "compute_infer": {
+                  "count": 34,
+                  "ns": 24114932070
+                },
+                "compute_output": {
+                  "count": 34,
+                  "ns": 2993009
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 5,
+                  "ns": 377826
+                },
+                "compute_infer": {
+                  "count": 5,
+                  "ns": 4798971812
+                },
+                "compute_output": {
+                  "count": 5,
+                  "ns": 679315
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      }
+    },
+    {
+      "phase": "replay-2-drained",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 222627634,
+            "user_usec": 219149185,
+            "system_usec": 3478448,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1624,
+            "nr_throttled": 510,
+            "throttled_usec": 6793173,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1609760768,
+          "memory_peak": 1623465984,
+          "memory_stat": {
+            "anon": 1604337664,
+            "file": 32768,
+            "kernel": 5390336,
+            "kernel_stack": 458752,
+            "pagetables": 3657728,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1604337664,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 571912,
+            "slab_unreclaimable": 645496,
+            "slab": 1217408,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1609728000,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 3671,
+            "execution_count": 596,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 21,
+                  "ns": 659514
+                },
+                "compute_infer": {
+                  "count": 21,
+                  "ns": 1466120324
+                },
+                "compute_output": {
+                  "count": 21,
+                  "ns": 933003
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 184113
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 482129993
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 168328
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 317,
+                  "ns": 8816325
+                },
+                "compute_infer": {
+                  "count": 317,
+                  "ns": 72019466335
+                },
+                "compute_output": {
+                  "count": 317,
+                  "ns": 15552781
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 24,
+                  "ns": 1508530
+                },
+                "compute_infer": {
+                  "count": 24,
+                  "ns": 7188022432
+                },
+                "compute_output": {
+                  "count": 24,
+                  "ns": 1338975
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 176221
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1070374546
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 173130
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 118,
+                  "ns": 7632201
+                },
+                "compute_infer": {
+                  "count": 118,
+                  "ns": 53922822540
+                },
+                "compute_output": {
+                  "count": 118,
+                  "ns": 7563663
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 480682
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 3775252458
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 519540
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 90,
+                  "ns": 6731612
+                },
+                "compute_infer": {
+                  "count": 90,
+                  "ns": 62643097256
+                },
+                "compute_output": {
+                  "count": 90,
+                  "ns": 7449518
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 77094
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 770878126
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 127515
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 6,
+                  "ns": 481899
+                },
+                "compute_infer": {
+                  "count": 6,
+                  "ns": 5794699314
+                },
+                "compute_output": {
+                  "count": 6,
+                  "ns": 738559
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 225969796,
+            "user_usec": 221782082,
+            "system_usec": 4187714,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1675,
+            "nr_throttled": 550,
+            "throttled_usec": 6604480,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1906880512,
+          "memory_peak": 1920970752,
+          "memory_stat": {
+            "anon": 1900867584,
+            "file": 36864,
+            "kernel": 5976064,
+            "kernel_stack": 458752,
+            "pagetables": 4243456,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1900867584,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 573064,
+            "slab_unreclaimable": 644584,
+            "slab": 1217648,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1906843648,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 3657,
+            "execution_count": 589,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 32,
+                  "ns": 856009
+                },
+                "compute_infer": {
+                  "count": 32,
+                  "ns": 2152346573
+                },
+                "compute_output": {
+                  "count": 32,
+                  "ns": 1296911
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 73912
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 256139040
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 94995
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 284,
+                  "ns": 8044220
+                },
+                "compute_infer": {
+                  "count": 284,
+                  "ns": 64840650896
+                },
+                "compute_output": {
+                  "count": 284,
+                  "ns": 13782006
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 24,
+                  "ns": 1409945
+                },
+                "compute_infer": {
+                  "count": 24,
+                  "ns": 7118462356
+                },
+                "compute_output": {
+                  "count": 24,
+                  "ns": 1301583
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 175829
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1050482056
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 182332
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 153,
+                  "ns": 9801127
+                },
+                "compute_infer": {
+                  "count": 153,
+                  "ns": 69652081540
+                },
+                "compute_output": {
+                  "count": 153,
+                  "ns": 9925259
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 501214
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 3649338863
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 458105
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73100
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 585465705
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 73596
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 64,
+                  "ns": 4591498
+                },
+                "compute_infer": {
+                  "count": 64,
+                  "ns": 44961796939
+                },
+                "compute_output": {
+                  "count": 64,
+                  "ns": 5331896
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 16,
+                  "ns": 1251477
+                },
+                "compute_infer": {
+                  "count": 16,
+                  "ns": 15081137647
+                },
+                "compute_output": {
+                  "count": 16,
+                  "ns": 1871281
+                }
+              },
+              {
+                "batch_size": 20,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 100772
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1170747310
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 201932
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      },
+      "batch_executions_since_before": {
+        "T1": {
+          "1": 9,
+          "2": 1,
+          "4": 149,
+          "5": 12,
+          "6": 2,
+          "8": 59,
+          "9": 3,
+          "12": 48,
+          "16": 5
+        },
+        "T2": {
+          "1": 13,
+          "2": 2,
+          "4": 141,
+          "5": 13,
+          "6": 2,
+          "8": 70,
+          "9": 4,
+          "10": 1,
+          "12": 30,
+          "16": 11,
+          "20": 1
+        }
+      }
+    },
+    {
+      "phase": "replay-2-idle30",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 224007605,
+            "user_usec": 220323140,
+            "system_usec": 3684464,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1685,
+            "nr_throttled": 510,
+            "throttled_usec": 6793173,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1609760768,
+          "memory_peak": 1623465984,
+          "memory_stat": {
+            "anon": 1604337664,
+            "file": 32768,
+            "kernel": 5390336,
+            "kernel_stack": 458752,
+            "pagetables": 3657728,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1604337664,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 569832,
+            "slab_unreclaimable": 644504,
+            "slab": 1214336,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1609728000,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 3671,
+            "execution_count": 596,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 21,
+                  "ns": 659514
+                },
+                "compute_infer": {
+                  "count": 21,
+                  "ns": 1466120324
+                },
+                "compute_output": {
+                  "count": 21,
+                  "ns": 933003
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 184113
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 482129993
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 168328
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 317,
+                  "ns": 8816325
+                },
+                "compute_infer": {
+                  "count": 317,
+                  "ns": 72019466335
+                },
+                "compute_output": {
+                  "count": 317,
+                  "ns": 15552781
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 24,
+                  "ns": 1508530
+                },
+                "compute_infer": {
+                  "count": 24,
+                  "ns": 7188022432
+                },
+                "compute_output": {
+                  "count": 24,
+                  "ns": 1338975
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 176221
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1070374546
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 173130
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 118,
+                  "ns": 7632201
+                },
+                "compute_infer": {
+                  "count": 118,
+                  "ns": 53922822540
+                },
+                "compute_output": {
+                  "count": 118,
+                  "ns": 7563663
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 480682
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 3775252458
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 519540
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 90,
+                  "ns": 6731612
+                },
+                "compute_infer": {
+                  "count": 90,
+                  "ns": 62643097256
+                },
+                "compute_output": {
+                  "count": 90,
+                  "ns": 7449518
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 77094
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 770878126
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 127515
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 6,
+                  "ns": 481899
+                },
+                "compute_infer": {
+                  "count": 6,
+                  "ns": 5794699314
+                },
+                "compute_output": {
+                  "count": 6,
+                  "ns": 738559
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 227350062,
+            "user_usec": 222952050,
+            "system_usec": 4398012,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 1747,
+            "nr_throttled": 550,
+            "throttled_usec": 6604480,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1906876416,
+          "memory_peak": 1920970752,
+          "memory_stat": {
+            "anon": 1900867584,
+            "file": 36864,
+            "kernel": 5971968,
+            "kernel_stack": 458752,
+            "pagetables": 4243456,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1900867584,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 569944,
+            "slab_unreclaimable": 643096,
+            "slab": 1213040,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1906839552,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 3657,
+            "execution_count": 589,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 32,
+                  "ns": 856009
+                },
+                "compute_infer": {
+                  "count": 32,
+                  "ns": 2152346573
+                },
+                "compute_output": {
+                  "count": 32,
+                  "ns": 1296911
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 73912
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 256139040
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 94995
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 284,
+                  "ns": 8044220
+                },
+                "compute_infer": {
+                  "count": 284,
+                  "ns": 64840650896
+                },
+                "compute_output": {
+                  "count": 284,
+                  "ns": 13782006
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 24,
+                  "ns": 1409945
+                },
+                "compute_infer": {
+                  "count": 24,
+                  "ns": 7118462356
+                },
+                "compute_output": {
+                  "count": 24,
+                  "ns": 1301583
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 175829
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1050482056
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 182332
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 153,
+                  "ns": 9801127
+                },
+                "compute_infer": {
+                  "count": 153,
+                  "ns": 69652081540
+                },
+                "compute_output": {
+                  "count": 153,
+                  "ns": 9925259
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 501214
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 3649338863
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 458105
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73100
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 585465705
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 73596
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 64,
+                  "ns": 4591498
+                },
+                "compute_infer": {
+                  "count": 64,
+                  "ns": 44961796939
+                },
+                "compute_output": {
+                  "count": 64,
+                  "ns": 5331896
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 16,
+                  "ns": 1251477
+                },
+                "compute_infer": {
+                  "count": 16,
+                  "ns": 15081137647
+                },
+                "compute_output": {
+                  "count": 16,
+                  "ns": 1871281
+                }
+              },
+              {
+                "batch_size": 20,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 100772
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1170747310
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 201932
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      }
+    },
+    {
+      "phase": "replay-3-drained",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 330264907,
+            "user_usec": 325782676,
+            "system_usec": 4482231,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2284,
+            "nr_throttled": 745,
+            "throttled_usec": 10415834,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1915514880,
+          "memory_peak": 1929355264,
+          "memory_stat": {
+            "anon": 1909489664,
+            "file": 32768,
+            "kernel": 5992448,
+            "kernel_stack": 458752,
+            "pagetables": 4259840,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1909489664,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 571912,
+            "slab_unreclaimable": 645496,
+            "slab": 1217408,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1915482112,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5500,
+            "execution_count": 886,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 36,
+                  "ns": 1066373
+                },
+                "compute_infer": {
+                  "count": 36,
+                  "ns": 2498376985
+                },
+                "compute_output": {
+                  "count": 36,
+                  "ns": 1526677
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 312879
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 859630874
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 287968
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 458,
+                  "ns": 12675172
+                },
+                "compute_infer": {
+                  "count": 458,
+                  "ns": 104249098762
+                },
+                "compute_output": {
+                  "count": 458,
+                  "ns": 22425900
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 31,
+                  "ns": 1910660
+                },
+                "compute_infer": {
+                  "count": 31,
+                  "ns": 9191394189
+                },
+                "compute_output": {
+                  "count": 31,
+                  "ns": 1714279
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 247563
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 1399674373
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 228071
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 199,
+                  "ns": 12908585
+                },
+                "compute_infer": {
+                  "count": 199,
+                  "ns": 90922239228
+                },
+                "compute_output": {
+                  "count": 199,
+                  "ns": 12652268
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 831490
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 6411206479
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 875341
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 110,
+                  "ns": 8211890
+                },
+                "compute_infer": {
+                  "count": 110,
+                  "ns": 76322116114
+                },
+                "compute_output": {
+                  "count": 110,
+                  "ns": 8934376
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 153301
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1624295709
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 205300
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 21,
+                  "ns": 1727472
+                },
+                "compute_infer": {
+                  "count": 21,
+                  "ns": 19877925701
+                },
+                "compute_output": {
+                  "count": 21,
+                  "ns": 2228563
+                }
+              },
+              {
+                "batch_size": 17,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 78965
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1007303644
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 121759
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 333591538,
+            "user_usec": 328478681,
+            "system_usec": 5112857,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2342,
+            "nr_throttled": 857,
+            "throttled_usec": 10442793,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 2032857088,
+          "memory_peak": 2046812160,
+          "memory_stat": {
+            "anon": 2026602496,
+            "file": 36864,
+            "kernel": 6217728,
+            "kernel_stack": 458752,
+            "pagetables": 4485120,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 2026602496,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 573064,
+            "slab_unreclaimable": 645136,
+            "slab": 1218200,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 2032820224,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5482,
+            "execution_count": 889,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 45,
+                  "ns": 1226911
+                },
+                "compute_infer": {
+                  "count": 45,
+                  "ns": 3080206126
+                },
+                "compute_output": {
+                  "count": 45,
+                  "ns": 1834556
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 127324
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 393953221
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 141814
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 451,
+                  "ns": 12476302
+                },
+                "compute_infer": {
+                  "count": 451,
+                  "ns": 103081119374
+                },
+                "compute_output": {
+                  "count": 451,
+                  "ns": 22009778
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 37,
+                  "ns": 2148048
+                },
+                "compute_infer": {
+                  "count": 37,
+                  "ns": 11017838188
+                },
+                "compute_output": {
+                  "count": 37,
+                  "ns": 2027931
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 175829
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1050482056
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 182332
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 219,
+                  "ns": 13887056
+                },
+                "compute_infer": {
+                  "count": 219,
+                  "ns": 99683938313
+                },
+                "compute_output": {
+                  "count": 219,
+                  "ns": 14092785
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 9,
+                  "ns": 650054
+                },
+                "compute_infer": {
+                  "count": 9,
+                  "ns": 4690875857
+                },
+                "compute_output": {
+                  "count": 9,
+                  "ns": 600723
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73100
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 585465705
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 73596
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 88,
+                  "ns": 6340357
+                },
+                "compute_infer": {
+                  "count": 88,
+                  "ns": 61673387116
+                },
+                "compute_output": {
+                  "count": 88,
+                  "ns": 7150572
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 87107
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 759496502
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 111602
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73061
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 872225101
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 82392
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 25,
+                  "ns": 2048026
+                },
+                "compute_infer": {
+                  "count": 25,
+                  "ns": 23408742447
+                },
+                "compute_output": {
+                  "count": 25,
+                  "ns": 2719362
+                }
+              },
+              {
+                "batch_size": 20,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 100772
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1170747310
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 201932
+                }
+              },
+              {
+                "batch_size": 24,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 335162
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 4379221105
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 690678
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      },
+      "batch_executions_since_before": {
+        "T1": {
+          "1": 15,
+          "2": 3,
+          "4": 141,
+          "5": 7,
+          "6": 1,
+          "8": 81,
+          "9": 5,
+          "12": 20,
+          "13": 1,
+          "16": 15,
+          "17": 1
+        },
+        "T2": {
+          "1": 13,
+          "2": 1,
+          "4": 167,
+          "5": 13,
+          "8": 66,
+          "9": 2,
+          "12": 24,
+          "13": 1,
+          "14": 1,
+          "16": 9,
+          "24": 3
+        }
+      }
+    },
+    {
+      "phase": "replay-3-idle30",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 331746004,
+            "user_usec": 327031757,
+            "system_usec": 4714246,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2370,
+            "nr_throttled": 745,
+            "throttled_usec": 10415834,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1915514880,
+          "memory_peak": 1929355264,
+          "memory_stat": {
+            "anon": 1909489664,
+            "file": 32768,
+            "kernel": 5992448,
+            "kernel_stack": 458752,
+            "pagetables": 4259840,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1909489664,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570872,
+            "slab_unreclaimable": 645000,
+            "slab": 1215872,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1915482112,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5500,
+            "execution_count": 886,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 36,
+                  "ns": 1066373
+                },
+                "compute_infer": {
+                  "count": 36,
+                  "ns": 2498376985
+                },
+                "compute_output": {
+                  "count": 36,
+                  "ns": 1526677
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 312879
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 859630874
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 287968
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 458,
+                  "ns": 12675172
+                },
+                "compute_infer": {
+                  "count": 458,
+                  "ns": 104249098762
+                },
+                "compute_output": {
+                  "count": 458,
+                  "ns": 22425900
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 31,
+                  "ns": 1910660
+                },
+                "compute_infer": {
+                  "count": 31,
+                  "ns": 9191394189
+                },
+                "compute_output": {
+                  "count": 31,
+                  "ns": 1714279
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 247563
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 1399674373
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 228071
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 199,
+                  "ns": 12908585
+                },
+                "compute_infer": {
+                  "count": 199,
+                  "ns": 90922239228
+                },
+                "compute_output": {
+                  "count": 199,
+                  "ns": 12652268
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 831490
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 6411206479
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 875341
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 110,
+                  "ns": 8211890
+                },
+                "compute_infer": {
+                  "count": 110,
+                  "ns": 76322116114
+                },
+                "compute_output": {
+                  "count": 110,
+                  "ns": 8934376
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 153301
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1624295709
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 205300
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 21,
+                  "ns": 1727472
+                },
+                "compute_infer": {
+                  "count": 21,
+                  "ns": 19877925701
+                },
+                "compute_output": {
+                  "count": 21,
+                  "ns": 2228563
+                }
+              },
+              {
+                "batch_size": 17,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 78965
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1007303644
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 121759
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 335149467,
+            "user_usec": 329793477,
+            "system_usec": 5355989,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2421,
+            "nr_throttled": 857,
+            "throttled_usec": 10442793,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 2032852992,
+          "memory_peak": 2046812160,
+          "memory_stat": {
+            "anon": 2026602496,
+            "file": 36864,
+            "kernel": 6213632,
+            "kernel_stack": 458752,
+            "pagetables": 4485120,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 2026602496,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570984,
+            "slab_unreclaimable": 643592,
+            "slab": 1214576,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 2032816128,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5482,
+            "execution_count": 889,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 45,
+                  "ns": 1226911
+                },
+                "compute_infer": {
+                  "count": 45,
+                  "ns": 3080206126
+                },
+                "compute_output": {
+                  "count": 45,
+                  "ns": 1834556
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 127324
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 393953221
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 141814
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 451,
+                  "ns": 12476302
+                },
+                "compute_infer": {
+                  "count": 451,
+                  "ns": 103081119374
+                },
+                "compute_output": {
+                  "count": 451,
+                  "ns": 22009778
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 37,
+                  "ns": 2148048
+                },
+                "compute_infer": {
+                  "count": 37,
+                  "ns": 11017838188
+                },
+                "compute_output": {
+                  "count": 37,
+                  "ns": 2027931
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 175829
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1050482056
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 182332
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 219,
+                  "ns": 13887056
+                },
+                "compute_infer": {
+                  "count": 219,
+                  "ns": 99683938313
+                },
+                "compute_output": {
+                  "count": 219,
+                  "ns": 14092785
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 9,
+                  "ns": 650054
+                },
+                "compute_infer": {
+                  "count": 9,
+                  "ns": 4690875857
+                },
+                "compute_output": {
+                  "count": 9,
+                  "ns": 600723
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73100
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 585465705
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 73596
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 88,
+                  "ns": 6340357
+                },
+                "compute_infer": {
+                  "count": 88,
+                  "ns": 61673387116
+                },
+                "compute_output": {
+                  "count": 88,
+                  "ns": 7150572
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 87107
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 759496502
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 111602
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73061
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 872225101
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 82392
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 25,
+                  "ns": 2048026
+                },
+                "compute_infer": {
+                  "count": 25,
+                  "ns": 23408742447
+                },
+                "compute_output": {
+                  "count": 25,
+                  "ns": 2719362
+                }
+              },
+              {
+                "batch_size": 20,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 100772
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1170747310
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 201932
+                }
+              },
+              {
+                "batch_size": 24,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 335162
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 4379221105
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 690678
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      }
+    },
+    {
+      "phase": "final-idle60",
+      "nodes": {
+        "T1": {
+          "cpu.stat": {
+            "usage_usec": 334535103,
+            "user_usec": 329342107,
+            "system_usec": 5192996,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2537,
+            "nr_throttled": 745,
+            "throttled_usec": 10415834,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 1915514880,
+          "memory_peak": 1929355264,
+          "memory_stat": {
+            "anon": 1909489664,
+            "file": 32768,
+            "kernel": 5992448,
+            "kernel_stack": 458752,
+            "pagetables": 4259840,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 1909489664,
+            "inactive_file": 32768,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 570872,
+            "slab_unreclaimable": 645000,
+            "slab": 1215872,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 1915482112,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5500,
+            "execution_count": 886,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 36,
+                  "ns": 1066373
+                },
+                "compute_infer": {
+                  "count": 36,
+                  "ns": 2498376985
+                },
+                "compute_output": {
+                  "count": 36,
+                  "ns": 1526677
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 7,
+                  "ns": 312879
+                },
+                "compute_infer": {
+                  "count": 7,
+                  "ns": 859630874
+                },
+                "compute_output": {
+                  "count": 7,
+                  "ns": 287968
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 64099
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333514094
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 207128
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 458,
+                  "ns": 12675172
+                },
+                "compute_infer": {
+                  "count": 458,
+                  "ns": 104249098762
+                },
+                "compute_output": {
+                  "count": 458,
+                  "ns": 22425900
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 31,
+                  "ns": 1910660
+                },
+                "compute_infer": {
+                  "count": 31,
+                  "ns": 9191394189
+                },
+                "compute_output": {
+                  "count": 31,
+                  "ns": 1714279
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 4,
+                  "ns": 247563
+                },
+                "compute_infer": {
+                  "count": 4,
+                  "ns": 1399674373
+                },
+                "compute_output": {
+                  "count": 4,
+                  "ns": 228071
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 199,
+                  "ns": 12908585
+                },
+                "compute_infer": {
+                  "count": 199,
+                  "ns": 90922239228
+                },
+                "compute_output": {
+                  "count": 199,
+                  "ns": 12652268
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 12,
+                  "ns": 831490
+                },
+                "compute_infer": {
+                  "count": 12,
+                  "ns": 6411206479
+                },
+                "compute_output": {
+                  "count": 12,
+                  "ns": 875341
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 138589
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1170873923
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 149587
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 110,
+                  "ns": 8211890
+                },
+                "compute_infer": {
+                  "count": 110,
+                  "ns": 76322116114
+                },
+                "compute_output": {
+                  "count": 110,
+                  "ns": 8934376
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 153301
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 1624295709
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 205300
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 74529
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 826927890
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 106128
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 21,
+                  "ns": 1727472
+                },
+                "compute_infer": {
+                  "count": 21,
+                  "ns": 19877925701
+                },
+                "compute_output": {
+                  "count": 21,
+                  "ns": 2228563
+                }
+              },
+              {
+                "batch_size": 17,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 78965
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1007303644
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 121759
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        },
+        "T2": {
+          "cpu.stat": {
+            "usage_usec": 337912073,
+            "user_usec": 332121835,
+            "system_usec": 5790238,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 2559,
+            "nr_throttled": 857,
+            "throttled_usec": 10442793,
+            "nr_bursts": 0,
+            "burst_usec": 0,
+            "quota_cores": 2.0
+          },
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory_current": 2032852992,
+          "memory_peak": 2046812160,
+          "memory_stat": {
+            "anon": 2026602496,
+            "file": 36864,
+            "kernel": 6213632,
+            "kernel_stack": 458752,
+            "pagetables": 4485120,
+            "percpu": 12104,
+            "sock": 0,
+            "vmalloc": 16384,
+            "shmem": 0,
+            "file_mapped": 0,
+            "file_dirty": 0,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 2026602496,
+            "inactive_file": 36864,
+            "active_file": 0,
+            "unevictable": 0,
+            "slab_reclaimable": 569944,
+            "slab_unreclaimable": 643096,
+            "slab": 1213040,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "pgscan": 0,
+            "pgsteal": 0
+          },
+          "working_set_estimate_bytes": 2032816128,
+          "batch_statistics": {
+            "name": "tiny2",
+            "version": "1",
+            "inference_count": 5482,
+            "execution_count": 889,
+            "batch_stats": [
+              {
+                "batch_size": 1,
+                "compute_input": {
+                  "count": 45,
+                  "ns": 1226911
+                },
+                "compute_infer": {
+                  "count": 45,
+                  "ns": 3080206126
+                },
+                "compute_output": {
+                  "count": 45,
+                  "ns": 1834556
+                }
+              },
+              {
+                "batch_size": 2,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 127324
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 393953221
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 141814
+                }
+              },
+              {
+                "batch_size": 3,
+                "compute_input": {
+                  "count": 2,
+                  "ns": 69553
+                },
+                "compute_infer": {
+                  "count": 2,
+                  "ns": 333309651
+                },
+                "compute_output": {
+                  "count": 2,
+                  "ns": 292468
+                }
+              },
+              {
+                "batch_size": 4,
+                "compute_input": {
+                  "count": 451,
+                  "ns": 12476302
+                },
+                "compute_infer": {
+                  "count": 451,
+                  "ns": 103081119374
+                },
+                "compute_output": {
+                  "count": 451,
+                  "ns": 22009778
+                }
+              },
+              {
+                "batch_size": 5,
+                "compute_input": {
+                  "count": 37,
+                  "ns": 2148048
+                },
+                "compute_infer": {
+                  "count": 37,
+                  "ns": 11017838188
+                },
+                "compute_output": {
+                  "count": 37,
+                  "ns": 2027931
+                }
+              },
+              {
+                "batch_size": 6,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 175829
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 1050482056
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 182332
+                }
+              },
+              {
+                "batch_size": 8,
+                "compute_input": {
+                  "count": 219,
+                  "ns": 13887056
+                },
+                "compute_infer": {
+                  "count": 219,
+                  "ns": 99683938313
+                },
+                "compute_output": {
+                  "count": 219,
+                  "ns": 14092785
+                }
+              },
+              {
+                "batch_size": 9,
+                "compute_input": {
+                  "count": 9,
+                  "ns": 650054
+                },
+                "compute_infer": {
+                  "count": 9,
+                  "ns": 4690875857
+                },
+                "compute_output": {
+                  "count": 9,
+                  "ns": 600723
+                }
+              },
+              {
+                "batch_size": 10,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73100
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 585465705
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 73596
+                }
+              },
+              {
+                "batch_size": 12,
+                "compute_input": {
+                  "count": 88,
+                  "ns": 6340357
+                },
+                "compute_infer": {
+                  "count": 88,
+                  "ns": 61673387116
+                },
+                "compute_output": {
+                  "count": 88,
+                  "ns": 7150572
+                }
+              },
+              {
+                "batch_size": 13,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 87107
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 759496502
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 111602
+                }
+              },
+              {
+                "batch_size": 14,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 73061
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 872225101
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 82392
+                }
+              },
+              {
+                "batch_size": 16,
+                "compute_input": {
+                  "count": 25,
+                  "ns": 2048026
+                },
+                "compute_infer": {
+                  "count": 25,
+                  "ns": 23408742447
+                },
+                "compute_output": {
+                  "count": 25,
+                  "ns": 2719362
+                }
+              },
+              {
+                "batch_size": 20,
+                "compute_input": {
+                  "count": 1,
+                  "ns": 100772
+                },
+                "compute_infer": {
+                  "count": 1,
+                  "ns": 1170747310
+                },
+                "compute_output": {
+                  "count": 1,
+                  "ns": 201932
+                }
+              },
+              {
+                "batch_size": 24,
+                "compute_input": {
+                  "count": 3,
+                  "ns": 335162
+                },
+                "compute_infer": {
+                  "count": 3,
+                  "ns": 4379221105
+                },
+                "compute_output": {
+                  "count": 3,
+                  "ns": 690678
+                }
+              }
+            ]
+          },
+          "memory_limit": 4294967296
+        }
+      }
+    }
+  ],
+  "memory_peaks": {
+    "T1": {
+      "sampled_current_peak_bytes": 1916514304,
+      "kernel_memory_peak_bytes": 1929355264,
+      "sampled_anon_peak_bytes": null,
+      "sampled_file_peak_bytes": null,
+      "drained_or_idle_anon_peak_bytes": 1909489664,
+      "drained_or_idle_file_peak_bytes": 32768,
+      "old_2g_guard_exceeded_samples": 0,
+      "memory_events_maxima": {
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0
+      }
+    },
+    "T2": {
+      "sampled_current_peak_bytes": 2033893376,
+      "kernel_memory_peak_bytes": 2046812160,
+      "sampled_anon_peak_bytes": null,
+      "sampled_file_peak_bytes": null,
+      "drained_or_idle_anon_peak_bytes": 2026602496,
+      "drained_or_idle_file_peak_bytes": 36864,
+      "old_2g_guard_exceeded_samples": 60,
+      "memory_events_maxima": {
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0
+      }
+    }
+  },
+  "maximum_executed_batch_size": 24,
+  "minimum_sampled_host_available_bytes": 55772913664,
+  "observation_errors": {
+    "continuous_memory_stat_read_errors": null,
+    "continuous_memory_stat_errors_not_observable_due_to_serialization_gap": true,
+    "triton_statistics_samples_unavailable": 0
+  },
+  "observation_coverage": {
+    "triton_continuous_rows": 318,
+    "triton_continuous_rows_with_memory_stat": 0,
+    "explicit_memory_stat_snapshots": 16,
+    "triton_batch_statistics_samples": 318
+  },
+  "continuous_memory_stat_serialization_gap": true,
+  "private_controller_tests_passed": 38,
+  "source_focused_tests_passed": 136,
+  "limitations": [
+    "Only three fixed waves; no long-term plateau demonstrated",
+    "Anonymous memory attribution does not identify the allocator",
+    "Observed batch maximum is not the configured maximum of 32",
+    "No controlled batch-limit A/B; causality of memory growth not isolated",
+    "memory.stat continuous additions were not serialized; explicit snapshots are available",
+    "No full single-server matrix or production-default acceptance"
+  ]
+}

@@ -23,7 +23,7 @@ spec.loader.exec_module(deployment)
 
 @pytest.fixture(autouse=True)
 def clean_context(monkeypatch):
-    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
+    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ENV_FILE", "/nonexistent/issue96-test-env")
 
@@ -129,7 +129,7 @@ def test_production_files_and_counts(monkeypatch, extended):
     monkeypatch.setenv("TOPOLOGY", "production")
     context = deployment.Context(stack="litellm-presidio-codex-lb" if extended else "litellm-presidio")
     assert context.counts["litellm"] == 2
-    assert context.counts["presidio-analyzer"] == 4
+    assert context.counts["presidio-analyzer"] == 24
     assert len(context.counts) == (8 if extended else 6)
     assert "docker-compose.production.yml" in context.files
     assert ("docker-compose.production.codex-lb.yml" in context.files) == extended
@@ -164,15 +164,15 @@ def test_triton_is_part_of_the_functional_stack():
     assert context.counts["presidio-analyzer"] == 1
 
 
-def test_production_uses_one_resource_file_and_can_run_two_triton_replicas(tmp_path, monkeypatch):
+def test_production_uses_measured_resource_file_and_allows_smaller_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("TOPOLOGY", "production")
     context = deployment.Context()
     assert context.files == [
         "docker-compose.yml",
         "docker-compose.production.yml",
     ]
-    assert context.counts["presidio-analyzer"] == 4
-    assert context.counts["ner-triton"] == 2
+    assert context.counts["presidio-analyzer"] == 24
+    assert context.counts["ner-triton"] == 12
     assert context.values["TRITON_CPUS"] == "2.0"
     assert context.values["TRITON_MODEL_INSTANCES"] == "2"
     path = tmp_path / "override.env"
@@ -184,14 +184,15 @@ def test_production_uses_one_resource_file_and_can_run_two_triton_replicas(tmp_p
     assert context.values["TRITON_MODEL_INSTANCES"] == "6"
 
 
-@pytest.mark.parametrize("extended,cpu,gib", [(False, 20, 48.25), (True, 23, 54.25)])
-def test_standard_production_resources_leave_server_headroom(monkeypatch, extended, cpu, gib):
+@pytest.mark.parametrize("extended,cpu,gib", [(False, 56, 124.25), (True, 59, 130.25)])
+def test_standard_production_uses_measured_overcommit_not_reservation(monkeypatch, extended, cpu, gib):
     from decimal import Decimal
 
     monkeypatch.setenv("TOPOLOGY", "production")
     context = deployment.Context(stack="litellm-presidio-codex-lb" if extended else "litellm-presidio")
-    assert context.values["ANALYZER_CPUS"] == "2.0"
-    assert context.values["ANALYZER_MEMORY"] == "4g"
+    assert context.values["ANALYZER_CPUS"] == "1.0"
+    assert context.values["ANALYZER_MEMORY"] == "2g"
+    assert context.values["TRITON_MEMORY"] == "4g"
     assert context.values["REDIS_MEMORY"] == "16g"
     names = {"presidio-analyzer": "ANALYZER", "ner-triton": "TRITON"}
     total_cpu = Decimal(0)
@@ -202,8 +203,48 @@ def test_standard_production_resources_leave_server_headroom(monkeypatch, extend
         total_memory += deployment.memory_bytes(context.values[prefix + "_MEMORY"]) * count
     assert total_cpu == cpu
     assert total_memory == int(gib * 1024**3)
-    assert total_cpu < 32
-    assert total_memory < 64_000_000_000
+    assert total_cpu > 32
+    assert total_memory > 64_000_000_000
+
+
+@pytest.mark.parametrize("extended", [False, True])
+@pytest.mark.parametrize("topology", ["functional", "production"])
+@pytest.mark.parametrize("override", ["default", "file", "environment"])
+def test_effective_profile_keeps_functional_and_explicit_queue_settings(tmp_path, monkeypatch, extended, topology, override):
+    path = tmp_path / ".env"
+    body = (ROOT / ".env.example").read_text()
+    body += "\nCODEX_LB_POSTGRES_PASSWORD=topology-test-only\nCODEX_LB_API_KEY=topology-test-only\n"
+    if override in {"file", "environment"}:
+        body += "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=17\n"
+    if override == "environment":
+        monkeypatch.setenv("PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", "23")
+    path.write_text(body)
+    monkeypatch.setenv("TOPOLOGY", topology)
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "profile-contract-only")
+    context = deployment.Context(env_file=str(path),
+        stack="litellm-presidio-codex-lb" if extended else "litellm-presidio")
+    services = context.model["services"]
+    analyzer = services["presidio-analyzer"]
+    env = analyzer["environment"]
+    expected = "23" if override == "environment" else "17" if override == "file" else "45" if topology == "production" else "30"
+    assert env["PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS"] == expected
+    assert env["PRESIDIO_ANALYZER_WORKERS"] == "1"
+    assert env["PRESIDIO_ANALYZER_CONCURRENCY_LIMIT"] == "2"
+    assert env["PRESIDIO_ANALYZER_QUEUE_LIMIT"] == "32"
+    assert env["PRESIDIO_ANALYZER_NER_BATCH_SIZE"] == "4"
+    assert services["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "2"
+    assert services["litellm"]["environment"]["PII_GUARDRAIL_ANALYZER_MAX_CONNECTIONS"] == "20"
+    assert services["litellm"]["environment"]["PII_GUARDRAIL_ANALYZER_MAX_KEEPALIVE_CONNECTIONS"] == "10"
+    assert services["litellm"]["environment"]["PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS"] == "240.0"
+    if topology == "production":
+        assert services["litellm"]["scale"] == 2
+        assert analyzer["scale"] == 24 and int(analyzer["mem_limit"]) == 2*1024**3
+        assert services["ner-triton"]["scale"] == 12
+        assert int(services["ner-triton"]["mem_limit"]) == 4*1024**3
+    else:
+        assert context.counts["litellm"] == context.counts["presidio-analyzer"] == context.counts["ner-triton"] == 1
+        assert all("mem_limit" not in services[name] and "cpus" not in services[name]
+                   for name in ("litellm", "presidio-analyzer", "ner-triton"))
 
 
 def test_matching_triton_settings_do_not_require_a_new_override_file(monkeypatch):
@@ -211,8 +252,8 @@ def test_matching_triton_settings_do_not_require_a_new_override_file(monkeypatch
     monkeypatch.setenv("TRITON_MODEL_INSTANCES", "2")
     assert deployment.Context().counts["ner-triton"] == 1
     monkeypatch.setenv("TOPOLOGY", "production")
-    monkeypatch.setenv("TRITON_REPLICAS", "2")
-    assert deployment.Context().counts["ner-triton"] == 2
+    monkeypatch.setenv("TRITON_REPLICAS", "12")
+    assert deployment.Context().counts["ner-triton"] == 12
 
 
 @pytest.mark.parametrize("value", ["0", "2.5", "x", "33"])
@@ -245,7 +286,7 @@ def test_unified_compose_carries_only_operational_ner_settings():
     ComposeLoader.add_constructor("!reset", lambda loader, node: None)
     production = yaml.load((ROOT / "docker-compose.production.yml").read_text(), Loader=ComposeLoader)["services"]["ner-triton"]
     assert production["cpus"] == "${TRITON_CPUS:-2.0}"
-    assert production["mem_limit"] == "${TRITON_MEMORY:-2g}"
+    assert production["mem_limit"] == "${TRITON_MEMORY:-4g}"
     assert production["labels"]["ru-llm-proxy.topology"] == "production"
 
 
@@ -335,9 +376,9 @@ def test_health_rejects_missing_replica_and_wrong_mode(monkeypatch):
 def test_cold_start_is_incremental_but_up_does_not_shrink_live_pool(monkeypatch):
     monkeypatch.setenv("TOPOLOGY", "production")
     context = deployment.Context()
-    assert list(context.start_counts([], "presidio-analyzer")) == [1, 2, 3, 4]
-    previous = [container("presidio-analyzer", str(index)) for index in range(4)]
-    assert list(context.start_counts(previous, "presidio-analyzer")) == [4]
+    assert list(context.start_counts([], "presidio-analyzer")) == list(range(1, 25))
+    previous = [container("presidio-analyzer", str(index)) for index in range(24)]
+    assert list(context.start_counts(previous, "presidio-analyzer")) == [24]
 
 
 def test_production_proxy_does_not_retry_sent_model_posts():
@@ -384,9 +425,9 @@ def test_force_restart_starts_full_nginx_then_models_sequentially(monkeypatch, o
     assert calls.index(("stop", "litellm")) < calls.index(("persist",))
     up = [args for args in calls if args[0] == "up"]
     analyzer = [args for args in up if args[-1] == "presidio-analyzer"]
-    assert len(analyzer) == (0 if only_litellm else 4)
+    assert len(analyzer) == (0 if only_litellm else 24)
     if analyzer:
-        assert [args[args.index("--scale") + 1] for args in analyzer] == [f"presidio-analyzer={i}" for i in range(1, 5)]
+        assert [args[args.index("--scale") + 1] for args in analyzer] == [f"presidio-analyzer={i}" for i in range(1, 25)]
     lite = [args for args in up if args[-1] == "litellm"]
     assert [args[args.index("--scale") + 1] for args in lite] == ["litellm=1", "litellm=2"]
     assert "--force-recreate" in lite[0] and "--force-recreate" not in lite[1]
@@ -394,9 +435,9 @@ def test_force_restart_starts_full_nginx_then_models_sequentially(monkeypatch, o
     assert "--force-recreate" in up[0]
     assert ("exec", "-T", "nginx", "nginx", "-t") in calls
     triton = [args for args in up if args[-1] == "ner-triton"]
-    assert len(triton) == (0 if only_litellm else 2)
+    assert len(triton) == (0 if only_litellm else 12)
     if triton:
-        assert [args[args.index("--scale") + 1] for args in triton] == ["ner-triton=1", "ner-triton=2"]
+        assert [args[args.index("--scale") + 1] for args in triton] == [f"ner-triton={i}" for i in range(1, 13)]
         assert "--force-recreate" in triton[0] and "--force-recreate" not in triton[1]
     if triton:
         assert up.index(triton[0]) < up.index(analyzer[0]) < up.index(lite[0])
@@ -475,7 +516,7 @@ def test_same_tag_image_update_starts_changed_pool_sequentially(tmp_path, monkey
     context.start()
     up = [args for args in calls if args[0] == "up"]
     analyzer = [args for args in up if args[-1] == "presidio-analyzer"]
-    assert [args[args.index("--scale") + 1] for args in analyzer] == ([f"presidio-analyzer={i}" for i in range(1, 5)] if updated_service == "presidio-analyzer" else ["presidio-analyzer=4"])
+    assert [args[args.index("--scale") + 1] for args in analyzer] == ([f"presidio-analyzer={i}" for i in range(1, 25)] if updated_service == "presidio-analyzer" else ["presidio-analyzer=24"])
     lite = [args for args in up if args[-1] == "litellm"]
     assert [args[args.index("--scale") + 1] for args in lite] == (["litellm=1", "litellm=2"] if updated_service == "litellm" else ["litellm=2"])
     assert images == (["litellm", "presidio-analyzer", "ner-triton"] if explicit_image else [f"test{separator}{s}" for s in ("litellm", "presidio-analyzer", "ner-triton")])
@@ -553,8 +594,8 @@ def test_removed_settings_fail_before_docker_or_file_mutation(tmp_path, monkeypa
     assert path.read_bytes() == before
 
 
-@pytest.mark.parametrize("value", ["0", "3", "1.5", "-1", "bad"])
-def test_only_one_or_two_triton_containers_are_supported(tmp_path, monkeypatch, value):
+@pytest.mark.parametrize("value", ["0", "", "1.5", "-1", "bad"])
+def test_triton_replica_count_must_be_a_positive_integer(tmp_path, monkeypatch, value):
     path = tmp_path / "resources.env"
     path.write_text("TRITON_REPLICAS=" + value + "\n")
     monkeypatch.setenv("TOPOLOGY", "production")
@@ -563,9 +604,41 @@ def test_only_one_or_two_triton_containers_are_supported(tmp_path, monkeypatch, 
         deployment.Context()
 
 
+@pytest.mark.parametrize("count", [3, 4, 8])
+def test_larger_triton_pool_uses_existing_resource_file_and_sequential_start(tmp_path, monkeypatch, count):
+    path = tmp_path / "resources.env"
+    path.write_text(f"TRITON_REPLICAS={count}\n")
+    monkeypatch.setenv("TOPOLOGY", "production")
+    monkeypatch.setenv("TOPOLOGY_ENV", str(path))
+    context = deployment.Context()
+    assert context.counts["ner-triton"] == count
+    assert list(context.start_counts([], "ner-triton")) == list(range(1, count + 1))
+    assert context.values["TRITON_MODEL_INSTANCES"] == "2"
+
+
+def test_larger_pool_requires_every_triton_identity_not_just_gateway(tmp_path, monkeypatch):
+    path = tmp_path / "resources.env"
+    path.write_text("TRITON_REPLICAS=4\n")
+    monkeypatch.setenv("TOPOLOGY", "production")
+    monkeypatch.setenv("TOPOLOGY_ENV", str(path))
+    context = deployment.Context()
+    items = [container(service, f"{service}-{index}") for service, count in context.counts.items() for index in range(count)]
+    monkeypatch.setattr(context, "containers", lambda: items)
+    monkeypatch.setattr(context, "ner_ready", lambda _: True)
+    monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
+    monkeypatch.setattr(context, "gateway_ready", lambda _: True)
+    checked = []
+    monkeypatch.setattr(context, "triton_ready", lambda item: checked.append(item["Id"]) or True)
+    context.health()
+    assert checked == [f"ner-triton-{index}" for index in range(4)]
+    monkeypatch.setattr(context, "triton_ready", lambda item: item["Id"] != "ner-triton-3")
+    with pytest.raises(deployment.DeploymentError, match="ner-triton-3: комплект Triton не подтверждён"):
+        context.health()
+
+
 @pytest.mark.parametrize("key,value", [
     ("TRITON_REPLICAS", "1"), ("TRITON_MODEL_INSTANCES", "1"),
-    ("TRITON_CPUS", "4"), ("TRITON_MEMORY", "4g"),
+    ("TRITON_CPUS", "4"), ("TRITON_MEMORY", "8g"),
 ])
 def test_triton_resource_conflicts_are_not_silently_overwritten(monkeypatch, key, value):
     monkeypatch.setenv("TOPOLOGY", "production")
@@ -635,6 +708,25 @@ def test_internal_triton_route_does_not_replay_post_and_is_not_published():
     assert "least_conn;" in config and "proxy_next_upstream off;" in config
     assert "listen 8000;" in config
     assert "non_idempotent" not in config
+
+
+def test_analyzer_503_is_not_replayed_or_counted_as_a_failed_peer():
+    config = (ROOT / "nginx/conf.d/production.conf").read_text()
+    analyzer = config.split("listen 5001;", 1)[1].split("server {", 1)[0]
+    assert "proxy_next_upstream error http_502 non_idempotent;" in analyzer
+    assert "http_503" not in analyzer
+    assert "proxy_next_upstream_tries 2;" in analyzer
+    assert "proxy_next_upstream error timeout;" in config.split("listen 5001;", 1)[0]
+    assert "max_fails=0" not in config
+
+
+@pytest.mark.parametrize("encoded", [False, True])
+def test_structured_error_field_decodes_details_not_arbitrary_messages(topology_module, encoded):
+    nested = {"details": {"reason": "queue_timeout"}}
+    body = {"error": {"message": "private-value", "param": json.dumps(nested) if encoded else nested}}
+    assert topology_module.error_field(body, "reason") == "queue_timeout"
+    assert topology_module.error_field(body, "missing") is None
+    assert topology_module.error_field({"message": "{not-json"}, "reason") is None
 
 
 def test_documentation_and_mock_gate_cover_context_contract():
