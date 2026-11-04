@@ -415,14 +415,14 @@
   },
   "unresolved_observation": {
     "code": "TWO-NODE-LINK-01",
-    "status": "focused_health_fix_passed_broader_post_observation_open",
-    "summary": "earlier outcomes preserved; health-only fix passed three-request scenario but broader acceptance found two stalled POSTs, TWO-NODE-LINK-02",
+    "status": "health_and_new_request_link_checks_passed_active_link_observation_open",
+    "summary": "earlier outcomes preserved; LINK-02 wave and link return passed without idle reuse; loss during active analysis produced TWO-NODE-LINK-03",
     "diagnostic_report": "production-two-node-link-diagnostic.json",
     "followup_report": "production-two-node-health-fix.json",
+    "latest_report": "production-two-node-idle-fix.json",
     "skipped_checks": [
-      "link restoration after the new failed wave",
+      "link restoration after active analysis loss",
       "final full test state verification",
-      "loss during already executing inference",
       "real two host acceptance"
     ]
   },

@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
+  "scope": "experiment_only_node_level_idle_keepalive_disabled",
+  "status": "failed",
+  "single_docker_host": true,
+  "two_physical_hosts_validated": false,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "guardrail_code_changed": false,
+  "external_provider_calls": 0,
+  "nginx_version": "1.27.5",
+  "configuration": {
+    "only_node_upstream_idle_directives_removed": true,
+    "health_route_unchanged": true,
+    "post_routes_and_retry_policy_unchanged": true,
+    "worker_configuration_byte_identical": true,
+    "local_model_and_llm_pools_unchanged": true,
+    "analysis_budgets_seconds": [
+      240,
+      1200
+    ],
+    "new_env_settings": [],
+    "new_make_commands": []
+  },
+  "same_input_comparisons": [
+    {
+      "phase": "protocol-mask",
+      "requests": 8,
+      "matched": true
+    },
+    {
+      "phase": "healthy-burst",
+      "requests": 20,
+      "matched": true
+    },
+    {
+      "phase": "interconnect-disconnected",
+      "requests": 8,
+      "matched": true
+    }
+  ],
+  "client_timeout_seconds": 90,
+  "counts": {
+    "requests": 45,
+    "successes": 44,
+    "protective_503": 0,
+    "transport_errors": 1
+  },
+  "steps": [
+    {
+      "name": "prepare",
+      "status": "passed"
+    },
+    {
+      "name": "protocol-mask",
+      "status": "passed"
+    },
+    {
+      "name": "healthy-burst",
+      "status": "passed"
+    },
+    {
+      "name": "block-both-apis-stream-modes",
+      "status": "passed"
+    },
+    {
+      "name": "link-loss-and-return",
+      "status": "passed"
+    },
+    {
+      "name": "already-active-analysis",
+      "status": "failed",
+      "error_type": "AssertionError"
+    }
+  ],
+  "series": [
+    {
+      "phase": "protocol-mask",
+      "requests": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "http_statuses": {
+        "200": 8
+      },
+      "first_text_seconds": {
+        "p50": 1.0153,
+        "p95": 1.0608,
+        "max": 1.0608
+      },
+      "all_success_within_60": 8,
+      "provider_capture": {
+        "provider_requests": 8,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "triton_success_requests": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "healthy-burst",
+      "requests": 20,
+      "outcomes": {
+        "success": 20
+      },
+      "http_statuses": {
+        "200": 20
+      },
+      "first_text_seconds": {
+        "p50": 9.216,
+        "p95": 11.5311,
+        "max": 12.5947
+      },
+      "all_success_within_60": 20,
+      "provider_capture": {
+        "provider_requests": 20,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 10.0,
+        "b": 10.0
+      },
+      "triton_success_requests": {
+        "a": 70.0,
+        "b": 70.0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "interconnect-disconnected",
+      "requests": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "http_statuses": {
+        "200": 8
+      },
+      "first_text_seconds": {
+        "p50": 1.1185,
+        "p95": 5.7884,
+        "max": 5.7884
+      },
+      "all_success_within_60": 8,
+      "provider_capture": {
+        "provider_requests": 8,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 8.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 8.0,
+        "b": 0
+      },
+      "strict_success_required": false
+    },
+    {
+      "phase": "interconnect-returned",
+      "requests": 8,
+      "outcomes": {
+        "success": 8
+      },
+      "http_statuses": {
+        "200": 8
+      },
+      "first_text_seconds": {
+        "p50": 0.4484,
+        "p95": 0.6622,
+        "max": 0.6622
+      },
+      "all_success_within_60": 8,
+      "provider_capture": {
+        "provider_requests": 8,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "triton_success_requests": {
+        "a": 4.0,
+        "b": 4.0
+      },
+      "strict_success_required": true
+    },
+    {
+      "phase": "already-active-disconnected",
+      "requests": 1,
+      "outcomes": {
+        "transport_error": 1
+      },
+      "http_statuses": {
+        "none": 1
+      },
+      "first_text_seconds": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "all_success_within_60": 0,
+      "provider_capture": {
+        "provider_requests": 0,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": false
+      },
+      "analyzer_success_fields": {
+        "a": 0,
+        "b": 1.0
+      },
+      "triton_success_requests": {
+        "a": 0,
+        "b": 27.0
+      },
+      "strict_success_required": false
+    }
+  ],
+  "block_cases": [
+    {
+      "api": "chat/completions",
+      "stream": false,
+      "expected_status": 422,
+      "status": "passed"
+    },
+    {
+      "api": "chat/completions",
+      "stream": true,
+      "expected_status": 422,
+      "status": "passed"
+    },
+    {
+      "api": "responses",
+      "stream": false,
+      "expected_status": 422,
+      "status": "passed"
+    },
+    {
+      "api": "responses",
+      "stream": true,
+      "expected_status": 422,
+      "status": "passed"
+    }
+  ],
+  "tcp_evidence": {
+    "outgoing_syn_flows": 37,
+    "http_request_flows": 33,
+    "get_requests": 13,
+    "post_requests": 20,
+    "every_observed_http_request_has_fresh_syn": true,
+    "maximum_requests_per_tcp_connection": 1
+  },
+  "redis_checks": [
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    },
+    {
+      "remaining": 0
+    }
+  ],
+  "new_observation": {
+    "code": "TWO-NODE-LINK-03",
+    "status": "awaiting_owner_decision",
+    "scenario": "link loss after Analyzer B is already active",
+    "api": "chat",
+    "stream": false,
+    "input_whitespace_units": 32076,
+    "client_error": "TimeoutError",
+    "client_seconds": 90.093,
+    "client_http_headers_received": false,
+    "client_body_bytes": 0,
+    "remote_active_confirmed": 1.0,
+    "post_started_before_fault": true,
+    "coordinator_post_seconds": 89.996,
+    "remote_gateway_responses": [],
+    "remote_analyzer_events": [
+      {
+        "event": "presidio_analyzer_phase",
+        "outcome": "success"
+      },
+      {
+        "event": "presidio_analyzer_phase",
+        "outcome": "success"
+      },
+      {
+        "event": "presidio_ner_inference",
+        "outcome": "success"
+      },
+      {
+        "event": "presidio_analyzer_phase",
+        "outcome": "success"
+      },
+      {
+        "event": "presidio_analyzer_request",
+        "outcome": "success"
+      }
+    ],
+    "remote_analyzer_latency_ms": 10507.526,
+    "remote_analyzer_queue_wait_ms": 0.015,
+    "tcp": {
+      "fresh_syn_before_fault": true,
+      "last_observed_post_sequence_end": 417376,
+      "maximum_ack_before_fault": 417376,
+      "observed_post_data_acknowledged_before_fault": true,
+      "incoming_packets_after_fault": 0,
+      "incoming_payload_bytes_after_fault": 0
+    },
+    "provider_capture": {
+      "provider_requests": 0,
+      "provider_saw_raw_phone": false,
+      "provider_saw_phone_placeholder": false
+    },
+    "additional_fix_applied": false,
+    "server_analysis_budget_reached": false
+  },
+  "final_state_verified": false,
+  "preservation": {
+    "previous_containers": 44,
+    "all_unchanged": true,
+    "temporary_containers_remaining": 0
+  },
+  "new_harness_regressions": 13,
+  "previous_failed_artifacts_preserved": true,
+  "static_verification": {
+    "python": "3.12.3",
+    "pytest_passed": 820,
+    "make_tests_passed": 32,
+    "total_private_regressions_passed": 39
+  },
+  "unfinished_checks": [
+    "link restoration after active analysis loss",
+    "final full test state verification",
+    "owner decision on active link failure",
+    "real two host acceptance"
+  ]
+}

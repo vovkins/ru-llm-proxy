@@ -383,7 +383,8 @@
   },
   "new_observation": {
     "code": "TWO-NODE-LINK-02",
-    "status": "awaiting_additional_fix_approval",
+    "status": "followup_wave_passed_active_connection_loss_open",
+    "followup_report": "production-two-node-idle-fix.json",
     "mechanism": "both stalled analysis POSTs target disconnected remote pool; one has directly correlated successful local health immediately before POST",
     "evidence": [
       {

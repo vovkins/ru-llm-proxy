@@ -64,7 +64,7 @@
 | [Большие входы и отмены](research/production-acceptance.md) | Приёмка финалиста до миллиона текстовых токенов, TCP-отключения и отказ реплик #116 |
 | [Итоговый production](research/production-defaults.md) | Штатный профиль 2/24/12, проверка поставки и границы одноузлового выпуска #116 |
 | [Выбор двухузловой схемы](research/production-two-node-design.md) | Исследование общего и локальных вычислительных пулов; не инструкция развёртывания |
-| [Проверка здоровья при разрыве связи](research/production-two-node-health-fix.md) | Испытательное исправление и оставшийся таймаут POST; не production-настройка |
+| [Проверка здоровья](research/production-two-node-health-fix.md), [межузловые соединения](research/production-two-node-idle-fix.md) | Испытательные исправления и ограничение потери активного канала; не production-настройки |
 | [Нагрузочный прототип](research/load-prototype.md) | Воспроизводимые испытания с имитацией провайдера |
 | [Длинный контекст](research/long-context-benchmark.md) | Методика ручной проверки |
 | [Отмена](research/nonstream-disconnect.md), [SSE](research/stream-disconnect.md) | История исправлений и границы транспорта |
