@@ -26,7 +26,10 @@ from capacity import CapacityRejected, build_limiter_from_env
 from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
 from recognizers.base64_data import Base64DataRecognizer
-from result_merging import MergeDecision, merge_results
+from result_merging import (
+    MergeDecision, merge_results, is_boundary_container, boundary_coverage_preserved,
+)
+from ner.boundary_values import BoundaryContext, BoundaryValues
 from onnx_artifact import EXPORT_MANIFEST_PATH
 from text_chunking import TextChunk, plan_text_chunks
 from ner import (
@@ -862,6 +865,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             {"PERSON", "ORGANIZATION"}.intersection(request.entities)
         )
         ner_entities = request.entities
+        boundary_values = BoundaryValues(request.text)
         if request.entities and name_context_needed:
             ner_entities = list(
                 dict.fromkeys([*request.entities, "PERSON", "ORGANIZATION"])
@@ -913,6 +917,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 entities=ner_entities,
                 telemetry_callback=capture_ner_telemetry,
                 cancellation_event=cancellation_event,
+                boundary_context=BoundaryContext(boundary_values, chunk.start),
             )
             if getattr(ner_recognizer, "boundary_recheck_enabled", False) is True:
                 # Chunk-local original coordinates; the recognizer maps its
@@ -966,6 +971,12 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             time.perf_counter() - merge_started_at,
         )
         _record_merge_metrics(merge_outcome.decisions)
+        if not boundary_coverage_preserved(
+            results, merge_outcome.results, requested_entities=request.entities,
+            score_threshold=request.score_threshold,
+        ):
+            raise NERProcessingError(phase="postprocessing",
+                                     failure_class="span_postprocessing_failed")
         results = merge_outcome.results
 
         entities = [
@@ -1083,6 +1094,8 @@ def _is_complete_chunk_result(
     source_length: int,
 ) -> bool:
     """Reject candidates truncated by an artificial outer chunk boundary."""
+    if is_boundary_container(result):
+        return 0 <= chunk.start + result.start < chunk.start + result.end <= source_length
     if chunk.start > 0 and result.start <= 0:
         return False
     if chunk.end < source_length and result.end >= chunk.length:
