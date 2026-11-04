@@ -52,6 +52,17 @@ def test_source_json_and_json_carried_as_text_at_every_split(raw, as_text):
         assert json.loads(actual) == expected, split
 
 
+def test_accepted_double_json_text_limit_issue_122():
+    source, masked, state = mask_source(r'Ivan\nPetrov')
+    assert json.loads(restore_arguments(masked, state)) == json.loads(source)
+    one_layer = json.dumps({'source': masked})
+    assert json.loads(restore_arguments(one_layer, state)) == {'source': source}
+    two_layers = json.dumps({'source': one_layer})
+    expected = {'source': json.dumps({'source': source})}
+    # Accepted limitation #122: record the mismatch, not successful restoration.
+    assert json.loads(restore_arguments(two_layers, state)) != expected
+
+
 @pytest.mark.parametrize('source', [
     r'Ivan\nPetrov', r'path C:\new\report.txt', 'actual\nnewline', r'code: \"quoted\"',
 ])
