@@ -415,8 +415,9 @@
   },
   "unresolved_observation": {
     "code": "TWO-NODE-LINK-01",
-    "status": "awaiting_diagnostic_approval",
-    "summary": "two client TimeoutError outcomes at 90s during each disconnected-link wave; cause unestablished",
+    "status": "diagnosed_fix_plan_pending_approval",
+    "summary": "earlier timeout outcomes preserved; three-request diagnostic reproduced readiness GET stalled on a cached TCP connection to the disconnected worker",
+    "diagnostic_report": "production-two-node-link-diagnostic.json",
     "skipped_checks": [
       "individual Triton outage",
       "link restoration",
