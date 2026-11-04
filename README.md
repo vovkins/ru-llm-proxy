@@ -81,9 +81,12 @@ make health STACK=litellm-presidio
 ```
 
 По умолчанию запускается `TOPOLOGY=functional`: один LiteLLM, один Analyzer и один Triton.
-`TOPOLOGY=production` включает CPU-пул из двух LiteLLM, четырёх Analyzer и двух Triton через
+`TOPOLOGY=production` включает CPU-пул из двух LiteLLM, 24 Analyzer и 12 Triton через
 тот же Nginx. Выбор BLOCK/MASK, ресурсы и переключение описаны в
 [руководстве по развёртыванию](docs/deployment.md).
+Для действующей установки v0.5.0 используйте
+[переход на новый production](docs/deployment.md#переход-production-с-v050-на-v060),
+без повторного setup и удаления данных.
 
 Первая сборка скачивает `ru_core_news_sm` и закреплённую ревизию
 `Katerina-Bir/rubert-tiny2-secret-detection`; веса занимают около 116 МБ. Во время

@@ -1,0 +1,2049 @@
+{
+  "status": "completed",
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "docker_cpus": 10,
+  "docker_memory_bytes": 8321515520,
+  "architecture": "aarch64",
+  "order": [
+    "A",
+    "B",
+    "B",
+    "A"
+  ],
+  "payload_sha256": "b55186ca3e3f1b6898ad6ffdf1f2cc7cf6b7065715cc9eea88ac5e0bc2a16a36",
+  "config_sha256": {
+    "A": "051b79921f398f870efefa228111aced42a32e6dea8ec406f071072654a54b30",
+    "B": "aeaa6c6075e05bef4105c56d78ef9c0a211ef7674668f59560ab7d6ecc464e39"
+  },
+  "source_nginx_sha256": "051b79921f398f870efefa228111aced42a32e6dea8ec406f071072654a54b30",
+  "description": "64 cold 32k requests over 2s + 12 scheduled 1k probes; same bodies and keys",
+  "short_probe_offsets": [
+    1,
+    5,
+    10,
+    20,
+    29,
+    30,
+    31,
+    32,
+    33,
+    35,
+    45,
+    60
+  ],
+  "lab_healthcheck_interval_seconds": 3,
+  "automatic_restarts": false,
+  "external_provider_calls": 0,
+  "platform_changes": false,
+  "server_capacity_claim": false,
+  "profiles": [
+    {
+      "name": "production-nginx-ab",
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2
+      },
+      "resource_settings": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "2.0",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2.0",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      }
+    }
+  ],
+  "images": {
+    "litellm": "sha256:78c24314ea4b2f4e2968da3da31eea27a4a0aa99b3d51cb573a16f7296247363",
+    "presidio-analyzer": "sha256:a0304100b93e70735e7745c26892133b2ee4a125e731270af53533c70f57d8f7",
+    "ner-triton": "sha256:73c0f56f99ec6c20cfa5dad1cbc572db7de106b0704a998c4ba71917c4582441",
+    "db": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+    "redis": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+    "nginx": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "mock-upstream": "sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704"
+  },
+  "schema_version": 1,
+  "issue": 116,
+  "measured_date_moscow": "2026-10-31",
+  "generator_unit": "whitespace_token",
+  "provider": "synthetic_SSE_echo",
+  "source_nginx_unchanged": true,
+  "caveats": "Two trials per variant on one local ARM64 VM; no production-capacity or statistical superiority claim.",
+  "trials": [
+    {
+      "number": 1,
+      "variant": "A",
+      "nginx": {
+        "no_live_upstreams": 25,
+        "temporarily_disabled": 20,
+        "connection_refused": 0,
+        "upstream_timeout": 0,
+        "log_sha256": "7eacadd463bf15fabe84f8e9fd00b66abe0ff3638d66826a1b03ec945ec0ffce",
+        "analysis_http_statuses": {
+          "200": 112,
+          "502": 25,
+          "503": 8
+        }
+      },
+      "provider_requests": 43,
+      "raw_marker_seen": false,
+      "all_requests": {
+        "scheduled": 76,
+        "successful": 43,
+        "failed": 33,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 43,
+          "503": 33
+        },
+        "error_codes": {
+          "503": 33
+        },
+        "error_reasons": {
+          "queue_timeout": 8,
+          "": 25
+        },
+        "failure_classes": {
+          "": 8,
+          "unexpected_failure": 18,
+          "not_ready": 7
+        },
+        "error_phases": {
+          "": 8,
+          "readiness": 25
+        },
+        "message_families": {
+          "analyzer_overloaded": 8,
+          "analyzer_unavailable": 25
+        },
+        "latency_seconds_success": {
+          "p50": 38.384,
+          "p95": 67.674,
+          "p99": 72.468
+        },
+        "latency_seconds_failure": {
+          "p50": 30.273,
+          "p95": 61.2,
+          "p99": 61.209
+        },
+        "latency_seconds_all": {
+          "p50": 30.927,
+          "p95": 66.614,
+          "p99": 72.468
+        },
+        "sse_first_text_seconds": {
+          "p50": 38.381,
+          "p95": 67.67,
+          "p99": 72.467
+        },
+        "successful_sse_within_60_seconds": 35,
+        "max_client_start_delay_seconds": 0.0021514926652705935,
+        "retry_after_seconds": {
+          "30": 8,
+          "1": 25
+        }
+      },
+      "heavy": {
+        "scheduled": 64,
+        "successful": 40,
+        "failed": 24,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 40,
+          "503": 24
+        },
+        "error_codes": {
+          "503": 24
+        },
+        "error_reasons": {
+          "queue_timeout": 8,
+          "": 16
+        },
+        "failure_classes": {
+          "": 8,
+          "unexpected_failure": 16
+        },
+        "error_phases": {
+          "": 8,
+          "readiness": 16
+        },
+        "message_families": {
+          "analyzer_overloaded": 8,
+          "analyzer_unavailable": 16
+        },
+        "latency_seconds_success": {
+          "p50": 38.44,
+          "p95": 67.674,
+          "p99": 72.468
+        },
+        "latency_seconds_failure": {
+          "p50": 30.985,
+          "p95": 61.2,
+          "p99": 61.209
+        },
+        "latency_seconds_all": {
+          "p50": 36.223,
+          "p95": 66.614,
+          "p99": 72.468
+        },
+        "sse_first_text_seconds": {
+          "p50": 38.433,
+          "p95": 67.67,
+          "p99": 72.467
+        },
+        "successful_sse_within_60_seconds": 32,
+        "max_client_start_delay_seconds": 0.0021514926652705935,
+        "retry_after_seconds": {
+          "30": 8,
+          "1": 16
+        }
+      },
+      "short_probes": {
+        "scheduled": 12,
+        "successful": 3,
+        "failed": 9,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 3,
+          "503": 9
+        },
+        "error_codes": {
+          "503": 9
+        },
+        "error_reasons": {
+          "": 9
+        },
+        "failure_classes": {
+          "unexpected_failure": 2,
+          "not_ready": 7
+        },
+        "error_phases": {
+          "readiness": 9
+        },
+        "message_families": {
+          "analyzer_unavailable": 9
+        },
+        "latency_seconds_success": {
+          "p50": 17.602,
+          "p95": 26.756,
+          "p99": 26.756
+        },
+        "latency_seconds_failure": {
+          "p50": 2.09,
+          "p95": 27.148,
+          "p99": 27.148
+        },
+        "latency_seconds_all": {
+          "p50": 2.747,
+          "p95": 27.148,
+          "p99": 27.148
+        },
+        "sse_first_text_seconds": {
+          "p50": 17.599,
+          "p95": 26.748,
+          "p99": 26.748
+        },
+        "successful_sse_within_60_seconds": 3,
+        "max_client_start_delay_seconds": 0.00214479211717844,
+        "retry_after_seconds": {
+          "1": 9
+        }
+      },
+      "metric_deltas": {
+        "ner_windows": 4568.0,
+        "ner_tokens": 1448540.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 69.0,
+        "queue_rejections": 28.0,
+        "queue_wait_seconds": 1526.8386592559546,
+        "queue_attempts": 71.0,
+        "presidio_phase_seconds": 188.8021357969992,
+        "ner_phase_seconds": 335.521095938966,
+        "triton_successful_requests": 1201,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 41160055,
+        "triton_compute_microseconds": 232049600,
+        "triton_executions": 1129,
+        "client_preprocessing_seconds": 2730.8939552319935
+      },
+      "short_rows": [
+        {
+          "index": 64,
+          "owner_index": 0,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 1,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020837499760091305,
+          "actual_start_offset": 1.0020837499760091,
+          "http_status": 200,
+          "first_text_seconds": 26.7483217921108,
+          "restored": true,
+          "seconds": 26.75597079191357,
+          "completed_offset": 27.758055250160396
+        },
+        {
+          "index": 65,
+          "owner_index": 1,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 5,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0013518747873604298,
+          "actual_start_offset": 5.00135187478736,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "unexpected_failure",
+          "retry_after_seconds": 1,
+          "seconds": 27.148371709045023,
+          "completed_offset": 32.149724083952606
+        },
+        {
+          "index": 66,
+          "owner_index": 2,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 10,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0009845001623034477,
+          "actual_start_offset": 10.000984500162303,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "unexpected_failure",
+          "retry_after_seconds": 1,
+          "seconds": 22.150365124922246,
+          "completed_offset": 32.15134987514466
+        },
+        {
+          "index": 67,
+          "owner_index": 3,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 20,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002115875016897917,
+          "actual_start_offset": 20.002115875016898,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 12.045083541888744,
+          "completed_offset": 32.047199834138155
+        },
+        {
+          "index": 68,
+          "owner_index": 4,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 29,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0014317920431494713,
+          "actual_start_offset": 29.00143179204315,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 3.068524125032127,
+          "completed_offset": 32.0699564171955
+        },
+        {
+          "index": 69,
+          "owner_index": 5,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 30,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020802500657737255,
+          "actual_start_offset": 30.002080250065774,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 2.089682249817997,
+          "completed_offset": 32.0917627918534
+        },
+        {
+          "index": 70,
+          "owner_index": 6,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 31,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0013621249236166477,
+          "actual_start_offset": 31.001362124923617,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 1.1422843751497567,
+          "completed_offset": 32.14364687493071
+        },
+        {
+          "index": 71,
+          "owner_index": 7,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 32,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0010149171575903893,
+          "actual_start_offset": 32.00101491715759,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.17536470759660006,
+          "completed_offset": 32.176380041986704
+        },
+        {
+          "index": 72,
+          "owner_index": 8,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 33,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002093084156513214,
+          "actual_start_offset": 33.00209308415651,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.046515749767422676,
+          "completed_offset": 33.04860929213464
+        },
+        {
+          "index": 73,
+          "owner_index": 9,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 35,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.00214479211717844,
+          "actual_start_offset": 35.00214479211718,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.036422624718397856,
+          "completed_offset": 35.03856766689569
+        },
+        {
+          "index": 74,
+          "owner_index": 10,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 45,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0006536250002682209,
+          "actual_start_offset": 45.00065362500027,
+          "http_status": 200,
+          "first_text_seconds": 17.598966292105615,
+          "restored": true,
+          "seconds": 17.602302833925933,
+          "completed_offset": 62.60295691713691
+        },
+        {
+          "index": 75,
+          "owner_index": 11,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 60,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.001078709028661251,
+          "actual_start_offset": 60.00107870902866,
+          "http_status": 200,
+          "first_text_seconds": 2.7441531657241285,
+          "restored": true,
+          "seconds": 2.7471641660667956,
+          "completed_offset": 62.748243167065084
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "variant": "B",
+      "nginx": {
+        "no_live_upstreams": 0,
+        "temporarily_disabled": 0,
+        "connection_refused": 0,
+        "upstream_timeout": 0,
+        "log_sha256": "e3c8daad9892a96419d0c50f781ad1dd127c46f8b00d599ea39e2cf50d0c2573",
+        "analysis_http_statuses": {
+          "200": 118,
+          "503": 34
+        }
+      },
+      "provider_requests": 42,
+      "raw_marker_seen": false,
+      "all_requests": {
+        "scheduled": 76,
+        "successful": 42,
+        "failed": 34,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 42,
+          "503": 34
+        },
+        "error_codes": {
+          "503": 34
+        },
+        "error_reasons": {
+          "queue_timeout": 34
+        },
+        "failure_classes": {
+          "": 34
+        },
+        "error_phases": {
+          "": 34
+        },
+        "message_families": {
+          "analyzer_overloaded": 34
+        },
+        "latency_seconds_success": {
+          "p50": 32.563,
+          "p95": 69.172,
+          "p99": 71.069
+        },
+        "latency_seconds_failure": {
+          "p50": 31.595,
+          "p95": 60.25,
+          "p99": 60.735
+        },
+        "latency_seconds_all": {
+          "p50": 32.282,
+          "p95": 67.129,
+          "p99": 71.069
+        },
+        "sse_first_text_seconds": {
+          "p50": 32.557,
+          "p95": 69.116,
+          "p99": 71.023
+        },
+        "successful_sse_within_60_seconds": 33,
+        "max_client_start_delay_seconds": 0.00227983295917511,
+        "retry_after_seconds": {
+          "30": 34
+        }
+      },
+      "heavy": {
+        "scheduled": 64,
+        "successful": 36,
+        "failed": 28,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 36,
+          "503": 28
+        },
+        "error_codes": {
+          "503": 28
+        },
+        "error_reasons": {
+          "queue_timeout": 28
+        },
+        "failure_classes": {
+          "": 28
+        },
+        "error_phases": {
+          "": 28
+        },
+        "message_families": {
+          "analyzer_overloaded": 28
+        },
+        "latency_seconds_success": {
+          "p50": 45.16,
+          "p95": 70.861,
+          "p99": 71.069
+        },
+        "latency_seconds_failure": {
+          "p50": 31.454,
+          "p95": 60.25,
+          "p99": 60.735
+        },
+        "latency_seconds_all": {
+          "p50": 32.563,
+          "p95": 67.129,
+          "p99": 71.069
+        },
+        "sse_first_text_seconds": {
+          "p50": 45.156,
+          "p95": 70.858,
+          "p99": 71.023
+        },
+        "successful_sse_within_60_seconds": 27,
+        "max_client_start_delay_seconds": 0.002111653124706625,
+        "retry_after_seconds": {
+          "30": 28
+        }
+      },
+      "short_probes": {
+        "scheduled": 12,
+        "successful": 6,
+        "failed": 6,
+        "cancelled": 0,
+        "http_statuses": {
+          "503": 6,
+          "200": 6
+        },
+        "error_codes": {
+          "503": 6
+        },
+        "error_reasons": {
+          "queue_timeout": 6
+        },
+        "failure_classes": {
+          "": 6
+        },
+        "error_phases": {
+          "": 6
+        },
+        "message_families": {
+          "analyzer_overloaded": 6
+        },
+        "latency_seconds_success": {
+          "p50": 29.796,
+          "p95": 37.671,
+          "p99": 37.671
+        },
+        "latency_seconds_failure": {
+          "p50": 33.706,
+          "p95": 56.764,
+          "p99": 56.764
+        },
+        "latency_seconds_all": {
+          "p50": 31.728,
+          "p95": 56.764,
+          "p99": 56.764
+        },
+        "sse_first_text_seconds": {
+          "p50": 29.791,
+          "p95": 37.668,
+          "p99": 37.668
+        },
+        "successful_sse_within_60_seconds": 6,
+        "max_client_start_delay_seconds": 0.00227983295917511,
+        "retry_after_seconds": {
+          "30": 6
+        }
+      },
+      "metric_deltas": {
+        "ner_windows": 4125.0,
+        "ner_tokens": 1307078.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 76.0,
+        "queue_rejections": 34.0,
+        "queue_wait_seconds": 1813.2234605550038,
+        "queue_attempts": 76.0,
+        "presidio_phase_seconds": 178.95674662401143,
+        "ner_phase_seconds": 353.0321880020347,
+        "triton_successful_requests": 1084,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 52109920,
+        "triton_compute_microseconds": 236464837,
+        "triton_executions": 970,
+        "client_preprocessing_seconds": 3071.5205803899735
+      },
+      "short_rows": [
+        {
+          "index": 64,
+          "owner_index": 0,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 1,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0015359162352979183,
+          "actual_start_offset": 1.001535916235298,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 30.907429916784167,
+          "completed_offset": 31.908966208342463
+        },
+        {
+          "index": 65,
+          "owner_index": 1,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 5,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0021517081186175346,
+          "actual_start_offset": 5.0021517081186175,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 56.76428750017658,
+          "completed_offset": 61.76643958315253
+        },
+        {
+          "index": 66,
+          "owner_index": 2,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 10,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002110375091433525,
+          "actual_start_offset": 10.002110375091434,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 51.87179608317092,
+          "completed_offset": 61.8739069160074
+        },
+        {
+          "index": 67,
+          "owner_index": 3,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 20,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0022235410287976265,
+          "actual_start_offset": 20.002223541028798,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 42.00328470906243,
+          "completed_offset": 62.00550870830193
+        },
+        {
+          "index": 68,
+          "owner_index": 4,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 29,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.00018895836547017097,
+          "actual_start_offset": 29.00018895836547,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 33.706248082686216,
+          "completed_offset": 62.70643741637468
+        },
+        {
+          "index": 69,
+          "owner_index": 5,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 30,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020868750289082527,
+          "actual_start_offset": 30.00208687502891,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 32.040180125273764,
+          "completed_offset": 62.04226729134098
+        },
+        {
+          "index": 70,
+          "owner_index": 6,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 31,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0021215411834418774,
+          "actual_start_offset": 31.002121541183442,
+          "http_status": 200,
+          "first_text_seconds": 31.722064250148833,
+          "restored": true,
+          "seconds": 31.727829792071134,
+          "completed_offset": 62.729951875284314
+        },
+        {
+          "index": 71,
+          "owner_index": 7,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 32,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002088125329464674,
+          "actual_start_offset": 32.002088125329465,
+          "http_status": 200,
+          "first_text_seconds": 30.51154899969697,
+          "restored": true,
+          "seconds": 30.520171375013888,
+          "completed_offset": 62.52225991617888
+        },
+        {
+          "index": 72,
+          "owner_index": 8,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 33,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0019613332115113735,
+          "actual_start_offset": 33.00196133321151,
+          "http_status": 200,
+          "first_text_seconds": 29.791134750004858,
+          "restored": true,
+          "seconds": 29.796040541958064,
+          "completed_offset": 62.798002208117396
+        },
+        {
+          "index": 73,
+          "owner_index": 9,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 35,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.00227983295917511,
+          "actual_start_offset": 35.002279832959175,
+          "http_status": 200,
+          "first_text_seconds": 37.66816487535834,
+          "restored": true,
+          "seconds": 37.67073983326554,
+          "completed_offset": 72.67302041593939
+        },
+        {
+          "index": 74,
+          "owner_index": 10,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 45,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002191750332713127,
+          "actual_start_offset": 45.00219175033271,
+          "http_status": 200,
+          "first_text_seconds": 27.665504124946892,
+          "restored": true,
+          "seconds": 27.667585499584675,
+          "completed_offset": 72.66977754095569
+        },
+        {
+          "index": 75,
+          "owner_index": 11,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 60,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0004160413518548012,
+          "actual_start_offset": 60.000416041351855,
+          "http_status": 200,
+          "first_text_seconds": 3.0866203336045146,
+          "restored": true,
+          "seconds": 3.092623833566904,
+          "completed_offset": 63.093040416017175
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "variant": "B",
+      "nginx": {
+        "no_live_upstreams": 0,
+        "temporarily_disabled": 0,
+        "connection_refused": 0,
+        "upstream_timeout": 0,
+        "log_sha256": "22e49d238eb37eb76388596ea5057c9073b7ee6d57d4679d466b788747565e2b",
+        "analysis_http_statuses": {
+          "200": 118,
+          "503": 34
+        }
+      },
+      "provider_requests": 42,
+      "raw_marker_seen": false,
+      "all_requests": {
+        "scheduled": 76,
+        "successful": 42,
+        "failed": 34,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 42,
+          "503": 34
+        },
+        "error_codes": {
+          "503": 34
+        },
+        "error_reasons": {
+          "queue_timeout": 34
+        },
+        "failure_classes": {
+          "": 34
+        },
+        "error_phases": {
+          "": 34
+        },
+        "message_families": {
+          "analyzer_overloaded": 34
+        },
+        "latency_seconds_success": {
+          "p50": 34.571,
+          "p95": 64.673,
+          "p99": 68.565
+        },
+        "latency_seconds_failure": {
+          "p50": 31.821,
+          "p95": 60.236,
+          "p99": 60.364
+        },
+        "latency_seconds_all": {
+          "p50": 31.981,
+          "p95": 63.566,
+          "p99": 68.565
+        },
+        "sse_first_text_seconds": {
+          "p50": 34.565,
+          "p95": 64.619,
+          "p99": 68.563
+        },
+        "successful_sse_within_60_seconds": 33,
+        "max_client_start_delay_seconds": 0.00217675957976593,
+        "retry_after_seconds": {
+          "30": 34
+        }
+      },
+      "heavy": {
+        "scheduled": 64,
+        "successful": 37,
+        "failed": 27,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 37,
+          "503": 27
+        },
+        "error_codes": {
+          "503": 27
+        },
+        "error_reasons": {
+          "queue_timeout": 27
+        },
+        "failure_classes": {
+          "": 27
+        },
+        "error_phases": {
+          "": 27
+        },
+        "message_families": {
+          "analyzer_overloaded": 27
+        },
+        "latency_seconds_success": {
+          "p50": 40.286,
+          "p95": 67.179,
+          "p99": 68.565
+        },
+        "latency_seconds_failure": {
+          "p50": 31.792,
+          "p95": 60.236,
+          "p99": 60.364
+        },
+        "latency_seconds_all": {
+          "p50": 37.351,
+          "p95": 63.566,
+          "p99": 68.565
+        },
+        "sse_first_text_seconds": {
+          "p50": 40.221,
+          "p95": 67.175,
+          "p99": 68.563
+        },
+        "successful_sse_within_60_seconds": 28,
+        "max_client_start_delay_seconds": 0.00217675957976593,
+        "retry_after_seconds": {
+          "30": 27
+        }
+      },
+      "short_probes": {
+        "scheduled": 12,
+        "successful": 5,
+        "failed": 7,
+        "cancelled": 0,
+        "http_statuses": {
+          "503": 7,
+          "200": 5
+        },
+        "error_codes": {
+          "503": 7
+        },
+        "error_reasons": {
+          "queue_timeout": 7
+        },
+        "failure_classes": {
+          "": 7
+        },
+        "error_phases": {
+          "": 7
+        },
+        "message_families": {
+          "analyzer_overloaded": 7
+        },
+        "latency_seconds_success": {
+          "p50": 31.463,
+          "p95": 34.571,
+          "p99": 34.571
+        },
+        "latency_seconds_failure": {
+          "p50": 32.708,
+          "p95": 57.017,
+          "p99": 57.017
+        },
+        "latency_seconds_all": {
+          "p50": 31.558,
+          "p95": 57.017,
+          "p99": 57.017
+        },
+        "sse_first_text_seconds": {
+          "p50": 31.458,
+          "p95": 34.565,
+          "p99": 34.565
+        },
+        "successful_sse_within_60_seconds": 5,
+        "max_client_start_delay_seconds": 0.002135499846190214,
+        "retry_after_seconds": {
+          "30": 7
+        }
+      },
+      "metric_deltas": {
+        "ner_windows": 4235.0,
+        "ner_tokens": 1342188.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 76.0,
+        "queue_rejections": 34.0,
+        "queue_wait_seconds": 1760.8305393670016,
+        "queue_attempts": 76.0,
+        "presidio_phase_seconds": 188.52716000618238,
+        "ner_phase_seconds": 334.6470235689194,
+        "triton_successful_requests": 1113,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 36508856,
+        "triton_compute_microseconds": 232578384,
+        "triton_executions": 1049,
+        "client_preprocessing_seconds": 2991.995792154019
+      },
+      "short_rows": [
+        {
+          "index": 64,
+          "owner_index": 0,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 1,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0012735412456095219,
+          "actual_start_offset": 1.0012735412456095,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 30.872303374577314,
+          "completed_offset": 31.873577333055437
+        },
+        {
+          "index": 65,
+          "owner_index": 1,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 5,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0011010831221938133,
+          "actual_start_offset": 5.001101083122194,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 57.017481207847595,
+          "completed_offset": 62.01858262484893
+        },
+        {
+          "index": 66,
+          "owner_index": 2,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 10,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0001648329198360443,
+          "actual_start_offset": 10.000164832919836,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 52.19992145802826,
+          "completed_offset": 62.200086791068316
+        },
+        {
+          "index": 67,
+          "owner_index": 3,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 20,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020710001699626446,
+          "actual_start_offset": 20.002071000169963,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 42.93137554079294,
+          "completed_offset": 62.93344737496227
+        },
+        {
+          "index": 68,
+          "owner_index": 4,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 29,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020930408500134945,
+          "actual_start_offset": 29.002093040850013,
+          "http_status": 200,
+          "first_text_seconds": 34.564943875186145,
+          "restored": true,
+          "seconds": 34.571068834047765,
+          "completed_offset": 63.57316254125908
+        },
+        {
+          "index": 69,
+          "owner_index": 5,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 30,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.00154075026512146,
+          "actual_start_offset": 30.00154075026512,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 32.70795029075816,
+          "completed_offset": 62.70949150016531
+        },
+        {
+          "index": 70,
+          "owner_index": 6,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 31,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020897500216960907,
+          "actual_start_offset": 31.002089750021696,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 31.981234415899962,
+          "completed_offset": 62.98332450026646
+        },
+        {
+          "index": 71,
+          "owner_index": 7,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 32,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.001605458091944456,
+          "actual_start_offset": 32.001605458091944,
+          "http_status": 200,
+          "first_text_seconds": 31.5491534168832,
+          "restored": true,
+          "seconds": 31.558043249882758,
+          "completed_offset": 63.559649208094925
+        },
+        {
+          "index": 72,
+          "owner_index": 8,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 33,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0017345831729471684,
+          "actual_start_offset": 33.00173458317295,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_overloaded",
+          "message_family": "analyzer_overloaded",
+          "reason": "queue_timeout",
+          "retry_after_seconds": 30,
+          "seconds": 30.076867958065122,
+          "completed_offset": 63.07860304089263
+        },
+        {
+          "index": 73,
+          "owner_index": 9,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 35,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.001925415825098753,
+          "actual_start_offset": 35.0019254158251,
+          "http_status": 200,
+          "first_text_seconds": 31.458381584379822,
+          "restored": true,
+          "seconds": 31.462728209327906,
+          "completed_offset": 66.46465433295816
+        },
+        {
+          "index": 74,
+          "owner_index": 10,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 45,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0021141250617802143,
+          "actual_start_offset": 45.00211412506178,
+          "http_status": 200,
+          "first_text_seconds": 19.407763707917184,
+          "restored": true,
+          "seconds": 19.414070082828403,
+          "completed_offset": 64.41618487518281
+        },
+        {
+          "index": 75,
+          "owner_index": 11,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 60,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002135499846190214,
+          "actual_start_offset": 60.00213549984619,
+          "http_status": 200,
+          "first_text_seconds": 4.855953541118652,
+          "restored": true,
+          "seconds": 4.863120791036636,
+          "completed_offset": 64.86525666620582
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "variant": "A",
+      "nginx": {
+        "no_live_upstreams": 35,
+        "temporarily_disabled": 20,
+        "connection_refused": 0,
+        "upstream_timeout": 0,
+        "log_sha256": "c81bed0eb1320c9a059be9505f92d15af81364c29e8a4c4027e74c0ad49f4e94",
+        "analysis_http_statuses": {
+          "200": 105,
+          "502": 35,
+          "503": 5
+        }
+      },
+      "provider_requests": 36,
+      "raw_marker_seen": false,
+      "all_requests": {
+        "scheduled": 76,
+        "successful": 36,
+        "failed": 40,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 36,
+          "503": 40
+        },
+        "error_codes": {
+          "503": 40
+        },
+        "error_reasons": {
+          "queue_timeout": 5,
+          "": 35
+        },
+        "failure_classes": {
+          "": 5,
+          "unexpected_failure": 28,
+          "not_ready": 7
+        },
+        "error_phases": {
+          "": 5,
+          "readiness": 35
+        },
+        "message_families": {
+          "analyzer_overloaded": 5,
+          "analyzer_unavailable": 35
+        },
+        "latency_seconds_success": {
+          "p50": 34.172,
+          "p95": 63.117,
+          "p99": 67.985
+        },
+        "latency_seconds_failure": {
+          "p50": 30.072,
+          "p95": 60.715,
+          "p99": 60.794
+        },
+        "latency_seconds_all": {
+          "p50": 30.821,
+          "p95": 61.337,
+          "p99": 67.985
+        },
+        "sse_first_text_seconds": {
+          "p50": 34.162,
+          "p95": 63.114,
+          "p99": 67.977
+        },
+        "successful_sse_within_60_seconds": 31,
+        "max_client_start_delay_seconds": 0.004983613334063941,
+        "retry_after_seconds": {
+          "30": 5,
+          "1": 35
+        }
+      },
+      "heavy": {
+        "scheduled": 64,
+        "successful": 34,
+        "failed": 30,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 34,
+          "503": 30
+        },
+        "error_codes": {
+          "503": 30
+        },
+        "error_reasons": {
+          "queue_timeout": 5,
+          "": 25
+        },
+        "failure_classes": {
+          "": 5,
+          "unexpected_failure": 25
+        },
+        "error_phases": {
+          "": 5,
+          "readiness": 25
+        },
+        "message_families": {
+          "analyzer_overloaded": 5,
+          "analyzer_unavailable": 25
+        },
+        "latency_seconds_success": {
+          "p50": 38.931,
+          "p95": 63.117,
+          "p99": 67.985
+        },
+        "latency_seconds_failure": {
+          "p50": 30.821,
+          "p95": 60.76,
+          "p99": 60.794
+        },
+        "latency_seconds_all": {
+          "p50": 31.086,
+          "p95": 61.337,
+          "p99": 67.985
+        },
+        "sse_first_text_seconds": {
+          "p50": 38.869,
+          "p95": 63.114,
+          "p99": 67.977
+        },
+        "successful_sse_within_60_seconds": 29,
+        "max_client_start_delay_seconds": 0.004983613334063941,
+        "retry_after_seconds": {
+          "30": 5,
+          "1": 25
+        }
+      },
+      "short_probes": {
+        "scheduled": 12,
+        "successful": 2,
+        "failed": 10,
+        "cancelled": 0,
+        "http_statuses": {
+          "503": 10,
+          "200": 2
+        },
+        "error_codes": {
+          "503": 10
+        },
+        "error_reasons": {
+          "": 10
+        },
+        "failure_classes": {
+          "unexpected_failure": 3,
+          "not_ready": 7
+        },
+        "error_phases": {
+          "readiness": 10
+        },
+        "message_families": {
+          "analyzer_unavailable": 10
+        },
+        "latency_seconds_success": {
+          "p50": 0.34,
+          "p95": 6.259,
+          "p99": 6.259
+        },
+        "latency_seconds_failure": {
+          "p50": 2.074,
+          "p95": 31.067,
+          "p99": 31.067
+        },
+        "latency_seconds_all": {
+          "p50": 2.074,
+          "p95": 31.067,
+          "p99": 31.067
+        },
+        "sse_first_text_seconds": {
+          "p50": 0.337,
+          "p95": 6.255,
+          "p99": 6.255
+        },
+        "successful_sse_within_60_seconds": 2,
+        "max_client_start_delay_seconds": 0.0021682921797037125,
+        "retry_after_seconds": {
+          "1": 10
+        }
+      },
+      "metric_deltas": {
+        "ner_windows": 3881.0,
+        "ner_tokens": 1230552.0,
+        "analysis_cache_hit": 0,
+        "analysis_cache_miss": 69.0,
+        "queue_rejections": 25.0,
+        "queue_wait_seconds": 1300.772110454971,
+        "queue_attempts": 61.0,
+        "presidio_phase_seconds": 159.1085307730391,
+        "ner_phase_seconds": 309.3948327270482,
+        "triton_successful_requests": 1020,
+        "triton_failed_requests": 0,
+        "triton_queue_microseconds": 35959339,
+        "triton_compute_microseconds": 212977314,
+        "triton_executions": 955,
+        "client_preprocessing_seconds": 2475.3496693669586
+      },
+      "short_rows": [
+        {
+          "index": 64,
+          "owner_index": 0,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 1,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002085166983306408,
+          "actual_start_offset": 1.0020851669833064,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "unexpected_failure",
+          "retry_after_seconds": 1,
+          "seconds": 31.06687295809388,
+          "completed_offset": 32.06895858282223
+        },
+        {
+          "index": 65,
+          "owner_index": 1,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 5,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0015718331560492516,
+          "actual_start_offset": 5.001571833156049,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "unexpected_failure",
+          "retry_after_seconds": 1,
+          "seconds": 26.879664458800107,
+          "completed_offset": 31.881236833054572
+        },
+        {
+          "index": 66,
+          "owner_index": 2,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 10,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.001717125065624714,
+          "actual_start_offset": 10.001717125065625,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "unexpected_failure",
+          "retry_after_seconds": 1,
+          "seconds": 21.88841324998066,
+          "completed_offset": 31.89013066701591
+        },
+        {
+          "index": 67,
+          "owner_index": 3,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 20,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002129792235791683,
+          "actual_start_offset": 20.00212979223579,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 12.040420332923532,
+          "completed_offset": 32.042550708167255
+        },
+        {
+          "index": 68,
+          "owner_index": 4,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 29,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0008078329265117645,
+          "actual_start_offset": 29.00080783292651,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 3.072384334169328,
+          "completed_offset": 32.073192541953176
+        },
+        {
+          "index": 69,
+          "owner_index": 5,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 30,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.001395166851580143,
+          "actual_start_offset": 30.00139516685158,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 2.074241875205189,
+          "completed_offset": 32.07563729211688
+        },
+        {
+          "index": 70,
+          "owner_index": 6,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 31,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0019897078163921833,
+          "actual_start_offset": 31.001989707816392,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.9369223341345787,
+          "completed_offset": 31.938912416808307
+        },
+        {
+          "index": 71,
+          "owner_index": 7,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 32,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 9.208312258124352e-05,
+          "actual_start_offset": 32.00009208312258,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.047061416786164045,
+          "completed_offset": 32.04715395811945
+        },
+        {
+          "index": 72,
+          "owner_index": 8,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 33,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0020887921564280987,
+          "actual_start_offset": 33.00208879215643,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.05952379107475281,
+          "completed_offset": 33.06161304190755
+        },
+        {
+          "index": 73,
+          "owner_index": 9,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 35,
+          "started": true,
+          "outcome": "error",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0019341250881552696,
+          "actual_start_offset": 35.001934125088155,
+          "http_status": 503,
+          "code": "503",
+          "type": "analyzer_unavailable",
+          "message_family": "analyzer_unavailable",
+          "phase": "readiness",
+          "failure_class": "not_ready",
+          "retry_after_seconds": 1,
+          "seconds": 0.03844545781612396,
+          "completed_offset": 35.0403800830245
+        },
+        {
+          "index": 74,
+          "owner_index": 10,
+          "units": 1000,
+          "api": "chat",
+          "stream": true,
+          "offset": 45,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.002109500113874674,
+          "actual_start_offset": 45.002109500113875,
+          "http_status": 200,
+          "first_text_seconds": 6.255064041819423,
+          "restored": true,
+          "seconds": 6.2588286669924855,
+          "completed_offset": 51.26093879202381
+        },
+        {
+          "index": 75,
+          "owner_index": 11,
+          "units": 1000,
+          "api": "responses",
+          "stream": true,
+          "offset": 60,
+          "started": true,
+          "outcome": "success",
+          "history_units": 0,
+          "fresh_segments": true,
+          "start_delay_seconds": 0.0021682921797037125,
+          "actual_start_offset": 60.002168292179704,
+          "http_status": 200,
+          "first_text_seconds": 0.3373472080565989,
+          "restored": true,
+          "seconds": 0.3403292498551309,
+          "completed_offset": 60.34249791689217
+        }
+      ]
+    }
+  ],
+  "network_checks": [
+    {
+      "variant": "A",
+      "client": {
+        "scheduled": 20,
+        "successful": 20,
+        "failed": 0,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 20
+        },
+        "error_codes": {},
+        "error_reasons": {},
+        "failure_classes": {},
+        "error_phases": {},
+        "message_families": {},
+        "latency_seconds_success": {
+          "p50": 0.213,
+          "p95": 0.232,
+          "p99": 0.235
+        },
+        "latency_seconds_failure": {
+          "p50": null,
+          "p95": null,
+          "p99": null
+        },
+        "latency_seconds_all": {
+          "p50": 0.213,
+          "p95": 0.232,
+          "p99": 0.235
+        },
+        "sse_first_text_seconds": {
+          "p50": 0.208,
+          "p95": 0.227,
+          "p99": 0.233
+        },
+        "successful_sse_within_60_seconds": 20,
+        "max_client_start_delay_seconds": 0.0021272501908242702,
+        "retry_after_seconds": {}
+      },
+      "nginx": {
+        "no_live_upstreams": 0,
+        "temporarily_disabled": 1,
+        "connection_refused": 1,
+        "upstream_timeout": 0,
+        "log_sha256": "e03c514c56fe464bb9252c787dec0394170077c2f14c0de687348a60adeb7f75",
+        "analysis_http_statuses": {
+          "200": 40
+        }
+      },
+      "provider_requests": 20
+    },
+    {
+      "variant": "B",
+      "client": {
+        "scheduled": 20,
+        "successful": 20,
+        "failed": 0,
+        "cancelled": 0,
+        "http_statuses": {
+          "200": 20
+        },
+        "error_codes": {},
+        "error_reasons": {},
+        "failure_classes": {},
+        "error_phases": {},
+        "message_families": {},
+        "latency_seconds_success": {
+          "p50": 0.202,
+          "p95": 0.209,
+          "p99": 0.216
+        },
+        "latency_seconds_failure": {
+          "p50": null,
+          "p95": null,
+          "p99": null
+        },
+        "latency_seconds_all": {
+          "p50": 0.202,
+          "p95": 0.209,
+          "p99": 0.216
+        },
+        "sse_first_text_seconds": {
+          "p50": 0.2,
+          "p95": 0.207,
+          "p99": 0.213
+        },
+        "successful_sse_within_60_seconds": 20,
+        "max_client_start_delay_seconds": 0.0021123746410012245,
+        "retry_after_seconds": {}
+      },
+      "nginx": {
+        "no_live_upstreams": 0,
+        "temporarily_disabled": 1,
+        "connection_refused": 1,
+        "upstream_timeout": 0,
+        "log_sha256": "f3a972283930babb2deaa3e6868313a10dd6c774b97ace125afce16233a86cfd",
+        "analysis_http_statuses": {
+          "200": 40
+        }
+      },
+      "provider_requests": 20
+    }
+  ],
+  "by_variant": {
+    "A": {
+      "all_requests": {
+        "scheduled": 152,
+        "successful": 79,
+        "failed": 73,
+        "successful_sse_within_60_seconds": 66
+      },
+      "heavy": {
+        "scheduled": 128,
+        "successful": 74,
+        "failed": 54,
+        "successful_sse_within_60_seconds": 61
+      },
+      "short_probes": {
+        "scheduled": 24,
+        "successful": 5,
+        "failed": 19,
+        "successful_sse_within_60_seconds": 5
+      },
+      "no_live_upstreams": 60,
+      "temporarily_disabled": 40
+    },
+    "B": {
+      "all_requests": {
+        "scheduled": 152,
+        "successful": 84,
+        "failed": 68,
+        "successful_sse_within_60_seconds": 66
+      },
+      "heavy": {
+        "scheduled": 128,
+        "successful": 73,
+        "failed": 55,
+        "successful_sse_within_60_seconds": 55
+      },
+      "short_probes": {
+        "scheduled": 24,
+        "successful": 11,
+        "failed": 13,
+        "successful_sse_within_60_seconds": 11
+      },
+      "no_live_upstreams": 0,
+      "temporarily_disabled": 0
+    }
+  },
+  "primary_restoration": {
+    "files_preserved": true,
+    "database_counts_preserved": true,
+    "volumes_preserved": true,
+    "all_volumes_preserved": true,
+    "container_ids_preserved": true,
+    "images_preserved": true,
+    "healthy_containers": 8
+  },
+  "cleanup_ok": true
+}

@@ -70,20 +70,22 @@ curl -sS "$API_URL/v1/chat/completions" \
 
 ## Дополнительный пример OpenAI Responses API
 
-Сначала добавьте совместимую модель из
-[`examples/litellm-config.optional-providers.yaml`](../examples/litellm-config.optional-providers.yaml).
+В базовом составе `glm-5.3-flash` доступна через штатный мост LiteLLM.
+В расширенном составе можно выбрать нативный маршрут `gpt-6-luna` через codex-lb.
+Ограничения продолжений и выбора инструмента:
+[руководство клиента Responses](clients/codex.md#продолжение-диалога).
 
 ```bash
 curl -s "$API_URL/v1/responses" \
   -H "Authorization: Bearer $RU_LLM_PROXY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "openai-example-standard",
+    "model": "glm-5.3-flash",
     "input": "Скажи короткое приветствие на русском",
     "max_output_tokens": 80
   }' | jq
 
-RESPONSES_MODEL=<validated-responses-alias> \
+RESPONSES_MODEL=glm-5.3-flash \
   make client-auth-smoke STACK=litellm-presidio
 ```
 

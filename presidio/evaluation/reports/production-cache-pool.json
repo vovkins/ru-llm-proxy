@@ -1,0 +1,2173 @@
+{
+  "schema_version": 1,
+  "issue": 116,
+  "client_date": "2026-11-01",
+  "status": "completed_with_new_detection_finding",
+  "platform_modified": false,
+  "production_defaults_changed": false,
+  "new_provider_calls": 0,
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "docker_cpus": 10,
+  "docker_memory_bytes": 8321515520,
+  "architecture": "aarch64",
+  "images": {
+    "litellm": "sha256:78c24314ea4b2f4e2968da3da31eea27a4a0aa99b3d51cb573a16f7296247363",
+    "codex-lb": "sha256:4c4cf730bd19d7d9963684848274dae23061f9afbafb61c1b5ef4758cf8d5452",
+    "codex-lb-db": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+    "presidio-analyzer": "sha256:a0304100b93e70735e7745c26892133b2ee4a125e731270af53533c70f57d8f7",
+    "ner-triton": "sha256:73c0f56f99ec6c20cfa5dad1cbc572db7de106b0704a998c4ba71917c4582441",
+    "db": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+    "redis": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+    "nginx": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+  },
+  "nginx_sha256": "f310279e384af85541fced5088e582b03f11e5eba1e3b90b9b6ef3518683a62a",
+  "profile": {
+    "counts": {
+      "nginx": 1,
+      "db": 1,
+      "redis": 1,
+      "litellm": 1,
+      "presidio-analyzer": 4,
+      "ner-triton": 2
+    },
+    "resource_settings": {
+      "LITELLM_REPLICAS": "1",
+      "LITELLM_CPUS": "1",
+      "LITELLM_MEMORY": "4g",
+      "ANALYZER_REPLICAS": "4",
+      "ANALYZER_CPUS": "1",
+      "ANALYZER_MEMORY": "4g",
+      "TRITON_REPLICAS": "2",
+      "TRITON_CPUS": "2",
+      "TRITON_MEMORY": "2g",
+      "TRITON_MODEL_INSTANCES": "2",
+      "NGINX_CPUS": "0.5",
+      "NGINX_MEMORY": "256m",
+      "REDIS_CPUS": "0.5",
+      "REDIS_MEMORY": "16g",
+      "DB_CPUS": "0.5",
+      "DB_MEMORY": "4g",
+      "CODEX_LB_CPUS": "2.0",
+      "CODEX_LB_MEMORY": "4g",
+      "CODEX_LB_DB_CPUS": "1.0",
+      "CODEX_LB_DB_MEMORY": "2g"
+    },
+    "ner_settings": {
+      "PRESIDIO_ANALYZER_WORKERS": "1",
+      "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+      "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+      "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+      "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+    }
+  },
+  "measurement_module_sha256": {
+    "tests/load/http_pool_timing.py": "98d57b8e26feb30cffcc0e086bf300465b2c3c7c65c415feb13bcc1b75b659cb",
+    "tests/load/cache_contract_probe.py": "6a7f30617431e306cd30588935b72d363555ec162f3088ad660f086cca37b01c"
+  },
+  "isolated_probe_sha256": "f1b1fc9f932eb7144733a19076b36c2216814dd54fe26131546fccac5c094167",
+  "measurement_scope": "Separate diagnostic process importing unchanged guardrail, one event loop; not an instrumented serving LiteLLM worker.",
+  "pool_timing_note": "Before first HTTP/1.1 headers minus completed TCP/TLS setup; upper bound includes pool/scheduler overhead, not a pure internal pool timer.",
+  "cache_note": "Same decoded JSON; input text is never stored by the cache. Original eight errors were not individually reconstructed.",
+  "previous_attempt": {
+    "status": "failed",
+    "error_type": "AssertionError",
+    "cause": "probe_compared_raw_entities_with_text_to_safe_cached_entities",
+    "product_defect": false,
+    "corrected_after_owner_approval": true,
+    "accepted_measurements": false
+  },
+  "diagnostics": {
+    "cache": [
+      {
+        "analysis_seconds": 1.286726333986735,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "hit": 1.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 0,
+        "input_characters": 69758,
+        "input_sha256": "3e852361f0f3a0d285083b325f6a9e2eda52ebe5a2efa8bbb0f954f25cf8e102",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.0003151250130031258,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "escaped"
+      },
+      {
+        "analysis_seconds": 31.144203139003366,
+        "candidate_bytes": 245595,
+        "contract_rejections": [
+          "entity_count_limit",
+          "serialized_byte_limit"
+        ],
+        "counter_deltas": {
+          "error": 1.0,
+          "hit": 0.0,
+          "miss": 1.0
+        },
+        "entities": 2947,
+        "entity_types": {
+          "AUTH_TOKEN": 2946,
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 1,
+        "input_characters": 369732,
+        "input_sha256": "80b86e460eefdfbce9df08c675be01ad8c2a227fad41b97bc54daf6fe51cf6ac",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "miss",
+        "repeat_cache_fields_equal": null,
+        "repeat_seconds": 30.94007251400035,
+        "save_error_type": "ValueError",
+        "serializable": false,
+        "variant": "escaped"
+      },
+      {
+        "analysis_seconds": 1.2616182090132497,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 2,
+        "input_characters": 69758,
+        "input_sha256": "0ad70f60112058bfd54af8bf39881570e828534afb3cff8a256c3db6b8f7e971",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.000433625013101846,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "escaped"
+      },
+      {
+        "analysis_seconds": 1.3333143340132665,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 3,
+        "input_characters": 70258,
+        "input_sha256": "91d03fc18a97544a7e6895868b465e78982b62919f2650dce54966f3cb1647d5",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.0002599580038804561,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "escaped"
+      },
+      {
+        "analysis_seconds": 1.275475667003775,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 0,
+        "input_characters": 69758,
+        "input_sha256": "3e852361f0f3a0d285083b325f6a9e2eda52ebe5a2efa8bbb0f954f25cf8e102",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.0003319999959785491,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "utf8"
+      },
+      {
+        "analysis_seconds": 1.2260205839993432,
+        "candidate_bytes": 110,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 1,
+        "input_characters": 69772,
+        "input_sha256": "83dee1f43e0e66e46e67ca5aff7334a62371596fd5ca5edffa1d889d73b57a57",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.0002542909933254123,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "utf8"
+      },
+      {
+        "analysis_seconds": 1.1985364590073004,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 2,
+        "input_characters": 69758,
+        "input_sha256": "0ad70f60112058bfd54af8bf39881570e828534afb3cff8a256c3db6b8f7e971",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.0002648749796207994,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "utf8"
+      },
+      {
+        "analysis_seconds": 1.2380745420232415,
+        "candidate_bytes": 109,
+        "contract_rejections": [],
+        "counter_deltas": {
+          "error": 0.0,
+          "hit": 1.0,
+          "miss": 0.0
+        },
+        "entities": 1,
+        "entity_types": {
+          "EMAIL_ADDRESS": 1
+        },
+        "field_index": 3,
+        "input_characters": 70258,
+        "input_sha256": "91d03fc18a97544a7e6895868b465e78982b62919f2650dce54966f3cb1647d5",
+        "invalid_entities": 0,
+        "load_error_type": null,
+        "load_state": "hit",
+        "repeat_cache_fields_equal": true,
+        "repeat_seconds": 0.000297874998068437,
+        "save_error_type": null,
+        "serializable": true,
+        "variant": "utf8"
+      }
+    ],
+    "calibration": {
+      "max_connections": 1,
+      "requests": [
+        {
+          "after_send_to_headers_seconds": 0.20070395900984295,
+          "connection_setup_events": 0,
+          "connection_setup_seconds": 0.0,
+          "pool_wait_upper_seconds": 0.00014987497706897557,
+          "pre_send_seconds": 0.00014987497706897557,
+          "pure_pool_wait_measured": false
+        },
+        {
+          "after_send_to_headers_seconds": 0.2062905830098316,
+          "connection_setup_events": 0,
+          "connection_setup_seconds": 0.0,
+          "pool_wait_upper_seconds": 0.24162691700621508,
+          "pre_send_seconds": 0.24162691700621508,
+          "pure_pool_wait_measured": false
+        }
+      ],
+      "server_delay_seconds": 0.2
+    },
+    "guardrail_sha256": "66e9b3c5412b3fa315d8d19a6639f8aed88e836c5241f92bd24602d469d46995",
+    "limits": {
+      "cache_entities": 2000,
+      "cache_value_bytes": 65536,
+      "http_connections": 20,
+      "http_keepalive": 10
+    },
+    "pool": [
+      {
+        "concurrency": 1,
+        "rows": [
+          {
+            "entities": 1,
+            "index": 0,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 1.2287615420063958,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.00010750000365078449,
+              "pre_send_seconds": 0.00010750000365078449,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 1.2297005000000354
+          }
+        ]
+      },
+      {
+        "concurrency": 8,
+        "rows": [
+          {
+            "entities": 1,
+            "index": 0,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.7642892930016387,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0021338749793358147,
+              "pre_send_seconds": 0.0021338749793358147,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.767492751998361
+          },
+          {
+            "entities": 1,
+            "index": 1,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.9567213770060334,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0021078329882584512,
+              "pre_send_seconds": 0.0021078329882584512,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.9596255839860532
+          },
+          {
+            "entities": 1,
+            "index": 2,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.7647522930055857,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.003031500003999099,
+              "pre_send_seconds": 0.003031500003999099,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.7690947930095717
+          },
+          {
+            "entities": 1,
+            "index": 3,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.811970127018867,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0024585829814895988,
+              "pre_send_seconds": 0.0024585829814895988,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.815343168011168
+          },
+          {
+            "entities": 1,
+            "index": 4,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.8204259169870056,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0015607090026605874,
+              "pre_send_seconds": 0.0015607090026605874,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.823553792986786
+          },
+          {
+            "entities": 1,
+            "index": 5,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.8109938770066947,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0025490830012131482,
+              "pre_send_seconds": 0.0025490830012131482,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.814522209984716
+          },
+          {
+            "entities": 1,
+            "index": 6,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.9417653340206016,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0020755000005010515,
+              "pre_send_seconds": 0.0020755000005010515,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.9449702099955175
+          },
+          {
+            "entities": 1,
+            "index": 7,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.7637185849889647,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.000960250006755814,
+              "pre_send_seconds": 0.000960250006755814,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.765641959995264
+          }
+        ]
+      },
+      {
+        "concurrency": 20,
+        "rows": [
+          {
+            "entities": 1,
+            "index": 0,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.664420044020517,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.006334540987154469,
+              "pre_send_seconds": 0.006334540987154469,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.672128877020441
+          },
+          {
+            "entities": 1,
+            "index": 1,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.6833836680161767,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.006321833003312349,
+              "pre_send_seconds": 0.006321833003312349,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.6908312090090476
+          },
+          {
+            "entities": 1,
+            "index": 2,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.568412877997616,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.009997917019063607,
+              "pre_send_seconds": 0.009997917019063607,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.580398669990245
+          },
+          {
+            "entities": 1,
+            "index": 3,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.6973222930100746,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.007346208003582433,
+              "pre_send_seconds": 0.007346208003582433,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.7054851680004504
+          },
+          {
+            "entities": 1,
+            "index": 4,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.1660644179792143,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.005778792023193091,
+              "pre_send_seconds": 0.005778792023193091,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.173252667998895
+          },
+          {
+            "entities": 1,
+            "index": 5,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.941083795012673,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004917207988910377,
+              "pool_wait_upper_seconds": 0.011859791993629187,
+              "pre_send_seconds": 0.016776999982539564,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.958718587004114
+          },
+          {
+            "entities": 1,
+            "index": 6,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.5067571270046756,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.007462583016604185,
+              "pre_send_seconds": 0.007462583016604185,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.515185500989901
+          },
+          {
+            "entities": 1,
+            "index": 7,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.9233209179947153,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0053044999949634075,
+              "pre_send_seconds": 0.0053044999949634075,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.9295674590102863
+          },
+          {
+            "entities": 1,
+            "index": 8,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.9621073360031005,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.00481487499200739,
+              "pool_wait_upper_seconds": 0.009269500005757436,
+              "pre_send_seconds": 0.014084374997764826,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.9818280859908555
+          },
+          {
+            "entities": 1,
+            "index": 9,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.44272387798992,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004786834004335105,
+              "pool_wait_upper_seconds": 0.009052250010427088,
+              "pre_send_seconds": 0.013839084014762193,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.465273753012298
+          },
+          {
+            "entities": 1,
+            "index": 10,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 4.591877127008047,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005295792012475431,
+              "pool_wait_upper_seconds": 0.007960249989992008,
+              "pre_send_seconds": 0.013256042002467439,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 4.612409669003682
+          },
+          {
+            "entities": 1,
+            "index": 11,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.026314254006138,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005147999996552244,
+              "pool_wait_upper_seconds": 0.00790612498531118,
+              "pre_send_seconds": 0.013054124981863424,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.0473693370004185
+          },
+          {
+            "entities": 1,
+            "index": 12,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.476964293018682,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.004900625004665926,
+              "pre_send_seconds": 0.004900625004665926,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.497373043006519
+          },
+          {
+            "entities": 1,
+            "index": 13,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.876940712012583,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004313249984988943,
+              "pool_wait_upper_seconds": 0.00827904199832119,
+              "pre_send_seconds": 0.012592291983310133,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.897311835986329
+          },
+          {
+            "entities": 1,
+            "index": 14,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.586565795005299,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004670958005590364,
+              "pool_wait_upper_seconds": 0.008958041988080367,
+              "pre_send_seconds": 0.013628999993670732,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.60134262900101
+          },
+          {
+            "entities": 1,
+            "index": 15,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.180071128997952,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004415167000843212,
+              "pool_wait_upper_seconds": 0.009034791000885889,
+              "pre_send_seconds": 0.013449958001729101,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 8.194349044992123
+          },
+          {
+            "entities": 1,
+            "index": 16,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.091455587011296,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004375417018309236,
+              "pool_wait_upper_seconds": 0.008513666980434209,
+              "pre_send_seconds": 0.012889083998743445,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 8.105162003979785
+          },
+          {
+            "entities": 1,
+            "index": 17,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.2176742519950494,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.004561540990835056,
+              "pre_send_seconds": 0.004561540990835056,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.2235147100000177
+          },
+          {
+            "entities": 1,
+            "index": 18,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.046441920014331,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.00532125000609085,
+              "pool_wait_upper_seconds": 0.005558375007240102,
+              "pre_send_seconds": 0.010879625013330951,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.063732712005731
+          },
+          {
+            "entities": 1,
+            "index": 19,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.543441295012599,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004580208013067022,
+              "pool_wait_upper_seconds": 0.007473332982044667,
+              "pre_send_seconds": 0.012053540995111689,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.556699377018958
+          }
+        ]
+      },
+      {
+        "concurrency": 32,
+        "rows": [
+          {
+            "entities": 1,
+            "index": 0,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.467496335011674,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.012882082985015586,
+              "pre_send_seconds": 0.012882082985015586,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.4869594179908745
+          },
+          {
+            "entities": 1,
+            "index": 1,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.2458149600133765,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.012903041002573445,
+              "pre_send_seconds": 0.012903041002573445,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.2772355430060998
+          },
+          {
+            "entities": 1,
+            "index": 2,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.918116627988638,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.015613249997841194,
+              "pre_send_seconds": 0.015613249997841194,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.944323628995335
+          },
+          {
+            "entities": 1,
+            "index": 3,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.8289606269972865,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.013421540992567316,
+              "pre_send_seconds": 0.013421540992567316,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.848497293976834
+          },
+          {
+            "entities": 1,
+            "index": 4,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.316825668007368,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.012341082998318598,
+              "pre_send_seconds": 0.012341082998318598,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.3354027929890435
+          },
+          {
+            "entities": 1,
+            "index": 5,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.890578544000164,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005159207998076454,
+              "pool_wait_upper_seconds": 0.015575250989058986,
+              "pre_send_seconds": 0.02073445898713544,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.9123037940007634
+          },
+          {
+            "entities": 1,
+            "index": 6,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.7720575850107707,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.01328849999117665,
+              "pre_send_seconds": 0.01328849999117665,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.7868272509949747
+          },
+          {
+            "entities": 1,
+            "index": 7,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.181290918000741,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.011522957996930927,
+              "pre_send_seconds": 0.011522957996930927,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.1942921269801445
+          },
+          {
+            "entities": 1,
+            "index": 8,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.502652711991686,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0015270000149030238,
+              "pool_wait_upper_seconds": 2.785625625983812,
+              "pre_send_seconds": 2.787152625998715,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 9.291163461981341
+          },
+          {
+            "entities": 1,
+            "index": 9,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.437873545015464,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0012496660056058317,
+              "pool_wait_upper_seconds": 2.972430292982608,
+              "pre_send_seconds": 2.973679958988214,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 9.433336504007457
+          },
+          {
+            "entities": 1,
+            "index": 10,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.908796711009927,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.012866749981185421,
+              "pre_send_seconds": 0.012866749981185421,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.927659543987829
+          },
+          {
+            "entities": 1,
+            "index": 11,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.810597003001021,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.000894791999598965,
+              "pool_wait_upper_seconds": 3.192545917991083,
+              "pre_send_seconds": 3.193440709990682,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 9.009885671024676
+          },
+          {
+            "entities": 1,
+            "index": 12,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.9594477100181393,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.010443874984048307,
+              "pre_send_seconds": 0.010443874984048307,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.971538751007756
+          },
+          {
+            "entities": 1,
+            "index": 13,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 10.303072713024449,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005322832992533222,
+              "pool_wait_upper_seconds": 0.012292875006096438,
+              "pre_send_seconds": 0.01761570799862966,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.32762262999313
+          },
+          {
+            "entities": 1,
+            "index": 14,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.50046733597992,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004876124992733821,
+              "pool_wait_upper_seconds": 0.011591667018365115,
+              "pre_send_seconds": 0.016467792011098936,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.525023002992384
+          },
+          {
+            "entities": 1,
+            "index": 15,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.797395711997524,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0012839580012951046,
+              "pool_wait_upper_seconds": 3.27091620999272,
+              "pre_send_seconds": 3.272200167994015,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 12.070691463974072
+          },
+          {
+            "entities": 1,
+            "index": 16,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.886731794977095,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0051843329856637865,
+              "pool_wait_upper_seconds": 0.012251542037120089,
+              "pre_send_seconds": 0.017435875022783875,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.909727753984043
+          },
+          {
+            "entities": 1,
+            "index": 17,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.76235271000769,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.008656457997858524,
+              "pre_send_seconds": 0.008656457997858524,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.808283334976295
+          },
+          {
+            "entities": 1,
+            "index": 18,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.941910462017404,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005761292006354779,
+              "pool_wait_upper_seconds": 0.01086599999689497,
+              "pre_send_seconds": 0.01662729200324975,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 8.965045462973649
+          },
+          {
+            "entities": 1,
+            "index": 19,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.0072167119942605,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004966583015630022,
+              "pool_wait_upper_seconds": 0.009824250009842217,
+              "pre_send_seconds": 0.014790833025472239,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.029903545015259
+          },
+          {
+            "entities": 1,
+            "index": 20,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.561849338002503,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0015357499942183495,
+              "pool_wait_upper_seconds": 3.3283190430083778,
+              "pre_send_seconds": 3.329854793002596,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 11.898572547012009
+          },
+          {
+            "entities": 1,
+            "index": 21,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.78570087798289,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0014501250116154552,
+              "pool_wait_upper_seconds": 3.4781262099859305,
+              "pre_send_seconds": 3.479576334997546,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.277502379991347
+          },
+          {
+            "entities": 1,
+            "index": 22,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.84935171098914,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005107750010211021,
+              "pool_wait_upper_seconds": 0.008412957977270707,
+              "pre_send_seconds": 0.013520707987481728,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.869923293997999
+          },
+          {
+            "entities": 1,
+            "index": 23,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.493212920991937,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009374160144943744,
+              "pool_wait_upper_seconds": 3.805991876986809,
+              "pre_send_seconds": 3.8069292930013034,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 12.301017048012
+          },
+          {
+            "entities": 1,
+            "index": 24,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.360777169000357,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005448292009532452,
+              "pool_wait_upper_seconds": 0.0069730829854961485,
+              "pre_send_seconds": 0.0124213749950286,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.374956793995807
+          },
+          {
+            "entities": 1,
+            "index": 25,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.724713336006971,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004900375002762303,
+              "pool_wait_upper_seconds": 0.007110874983482063,
+              "pre_send_seconds": 0.012011249986244366,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.748881752981106
+          },
+          {
+            "entities": 1,
+            "index": 26,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 9.128141378983855,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.00530308298766613,
+              "pool_wait_upper_seconds": 0.008003209019079804,
+              "pre_send_seconds": 0.013306292006745934,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 9.147580338001717
+          },
+          {
+            "entities": 1,
+            "index": 27,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.254214543994749,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008839580113999546,
+              "pool_wait_upper_seconds": 3.838003293989459,
+              "pre_send_seconds": 3.838887252000859,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.094332713022595
+          },
+          {
+            "entities": 1,
+            "index": 28,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 4.965920543996617,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008537499816156924,
+              "pool_wait_upper_seconds": 5.86693725202349,
+              "pre_send_seconds": 5.867791002005106,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.835973587993067
+          },
+          {
+            "entities": 1,
+            "index": 29,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.477389336010674,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0015728750149719417,
+              "pool_wait_upper_seconds": 5.901715627987869,
+              "pre_send_seconds": 5.903288503002841,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 12.381530088983709
+          },
+          {
+            "entities": 1,
+            "index": 30,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.8651158360007685,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0018134589772671461,
+              "pool_wait_upper_seconds": 5.918789169023512,
+              "pre_send_seconds": 5.920602628000779,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 11.787199131009402
+          },
+          {
+            "entities": 1,
+            "index": 31,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.915749712003162,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0012039170251227915,
+              "pool_wait_upper_seconds": 6.37215150296106,
+              "pre_send_seconds": 6.373355419986183,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 13.28996392301633
+          }
+        ]
+      },
+      {
+        "concurrency": 64,
+        "rows": [
+          {
+            "entities": 1,
+            "index": 0,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.099250459985342,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.020713542005978525,
+              "pre_send_seconds": 0.020713542005978525,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.1290688760054763
+          },
+          {
+            "entities": 1,
+            "index": 1,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.5418332520057447,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.020701082976302132,
+              "pre_send_seconds": 0.020701082976302132,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.569357585016405
+          },
+          {
+            "entities": 1,
+            "index": 2,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.060353294014931,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.023185041005490348,
+              "pre_send_seconds": 0.023185041005490348,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.091320959996665
+          },
+          {
+            "entities": 1,
+            "index": 3,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.8511128349928185,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.02126779200625606,
+              "pre_send_seconds": 0.02126779200625606,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.873482751980191
+          },
+          {
+            "entities": 1,
+            "index": 4,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.99427750200266,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.020092874998226762,
+              "pre_send_seconds": 0.020092874998226762,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.020545459992718
+          },
+          {
+            "entities": 1,
+            "index": 5,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.243883878021734,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005248458008281887,
+              "pool_wait_upper_seconds": 0.023087916983058676,
+              "pre_send_seconds": 0.028336374991340563,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.279376253020018
+          },
+          {
+            "entities": 1,
+            "index": 6,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.7516593349864706,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.021058790996903554,
+              "pre_send_seconds": 0.021058790996903554,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.7738222519983537
+          },
+          {
+            "entities": 1,
+            "index": 7,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.194870542996796,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.019520708010531962,
+              "pre_send_seconds": 0.019520708010531962,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.2160722099943087
+          },
+          {
+            "entities": 1,
+            "index": 8,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.110257127002114,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0025981669896282256,
+              "pool_wait_upper_seconds": 2.8104635430208873,
+              "pre_send_seconds": 2.8130617100105155,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.930364669999108
+          },
+          {
+            "entities": 1,
+            "index": 9,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.387872419989435,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008229999803006649,
+              "pool_wait_upper_seconds": 3.0187409600184765,
+              "pre_send_seconds": 3.019563959998777,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.408726546011167
+          },
+          {
+            "entities": 1,
+            "index": 10,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.013310752983671,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.020922625000821427,
+              "pre_send_seconds": 0.020922625000821427,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.035327753023012
+          },
+          {
+            "entities": 1,
+            "index": 11,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.030017668992514,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008950420015025884,
+              "pool_wait_upper_seconds": 3.1253344590077177,
+              "pre_send_seconds": 3.1262295010092203,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 9.168160170986084
+          },
+          {
+            "entities": 1,
+            "index": 12,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 3.6389085009868722,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.0189200000022538,
+              "pre_send_seconds": 0.0189200000022538,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 3.6629320019856095
+          },
+          {
+            "entities": 1,
+            "index": 13,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.916148002987029,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005171583004994318,
+              "pool_wait_upper_seconds": 0.0207447920111008,
+              "pre_send_seconds": 0.025916375016095117,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.9499540440156125
+          },
+          {
+            "entities": 1,
+            "index": 14,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.698791586008156,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0042735829774755985,
+              "pool_wait_upper_seconds": 0.021041500032879412,
+              "pre_send_seconds": 0.02531508301035501,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 5.733142835990293
+          },
+          {
+            "entities": 1,
+            "index": 15,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.985677462012973,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008210839878302068,
+              "pool_wait_upper_seconds": 3.2131193340173922,
+              "pre_send_seconds": 3.2139404180052225,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.214240878995042
+          },
+          {
+            "entities": 1,
+            "index": 16,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.395242252998287,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.002733583009103313,
+              "pool_wait_upper_seconds": 0.02124795797863044,
+              "pre_send_seconds": 0.02398154098773375,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.42515271101729
+          },
+          {
+            "entities": 1,
+            "index": 17,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 2.788474959990708,
+              "connection_setup_events": 0,
+              "connection_setup_seconds": 0.0,
+              "pool_wait_upper_seconds": 0.017797624983359128,
+              "pre_send_seconds": 0.017797624983359128,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 2.807561042980524
+          },
+          {
+            "entities": 1,
+            "index": 18,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.593686043983325,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004200875002425164,
+              "pool_wait_upper_seconds": 0.019985334016382694,
+              "pre_send_seconds": 0.024186209018807858,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 6.636264419998042
+          },
+          {
+            "entities": 1,
+            "index": 19,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.016822753008455,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004386957996757701,
+              "pool_wait_upper_seconds": 0.019423209014348686,
+              "pre_send_seconds": 0.023810167011106387,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.042622752982425
+          },
+          {
+            "entities": 1,
+            "index": 20,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.752879168983782,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0013187910080887377,
+              "pool_wait_upper_seconds": 3.562908794003306,
+              "pre_send_seconds": 3.5642275850113947,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.318710337975062
+          },
+          {
+            "entities": 1,
+            "index": 21,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 10.982571795990225,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009800840052776039,
+              "pool_wait_upper_seconds": 3.6597569180012215,
+              "pre_send_seconds": 3.660737002006499,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 14.64547396497801
+          },
+          {
+            "entities": 1,
+            "index": 22,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.17624971200712,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004874541977187619,
+              "pool_wait_upper_seconds": 0.01761566600180231,
+              "pre_send_seconds": 0.02249020797898993,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 7.205105670000194
+          },
+          {
+            "entities": 1,
+            "index": 23,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.050586753000971,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0006133330170996487,
+              "pool_wait_upper_seconds": 3.768172793992562,
+              "pre_send_seconds": 3.768786127009662,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.821817047020886
+          },
+          {
+            "entities": 1,
+            "index": 24,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 10.447878795996075,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.005367250007111579,
+              "pool_wait_upper_seconds": 0.016945999988820404,
+              "pre_send_seconds": 0.022313249995931983,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.47183154700906
+          },
+          {
+            "entities": 1,
+            "index": 25,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 11.05370712999138,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.004493166983593255,
+              "pool_wait_upper_seconds": 0.01755770802265033,
+              "pre_send_seconds": 0.022050875006243587,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 11.081381380005041
+          },
+          {
+            "entities": 1,
+            "index": 26,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.300507503998233,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0035513339971657842,
+              "pool_wait_upper_seconds": 0.018275331996846944,
+              "pre_send_seconds": 0.02182666599401273,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 8.328897419996792
+          },
+          {
+            "entities": 1,
+            "index": 27,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.707176795986015,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0011205000046174973,
+              "pool_wait_upper_seconds": 3.865690000995528,
+              "pre_send_seconds": 3.8668105010001455,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 12.580579089000821
+          },
+          {
+            "entities": 1,
+            "index": 28,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.8320324609812815,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0010157499928027391,
+              "pool_wait_upper_seconds": 5.082921835011803,
+              "pre_send_seconds": 5.083937585004605,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 10.932393838011194
+          },
+          {
+            "entities": 1,
+            "index": 29,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.78450633698958,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001000082993414253,
+              "pool_wait_upper_seconds": 5.728604378004093,
+              "pre_send_seconds": 5.729604460997507,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 13.520419339998625
+          },
+          {
+            "entities": 1,
+            "index": 30,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.557590585987782,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.002404915983788669,
+              "pool_wait_upper_seconds": 6.02889808602049,
+              "pre_send_seconds": 6.031303002004279,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 11.595921213011025
+          },
+          {
+            "entities": 1,
+            "index": 31,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.384932795015629,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009327089937869459,
+              "pool_wait_upper_seconds": 6.4206720019865315,
+              "pre_send_seconds": 6.4216047109803185,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 13.81554834000417
+          },
+          {
+            "entities": 1,
+            "index": 32,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 10.354100379976444,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.000973624992184341,
+              "pool_wait_upper_seconds": 6.631952628027648,
+              "pre_send_seconds": 6.632926253019832,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 16.995955382997636
+          },
+          {
+            "entities": 1,
+            "index": 33,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.770569710992277,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009931249951478094,
+              "pool_wait_upper_seconds": 6.943396752991248,
+              "pre_send_seconds": 6.944389877986396,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 13.716024547989946
+          },
+          {
+            "entities": 1,
+            "index": 34,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.432024086010642,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0011053330090362579,
+              "pool_wait_upper_seconds": 7.037940627982607,
+              "pre_send_seconds": 7.039045960991643,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 13.478786630992545
+          },
+          {
+            "entities": 1,
+            "index": 35,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.21440462899045,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0007686660101171583,
+              "pool_wait_upper_seconds": 7.200921836978523,
+              "pre_send_seconds": 7.20169050298864,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 15.417587299016304
+          },
+          {
+            "entities": 1,
+            "index": 36,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.306377253989922,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008568330085836351,
+              "pool_wait_upper_seconds": 7.269361169979675,
+              "pre_send_seconds": 7.270218002988258,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 14.583943714998895
+          },
+          {
+            "entities": 1,
+            "index": 37,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.45181458699517,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009135000000242144,
+              "pool_wait_upper_seconds": 7.92101525401813,
+              "pre_send_seconds": 7.921928754018154,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 16.382473423989723
+          },
+          {
+            "entities": 1,
+            "index": 38,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.637841752992244,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009767089795786887,
+              "pool_wait_upper_seconds": 8.324857794010313,
+              "pre_send_seconds": 8.325834502989892,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 14.97129059000872
+          },
+          {
+            "entities": 1,
+            "index": 39,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.023879586980911,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001223416009452194,
+              "pool_wait_upper_seconds": 9.15902687900234,
+              "pre_send_seconds": 9.160250295011792,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 17.187154257990187
+          },
+          {
+            "entities": 1,
+            "index": 40,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.2819991699943785,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009409590275026858,
+              "pool_wait_upper_seconds": 10.206342377961846,
+              "pre_send_seconds": 10.207283336989349,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 16.490746466006385
+          },
+          {
+            "entities": 1,
+            "index": 41,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.0630994199891575,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.002844292001100257,
+              "pool_wait_upper_seconds": 10.312007046013605,
+              "pre_send_seconds": 10.314851338014705,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 17.387870675011072
+          },
+          {
+            "entities": 1,
+            "index": 42,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.295054545014864,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001357666013063863,
+              "pool_wait_upper_seconds": 10.39797417196678,
+              "pre_send_seconds": 10.399331837979844,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 17.70952300800127
+          },
+          {
+            "entities": 1,
+            "index": 43,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 10.95419492200017,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001010207983199507,
+              "pool_wait_upper_seconds": 10.465561296034139,
+              "pre_send_seconds": 10.466571504017338,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 21.425872842984973
+          },
+          {
+            "entities": 1,
+            "index": 44,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.2237702530110255,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0011702500050887465,
+              "pool_wait_upper_seconds": 10.814997754991055,
+              "pre_send_seconds": 10.816168004996143,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 18.04105538400472
+          },
+          {
+            "entities": 1,
+            "index": 45,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.895199379010592,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0017707080114632845,
+              "pool_wait_upper_seconds": 10.92674375497154,
+              "pre_send_seconds": 10.928514462983003,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 18.831273467018036
+          },
+          {
+            "entities": 1,
+            "index": 46,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.945566252979916,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0011693339911289513,
+              "pool_wait_upper_seconds": 11.074409963010112,
+              "pre_send_seconds": 11.07557929700124,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 18.022562383004697
+          },
+          {
+            "entities": 1,
+            "index": 47,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 8.14864929599571,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009372500062454492,
+              "pool_wait_upper_seconds": 11.589988505002111,
+              "pre_send_seconds": 11.590925755008357,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 19.74630309198983
+          },
+          {
+            "entities": 1,
+            "index": 48,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.479280336003285,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0007699999841861427,
+              "pool_wait_upper_seconds": 12.573470131028444,
+              "pre_send_seconds": 12.57424013101263,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 19.054729883995606
+          },
+          {
+            "entities": 1,
+            "index": 49,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.35870329599129,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009850409987848252,
+              "pool_wait_upper_seconds": 13.473577880999073,
+              "pre_send_seconds": 13.474562921997858,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 20.834854343003826
+          },
+          {
+            "entities": 1,
+            "index": 50,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.416414628009079,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0009015419927891344,
+              "pool_wait_upper_seconds": 13.513230672018835,
+              "pre_send_seconds": 13.514132214011624,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 19.942485926003428
+          },
+          {
+            "entities": 1,
+            "index": 51,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.2549792119825725,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0016827920044306666,
+              "pool_wait_upper_seconds": 13.709833714005072,
+              "pre_send_seconds": 13.711516506009502,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 20.974250800994923
+          },
+          {
+            "entities": 1,
+            "index": 52,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.883279379020678,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0020448330033104867,
+              "pool_wait_upper_seconds": 13.80845692299772,
+              "pre_send_seconds": 13.810501756001031,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 21.71422830200754
+          },
+          {
+            "entities": 1,
+            "index": 53,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.126934461994097,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0015101669996511191,
+              "pool_wait_upper_seconds": 14.578153256006772,
+              "pre_send_seconds": 14.579663423006423,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 21.71346567600267
+          },
+          {
+            "entities": 1,
+            "index": 54,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 9.653131795988884,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0020145839953329414,
+              "pool_wait_upper_seconds": 14.634648923005443,
+              "pre_send_seconds": 14.636663507000776,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 24.290670970018255
+          },
+          {
+            "entities": 1,
+            "index": 55,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.037062253017211,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001182125008199364,
+              "pool_wait_upper_seconds": 14.965378173976205,
+              "pre_send_seconds": 14.966560298984405,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 22.004544300987618
+          },
+          {
+            "entities": 1,
+            "index": 56,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.549368711013813,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.002719625015743077,
+              "pool_wait_upper_seconds": 15.410277923976537,
+              "pre_send_seconds": 15.41299754899228,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 21.96617438501562
+          },
+          {
+            "entities": 1,
+            "index": 57,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.967635210981825,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0028691669867839664,
+              "pool_wait_upper_seconds": 16.375529299024493,
+              "pre_send_seconds": 16.378398466011276,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 22.34735751102562
+          },
+          {
+            "entities": 1,
+            "index": 58,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.567405711015454,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0008649580122437328,
+              "pool_wait_upper_seconds": 16.48444475798169,
+              "pre_send_seconds": 16.485309715993935,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 23.053619718994014
+          },
+          {
+            "entities": 1,
+            "index": 59,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.371251670003403,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0013342500024009496,
+              "pool_wait_upper_seconds": 16.986744091002038,
+              "pre_send_seconds": 16.98807834100444,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 24.365298177988734
+          },
+          {
+            "entities": 1,
+            "index": 60,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.799719628004823,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.000831083016237244,
+              "pool_wait_upper_seconds": 17.17983096698299,
+              "pre_send_seconds": 17.180662049999228,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 22.981518426997354
+          },
+          {
+            "entities": 1,
+            "index": 61,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 6.280477962020086,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0015388749889098108,
+              "pool_wait_upper_seconds": 17.38094000800629,
+              "pre_send_seconds": 17.3824788829952,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 23.663829219003674
+          },
+          {
+            "entities": 1,
+            "index": 62,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 7.9048130869923625,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.0014344999799504876,
+              "pool_wait_upper_seconds": 17.702688258024864,
+              "pre_send_seconds": 17.704122758004814,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 25.60978634498315
+          },
+          {
+            "entities": 1,
+            "index": 63,
+            "success": true,
+            "timing": {
+              "after_send_to_headers_seconds": 5.832501669996418,
+              "connection_setup_events": 1,
+              "connection_setup_seconds": 0.001171709009213373,
+              "pool_wait_upper_seconds": 18.016660007007886,
+              "pre_send_seconds": 18.0178317160171,
+              "pure_pool_wait_measured": false
+            },
+            "total_seconds": 23.851200718985638
+          }
+        ]
+      }
+    ],
+    "versions": {
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1"
+    }
+  },
+  "pool_summary": [
+    {
+      "concurrency": 1,
+      "completed": 1,
+      "successful": 1,
+      "connection_setup_events": 0,
+      "pool_wait_upper_seconds_p95": 0.0,
+      "pool_wait_upper_seconds_max": 0.00010750000365078449,
+      "after_send_to_headers_seconds_p95": 1.229,
+      "total_seconds_p95": 1.23
+    },
+    {
+      "concurrency": 8,
+      "completed": 8,
+      "successful": 8,
+      "connection_setup_events": 0,
+      "pool_wait_upper_seconds_p95": 0.003,
+      "pool_wait_upper_seconds_max": 0.003031500003999099,
+      "after_send_to_headers_seconds_p95": 3.812,
+      "total_seconds_p95": 3.815
+    },
+    {
+      "concurrency": 20,
+      "completed": 20,
+      "successful": 20,
+      "connection_setup_events": 11,
+      "pool_wait_upper_seconds_p95": 0.01,
+      "pool_wait_upper_seconds_max": 0.011859791993629187,
+      "after_send_to_headers_seconds_p95": 8.091,
+      "total_seconds_p95": 8.105
+    },
+    {
+      "concurrency": 32,
+      "completed": 32,
+      "successful": 32,
+      "connection_setup_events": 22,
+      "pool_wait_upper_seconds_p95": 5.919,
+      "pool_wait_upper_seconds_max": 6.37215150296106,
+      "after_send_to_headers_seconds_p95": 9.128,
+      "total_seconds_p95": 12.382
+    },
+    {
+      "concurrency": 64,
+      "completed": 64,
+      "successful": 64,
+      "connection_setup_events": 54,
+      "pool_wait_upper_seconds_p95": 17.18,
+      "pool_wait_upper_seconds_max": 18.016660007007886,
+      "after_send_to_headers_seconds_p95": 10.448,
+      "total_seconds_p95": 23.851
+    }
+  ],
+  "new_finding": {
+    "escaped_auth_token_count": 2946,
+    "utf8_auth_token_count": 0,
+    "recognizer_source_established": false,
+    "fix_applied": false,
+    "requires_owner_decision": true
+  },
+  "sampled_peak_memory_bytes": 4802995027,
+  "metric_sample_errors": 0,
+  "cleanup_ok": true,
+  "verification": {
+    "targeted": 85,
+    "static": 804,
+    "guardrail_flow": 869,
+    "make": 32,
+    "diff_check": true
+  },
+  "primary_preservation": {
+    "files_preserved": true,
+    "database_counts_preserved": true,
+    "volumes_preserved": true,
+    "all_volumes_preserved": true,
+    "container_ids_preserved": true,
+    "images_preserved": true,
+    "healthy_containers": 8
+  }
+}

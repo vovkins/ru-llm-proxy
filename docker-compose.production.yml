@@ -24,16 +24,18 @@ services:
   presidio-analyzer:
     container_name: !reset null
     ports: !reset []
-    scale: ${ANALYZER_REPLICAS:-4}
-    cpus: ${ANALYZER_CPUS:-2.0}
-    mem_limit: ${ANALYZER_MEMORY:-4g}
+    scale: ${ANALYZER_REPLICAS:-24}
+    cpus: ${ANALYZER_CPUS:-1.0}
+    mem_limit: ${ANALYZER_MEMORY:-2g}
+    environment:
+      PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS: ${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-45}
     labels:
       ru-llm-proxy.topology: production
 
   ner-triton:
-    scale: ${TRITON_REPLICAS:-2}
+    scale: ${TRITON_REPLICAS:-12}
     cpus: ${TRITON_CPUS:-2.0}
-    mem_limit: ${TRITON_MEMORY:-2g}
+    mem_limit: ${TRITON_MEMORY:-4g}
     environment:
       TRITON_MODEL_INSTANCES: ${TRITON_MODEL_INSTANCES:-2}
     labels:

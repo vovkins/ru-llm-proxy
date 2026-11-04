@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests" / "load"))
 
 import load_support  # noqa: E402
+import cache_contract_probe  # noqa: E402
 import manage_keys  # noqa: E402
 import resilience_checks  # noqa: E402
 import sample_metrics  # noqa: E402
@@ -39,6 +40,34 @@ def _whitespace_units(value: object) -> int:
             if isinstance(item, (list, dict))
         )
     return 0
+
+
+def test_cache_probe_compares_stored_fields_without_requiring_source_text():
+    stored = {"start": 0, "end": 4, "entity_type": "PERSON", "score": 0.9}
+    raw = dict(stored, text="private-value")
+    reference = json.dumps({"entities": [stored]})
+    assert cache_contract_probe.matches_serialized_entities(reference, [stored])
+    assert not cache_contract_probe.matches_serialized_entities(reference, [raw])
+
+
+@pytest.mark.parametrize("field,value", [
+    ("start", 1), ("end", 5), ("entity_type", "PASSWORD"), ("score", 0.8),
+])
+def test_cache_probe_never_ignores_coordinate_class_or_score_changes(field, value):
+    stored = {"start": 0, "end": 4, "entity_type": "PERSON", "score": 0.9}
+    reference = json.dumps({"entities": [stored]})
+    assert not cache_contract_probe.matches_serialized_entities(reference, [dict(stored, **{field: value})])
+
+
+@pytest.mark.parametrize("reference", [None, "invalid", "null", "[]", "{}", '{"entities":null}'])
+def test_cache_probe_missing_reference_is_not_reported_as_equality(reference):
+    assert not cache_contract_probe.matches_serialized_entities(reference, [])
+
+
+def test_cache_probe_supports_empty_results_without_accepting_extra_fields():
+    assert cache_contract_probe.matches_serialized_entities('{"entities":[]}', [])
+    assert not cache_contract_probe.matches_serialized_entities(
+        '{"entities":[{"text":"private-value"}]}', [{"text": "private-value"}])
 
 
 @pytest.mark.parametrize("api", ["chat", "responses"])
@@ -760,6 +789,122 @@ def test_metric_sampler_parses_docker_byte_units(value, expected):
 def test_metric_sampler_tolerates_transient_docker_placeholders():
     assert sample_metrics.integer("--") == 0
     assert sample_metrics.percentage("--") == 0.0
+
+
+def test_cgroup_cpu_parser_keeps_only_numeric_allowlisted_fields():
+    parsed = sample_metrics.parse_cpu_stats(
+        "usage_usec 1000000\nnr_periods 10\nnr_throttled 2\nthrottled_usec 500000\n"
+        "secret private-value\nusage_usec not-a-number\n", "200000 100000")
+    assert parsed == {"usage_usec": 1_000_000, "nr_periods": 10, "nr_throttled": 2,
+                      "throttled_usec": 500_000, "quota_cores": 2}
+    assert "private-value" not in json.dumps(parsed)
+    assert sample_metrics.parse_cpu_stats("", "") == {}
+    assert sample_metrics.parse_cpu_stats("", "max 100000") == {"quota_cores": None}
+
+
+def test_cpu_interval_measures_throttling_without_equating_it_to_host_load():
+    before = {"usage_usec": 1_000_000, "nr_periods": 10, "nr_throttled": 2,
+              "throttled_usec": 0, "quota_cores": 2}
+    after = {"usage_usec": 3_000_000, "nr_periods": 20, "nr_throttled": 5,
+             "throttled_usec": 200_000, "quota_cores": 2}
+    assert sample_metrics.cpu_interval(before, after, 2) == {
+        "available": True, "usage_cores": 1, "throttled_seconds": .2,
+        "throttled_period_fraction": .3, "quota_cores": 2}
+    assert sample_metrics.cpu_interval(after, before, 2) == {"available": False, "counter_reset": True}
+    assert sample_metrics.cpu_interval({}, {}, 2) == {"available": False}
+    for seconds in (0, -1, float("nan"), float("inf")):
+        assert sample_metrics.cpu_interval(before, after, seconds) == {"available": False}
+    changed = sample_metrics.cpu_interval(before, dict(after, quota_cores=1), 2)
+    assert changed["quota_changed"] and changed["quota_cores"] is None
+
+
+def test_cpu_sampler_never_reports_missing_cgroups_as_zero_cpu(monkeypatch):
+    monkeypatch.setattr(sample_metrics, "run", lambda *args, **kwargs: "unexpected private-value")
+    assert sample_metrics.cpu_stat_sample("test") == {}
+    def failed(*args, **kwargs):
+        raise sample_metrics.subprocess.CalledProcessError(1, ["docker"], stderr="private-value")
+    monkeypatch.setattr(sample_metrics, "run", failed)
+    assert sample_metrics.cpu_stat_sample("test") == {}
+
+
+def test_cgroup_collection_is_opt_in_and_does_not_change_existing_sampler(monkeypatch):
+    calls = []
+    monkeypatch.setattr(sample_metrics, "run", lambda *args, **kwargs: json.dumps(
+        {"ID": "a" * 12, "CPUPerc": "50%", "MemUsage": "1MiB / 1GiB"}))
+    monkeypatch.setattr(sample_metrics, "cpu_stat_sample", lambda cid: calls.append(cid) or {"usage_usec": 1})
+    monkeypatch.setattr(sample_metrics.time, "monotonic", lambda: 42.5)
+    assert "cpu_stat" not in sample_metrics.docker_samples({"analyzer": ["a" * 12]}, 1)[0]
+    assert "cpu_stat_monotonic_seconds" not in sample_metrics.docker_samples({"analyzer": ["a" * 12]}, 1)[0]
+    assert not calls
+    row = sample_metrics.docker_samples({"analyzer": ["a" * 12]}, 1, collect_cpu_stats=True)[0]
+    assert row["cpu_stat"] == {"usage_usec": 1}
+    assert row["cpu_stat_monotonic_seconds"] == 42.5
+
+
+def test_memory_events_distinguish_limits_from_oom_and_discard_unknown_content():
+    result = sample_metrics.parse_memory_stats(
+        "low 0\nhigh 3\nmax 7\noom 2\noom_kill 1\nunsafe_private_value 99\n", "1024\n", "2048\n")
+    assert result == {"current_bytes": 1024, "limit_bytes": 2048,
+                      "events": {"low": 0, "high": 3, "max": 7, "oom": 2, "oom_kill": 1}}
+    assert sample_metrics.parse_memory_stats("oom 0", "1", "max")["limit_bytes"] is None
+    assert sample_metrics.parse_memory_stats("private-value", "bad", "bad") == {}
+
+
+def test_missing_memory_cgroups_are_not_reported_as_no_oom(monkeypatch):
+    monkeypatch.setattr(sample_metrics, "run", lambda *args, **kwargs: "private-value")
+    assert sample_metrics.memory_stat_sample("test") == {}
+    monkeypatch.setattr(sample_metrics, "run", lambda *args, **kwargs:
+        "oom 0\noom_kill 0\n\n--memory-current--\n100\n\n--memory-max--\n200\n")
+    assert sample_metrics.memory_stat_sample("test")["current_bytes"] == 100
+    def failed(*args, **kwargs):
+        raise sample_metrics.subprocess.CalledProcessError(1, ["docker"], stderr="private-value")
+    monkeypatch.setattr(sample_metrics, "run", failed)
+    assert sample_metrics.memory_stat_sample("test") == {}
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("0B / 0B", None), ("0MiB / 2GiB", None), ("", None), (None, None),
+    ("private-value", None), ("...MiB / 2GiB", None),
+    ("1MiB / 2GiB", 1024**2), ("1.5MiB / 2GiB", 1572864),
+])
+def test_measured_memory_handles_transitional_zero_without_accepting_zero_limit(raw, expected):
+    assert sample_metrics.measured_memory_bytes(raw) == expected
+
+
+def test_partial_memory_uses_vm_protection_without_inventing_zero_consumption():
+    value = sample_metrics.memory_observation([None, 100], 500, at=1,
+        container_limit_bytes=1000, vm_min_available_bytes=200)
+    assert value["container_total_bytes"] is None and value["known_container_bytes"] == 100
+    assert value["protected"] and value["failure"] is None and not value["memory_complete"]
+    unknown = sample_metrics.memory_observation([None], None, at=2,
+        container_limit_bytes=1000, vm_min_available_bytes=200)
+    assert not unknown["protected"] and unknown["container_total_bytes"] is None
+    assert unknown["vm_available_bytes"] is None
+
+
+@pytest.mark.parametrize("values,vm,expected", [
+    ([700, 400], 500, "container_memory_guard"),
+    ([1100, None], None, "container_memory_guard"),
+    ([100, None], 0, "vm_memory_guard"),
+    ([100, None], 100, "vm_memory_guard"),
+    ([100], None, None),
+    ([True, None], None, None),
+])
+def test_memory_pressure_and_missing_data_are_distinct(values, vm, expected):
+    value = sample_metrics.memory_observation(values, vm, at=1,
+        container_limit_bytes=1000, vm_min_available_bytes=200)
+    assert value["failure"] == expected
+    assert value["protected"] == (values == [100] or type(vm) is int)
+
+
+def test_observer_death_and_staleness_are_failures_even_if_last_sample_was_safe():
+    assert sample_metrics.observer_failure({"protected_at": 0}, now=1, alive=True) is None
+    assert sample_metrics.observer_failure({"protected_at": 0}, now=21, alive=True) == "memory_observation_stale"
+    assert sample_metrics.observer_failure({"protected_at": 1}, now=2, alive=False) == "observer_stopped"
+    assert sample_metrics.observer_failure({}, now=2, alive=True) == "memory_observation_stale"
+    assert sample_metrics.observer_failure({"protected_at": 3}, now=2, alive=True) == "memory_observation_stale"
+    assert sample_metrics.observer_failure({"protected_at": 1, "failure": "vm_memory_guard"},
+        now=2, alive=True) == "vm_memory_guard"
 
 
 def test_error_metadata_keeps_only_bounded_code_and_type():

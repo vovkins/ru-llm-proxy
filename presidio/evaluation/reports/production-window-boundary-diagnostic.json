@@ -1,0 +1,1110 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-03",
+  "status": "diagnosed_fix_pending_approval",
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "source_manifest_canonical_sha256": "255f90e7fe9f5a08dfb0e74a8a8851990959a72a849437f93180df5d48fbf5a0",
+  "original_artifact_sha256": "78a43172838c6f154b2bd8a0528fb2366268bccd46743dff67e2ac02153d3778",
+  "payload_sha256": "0389581e0828a88827c2e9604d1dc1362546182fe0d546df2069f286d4813b06",
+  "raw_artifact_hashes": {
+    "results.json": "0bdb1b2dc09cdc591b0dc27f5a24da5d3addba75409b408294fca4a415e89a54",
+    "telemetry.jsonl": "03e67859c99b034229619b887d4655e81b0d224496ad31e7ff2ca13709530509",
+    "offline-cause.json": "857423dd77d71ee2b573bc9c5ff57e34daa8b12bc21ce8bfa9be2ed52fde897d"
+  },
+  "platform_changes": false,
+  "runtime_changes": false,
+  "production_defaults_changed": false,
+  "external_provider_calls": 0,
+  "diagnostic_call_counts": {
+    "full": 2,
+    "field": 4,
+    "confirm": 2,
+    "control": 4
+  },
+  "calls": [
+    {
+      "stage": "full",
+      "label": "cold",
+      "payload_sha256": "0389581e0828a88827c2e9604d1dc1362546182fe0d546df2069f286d4813b06",
+      "client": {
+        "owner_index": 50,
+        "api": "chat",
+        "units": 24002,
+        "utf8_bytes": 393347,
+        "slot": 202,
+        "kind": "tools",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 4,
+        "payload_sha256": "0389581e0828a88827c2e9604d1dc1362546182fe0d546df2069f286d4813b06",
+        "index": 0,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "error",
+        "start_delay_seconds": 9.382987627759576e-06,
+        "actual_start_offset": 9.382987627759576e-06,
+        "http_status": 503,
+        "code": "503",
+        "type": "analyzer_unavailable",
+        "message_family": "analyzer_unavailable",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved",
+        "retry_after_seconds": 1,
+        "seconds": 3.329286555002909,
+        "completed_offset": 3.3292966120061465
+      }
+    },
+    {
+      "stage": "full",
+      "label": "repeat_without_clear",
+      "payload_sha256": "0389581e0828a88827c2e9604d1dc1362546182fe0d546df2069f286d4813b06",
+      "client": {
+        "owner_index": 50,
+        "api": "chat",
+        "units": 24002,
+        "utf8_bytes": 393347,
+        "slot": 202,
+        "kind": "tools",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 4,
+        "payload_sha256": "0389581e0828a88827c2e9604d1dc1362546182fe0d546df2069f286d4813b06",
+        "index": 1,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "error",
+        "start_delay_seconds": 9.38598532229662e-06,
+        "actual_start_offset": 9.38598532229662e-06,
+        "http_status": 503,
+        "code": "503",
+        "type": "analyzer_unavailable",
+        "message_family": "analyzer_unavailable",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved",
+        "retry_after_seconds": 1,
+        "seconds": 3.3769367480126675,
+        "completed_offset": 3.3769470429979265
+      }
+    },
+    {
+      "stage": "field",
+      "label": "history",
+      "status": 503,
+      "text_sha256": "f2b3a2457730a7c436e6dabdee3255a57f9a75047ded13115a574a993732caa2",
+      "characters": 71008,
+      "seconds": 3.1258219570154324,
+      "code": "required_ner_unavailable",
+      "phase": "windowing",
+      "failure_class": "window_boundary_unresolved"
+    },
+    {
+      "stage": "field",
+      "label": "arguments",
+      "status": 200,
+      "text_sha256": "9855e418d6c2defcd8cd0ee74d98fde388299b4a48ed98a9a0be4e6c5580c0c6",
+      "characters": 71022,
+      "seconds": 2.987060076004127,
+      "entities": [
+        {
+          "start": 12,
+          "end": 63,
+          "entity_type": "EMAIL_ADDRESS",
+          "score": 0.85
+        },
+        {
+          "start": 64,
+          "end": 71020,
+          "entity_type": "LOGIN",
+          "score": 0.8793958425521851
+        }
+      ]
+    },
+    {
+      "stage": "field",
+      "label": "tool_output",
+      "status": 200,
+      "text_sha256": "8f4de905fdbbaa261957f328deec1b6810087175f8ef65cbe6022f5a0ca3f5dd",
+      "characters": 71008,
+      "seconds": 2.853230935987085,
+      "entities": [
+        {
+          "start": 0,
+          "end": 51,
+          "entity_type": "EMAIL_ADDRESS",
+          "score": 0.85
+        }
+      ]
+    },
+    {
+      "stage": "field",
+      "label": "current",
+      "status": 200,
+      "text_sha256": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+      "characters": 2,
+      "seconds": 0.08351294801104814,
+      "entities": []
+    },
+    {
+      "stage": "confirm",
+      "label": "history-1",
+      "trace": {
+        "text_sha256": "f2b3a2457730a7c436e6dabdee3255a57f9a75047ded13115a574a993732caa2",
+        "characters": 71008,
+        "batches": [
+          {
+            "token_count": 8718,
+            "windows": [
+              {
+                "index": 0,
+                "start_token": 0,
+                "end_token": 384,
+                "first_start": 0,
+                "last_end": 3080
+              },
+              {
+                "index": 1,
+                "start_token": 320,
+                "end_token": 704,
+                "first_start": 2551,
+                "last_end": 5753
+              },
+              {
+                "index": 2,
+                "start_token": 640,
+                "end_token": 1024,
+                "first_start": 5224,
+                "last_end": 8405
+              },
+              {
+                "index": 3,
+                "start_token": 960,
+                "end_token": 1344,
+                "first_start": 7865,
+                "last_end": 11012
+              },
+              {
+                "index": 4,
+                "start_token": 1280,
+                "end_token": 1664,
+                "first_start": 10490,
+                "last_end": 13649
+              },
+              {
+                "index": 5,
+                "start_token": 1600,
+                "end_token": 1984,
+                "first_start": 13127,
+                "last_end": 16313
+              },
+              {
+                "index": 6,
+                "start_token": 1920,
+                "end_token": 2304,
+                "first_start": 15782,
+                "last_end": 18937
+              },
+              {
+                "index": 7,
+                "start_token": 2240,
+                "end_token": 2624,
+                "first_start": 18424,
+                "last_end": 21538
+              },
+              {
+                "index": 8,
+                "start_token": 2560,
+                "end_token": 2944,
+                "first_start": 21025,
+                "last_end": 24139
+              },
+              {
+                "index": 9,
+                "start_token": 2880,
+                "end_token": 3264,
+                "first_start": 23626,
+                "last_end": 26749
+              },
+              {
+                "index": 10,
+                "start_token": 3200,
+                "end_token": 3584,
+                "first_start": 26236,
+                "last_end": 29350
+              },
+              {
+                "index": 11,
+                "start_token": 3520,
+                "end_token": 3904,
+                "first_start": 28837,
+                "last_end": 31951
+              },
+              {
+                "index": 12,
+                "start_token": 3840,
+                "end_token": 4224,
+                "first_start": 31414,
+                "last_end": 34534
+              },
+              {
+                "index": 13,
+                "start_token": 4160,
+                "end_token": 4544,
+                "first_start": 34008,
+                "last_end": 37122
+              },
+              {
+                "index": 14,
+                "start_token": 4480,
+                "end_token": 4864,
+                "first_start": 36609,
+                "last_end": 39723
+              },
+              {
+                "index": 15,
+                "start_token": 4800,
+                "end_token": 5184,
+                "first_start": 39210,
+                "last_end": 42324
+              },
+              {
+                "index": 16,
+                "start_token": 5120,
+                "end_token": 5504,
+                "first_start": 41811,
+                "last_end": 44925
+              },
+              {
+                "index": 17,
+                "start_token": 5440,
+                "end_token": 5824,
+                "first_start": 44412,
+                "last_end": 47526
+              },
+              {
+                "index": 18,
+                "start_token": 5760,
+                "end_token": 6144,
+                "first_start": 47013,
+                "last_end": 50127
+              },
+              {
+                "index": 19,
+                "start_token": 6080,
+                "end_token": 6464,
+                "first_start": 49590,
+                "last_end": 52710
+              },
+              {
+                "index": 20,
+                "start_token": 6400,
+                "end_token": 6784,
+                "first_start": 52184,
+                "last_end": 55307
+              },
+              {
+                "index": 21,
+                "start_token": 6720,
+                "end_token": 7104,
+                "first_start": 54794,
+                "last_end": 57908
+              },
+              {
+                "index": 22,
+                "start_token": 7040,
+                "end_token": 7424,
+                "first_start": 57395,
+                "last_end": 60509
+              },
+              {
+                "index": 23,
+                "start_token": 7360,
+                "end_token": 7744,
+                "first_start": 59996,
+                "last_end": 63110
+              },
+              {
+                "index": 24,
+                "start_token": 7680,
+                "end_token": 8064,
+                "first_start": 62597,
+                "last_end": 65711
+              },
+              {
+                "index": 25,
+                "start_token": 8000,
+                "end_token": 8384,
+                "first_start": 65198,
+                "last_end": 68312
+              },
+              {
+                "index": 26,
+                "start_token": 8320,
+                "end_token": 8704,
+                "first_start": 67768,
+                "last_end": 70890
+              },
+              {
+                "index": 27,
+                "start_token": 8640,
+                "end_token": 8718,
+                "first_start": 70369,
+                "last_end": 71008
+              }
+            ],
+            "predictions": [
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 15782,
+                  "end": 15787,
+                  "score": 0.6945170760154724
+                },
+                "window_index": 6,
+                "touches_left_boundary": true,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 28846,
+                  "end": 28854,
+                  "score": 0.7679303884506226
+                },
+                "window_index": 11,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 47025,
+                  "end": 47027,
+                  "score": 0.8790338635444641
+                },
+                "window_index": 18,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 65201,
+                  "end": 65203,
+                  "score": 0.7892554402351379
+                },
+                "window_index": 25,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              }
+            ],
+            "windows_processed": 28
+          },
+          {
+            "token_count": 8718,
+            "windows": [
+              {
+                "index": 28,
+                "start_token": 1728,
+                "end_token": 2112,
+                "first_start": 14173,
+                "last_end": 17377
+              }
+            ],
+            "predictions": [],
+            "windows_processed": 1
+          }
+        ],
+        "recoveries": [
+          {
+            "clusters": [
+              {
+                "entity_type": "CONTRACT_NUMBER",
+                "predictions": [
+                  {
+                    "entity": {
+                      "entity_type": "CONTRACT_NUMBER",
+                      "start": 15782,
+                      "end": 15787,
+                      "score": 0.6945170760154724
+                    },
+                    "window_index": 6,
+                    "touches_left_boundary": true,
+                    "touches_right_boundary": false
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "merges": [
+          {
+            "predictions": [
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 15782,
+                  "end": 15787,
+                  "score": 0.6945170760154724
+                },
+                "window_index": 6,
+                "touches_left_boundary": true,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 28846,
+                  "end": 28854,
+                  "score": 0.7679303884506226
+                },
+                "window_index": 11,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 47025,
+                  "end": 47027,
+                  "score": 0.8790338635444641
+                },
+                "window_index": 18,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 65201,
+                  "end": 65203,
+                  "score": 0.7892554402351379
+                },
+                "window_index": 25,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              }
+            ],
+            "recovery": [],
+            "unresolved": [
+              {
+                "entity_type": "CONTRACT_NUMBER",
+                "predictions": [
+                  {
+                    "entity": {
+                      "entity_type": "CONTRACT_NUMBER",
+                      "start": 15782,
+                      "end": 15787,
+                      "score": 0.6945170760154724
+                    },
+                    "window_index": 6,
+                    "touches_left_boundary": true,
+                    "touches_right_boundary": false
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "telemetry": [
+          {
+            "outcome": "failure",
+            "duration_seconds": 2.02536567900097,
+            "windows_processed": 29,
+            "input_tokens": 0,
+            "failure_phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          }
+        ],
+        "outcome": "error",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved",
+        "windows_processed": 29,
+        "seconds": 2.02539972300292,
+        "ready_after": true
+      }
+    },
+    {
+      "stage": "confirm",
+      "label": "history-2",
+      "trace": {
+        "text_sha256": "f2b3a2457730a7c436e6dabdee3255a57f9a75047ded13115a574a993732caa2",
+        "characters": 71008,
+        "batches": [
+          {
+            "token_count": 8718,
+            "windows": [
+              {
+                "index": 0,
+                "start_token": 0,
+                "end_token": 384,
+                "first_start": 0,
+                "last_end": 3080
+              },
+              {
+                "index": 1,
+                "start_token": 320,
+                "end_token": 704,
+                "first_start": 2551,
+                "last_end": 5753
+              },
+              {
+                "index": 2,
+                "start_token": 640,
+                "end_token": 1024,
+                "first_start": 5224,
+                "last_end": 8405
+              },
+              {
+                "index": 3,
+                "start_token": 960,
+                "end_token": 1344,
+                "first_start": 7865,
+                "last_end": 11012
+              },
+              {
+                "index": 4,
+                "start_token": 1280,
+                "end_token": 1664,
+                "first_start": 10490,
+                "last_end": 13649
+              },
+              {
+                "index": 5,
+                "start_token": 1600,
+                "end_token": 1984,
+                "first_start": 13127,
+                "last_end": 16313
+              },
+              {
+                "index": 6,
+                "start_token": 1920,
+                "end_token": 2304,
+                "first_start": 15782,
+                "last_end": 18937
+              },
+              {
+                "index": 7,
+                "start_token": 2240,
+                "end_token": 2624,
+                "first_start": 18424,
+                "last_end": 21538
+              },
+              {
+                "index": 8,
+                "start_token": 2560,
+                "end_token": 2944,
+                "first_start": 21025,
+                "last_end": 24139
+              },
+              {
+                "index": 9,
+                "start_token": 2880,
+                "end_token": 3264,
+                "first_start": 23626,
+                "last_end": 26749
+              },
+              {
+                "index": 10,
+                "start_token": 3200,
+                "end_token": 3584,
+                "first_start": 26236,
+                "last_end": 29350
+              },
+              {
+                "index": 11,
+                "start_token": 3520,
+                "end_token": 3904,
+                "first_start": 28837,
+                "last_end": 31951
+              },
+              {
+                "index": 12,
+                "start_token": 3840,
+                "end_token": 4224,
+                "first_start": 31414,
+                "last_end": 34534
+              },
+              {
+                "index": 13,
+                "start_token": 4160,
+                "end_token": 4544,
+                "first_start": 34008,
+                "last_end": 37122
+              },
+              {
+                "index": 14,
+                "start_token": 4480,
+                "end_token": 4864,
+                "first_start": 36609,
+                "last_end": 39723
+              },
+              {
+                "index": 15,
+                "start_token": 4800,
+                "end_token": 5184,
+                "first_start": 39210,
+                "last_end": 42324
+              },
+              {
+                "index": 16,
+                "start_token": 5120,
+                "end_token": 5504,
+                "first_start": 41811,
+                "last_end": 44925
+              },
+              {
+                "index": 17,
+                "start_token": 5440,
+                "end_token": 5824,
+                "first_start": 44412,
+                "last_end": 47526
+              },
+              {
+                "index": 18,
+                "start_token": 5760,
+                "end_token": 6144,
+                "first_start": 47013,
+                "last_end": 50127
+              },
+              {
+                "index": 19,
+                "start_token": 6080,
+                "end_token": 6464,
+                "first_start": 49590,
+                "last_end": 52710
+              },
+              {
+                "index": 20,
+                "start_token": 6400,
+                "end_token": 6784,
+                "first_start": 52184,
+                "last_end": 55307
+              },
+              {
+                "index": 21,
+                "start_token": 6720,
+                "end_token": 7104,
+                "first_start": 54794,
+                "last_end": 57908
+              },
+              {
+                "index": 22,
+                "start_token": 7040,
+                "end_token": 7424,
+                "first_start": 57395,
+                "last_end": 60509
+              },
+              {
+                "index": 23,
+                "start_token": 7360,
+                "end_token": 7744,
+                "first_start": 59996,
+                "last_end": 63110
+              },
+              {
+                "index": 24,
+                "start_token": 7680,
+                "end_token": 8064,
+                "first_start": 62597,
+                "last_end": 65711
+              },
+              {
+                "index": 25,
+                "start_token": 8000,
+                "end_token": 8384,
+                "first_start": 65198,
+                "last_end": 68312
+              },
+              {
+                "index": 26,
+                "start_token": 8320,
+                "end_token": 8704,
+                "first_start": 67768,
+                "last_end": 70890
+              },
+              {
+                "index": 27,
+                "start_token": 8640,
+                "end_token": 8718,
+                "first_start": 70369,
+                "last_end": 71008
+              }
+            ],
+            "predictions": [
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 15782,
+                  "end": 15787,
+                  "score": 0.6945170760154724
+                },
+                "window_index": 6,
+                "touches_left_boundary": true,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 28846,
+                  "end": 28854,
+                  "score": 0.7679303884506226
+                },
+                "window_index": 11,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 47025,
+                  "end": 47027,
+                  "score": 0.8790338635444641
+                },
+                "window_index": 18,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 65201,
+                  "end": 65203,
+                  "score": 0.7892554402351379
+                },
+                "window_index": 25,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              }
+            ],
+            "windows_processed": 28
+          },
+          {
+            "token_count": 8718,
+            "windows": [
+              {
+                "index": 28,
+                "start_token": 1728,
+                "end_token": 2112,
+                "first_start": 14173,
+                "last_end": 17377
+              }
+            ],
+            "predictions": [],
+            "windows_processed": 1
+          }
+        ],
+        "recoveries": [
+          {
+            "clusters": [
+              {
+                "entity_type": "CONTRACT_NUMBER",
+                "predictions": [
+                  {
+                    "entity": {
+                      "entity_type": "CONTRACT_NUMBER",
+                      "start": 15782,
+                      "end": 15787,
+                      "score": 0.6945170760154724
+                    },
+                    "window_index": 6,
+                    "touches_left_boundary": true,
+                    "touches_right_boundary": false
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "merges": [
+          {
+            "predictions": [
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 15782,
+                  "end": 15787,
+                  "score": 0.6945170760154724
+                },
+                "window_index": 6,
+                "touches_left_boundary": true,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 28846,
+                  "end": 28854,
+                  "score": 0.7679303884506226
+                },
+                "window_index": 11,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 47025,
+                  "end": 47027,
+                  "score": 0.8790338635444641
+                },
+                "window_index": 18,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              },
+              {
+                "entity": {
+                  "entity_type": "CONTRACT_NUMBER",
+                  "start": 65201,
+                  "end": 65203,
+                  "score": 0.7892554402351379
+                },
+                "window_index": 25,
+                "touches_left_boundary": false,
+                "touches_right_boundary": false
+              }
+            ],
+            "recovery": [],
+            "unresolved": [
+              {
+                "entity_type": "CONTRACT_NUMBER",
+                "predictions": [
+                  {
+                    "entity": {
+                      "entity_type": "CONTRACT_NUMBER",
+                      "start": 15782,
+                      "end": 15787,
+                      "score": 0.6945170760154724
+                    },
+                    "window_index": 6,
+                    "touches_left_boundary": true,
+                    "touches_right_boundary": false
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "telemetry": [
+          {
+            "outcome": "failure",
+            "duration_seconds": 1.9218261030036956,
+            "windows_processed": 29,
+            "input_tokens": 0,
+            "failure_phase": "windowing",
+            "failure_class": "window_boundary_unresolved"
+          }
+        ],
+        "outcome": "error",
+        "phase": "windowing",
+        "failure_class": "window_boundary_unresolved",
+        "windows_processed": 29,
+        "seconds": 1.9218574629921932,
+        "ready_after": true
+      }
+    },
+    {
+      "stage": "control",
+      "label": "N-first",
+      "payload_sha256": "60f081646af6200b337ae6ea251b2f537a00ce9d5022c098cb590d872d13229a",
+      "client": {
+        "owner_index": 0,
+        "api": "chat",
+        "units": 8000,
+        "utf8_bytes": 131085,
+        "slot": 0,
+        "kind": "fresh",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 1,
+        "payload_sha256": "60f081646af6200b337ae6ea251b2f537a00ce9d5022c098cb590d872d13229a",
+        "index": 8,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "success",
+        "start_delay_seconds": 8.521979907527566e-06,
+        "actual_start_offset": 8.521979907527566e-06,
+        "http_status": 200,
+        "first_text_seconds": 3.178013883996755,
+        "first_text_from_due_seconds": 3.1780224059766624,
+        "restored": true,
+        "seconds": 3.2034801140252966,
+        "completed_offset": 3.203489412990166
+      }
+    },
+    {
+      "stage": "control",
+      "label": "N-repeat",
+      "payload_sha256": "60f081646af6200b337ae6ea251b2f537a00ce9d5022c098cb590d872d13229a",
+      "client": {
+        "owner_index": 0,
+        "api": "chat",
+        "units": 8000,
+        "utf8_bytes": 131085,
+        "slot": 0,
+        "kind": "fresh",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 1,
+        "payload_sha256": "60f081646af6200b337ae6ea251b2f537a00ce9d5022c098cb590d872d13229a",
+        "index": 9,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "success",
+        "start_delay_seconds": 8.646020432934165e-06,
+        "actual_start_offset": 8.646020432934165e-06,
+        "http_status": 200,
+        "first_text_seconds": 0.2937550569768064,
+        "first_text_from_due_seconds": 0.2937637029972393,
+        "restored": true,
+        "seconds": 0.3205382659798488,
+        "completed_offset": 0.32054758799495175
+      }
+    },
+    {
+      "stage": "control",
+      "label": "H-first",
+      "payload_sha256": "6e1422153152f21a637c2c25f729aa4a64d6e983540b52a6b73a566a5fcf55d0",
+      "client": {
+        "owner_index": 0,
+        "api": "chat",
+        "units": 8001,
+        "utf8_bytes": 131385,
+        "slot": 0,
+        "kind": "history",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 4,
+        "payload_sha256": "6e1422153152f21a637c2c25f729aa4a64d6e983540b52a6b73a566a5fcf55d0",
+        "index": 10,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "success",
+        "start_delay_seconds": 9.359006071463227e-06,
+        "actual_start_offset": 9.359006071463227e-06,
+        "http_status": 200,
+        "first_text_seconds": 3.182579963991884,
+        "first_text_from_due_seconds": 3.1825893229979556,
+        "restored": true,
+        "seconds": 3.2178990989923477,
+        "completed_offset": 3.2179089630080853
+      }
+    },
+    {
+      "stage": "control",
+      "label": "H-repeat",
+      "payload_sha256": "6e1422153152f21a637c2c25f729aa4a64d6e983540b52a6b73a566a5fcf55d0",
+      "client": {
+        "owner_index": 0,
+        "api": "chat",
+        "units": 8001,
+        "utf8_bytes": 131385,
+        "slot": 0,
+        "kind": "history",
+        "turn": 0,
+        "epoch": 0,
+        "within": 0,
+        "text_fields": 4,
+        "payload_sha256": "6e1422153152f21a637c2c25f729aa4a64d6e983540b52a6b73a566a5fcf55d0",
+        "index": 11,
+        "offset": 0,
+        "started": true,
+        "stream": true,
+        "outcome": "success",
+        "start_delay_seconds": 8.522998541593552e-06,
+        "actual_start_offset": 8.522998541593552e-06,
+        "http_status": 200,
+        "first_text_seconds": 0.07295529599650763,
+        "first_text_from_due_seconds": 0.07296381899504922,
+        "restored": true,
+        "seconds": 0.09498378599528223,
+        "completed_offset": 0.09499265300109982
+      }
+    }
+  ],
+  "startup": [
+    {
+      "service": "ner-triton",
+      "healthy": 12,
+      "recreated": false
+    },
+    {
+      "service": "presidio-analyzer",
+      "healthy": 24,
+      "recreated": false
+    },
+    {
+      "service": "litellm",
+      "healthy": 2,
+      "recreated": false
+    }
+  ],
+  "confirmations_equal_excluding_duration": true,
+  "offline_cause": {
+    "existing_function_outcome": "window_boundary_unresolved",
+    "candidate": [
+      15782,
+      15787,
+      "CONTRACT_NUMBER",
+      0.6945170760154724
+    ],
+    "expanded": [
+      15782,
+      15790,
+      "CONTRACT_NUMBER",
+      0.6945170760154724
+    ],
+    "start_has_left_whitespace": true,
+    "expanded_end_has_right_whitespace": true,
+    "expanded_value_is_decimal": true,
+    "rejected_by_unchanged_left": true,
+    "existing_contextual_contract_evidence": 0,
+    "inference_calls": 0
+  },
+  "raw_marker_seen": false,
+  "resources": {
+    "samples": 39,
+    "minimum_host_available_bytes": 49025245184,
+    "maximum_sampled_container_sum_bytes": 16523792384,
+    "oom_seen": false
+  },
+  "verification": {
+    "private_regressions_macos": 150,
+    "private_regressions_linux": 150,
+    "existing_window_regressions": 168,
+    "static_regressions": 804,
+    "make_regressions": 32,
+    "frozen_source_files_unchanged": 382,
+    "compute_stopped_exit_zero": 38,
+    "main_local_stand_healthy": 8,
+    "old_failure_and_successful_series_preserved": true
+  },
+  "scope_limits": [
+    "one_synthetic_input_not_production_trace",
+    "only_A_was_diagnosed",
+    "other_entity_types_not_diagnosed",
+    "production_503_frequency_not_measured",
+    "fix_not_implemented",
+    "load_matrix_not_resumed"
+  ],
+  "observations_without_fixes": [
+    "failure_input_tokens_zero_despite_8718_prepared_tokens",
+    "broad_LOGIN_mask_in_tool_arguments_not_the_503_source",
+    "guardrail_advertises_retry_after_one_second_for_repeatable_window_failure"
+  ]
+}

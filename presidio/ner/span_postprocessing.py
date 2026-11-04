@@ -8,6 +8,7 @@ keep punctuation, rather than guessing which part belongs to a secret.
 from __future__ import annotations
 
 from bisect import bisect_right
+from dataclasses import dataclass
 import re
 from urllib.parse import urlsplit
 
@@ -24,6 +25,13 @@ CONTRACT_TYPES = frozenset({"CONTRACT_NUMBER"})
 _SCALAR = re.compile(r"[^\s\"'`,;()\[\]{}<>]+")
 _ASSIGNMENT = re.compile(r"[^\W\d][\w.-]*=(?!=)")
 _URI = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'`<>]+")
+
+
+@dataclass(frozen=True)
+class ValueSpanExpansion:
+    span: Span
+    left_confirmed: bool = False
+    right_confirmed: bool = False
 
 
 def _uri_values(text):
@@ -81,27 +89,35 @@ class _ValueBoundaries:
             return ranges[index]
         return None
 
-    def bounds(self, start, end, label):
+    def expand(self, span):
+        start, end, label, score = span
+        unknown = ValueSpanExpansion(span)
+
+        def bounded(left, right, *, confirm_left=True):
+            # A document edge is not evidence for an internal window cut.
+            return ValueSpanExpansion((left, right, label, score),
+                                      confirm_left and left > 0, right < len(self.text))
+
         if not 0 <= start < end <= len(self.text):
-            return start, end
+            return unknown
         if label in CREDENTIAL_TYPES:
             uri = self._containing(self.uri_values, self.uri_starts, start, end)
             if uri is not None:
-                return uri
+                return bounded(*uri)
             if self._containing(self.uri_owners, self.owner_starts, start, end):
-                return start, end
+                return unknown
         elif label in CONTRACT_TYPES:
             contract = self._containing(self.contracts, self.contract_starts, start, end)
             if contract is not None:
-                return contract
+                return bounded(*contract)
         literal = self.strings.at(start)
         if literal is not None:
             if literal.content_start <= start < end <= literal.content_end:
-                return literal.content_start, literal.content_end
-            return start, end
+                return bounded(literal.content_start, literal.content_end)
+            return unknown
         scalar = self._containing(self.scalars, self.scalar_starts, start, end)
         if scalar is None:
-            return start, end
+            return unknown
         if scalar not in self.scalar_cache:
             left, right = scalar
             assignment = _ASSIGNMENT.match(self.text, left, right)
@@ -129,22 +145,27 @@ class _ValueBoundaries:
                     break
             self.scalar_cache[scalar] = left, right
         left, right = self.scalar_cache[scalar]
-        return (left, right) if left <= start else (start, right)
+        return bounded(left, right) if left <= start else bounded(start, right, confirm_left=False)
 
 
 def expand_value_spans(text: str, spans: list[Span], mode: str) -> list[Span]:
     """Preserve input order and duplicates for source-evidence associations."""
+    return [value.span for value in expand_value_spans_with_evidence(text, spans, mode)]
+
+
+def expand_value_spans_with_evidence(
+    text: str, spans: list[Span], mode: str,
+) -> list[ValueSpanExpansion]:
+    """Use the existing grammar to distinguish bounded values from no-ops."""
     if mode not in SPAN_POSTPROCESSING_MODES:
         raise ValueError(f"unknown span post-processing mode: {mode}")
     labels = CREDENTIAL_TYPES | (CONTRACT_TYPES if mode == SPAN_POSTPROCESSING_SECRETS_CONTRACTS else frozenset())
     if mode == SPAN_POSTPROCESSING_NONE or not any(label in labels for _, _, label, _ in spans):
-        return list(spans)
+        return [ValueSpanExpansion(span) for span in spans]
     boundaries = _ValueBoundaries(text, contracts=any(label in CONTRACT_TYPES for _, _, label, _ in spans))
     repaired = []
-    for start, end, label, score in spans:
-        if label in labels:
-            start, end = boundaries.bounds(start, end, label)
-        repaired.append((start, end, label, score))
+    for span in spans:
+        repaired.append(boundaries.expand(span) if span[2] in labels else ValueSpanExpansion(span))
     return repaired
 
 

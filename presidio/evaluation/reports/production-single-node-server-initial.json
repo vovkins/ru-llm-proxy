@@ -1,0 +1,2479 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-11-02",
+  "timezone": "Europe/Moscow",
+  "status": "partial_memory_guard_not_final_acceptance",
+  "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+  "source_manifest_sha256": "00f2d7734c97912e7cccab6e025444a451931b916e1a4911135bc12ea9696b9d",
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "host": {
+    "architecture": "x86_64",
+    "vcpus": 32,
+    "guest_reported_cores": 16,
+    "threads_per_core": 2,
+    "cpu_model": "Intel Xeon Processor (Icelake)",
+    "memory_bytes": 67417702400
+  },
+  "external_provider_calls": 0,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "generator_units": "whitespace units, not external LLM tokens",
+  "ordinary_first_text_budget_seconds": 60,
+  "pilot_status": "completed",
+  "pilot_memory_decision": {
+    "temporary_caps": {
+      "ANALYZER_MEMORY": "2g",
+      "TRITON_MEMORY": "2g"
+    },
+    "required_peak_margin": "pilot peak < 1 GiB per compute container",
+    "dense_full_caps_gib": 58.25,
+    "os_margin_gib": 4.5,
+    "redis_cap_gib": 16,
+    "synthetic_load_not_full_state_quota": true
+  },
+  "pilot_peak_memory_bytes_by_service": {
+    "litellm": 1288589312,
+    "codex-lb": 189071360,
+    "codex-lb-db": 122183680,
+    "presidio-analyzer": 490364928,
+    "ner-triton": 994713600,
+    "db": 116486144,
+    "redis": 13758464,
+    "nginx": 70324224,
+    "mock-upstream": 22634496
+  },
+  "pilot_waves": [
+    {
+      "name": "warmup",
+      "profile": "control30",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.867,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "litellm": 0.48328422346358857,
+        "codex-lb": 0.1266282336603306,
+        "codex-lb-db": 0.01524167844154058,
+        "presidio-analyzer": 0.3829055772499593,
+        "ner-triton": 0.34597289632157135,
+        "db": 0.030727839563544208,
+        "redis": 0.01828897268019011,
+        "nginx": 0.015458166352720942,
+        "mock-upstream": 0.003228422806383355
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "pilot-20x8000",
+      "profile": "control30",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 11.773,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "8eb2246a0a043168b73247e245af83fb1ad6c88bf69e5dfded325c0c5958580d",
+      "ner_tokens": 169359.0,
+      "ner_windows": 540.0,
+      "average_cpu_cores_by_service": {
+        "litellm": 0.20034721591394775,
+        "codex-lb": 0.10690008628317466,
+        "codex-lb-db": 0.016568926307516562,
+        "presidio-analyzer": 2.0907434604251804,
+        "ner-triton": 2.121756376298929,
+        "db": 0.020264642556170786,
+        "redis": 0.017587594361848407,
+        "nginx": 0.024398797499750643,
+        "mock-upstream": 0.010539538964796355
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "pilot-8x50000",
+      "profile": "control30",
+      "scheduled": 8,
+      "successful": 8,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 8,
+      "sse_first_text_p95_seconds": 34.114,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "d48223f64908bd565566141cbe48bf28e20adc65f34bce0e7835a6ff37319632",
+      "ner_tokens": 451791.0,
+      "ner_windows": 1424.0,
+      "average_cpu_cores_by_service": {
+        "litellm": 0.15885022185586437,
+        "codex-lb": 0.11306733573217337,
+        "codex-lb-db": 0.015380953364709581,
+        "presidio-analyzer": 2.3070930700504784,
+        "ner-triton": 2.309409679843272,
+        "db": 0.015009646191442464,
+        "redis": 0.017560569996406514,
+        "nginx": 0.02264612358618133,
+        "mock-upstream": 0.009468733973161062
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 8,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "pilot-32x32000",
+      "profile": "control30",
+      "scheduled": 32,
+      "successful": 16,
+      "failed": 16,
+      "successful_sse_within_60_seconds": 16,
+      "sse_first_text_p95_seconds": 42.209,
+      "error_reasons": {
+        "queue_timeout": 16
+      },
+      "failure_classes": {
+        "": 16
+      },
+      "payload_sha256": "efeab6b9663960ba5aa6c45e1bc6eac30f6ad1cd7ef3d33bb01fa5ec75c41788",
+      "ner_tokens": 584747.0,
+      "ner_windows": 1842.0,
+      "average_cpu_cores_by_service": {
+        "litellm": 0.23942042988758855,
+        "codex-lb": 0.11502908659602873,
+        "codex-lb-db": 0.015115104058910585,
+        "presidio-analyzer": 2.411530173132336,
+        "ner-triton": 2.40464067459396,
+        "db": 0.016737612405388007,
+        "redis": 0.01791429064869663,
+        "nginx": 0.02451699980269162,
+        "mock-upstream": 0.009453530999511633
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 16,
+      "raw_marker_seen": false
+    }
+  ],
+  "matrix_status": "failed",
+  "planned_orders": [
+    [
+      "control30",
+      "control45",
+      "local",
+      "a8t2",
+      "a8t4equal",
+      "a8t4dense"
+    ],
+    [
+      "a8t4dense",
+      "a8t4equal",
+      "a8t2",
+      "local",
+      "control45",
+      "control30"
+    ],
+    [
+      "local",
+      "a8t2",
+      "a8t4equal",
+      "a8t4dense",
+      "control30",
+      "control45"
+    ]
+  ],
+  "profiles": [
+    {
+      "name": "control30",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "30"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 58250493952,
+      "runtime": [
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "control45",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "2",
+        "ANALYZER_MEMORY": "4g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 58250493952,
+      "runtime": [
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "local",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "4",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 4,
+        "ner-triton": 2,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 49660559360,
+      "runtime": [
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t2",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 2,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 58250493952,
+      "runtime": [
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t4equal",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "4",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 4,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 62545461248,
+      "runtime": [
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t4dense",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "4",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 4,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 62545461248,
+      "runtime": [
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t4dense",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "4",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 4,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 62545461248,
+      "runtime": [
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t4equal",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "4",
+        "TRITON_CPUS": "1",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 4,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 62545461248,
+      "runtime": [
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    },
+    {
+      "name": "a8t2",
+      "values": {
+        "LITELLM_REPLICAS": "2",
+        "LITELLM_CPUS": "2.0",
+        "LITELLM_MEMORY": "4g",
+        "ANALYZER_REPLICAS": "8",
+        "ANALYZER_CPUS": "1",
+        "ANALYZER_MEMORY": "2g",
+        "TRITON_REPLICAS": "2",
+        "TRITON_CPUS": "2",
+        "TRITON_MEMORY": "2g",
+        "TRITON_MODEL_INSTANCES": "2",
+        "NGINX_CPUS": "1.0",
+        "NGINX_MEMORY": "256m",
+        "REDIS_CPUS": "1.0",
+        "REDIS_MEMORY": "16g",
+        "DB_CPUS": "2.0",
+        "DB_MEMORY": "4g",
+        "CODEX_LB_CPUS": "2.0",
+        "CODEX_LB_MEMORY": "4g",
+        "CODEX_LB_DB_CPUS": "1.0",
+        "CODEX_LB_DB_MEMORY": "2g"
+      },
+      "ner": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45"
+      },
+      "pool": 20,
+      "mock_stream_hold_seconds": 0,
+      "counts": {
+        "nginx": 1,
+        "db": 1,
+        "redis": 1,
+        "litellm": 2,
+        "presidio-analyzer": 8,
+        "ner-triton": 2,
+        "codex-lb": 1,
+        "codex-lb-db": 1
+      },
+      "memory_caps_bytes": 58250493952,
+      "runtime": [
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "ner-triton",
+          "image_id": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+          "cpus": 2.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "presidio-analyzer",
+          "image_id": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "nginx",
+          "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+          "cpus": 1.0,
+          "memory_limit": 268435456
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "litellm",
+          "image_id": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb",
+          "image_id": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "codex-lb-db",
+          "image_id": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+          "cpus": 1.0,
+          "memory_limit": 2147483648
+        },
+        {
+          "service": "db",
+          "image_id": "sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+          "cpus": 2.0,
+          "memory_limit": 4294967296
+        },
+        {
+          "service": "redis",
+          "image_id": "sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+          "cpus": 1.0,
+          "memory_limit": 17179869184
+        },
+        {
+          "service": "mock-upstream",
+          "image_id": "sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159",
+          "cpus": 0.0,
+          "memory_limit": 0
+        }
+      ]
+    }
+  ],
+  "completed_matrix_waves": [
+    {
+      "name": "warmup",
+      "profile": "control30",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.363,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "nginx": 0.01357521101079373,
+        "litellm": 0.14819924195681716,
+        "codex-lb": 0.10741805952156445,
+        "codex-lb-db": 0.013044297814492735,
+        "presidio-analyzer": 0.32413258373873577,
+        "ner-triton": 0.26774216839077625,
+        "db": 0.015714098330214005,
+        "redis": 0.015560518095550391,
+        "mock-upstream": 0.0026879201475668623
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "control30",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 10.931,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "nginx": 0.02520605134983548,
+        "litellm": 0.22605110904927816,
+        "codex-lb": 0.11111094405783212,
+        "codex-lb-db": 0.013127187571000702,
+        "presidio-analyzer": 2.01981281162734,
+        "ner-triton": 2.1219808901092154,
+        "db": 0.01874037061260889,
+        "redis": 0.01790296014784791,
+        "mock-upstream": 0.010528606015911785
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "control30",
+      "scheduled": 32,
+      "successful": 16,
+      "failed": 16,
+      "successful_sse_within_60_seconds": 16,
+      "sse_first_text_p95_seconds": 42.154,
+      "error_reasons": {
+        "queue_timeout": 16
+      },
+      "failure_classes": {
+        "": 16
+      },
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 579473.0,
+      "ner_windows": 1827.0,
+      "average_cpu_cores_by_service": {
+        "nginx": 0.02509352731758998,
+        "litellm": 0.23396056787451178,
+        "codex-lb": 0.1182646538367013,
+        "codex-lb-db": 0.016703894972481485,
+        "presidio-analyzer": 2.3929093360778113,
+        "ner-triton": 2.3758430050409505,
+        "db": 0.017998995447519085,
+        "redis": 0.017458806781231337,
+        "mock-upstream": 0.010487203619940561
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 16,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "control45",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.389,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 0.3572015313669501,
+        "nginx": 0.020550491103116884,
+        "litellm": 0.15650785691434693,
+        "codex-lb": 0.0952259137316947,
+        "codex-lb-db": 0.011497704147106505,
+        "ner-triton": 0.28203640906864824,
+        "db": 0.016143587215513622,
+        "redis": 0.02344624626469473,
+        "mock-upstream": 0.002408035486714565
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "control45",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 11.472,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 2.006047780125988,
+        "nginx": 0.02158688828035142,
+        "litellm": 0.2019295025113318,
+        "codex-lb": 0.10368905420184157,
+        "codex-lb-db": 0.01733093709138524,
+        "ner-triton": 2.0736883596954696,
+        "db": 0.01802209330436382,
+        "redis": 0.017402277929424566,
+        "mock-upstream": 0.010072829824127416
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "control45",
+      "scheduled": 32,
+      "successful": 24,
+      "failed": 8,
+      "successful_sse_within_60_seconds": 17,
+      "sse_first_text_p95_seconds": 61.997,
+      "error_reasons": {
+        "queue_timeout": 8
+      },
+      "failure_classes": {
+        "": 8
+      },
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 869739.0,
+      "ner_windows": 2742.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 2.424968769711619,
+        "nginx": 0.022353656442868814,
+        "litellm": 0.1949072555803486,
+        "codex-lb": 0.11527579096736457,
+        "codex-lb-db": 0.01498823448217384,
+        "ner-triton": 2.409192714231687,
+        "db": 0.016296716253637863,
+        "redis": 0.017015573217399316,
+        "mock-upstream": 0.010574135608343478
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 24,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "local",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.429,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 0.3389984006652411,
+        "nginx": 0.01994569128984567,
+        "litellm": 0.14770889875427773,
+        "codex-lb": 0.1295921929177022,
+        "codex-lb-db": 0.011481238788235287,
+        "ner-triton": 0.23477637041916405,
+        "db": 0.011473957747812423,
+        "redis": 0.02295940766308035,
+        "mock-upstream": 0.0023757491604490793
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "local",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 11.912,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 1.9786727498525305,
+        "nginx": 0.021642222475849463,
+        "litellm": 0.21100884866335712,
+        "codex-lb": 0.12647055453265363,
+        "codex-lb-db": 0.014748338289766067,
+        "ner-triton": 2.0173299587539995,
+        "db": 0.017846384552763106,
+        "redis": 0.017101850896866683,
+        "mock-upstream": 0.010048853946057932
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "local",
+      "scheduled": 32,
+      "successful": 24,
+      "failed": 8,
+      "successful_sse_within_60_seconds": 16,
+      "sse_first_text_p95_seconds": 65.457,
+      "error_reasons": {
+        "queue_timeout": 8
+      },
+      "failure_classes": {
+        "": 8
+      },
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 869739.0,
+      "ner_windows": 2742.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 2.295803842973926,
+        "nginx": 0.022733697661144088,
+        "litellm": 0.19085162012117868,
+        "codex-lb": 0.11609250820385264,
+        "codex-lb-db": 0.01557518199766123,
+        "ner-triton": 2.3064882368206074,
+        "db": 0.01607057829691408,
+        "redis": 0.017500132731801517,
+        "mock-upstream": 0.009597311785479217
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 24,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t2",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.361,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 0.4604726545891356,
+        "nginx": 0.011242724296380095,
+        "litellm": 0.20276135744636187,
+        "codex-lb": 0.09066854415193841,
+        "codex-lb-db": 0.020726845396238366,
+        "ner-triton": 0.26205578581271816,
+        "db": 0.011802587508372788,
+        "redis": 0.013700930674972904,
+        "mock-upstream": 0.00224451472732667
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "a8t2",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 9.446,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 2.4228612022572524,
+        "nginx": 0.02422722976198992,
+        "litellm": 0.23604064050125062,
+        "codex-lb": 0.10057810482917413,
+        "codex-lb-db": 0.01826760113007385,
+        "ner-triton": 2.454979721025113,
+        "db": 0.018977878612294212,
+        "redis": 0.016775251598507172,
+        "mock-upstream": 0.011728703999513567
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "a8t2",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 26,
+      "sse_first_text_p95_seconds": 62.046,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "average_cpu_cores_by_service": {
+        "presidio-analyzer": 3.374068654737189,
+        "nginx": 0.02746306882684621,
+        "litellm": 0.21563362509171913,
+        "codex-lb": 0.11846015819359407,
+        "codex-lb-db": 0.016031344057834605,
+        "ner-triton": 3.236433673213913,
+        "db": 0.01638622092178067,
+        "redis": 0.017865362422931446,
+        "mock-upstream": 0.014202148249700222
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 32,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t4equal",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.364,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 0.35179492425227626,
+        "presidio-analyzer": 0.4238784668343933,
+        "nginx": 0.018317194992443622,
+        "litellm": 0.19648627283699907,
+        "codex-lb": 0.09397474724555117,
+        "codex-lb-db": 0.012466383990536515,
+        "db": 0.012331423152562948,
+        "redis": 0.013083626633904133,
+        "mock-upstream": 0.0020688682390163373
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "a8t4equal",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 9.688,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 2.5393160280111085,
+        "presidio-analyzer": 2.3755785364231365,
+        "nginx": 0.02740309654018059,
+        "litellm": 0.2443156774852629,
+        "codex-lb": 0.12300132078787646,
+        "codex-lb-db": 0.013422983001406142,
+        "db": 0.015148286772518293,
+        "redis": 0.0165865929777282,
+        "mock-upstream": 0.011533274508854325
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "a8t4equal",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 24,
+      "sse_first_text_p95_seconds": 64.833,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 3.2681637167066384,
+        "presidio-analyzer": 3.2778359082687367,
+        "nginx": 0.0277089648248798,
+        "litellm": 0.20979919452570045,
+        "codex-lb": 0.1200592338008243,
+        "codex-lb-db": 0.01578752597332488,
+        "db": 0.016772785308685357,
+        "redis": 0.017225189074202268,
+        "mock-upstream": 0.01338184710611752
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 32,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t4dense",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.404,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 0.30905636223285654,
+        "presidio-analyzer": 0.4929867780531219,
+        "nginx": 0.01736527376636227,
+        "litellm": 0.13993221992303126,
+        "codex-lb": 0.07710915720741017,
+        "codex-lb-db": 0.01975367850601386,
+        "db": 0.010413052437905948,
+        "redis": 0.020119086167967086,
+        "mock-upstream": 0.0019133797429700557
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-20x8000",
+      "profile": "a8t4dense",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 6.561,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "06ab066c151edb59749d6f115ed9c2293124447e94c27ffcb78ac43f55613f3e",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 3.0957603310272965,
+        "presidio-analyzer": 2.833550501529465,
+        "nginx": 0.031086651594030536,
+        "litellm": 0.30885845900189973,
+        "codex-lb": 0.11734791349628548,
+        "codex-lb-db": 0.017324400000809186,
+        "db": 0.01904900662500265,
+        "redis": 0.01630451437680272,
+        "mock-upstream": 0.01477542099438218
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r1-32x32000",
+      "profile": "a8t4dense",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 32,
+      "sse_first_text_p95_seconds": 47.019,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "e664993f408000e59bfef3339d7491bfbfa2bc4516ef96ac7b742a406fe2f73f",
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 4.500850257217998,
+        "presidio-analyzer": 4.578191343154488,
+        "nginx": 0.0343988849135255,
+        "litellm": 0.2603987452935751,
+        "codex-lb": 0.12899102536953488,
+        "codex-lb-db": 0.016283270459122926,
+        "db": 0.01684196923532318,
+        "redis": 0.01811558792127787,
+        "mock-upstream": 0.018548701669826917
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 32,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t4dense",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.419,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 0.2843958533906634,
+        "presidio-analyzer": 0.4484114998471207,
+        "nginx": 0.017263239511653834,
+        "litellm": 0.1846551510919292,
+        "codex-lb": 0.15417670245652432,
+        "codex-lb-db": 0.011030611955497616,
+        "db": 0.015661315044149107,
+        "redis": 0.017397295108419225,
+        "mock-upstream": 0.0019099936631101649
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r2-20x8000",
+      "profile": "a8t4dense",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 7.266,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "f7a03d4eedc7d8005316d38d89ceb59b2a1b1d7b95028501a2fc78a1a0b864c3",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 3.0201412163800616,
+        "presidio-analyzer": 2.7435846563591864,
+        "nginx": 0.02708653412582312,
+        "litellm": 0.2598916947334196,
+        "codex-lb": 0.13863588582815242,
+        "codex-lb-db": 0.015838928543680488,
+        "db": 0.01843332062923134,
+        "redis": 0.019090411719094844,
+        "mock-upstream": 0.014774805672956914
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r2-32x32000",
+      "profile": "a8t4dense",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 32,
+      "sse_first_text_p95_seconds": 46.716,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "6961a66f030b3d02df6e8d46a021de5a043f2adebbbf7ff94470ee51975c863f",
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 4.5152282010852876,
+        "presidio-analyzer": 4.575573605485795,
+        "nginx": 0.03529554887859381,
+        "litellm": 0.2590976618194947,
+        "codex-lb": 0.1262266650357087,
+        "codex-lb-db": 0.016432876685295448,
+        "db": 0.016011563390046203,
+        "redis": 0.018399272565197106,
+        "mock-upstream": 0.018289852338661948
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 32,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t4equal",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.458,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 0.3196576842123119,
+        "presidio-analyzer": 0.4958252989644379,
+        "nginx": 0.010885913287387838,
+        "litellm": 0.14078283433575062,
+        "codex-lb": 0.08233596155333157,
+        "codex-lb-db": 0.011536944528423035,
+        "db": 0.02611147125160336,
+        "redis": 0.018249706444542282,
+        "mock-upstream": 0.0020041002395235715
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r2-20x8000",
+      "profile": "a8t4equal",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 10.714,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "f7a03d4eedc7d8005316d38d89ceb59b2a1b1d7b95028501a2fc78a1a0b864c3",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 2.351001056354233,
+        "presidio-analyzer": 2.208378929428144,
+        "nginx": 0.024114374809793157,
+        "litellm": 0.22822315589512815,
+        "codex-lb": 0.11698447183497643,
+        "codex-lb-db": 0.015886314922110973,
+        "db": 0.01665984112484553,
+        "redis": 0.018285918220443585,
+        "mock-upstream": 0.010640259350613275
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r2-32x32000",
+      "profile": "a8t4equal",
+      "scheduled": 32,
+      "successful": 32,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 29,
+      "sse_first_text_p95_seconds": 61.533,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "6961a66f030b3d02df6e8d46a021de5a043f2adebbbf7ff94470ee51975c863f",
+      "ner_tokens": 1158947.0,
+      "ner_windows": 3654.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 3.373752128721866,
+        "presidio-analyzer": 3.298005170283031,
+        "nginx": 0.02830766775445783,
+        "litellm": 0.2167331595200789,
+        "codex-lb": 0.12089506838537886,
+        "codex-lb-db": 0.01602750818189073,
+        "db": 0.017129122327754327,
+        "redis": 0.017941506759682924,
+        "mock-upstream": 0.014116992495585885
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 32,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "warmup",
+      "profile": "a8t2",
+      "scheduled": 4,
+      "successful": 4,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 4,
+      "sse_first_text_p95_seconds": 0.373,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "b287f09d153a2b537b09100f3b9393d2a3700fa5eb406fee81f24704e319ea49",
+      "ner_tokens": 4075.0,
+      "ner_windows": 12.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 0.25687357978665937,
+        "presidio-analyzer": 0.45269895184297376,
+        "nginx": 0.010318937348100932,
+        "litellm": 0.1960874447074676,
+        "codex-lb": 0.1606862537800978,
+        "codex-lb-db": 0.009784848746633584,
+        "db": 0.010487772674866195,
+        "redis": 0.01320822058188939,
+        "mock-upstream": 0.0019516489065588662
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 4,
+      "raw_marker_seen": false
+    },
+    {
+      "name": "r2-20x8000",
+      "profile": "a8t2",
+      "scheduled": 20,
+      "successful": 20,
+      "failed": 0,
+      "successful_sse_within_60_seconds": 20,
+      "sse_first_text_p95_seconds": 9.528,
+      "error_reasons": {},
+      "failure_classes": {},
+      "payload_sha256": "f7a03d4eedc7d8005316d38d89ceb59b2a1b1d7b95028501a2fc78a1a0b864c3",
+      "ner_tokens": 172129.0,
+      "ner_windows": 551.0,
+      "average_cpu_cores_by_service": {
+        "ner-triton": 2.3886295056296496,
+        "presidio-analyzer": 2.2665321000326517,
+        "nginx": 0.023411353222303612,
+        "litellm": 0.23251342962584431,
+        "codex-lb": 0.12555592892565892,
+        "codex-lb-db": 0.013814979434165412,
+        "db": 0.017786784807393506,
+        "redis": 0.018721398093341945,
+        "mock-upstream": 0.011136824835965604
+      },
+      "nginx_errors": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "provider_requests": 20,
+      "raw_marker_seen": false
+    }
+  ],
+  "interrupted_trial": {
+    "name": "r2-32x32000",
+    "profile": "a8t2",
+    "scheduled_requests": 32,
+    "outcomes_complete": false,
+    "eligible_as_passed": false,
+    "reason": "container_memory_headroom_guard",
+    "guard_observations": [
+      {
+        "trial": "r2-32x32000",
+        "service": "ner-triton",
+        "memory_current_bytes": 1941966848,
+        "memory_peak_bytes": 1942650880,
+        "memory_limit_bytes": 2147483648,
+        "host_available_bytes": 56453500928,
+        "memory_events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        }
+      }
+    ]
+  },
+  "observations": {
+    "working_set_not_captured": true,
+    "peak_batch_not_captured": true,
+    "preceding_completed_wave_actual_batch_mean": [
+      5.956521739130435,
+      5.770833333333333
+    ],
+    "triton_runtime_max_batch": 32,
+    "configured_client_batch": 4,
+    "memory_growth_cause_not_established": true
+  },
+  "checks": {
+    "static_passed": 804,
+    "flow_passed": 869,
+    "make_passed": 32,
+    "focused_passed_overlaps_main": 136,
+    "private_controller_passed": 9
+  }
+}

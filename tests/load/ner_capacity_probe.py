@@ -16,9 +16,9 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'tests/load')]
 from load_support import percentile, synthetic_text
 
 
-def test_text(units, serial=0, *, fresh=False):
+def test_text(units, serial=0, *, fresh=False, marker='capacity@example.test'):
     """Keep new segments distinguishable, not just the last word of a prompt."""
-    text = synthetic_text(units, marker='capacity@example.test', seed=0)
+    text = synthetic_text(units, marker=marker, seed=0)
     if not fresh:
         return text
     words = text.split()

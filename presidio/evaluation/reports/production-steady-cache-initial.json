@@ -1,0 +1,2730 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-03",
+  "status": "failed",
+  "scope": "approved_steady_mixed_history_cache_R6",
+  "source": {
+    "source_commit": "c8cc806dc51544da1b54a36bbff3ce6b1156a4c8",
+    "branch": "codex/issue-116-production-capacity",
+    "files": {
+      ".dockerignore": "9ef5d38a3366cbb824bf5ef1ad595a72e61dfbfff15905964f744ba17cc8775c",
+      ".env.example": "5bb57b1ca490399f473c63a674d7a9b914ee82d4172425e6d7c1d41d33437cfb",
+      ".gitattributes": "484b595b1cc4fec9256393c598319bc8b5e8b47b71c250918af62fa2ad9f9f8f",
+      ".github/workflows/air-gapped-ca.yml": "545ceae87e6baf204f6b7c2903f9da1de9817f8b76ea98724f726a76b25a5d13",
+      ".github/workflows/baseline.yml": "45a9fb88677402a10ea366a0e0b6192b77333108d54d5b38133b38056301527a",
+      ".github/workflows/ner-model-integration.yml": "93de34a027073784642d88fa49d51b93b67f6a9f221f461193855e6df277a34e",
+      ".gitignore": "778ac0008f721b6ea72c1db804f673503c5750e16808e825103a69843468e6e2",
+      "Makefile": "04756582dba7244bcfa8dafc5152b6c1f84d9821c14f0f2a4934559747a082b9",
+      "README.md": "bc6a2c8845b9f8245dcb0633343a3bdc9486a34a0e471400bda8329f7e581235",
+      "THIRD_PARTY_NOTICES.md": "2e7ac570ef66fbc4ee7eb1d653d13cfe793f120083086d58591b9cb04de087ce",
+      "certs/README.md": "d20e192e80ae69c0f57d7df4172454bc50d3aeac52a7b6b4ada5bb0a3fdb55c5",
+      "codex-lb/Dockerfile": "609003946ad7958069e4ea65957094ff3ef656c504b409f4c3d02fc5ef4ce3f5",
+      "deploy/kubernetes/egress/README.md": "4819ddf7ce2e91128279043960f0c03adbc93187233b2993c448f1990acd2a2d",
+      "deploy/kubernetes/egress/analyzer-no-internet-egress.networkpolicy.yaml": "2ff71652d4226ba9a437f7aed57f206bcf89aeb24e51e384111075380b50340d",
+      "deploy/kubernetes/egress/default-deny-egress.yaml": "e37ae4075e05c44968c1535560202709da0729133179b334914079d77b0d98e6",
+      "deploy/kubernetes/egress/internal-dependencies.networkpolicy.yaml": "59b7165d31b67ac095b3aab6c44ff089a07dcc90f6e07af30b1f52bcfe118de9",
+      "deploy/kubernetes/egress/litellm-provider-egress.cilium.yaml": "48f6d7fbe66fbd9577b25d61de5bea7d32f44a0a12cde85db988048f12ec6c6a",
+      "deploy/topologies/production.env": "f3b8c78d4b511a92af902d42ee6fde7dceb3c4eb3d013fdb6a3c1d4204268b08",
+      "docker-compose.codex-lb.yml": "760816e7328db495684d86ea3adfda5291a9bf2a46f8b4137bf5835e53e4ec5f",
+      "docker-compose.production.codex-lb.yml": "e51dfd05a9c02d9c7bbba8fa461b90de9b980b3919f4f5559487bcca63b95a66",
+      "docker-compose.production.yml": "d2bad2a295b622cc2f0fd535fec90e61996604802aa113bc44cf64268837c60c",
+      "docker-compose.yml": "75e136e5cf08d530a6db6177206257118d0ec5b9dce418719ea09d99ae597978",
+      "docs/README.md": "3389649c82ccc96c82e2de5a35ef1cb71567959346092d8ac91b79a19b241299",
+      "docs/admin-access.md": "f1ecb9b51a720c7c34e7ff57c54766cb7da61609dbb959959f09014b7b2879d6",
+      "docs/air-gapped.md": "d9d88d0b6e8dcbb22af6ba095ff818996cf87b2b035c61829b66a8125eb1cfe7",
+      "docs/architecture.md": "31ea715774e07ecdc324d465778529b1a40d37b618ee6610fcfeadae38febe61",
+      "docs/base64-logistic.md": "831d46c6751c67362d09f27d450a470e622840e4352b8a47f2d4f0bd46a64b09",
+      "docs/clients/README.md": "76b74087da99e7efc1ed39961fc0aa50e4f174c0b1b08c51c4c891c1d32039af",
+      "docs/clients/claude-code.md": "0b1276c6809b85da290d4c779744ef6dc83a979a7aadcaac61af097e5630ea9c",
+      "docs/clients/codex.md": "1a0ad1ec35fb6d7e8841d6e4b84291232feb0bdbbde555e364c7f75f221d3839",
+      "docs/clients/jwt.md": "09fee6e4570484b9d0d8de78bb28d4d8a1f307fd53ce89b2e885354b77f2dbeb",
+      "docs/clients/kilo-code.md": "624aecce5d852b71af0a90961cdd5491af3ea98ba91cbcb43a3494d1e0b68369",
+      "docs/clients/opencode.md": "c7eb3172cc3b203199efd8d04c40f5dd034ce6cb66be863a1a20f135aa4250fb",
+      "docs/clients/zcode.md": "a30031421039d2c4d913c08240d236c9c81e195ac9bef83fc93756692c19ac8c",
+      "docs/codex-lb.md": "09f01aea1045b433d172f47ce17b66bc5e29b9bd86022c2d53bca462a4f152dd",
+      "docs/compliance.md": "cdeaf16e1d994456a268880d51e405c653528d6483a17f1ea6c1982c57c8e03a",
+      "docs/configuration.md": "5c8d40d645a83ff1f3ce80b1030fd3e8892f0b7561cf8848cefdb6eab07f276a",
+      "docs/deployment.md": "4ea9a36e601fd97535d0892d9bc60c03dfbfd8f0f56f2436ed40ade26346c2f2",
+      "docs/egress-controls.md": "6021085c95984a6a0c7cd1dd0cc56ae5b079d25a22e193a129d608defdcfa3e6",
+      "docs/examples.md": "47e70895ae2ba9ba174c11205f0fe1e072fc3cf2ccd9e087beaf26b06ad40082",
+      "docs/monitoring.md": "9028a4713f8dbad9fde4fbd0eedf8a7d22484929d17ac1dc649ad6743d49989d",
+      "docs/ner-shell-prompt-recheck.md": "4306d127f09069f55aa72e0be4285f061bfbdd2bb865e51a224878d1237969f1",
+      "docs/ner-triton.md": "acc373464613e16e0bf4855fb60aba013bf61e625bb74419653f499d39e8a3ae",
+      "docs/password-punctuation.md": "35a60621fc548f7eed42d94f9bbc7ad273bd874f74dcb895ec934c649808f5b1",
+      "docs/research/analyzer-load-profile.md": "be73f173a149a6d3d6307745d1567c171d99857cae1bf18938b163efb942ddfb",
+      "docs/research/dkb-corpus.md": "e9a2ef5bd64eee33a47d90e953ac51818596f076a080eda3394ab2ed5d18a573",
+      "docs/research/gpu-analyzer-benchmark.md": "94990760c7f997662435d6ab4c343c8eff6a55814b48e559873b130cac830224",
+      "docs/research/load-prototype.md": "a5c9c8803c9ca8d82ee2506d02891f2b3fe39bd8ab15fa713167a0ef22cba52f",
+      "docs/research/long-context-baseline.md": "ccdb08d9e399337cdf1d186c810015a4d3b1abfa35efb2b8da0402641b491ba5",
+      "docs/research/long-context-benchmark.md": "063533278da6fad973d2e165834be86a5e9b20425839df5492405b2b7108b07d",
+      "docs/research/ner-deterministic-rule-review.md": "ab07e270a5e533e895071b8ea77d5f28e3c1f7ce29c07fc1aa8395d72e091ea1",
+      "docs/research/ner-instruction-regressions.md": "886434a0f761c0d473b87bfd9d8bbde0cbae4f13483f42f087e9f52718038b42",
+      "docs/research/ner-migration-baseline-observations.md": "938adccb812e377aa264693a76a6fd0138c0a24536bc218653e0f1435fb100e2",
+      "docs/research/ner-migration-baseline.md": "6130090b91eaa7419920c1daa8576e5ab1f3046ee093399c5f41fd9fc3334e01",
+      "docs/research/ner-migration-candidate-observations.md": "ea26458bee56ac2419938710f34801f5ef2add9291acbe3ff2099f9136b612e3",
+      "docs/research/ner-migration-candidate.md": "53acb97e838ebef6ab7b89244208bea4241517d3679eb5eaa070957e115703a8",
+      "docs/research/ner-migration-cold-validation.md": "a273cf368534ac5c853eabeecad8d4dc9623b57025af60187e6f44a60a2c3884",
+      "docs/research/ner-migration-test-coverage.md": "4377f55ce3299541b8500f1572f30f12064c5770681c22c12b50a4fe5bebebbe",
+      "docs/research/ner-model-provenance.md": "497d2973724982c6314867be968f706b0408007a8627bf3a9132932f76932e82",
+      "docs/research/ner-tiny2.md": "6091c5e2e6e920d26c33dd28479022116cf4d24346ca3c6036c37cfb5fb102ee",
+      "docs/research/ner-triton-integration.md": "63f41834bf5ee146e3c7030240dc13e151f328e6c615416c0667b5e5e3ec9e73",
+      "docs/research/nonstream-disconnect.md": "0b5ff37cc90cccb0b16f74182ae08877bee9ad51d6de19849996181fb340f2ae",
+      "docs/research/pr108-local-acceptance.md": "25b9abba3023a73302fc34505a25a4730179b87535a6adab2cd3dc9893dcd9d1",
+      "docs/research/production-cache-pool.md": "5c945efc7102e3c8487829b1377c28ffe130dc30a8470882dac3bcf91093e699",
+      "docs/research/production-capacity.md": "f9c182ecdef4e2c791c65871d49da8fe79990b7451e0f444ac215b012b429d0f",
+      "docs/research/production-nginx-ab.md": "1a95787b8286b529c11cdba450018fbff367bdee31521fe59b67435b66ba8f39",
+      "docs/research/production-single-node.md": "15d608b4d483219f87666f13b9e06cfe3cf89b56d20696e8c240fa05bb1e0f81",
+      "docs/research/release-040-followups.md": "a58bc4ac985c6d2aa44ed3158c9f1888d0fbabdcc98c76e1df3ea946b2066f5c",
+      "docs/research/scaling-matrix.md": "9b1bc65a4876306ec6131fdee999ff2c38fc0b0ba54624ca00a942ce33eb80fa",
+      "docs/research/spacy-ablation.md": "0447fd0fbfdfa152a74af91f76fc7c30c378109b5cbb8a29e9347c46ca821a13",
+      "docs/research/stream-disconnect.md": "4aac3b58488fa0e53b2f254732f7fc8c55b9fd30c01a0e145bfa25b821ee8cb4",
+      "docs/research/tiny2-capacity.md": "d1cca42b0c479b1372f2cb972cfa1e5335890324455f3900e1a6ae66f8ae975a",
+      "docs/research/tiny2-components.md": "86717dec65e262c72f938111e4c25b37a19fdcbb861788171edf763cca498314",
+      "docs/research/tiny2-quality-comparison.md": "c83fe28008c34db3b8027c20ecf977fd7c99a1e229c7bbd076eb2f610cd879aa",
+      "docs/research/tiny2-queues.md": "65e9fe59ee04a088ed8ccc3d0b0f168cab47ded6f240c48b1075bb0731ad2452",
+      "docs/routing.md": "fb995d3a44eaab2fd88b76e198b059d7e599515bff35c8bf729d0853e45af187",
+      "examples/litellm-config.optional-providers.yaml": "f53080281d5082eaf817b7afad6ca0deaf63edf8c5588c6f64d77affb421b8f2",
+      "litellm-config.codex-lb.yaml": "ed6df9d723b67fd2c7cf79c97fd7e815ce2991ca545e2050b27f52eccfd970df",
+      "litellm-config.yaml": "642f5f49cedc8c3a8bdc0b0a366e9601b3ee16763736ea2ab89162fa6789e528",
+      "litellm/Dockerfile": "d1ea1447c8f28138735270a23f20f889150fb3a2227914a333cfae8484bf956b",
+      "litellm_guardrails/__init__.py": "5302a671a69a64f15da8d99342cfbcf0e1757c49f84260976ed4d0660ba5583c",
+      "litellm_guardrails/dictionary-substitutions.default.json": "126805a93906873c7cd1fd7a3586c106a4c68d9329cfbe5169132d9bfc9a244e",
+      "litellm_guardrails/dictionary_policy.py": "9709364660baa4f5ac551b42fbbd411c6d2eaf8093ac1579ca8ea4a30696d099",
+      "litellm_guardrails/entrypoint.sh": "165ee40010298449d6d47a3591b2bdfef5aa44f17e1fe1e845c9c835e6025943",
+      "litellm_guardrails/metrics.py": "81ed9e7bcd72af2f061e7165efaaacada9362e8465c34a818ebf0713042a0e49",
+      "litellm_guardrails/pii_guardrail.py": "66e9b3c5412b3fa315d8d19a6639f8aed88e836c5241f92bd24602d469d46995",
+      "litellm_guardrails/request_cancellation.py": "0a470166184c4d9ce56007091a637538f3e8cdf3d0b1bce6a4fc98fdbaabfee5",
+      "litellm_guardrails/responses_state.py": "18022c564583d7078570270a319979d1f30577d6a5b316e1a366a97cbd21c6c2",
+      "litellm_guardrails/restoration_mapping.py": "f821a7ca42e5ea6f8708d37694c00d1d534328c8349ab316f8458f68ee433265",
+      "litellm_guardrails/server.py": "300658f151fd575ad0025f13674207e60b0cc39c6ee5da5c30c3d0021cfdc91c",
+      "litellm_guardrails/sse_integrity.py": "eba01b0bf9c4235a66564c4faaf50d45172151ed2d527551fe6cd2bd2ae030c8",
+      "litellm_guardrails/stream_cleanup.py": "b37d487f5c556bf59b7a8ab80ac8370bcc74e13208cf4e721ce56d911531ebb0",
+      "litellm_guardrails/streaming_restoration.py": "a8126bf56a3da8d2ad804876f8fbc6a053d7b1b1425b0018d4a8e7ae07d389e3",
+      "litellm_guardrails/tests/__init__.py": "3bf696773775cac9ec284196b05fb6847eae5580a8c12ad0b924faaa6c7d2219",
+      "litellm_guardrails/tests/test_dictionary_policy.py": "e50fe15d365569c8c312a72ff5f0688d3c1ab0c273cbde65cd52553465376f66",
+      "litellm_guardrails/tests/test_json_number_restoration.py": "bb9008edba0a4ec7dec3e79d9ca960d2632e6e9a158eab27ffb4e2f949c30059",
+      "litellm_guardrails/tests/test_metrics.py": "4a34d7459bf4013583d55032eb1d2d0c716b4904ae0556b1d65ebc866d2990c3",
+      "litellm_guardrails/tests/test_pii_guardrail.py": "08d658a80ed35f28d4bf0457e27720df780bbf3ffc8736b5a9bd021198853c59",
+      "litellm_guardrails/tests/test_request_cancellation.py": "a10abfedf2cdc05a96bc4efbe68d34281ba7d5e59aa40abbb8a73cf111e8b20a",
+      "litellm_guardrails/tests/test_responses_history.py": "22fa5d5d961607f7b2ae7c7d4d534a7d115b7b48d0e198f0c537965f371b0043",
+      "litellm_guardrails/tests/test_restoration_mapping.py": "fb9f39e096e5fc394977dd7f9c7f3b070eebabe4a25cc103bf9eacf78b45d89e",
+      "litellm_guardrails/tests/test_server.py": "0cc49848088f32feb445a43a81a9b91c8faadc2841fe9854b5eca85fef6fe814",
+      "litellm_guardrails/tests/test_streaming_restoration.py": "4ed5604597d582ccc6cf4fd0a0eebbbfe877c0a006e5571c8f67d4fa06570f79",
+      "litellm_guardrails/tests/test_upstream_stream.py": "c2f8a71d8abce604a009a66b49c775800aa345106755b36b653dad979cff1b8d",
+      "litellm_guardrails/upstream_stream.py": "c92dac832a0f05d986c80b6a4257910159f7d0330c747d798f404c3d114fbdb5",
+      "nginx/conf.d/default.conf": "7e08159e17eff7b06e25b1a33f9981836bcbb2a9c877eb73c22b74fd6bfc062d",
+      "nginx/conf.d/production.conf": "f310279e384af85541fced5088e582b03f11e5eba1e3b90b9b6ef3518683a62a",
+      "nginx/conf.d/triton.conf": "1c74bbe3c16b7555fa9176a416b29064a1eb4716eb533fbd8038f6133a8dd9ee",
+      "presidio/Dockerfile": "fdb7489698470ac86a4d7c8735115214a551a05c67d5e1587496cb1a25fc54a2",
+      "presidio/analyzer_server.py": "d86c584f02eb5996426ade70cd9e07b5a48ea118f8909c59cdee1f87587f433e",
+      "presidio/capacity.py": "ce3ed634b5205207abf7e18d74625609e1a8cb75cb4b7d84da529fe4bd6d051a",
+      "presidio/download_hf_model.py": "f8c7d2c0889c09d2cb7d392593e94e5d528ec3016bced495e839b5f0fdeaf977",
+      "presidio/entity_types.py": "68da0fed596f8682b60bcf4b33617e0eb0f4b757bcce703a0224b531edc46f4f",
+      "presidio/evaluation/README.md": "9d69218df50f16c73f5f9d2db1317869e8d8fdf29da054bf05393c30efb63919",
+      "presidio/evaluation/__init__.py": "f73edf08610c98e7971e8411264042b2dcf23664ab60c9d978b95bd92b43db4f",
+      "presidio/evaluation/base64_policies.py": "aec1b9a07799362d5d6b007e539f2087545e61e0a7fe390a043d6812b71a9187",
+      "presidio/evaluation/corpus.py": "180ff6b7486cc07f4514d3825695592b886fe70b36f96ccad06cad070fdc7800",
+      "presidio/evaluation/data/deterministic_rules_review.jsonl": "0f7173f3778faa89f2c69c6269eb38e3c7028ae8144f9ddca1cd6bf8db6dbda2",
+      "presidio/evaluation/data/instruction_regressions.jsonl": "5096b3fbe0f368976447d1e9a4c1eccddd2f38ce9f50123a8bc85eedf1132f06",
+      "presidio/evaluation/data/name_context_regressions.jsonl": "505895aa022cf8c04cbda12c775d79ec7a552ba54e7315ce82913a0b7264f9c9",
+      "presidio/evaluation/data/name_field_header_control.jsonl": "ae588faaf27cb56313fce2ec220b9a2804484569e20255ae1f55e4714f344c2d",
+      "presidio/evaluation/data/name_field_holdout.jsonl": "67c10f77c85b8ec0fd53d5363fc66d87cabb7a03d119d31dab11df9ffc36b6a1",
+      "presidio/evaluation/data/ner_migration.jsonl": "8bc2f6e3f10a9d123651839de21bae09b35c708622f9bfcada2f908ec0b5582f",
+      "presidio/evaluation/data/person_dialogue_research.jsonl": "a3f7fcc7712ea021b54b59e1756175ffbe6d07392b2bd80f8a1d76de189f073c",
+      "presidio/evaluation/data/person_organization_regressions.jsonl": "01375f04ff42de73a6ea7bd6dbfc8e693a9fea82d289da150bfaabaafa1e6a74",
+      "presidio/evaluation/data/tiny2_component_study.jsonl": "3ef4c3cc195f61a552706a925ee227888aa8781a484779e07cb2dd9486e7ed8a",
+      "presidio/evaluation/deterministic_rule_source_manifest.json": "c86ce785f4c7d004bfaa377f8f8da829f0e0620dd2b27a99dc66d56a1a13c1f0",
+      "presidio/evaluation/metrics.py": "79263bcb5dc8a69f036bb5aed8305eb84de4d7a363f82b6de9cd6db8a9453cde",
+      "presidio/evaluation/name_recheck_experiment.py": "dc93fa7073a1c3f5fc310b6b3c08dacbdeee747c75eee1fa73bbcd02cdbb738e",
+      "presidio/evaluation/pr108_acceptance.py": "47630857e09ac247a86969052f79e7de4530b1d7ab022aede2cf54d3aaef31ab",
+      "presidio/evaluation/reports/base64-policies.json": "830dc6a56ea47d9a2f0a2f8691344a3331aee57dcd56bdc4e0883ea510be17e4",
+      "presidio/evaluation/reports/deeppavlov-baseline.json": "6754a55e7ca7b1b5b33575285c941b51f65c596a98572fb21d1fd0590b6dd4a1",
+      "presidio/evaluation/reports/deterministic-rule-inventory.json": "9cce17fcbec59d061fab94c1460c0341295a086f5b4662c6e319d3a293f8212f",
+      "presidio/evaluation/reports/deterministic-rule-review.json": "506c64726bbda1b71e3346c2bc7479f9f13e3fabe9f3d7282259aff329f63e90",
+      "presidio/evaluation/reports/huggingface-candidate.json": "71be1dc3bab889cd8ab8713ceadef1c9abfa60e573a987170f4737c055cceec7",
+      "presidio/evaluation/reports/production-cache-pool.json": "7f9995cbf929956d30d98241f320090195952d9e2936ae6fa6e33e9692d21ac2",
+      "presidio/evaluation/reports/production-capacity-initial.json": "ef8baad6be25001629a6dd24a28f25402461e896e59ec5e310b855dcca13cdd4",
+      "presidio/evaluation/reports/production-capacity-local.json": "922df7583d9562a8e49e411fec8a42eec6774dd8f3737686c9f1ed4a6f52a666",
+      "presidio/evaluation/reports/production-nginx-ab.json": "caf5bf34d0626a1690e7fff5cff6e3d0d231e3b32a82b0e10c2997ecbb02b6cc",
+      "presidio/evaluation/reports/production-single-node.json": "66013a96feceb616cbedf297e3d51ec314c50b44b5720781a71097c587c3491f",
+      "presidio/evaluation/reports/tiny2-cancellation.json": "01121b409f16316ceaae1bd52a4ba4a4169cd964f8978dd436bbc883a40f02bc",
+      "presidio/evaluation/reports/tiny2-capacity.json": "339f9d5fff300a11c5436a003884c393ee5496513ffbfe129b1fdad64e0ccdc0",
+      "presidio/evaluation/reports/tiny2-ci.json": "786071b4cea74edd72a5d6bb448f9f281b8b8bf944b1a164d57028f577a88b8a",
+      "presidio/evaluation/reports/tiny2-components.json": "07de2cf12d1499590ccb9e45153ba0826ac2f235426a931343d5527f58a26b36",
+      "presidio/evaluation/reports/tiny2-default-profiles.json": "3efd0bd9966e0435ac8a691e97237974347c7516c04de851ac1ac3fc3d400362",
+      "presidio/evaluation/reports/tiny2-deployment.json": "4dd848ddab1f4a019216f72b163480a5ee732b0c320661d416b638b79e9b0160",
+      "presidio/evaluation/reports/tiny2-k01.json": "69d03df9b59ce570f120aeac14bcda75e5433c3634b7cae36f750d37eaeebe29",
+      "presidio/evaluation/reports/tiny2-k02.json": "c3f53c80b4e78065ec11c83e06839c14c8f45b7c784cf9a75c0b36ae59091aab",
+      "presidio/evaluation/reports/tiny2-k03.json": "3217018d47e76f774721fbfb63fc6ea5f6e8c8323fbba95a4c50b4a88f23b78f",
+      "presidio/evaluation/reports/tiny2-k04.json": "cbed23fea37edb4b92e54167b56621d756f0bd2da8a021c7b08f4f7a4b281409",
+      "presidio/evaluation/reports/tiny2-k05.json": "8bc35776c21872c7de3f8fca6c151fc6f6ba42eeda4761e2fc2f01748bcc6f5e",
+      "presidio/evaluation/reports/tiny2-k06.json": "348e71fcb66ee3a5fa95e9d2b32dccedc575664bf9a8af42d1381f941a3052cc",
+      "presidio/evaluation/reports/tiny2-k07.json": "f6c89d16cef1cd7ee08581018a838a803cac18f5918953b969a656b48e28de6a",
+      "presidio/evaluation/reports/tiny2-quality-comparison.cases.json.gz": "d91e901240593e0e2f4882be8d078c80ffee9ed256fe50e99efa60d3ef4ab857",
+      "presidio/evaluation/reports/tiny2-quality-comparison.json": "1ceb566cc7e4b7cca9cf01221d6be266682c6fb2e91903f75d2599919dd729aa",
+      "presidio/evaluation/reports/tiny2-queues.json": "d3a9154968f954e4675899f45859f0b6197208737fd504b51e38d14c0376079c",
+      "presidio/evaluation/reports/tiny2-transport.json": "2a2e3bebcd2eeb04cbb555ad1d1b39d3655bb4836f1429ecbff289780def92ef",
+      "presidio/evaluation/review_deterministic_rules.py": "13d8b5e46ce7d83df3ea7769a7e5ffd2d43e48c6600f41ef1836df1f0b685eed",
+      "presidio/evaluation/run_baseline.py": "21db0f01e1c64d87ef95bc628ae82e16936735aebe5696069c41752ab536f850",
+      "presidio/evaluation/spacy_ablation.py": "f08a3a73a9f5655620f40e49fa4839ee0399a0221020571c6b71312844656dc0",
+      "presidio/evaluation/tiny2_comparison.py": "fff884ad1b8d9bd601e802f2650f159d5c70ef6c03398be2a63958ede043f2ec",
+      "presidio/evaluation/tiny2_comparison_data.py": "66e1736d59ff9e14406290c0bcfddee6586acc27f70bcf4c4dd2d0a2c6f0b953",
+      "presidio/evaluation/tiny2_comparison_docker.py": "d37b450a4b805ca4f037de755586c1de0cc72fdce44b479d6c99cccb375daf80",
+      "presidio/evaluation/tiny2_comparison_report.py": "e747cb1be6ab7eedc2d3cc05ab628b5efa1792e27ba1ea676aa39c7ab3cdeab4",
+      "presidio/evaluation/tiny2_comparison_run.py": "ae9e1e71f3ee100df614439b611ebda8d6ed645f14b4da97e1f2e98df710a8c5",
+      "presidio/evaluation/tiny2_components.py": "ccc949e0a9a820f4120982a5f9605bcbb1ad5e54de7bd35226e8dbf92994d59f",
+      "presidio/export_triton_model.py": "548a211887c2cb3c39bedecf5375bc877d91214f70ab655066bfad8d87d22579",
+      "presidio/model_artifact.py": "1f883f09a40ac4dbd7ffa92b5d02452833497786652fdee550343a4eba788fed",
+      "presidio/model_contract.py": "1e0dca238841b571f6d74b2d93e50ef75f5c0f9858d7c2e0c7c2fdce2529fad3",
+      "presidio/model_manifest.json": "59bdb540a78753b563c362731a656342882004ef120a52f6995fdf4080240c20",
+      "presidio/model_profiles.py": "a90117fdf96f02616dd6873f38b75777b5b5ec7fb484df898df1d22370ebf5d5",
+      "presidio/ner/__init__.py": "7b621ed0de8d20fe80cbe58efce2f2e89425ff467ae76d666d71625d6661faf0",
+      "presidio/ner/backend_settings.py": "246441f57a7359f46fd1336531ab55862bbcb8309b2419ef1555f88980c716e2",
+      "presidio/ner/boundary_recheck.py": "a2cd01b745e12ba6da0af76c1a35f7070f69be2bf8cd45e88f7400252a9403ce",
+      "presidio/ner/decoding.py": "c81efa224fa6c139a24bb192b442793093ca09827dc86c002b54a3a87108ad1e",
+      "presidio/ner/span_postprocessing.py": "91a3437c9e03d0b3dcc820492b6e84269d5e45cfe3e9a1ed04abb677b81e294f",
+      "presidio/ner/text_processing.py": "b0a826c41012ffb5dabfaf314216070ccddfecb691203e0a07de485aa6b096e4",
+      "presidio/ner/tokenization.py": "d984a74ba8bc94768174ee5d87ee26cd86e5f6ccd646d84f135db6cc32e98cfd",
+      "presidio/ner/triton_model.py": "4691b539345ee67aa8e92437630422f8bc1c3e1cd951a172aec55af7fc625d2f",
+      "presidio/ner/triton_recognizer.py": "9460e9fa27491878a0b76a592608f4c7a96c0c7fcd647c56f54a13e470e49215",
+      "presidio/ner/work_budget.py": "40ca56520f8eadeba15e449180a4e870185f52d7dd70ec0ce9813f67ef542584",
+      "presidio/onnx_artifact.py": "20c5e878f2800f3277a4a78078033b5564172169799c6e07b98d4d09e9f2fe87",
+      "presidio/real_model_smoke.py": "768eec5345d11b1ec287eb4ad3770a72f0af13edbdecda1cd43c12d6adcff3cd",
+      "presidio/recognizers/__init__.py": "46ffc3b796e802dccd94881262d2270938520c1ade4d9cd5fd0452feea6c1e0b",
+      "presidio/recognizers/base64_data.py": "ad2c3e6ec58049a0c9dc7be0ae237e918095d1119847250205293752e42ec3a3",
+      "presidio/recognizers/base64_logistic.py": "abe317ab30bf52731683e217449f783bad1c8411c260cbffd41a0a0f369ca1cd",
+      "presidio/recognizers/credential_rules.py": "13a352b0b5baec941d190d0bce30986c9ef541cc2ffcb6fdebb12ee6495a517b",
+      "presidio/recognizers/infra_secrets.py": "727d41e1cfb00a1710985f3643d4864773d060d19dbf121d4b1be19e999bdada",
+      "presidio/recognizers/json_strings.py": "c4aeaf5b53196e8018a88447cae375f5811e8f5053f983acff5487dc9eb8b7f6",
+      "presidio/recognizers/ru_address.py": "efea5ecba9608f2b2a76c9a04644314911ea35fb5e9487c6b4e3bdb3b02b551a",
+      "presidio/recognizers/ru_address_chain.py": "846ac32fa364b34ea988bd64221d32a1acfa6ad288590f30c67e3b5b77ea7fa0",
+      "presidio/recognizers/ru_bank_card.py": "f82be91f5e5e64d6a4c602cdcc662c2db33d2b0ef658e21141545bbd62518165",
+      "presidio/recognizers/ru_bank_requisites.py": "167859f84f592a261e71cd735fc765cbe7e9575778a837f9c5d619e4e9269965",
+      "presidio/recognizers/ru_email.py": "907560dcb04c3a407c541e945d6ec477fcfd08265586b3f300844172dc8f4eb2",
+      "presidio/recognizers/ru_inn.py": "da4c3cd77b09e753aa30412d66aa31cdaff42c040ad9f75d95c4459d5a666631",
+      "presidio/recognizers/ru_passport.py": "2df9ad0e1dc4b8abd6a04553aa1b1fc45a8df7837b40430e2da329f50a4a8c9d",
+      "presidio/recognizers/ru_passport_ext.py": "1b1d46174fc92315e7983e1a86a9e44293d6ae3382e8bf0269fa2f19bf76c802",
+      "presidio/recognizers/ru_phone.py": "79e1fd63dcb713171207ec445add6b2ef1f4ffff3fdf0798e4cc7f70ca4bef72",
+      "presidio/recognizers/ru_snils.py": "bd7148b465ac96fcc9f1bd66f60de1c98b6d48a7a6edb21ca195102c542c4bad",
+      "presidio/recognizers/sql_credentials.py": "61b9f1c32f987e6d472a255f8657788fdb0f2e95ade876c103c39beb13246ffc",
+      "presidio/requirements-analyzer-test.txt": "a1c4d57a0907cbc50a8970ffd6cccd48e8add0d09a840a12073fa65d62d68755",
+      "presidio/requirements-analyzer.txt": "5986a0083c853587588b14cc8125c48f93f00b286ba2c98c0e7a781f3505aa1d",
+      "presidio/requirements-export-cpu.txt": "67b6318773cf2e20dcf0bff750796080423d5e3b4834156db64322c953cde7d7",
+      "presidio/requirements-onnx-export.txt": "2392173ba803dbaa7a18fe76ce1dc37470897847bf508fe45ba8a3f908a6a240",
+      "presidio/result_merging.py": "55292c90856e5947d09e98c213f862e70984161dbb8079a70504a2fdf4c78a71",
+      "presidio/string_spans.py": "c328786b7d22967c35ac1a983407a16df0166ae6127a093eafc9c2499460465e",
+      "presidio/tests/test_additive_address_passport.py": "4307aa77f8e72e861fb1478eff4d4878b921ed795faf51ab9611d5f4e3d7933d",
+      "presidio/tests/test_address_context_case.py": "97650f84aa34ea313e766b8d3c77d34f635c4fd659d87c4e120b99edc733f9d3",
+      "presidio/tests/test_address_entrance.py": "6667bd12e44e1f7b36aec339eaaf842a2f3d9fa01afe65906e2f6b7fecd2fc33",
+      "presidio/tests/test_address_key_context.py": "3aaab8ece9c6db4fa32363b0311d1e2b89e19ec580aac41ffa29a70e54a7726b",
+      "presidio/tests/test_address_postfix.py": "dc26ce9be0ed8de601f16691a0f1d53ea2ac5acb64326a96a227faf224a56453",
+      "presidio/tests/test_analyzer_api_thresholds.py": "b4e48d583033df624e4d1edd028d9e8736bf9140e54f3e64daf2df34854aa64c",
+      "presidio/tests/test_analyzer_budget.py": "061551602cc1111068a700939c3032660bb483a6bca4b78d3662e336a9759ca8",
+      "presidio/tests/test_analyzer_entity_filters.py": "aae10cb705a4017e3edb643371640dc15b818b7eb4dcc4b9d6d138083df0328f",
+      "presidio/tests/test_analyzer_server_capacity.py": "881b7bcf4f7e4b6388e1eabde7c5850947909685e235a3e75f331477b347ed0d",
+      "presidio/tests/test_base64_logistic.py": "ba3219265004328e92bea03f3263254a0792591d06f60ba10f3d0664cdbafb67",
+      "presidio/tests/test_base64_logistic_api.py": "d02236bc593c72c3fdfd7928edbbb8526d94eafc6816643c4486691b7cb5b07f",
+      "presidio/tests/test_base64_logistic_cases.py": "aa7902713405b31d45b42b2eeb964654e3502c1e26081284bbdb01dfe26b15ba",
+      "presidio/tests/test_base64_logistic_full_path.py": "3f1503b92219d555eb0b230d0ee3dd2290e46ff55cbc4a18124e3c1371d42fe7",
+      "presidio/tests/test_base64_logistic_review.py": "33cb55b0153646dc497d0e2096f7727dc5d0366f183175bdcca436290a1eb5e6",
+      "presidio/tests/test_base64_policies_evaluation.py": "62943f032cc09fcd0259afdf46f19f9fd642aa1b71145c912772e59bf4743126",
+      "presidio/tests/test_boundary_recheck.py": "1377497c80c892558075b1319962c7ee3ab7406277d449392cd629b3ff171231",
+      "presidio/tests/test_capacity.py": "73155b889efd1f16cd98344b76be677205d16e0b97695f8bb84116489e0f10fd",
+      "presidio/tests/test_contract_value_scope.py": "a9bfa5e058439b8176db073146f266f1346c1e6448330f68cac4a84e1d999c3b",
+      "presidio/tests/test_credential_rules.py": "14adb0f0fec6ef48a9a51e95398a0ec1b36884b9a1dd317f176aa02131edf0d9",
+      "presidio/tests/test_download_model.py": "423ba1a8da55d84d5a4db44b00b83497a874b61537a595ba2c2cf9805b601b35",
+      "presidio/tests/test_email_international.py": "cefc25c626d8a1f41a67ce95da56d4fc719e3b8175d1cc67ea112019ef3328a7",
+      "presidio/tests/test_encoded_secrets.py": "58ab43335844a0b9397b047e780793b3c2153d48179a70b7cd0e1dc211f0afbe",
+      "presidio/tests/test_evaluation.py": "06672c2ba660b4abb5bfe191ca72b2b06b9e9c95f0ceb4086c97b367d7509701",
+      "presidio/tests/test_login_instruction_context.py": "e0451fb2e5976930ec92623f07672050a13ddca8c213dddef167524b631d8aec",
+      "presidio/tests/test_model_profiles.py": "6ff32a29ae498a2302463187c12e626bd2c4637a521367955f83e6b2eca072d7",
+      "presidio/tests/test_name_recheck_experiment.py": "8fbe9b0874e1f1ef2a9953dde9948a53faaf54ec9b47b6b1766646034559174d",
+      "presidio/tests/test_name_refinement.py": "8d512c187399a075735761eff7f954bfb63fde930458ed78c8a3f303d1a25317",
+      "presidio/tests/test_ner.py": "d573d2a96452e7c97e8f5860cf9bfd9cf1ed4aa5ab97eede9b770d7c0f54b9ab",
+      "presidio/tests/test_ner_text_processing.py": "d75e33e5c30a5f783b5d2d3399e6d8c0f658c09cef3f17c65dea04485eec9642",
+      "presidio/tests/test_ner_value_repair.py": "8c456662b6a5539b55581e8fd29e2dba1f00a660eed5a2a2eca1a2119d8dec26",
+      "presidio/tests/test_ner_window_value_repair.py": "0389c0577b8057dc9a1fad921a45b1f3c531146a04ff0957c06b54b9bd7d4869",
+      "presidio/tests/test_nlp_context_contract.py": "2c2921f89e89d67e86587060b73b289ac299daec17c75f311c8526d7aa05596c",
+      "presidio/tests/test_numpy_runtime.py": "ecd1f0a02dfe5510eaa4918470ed70d865d75857aca73e1230ebca733584569f",
+      "presidio/tests/test_onnx_artifact.py": "cc70ddea6dc9b38ba4f57cbb71995ae51d841e056cb535a0f7c577ed6c166cf6",
+      "presidio/tests/test_organization_code_context.py": "492d1e71bdf3ed32c45e6d3af992fd9ce41ddedea87c833a9d2afebf53bafcc8",
+      "presidio/tests/test_passport_number_label.py": "e6f1ee6941873bf326a8d643e60d4c496421dfe218724f465afe4d789c966273",
+      "presidio/tests/test_recognizers.py": "5581b77ecf0320b86a93fc1773a263e281a92ecdc6ba817a04ef4da69d729ed5",
+      "presidio/tests/test_result_merging.py": "6c1e8a8f598283c74df52ad4eddb8286978c5e97887a136270b8b47b1d140767",
+      "presidio/tests/test_spacy_ablation.py": "a0eb4cfe72a001c66662387408ee84b76d3c739932ff8ee14b96f64f5312ef74",
+      "presidio/tests/test_span_postprocessing.py": "572e702a50115cbfdf7e30f24620bce04ef8ab01be930d0f46d80266e235e6a1",
+      "presidio/tests/test_string_boundaries.py": "fbd9ceb6db713d64c262073d8ca68002f88db380c5393f94a846ed0e30452a3e",
+      "presidio/tests/test_text_chunking.py": "761cc21b2fb9539f530046a6dbee08c08d5d996f472d8bbf9b796d0b9cc93f63",
+      "presidio/tests/test_tiny2_comparison.py": "d138dc7e81519d7411d4a290a326158f11e11dfb18912cbee55aa84d01bd584c",
+      "presidio/tests/test_tiny2_component_study.py": "41e74ba5cdf12106e712dff02cf3e9cbd7773a57f630fb96bad85dd8ce6dbc34",
+      "presidio/tests/test_triton_backend.py": "cc87f96ccb52f5d0d3644f7b8cfa2dccd670579f0dd7769944d3de275b32ce07",
+      "presidio/tests/test_triton_resilience.py": "89e8c53454ba6e58800af2b19a1ac08dfb58206e619485d5f2286d0a8584bdce",
+      "presidio/tests/test_triton_service.py": "482f4e9f67d7dc082556d5322ce514214f01c294dee5f06f1e32a289aabf0ddb",
+      "presidio/text_chunking.py": "0f9f44978a949d5de798db6f9fae913147d7e5b5461ce3d7e00612e9fd03c521",
+      "presidio/triton_entrypoint.py": "150cc295944f7ac15abed43c7730f494b8db5ef51be9f14da20557352abf3d85",
+      "presidio/verify_cpu_runtime.py": "c7bcac706af2358ebf0eae47e82299b389c07554a3d2f3133e39afddf99ab410",
+      "presidio/verify_triton_export.py": "085a48e0dd0bc945369cb0881cfe95291aa9f8c75ed1f1d647d69021abb264f4",
+      "presidio/verify_triton_service.py": "189930cc9e85ab71ba65eabadd328b6a2c3121025784bb6e06e4bd10a5714082",
+      "scripts/benchmark_long_context.py": "71c03e8996ff52d7897e29aa32cb3dd15a70d1108413a1c08f4cbc394410c495",
+      "scripts/create_virtual_key.sh": "2fa965c2e3c926afe55c1bc33832ae7a4cde3b2627679669819baa5cdf8e6b06",
+      "scripts/deployment.py": "14fbdadf07705c9c95999c651144a5f8d984a1cf6fcd7dae9e91217152667eac",
+      "scripts/setup_codex_lb.py": "525baaddce75bdc3b6412df318e374818bb60b916ff6f23e1ed13e36073583a2",
+      "scripts/setup_codex_lb.sh": "7f9b092dc4b86cae24fc0af87c35a9d357087e6675663d16c95d261d71840a46",
+      "scripts/setup_env.sh": "e7c9e03a6855aedd964a4a486e9537155528b7c9d0120802c577c6c8a628d638",
+      "scripts/stack_guard.sh": "5f8ec2920fc8c294ef56ad227116d14c3e2798b30ec7f51d7417da08d7bf2991",
+      "scripts/stack_health.sh": "72e4464b4b57889a3fa426afae19392647cb27c6b54be773c4eb4315a4812184",
+      "tests/Dockerfile.guardrails": "6e8c1efa5306be1844e13ce9a09c247cedea75487f1d6ac28176e56d59fea5a9",
+      "tests/docker-compose.unit.yml": "d762da5b6274969a5148bbcb3d4f32c8cd222b0eda346769b662623cb7ba629b",
+      "tests/e2e/analyzer_routing_checks.py": "45dd8d35f2e96e0d49cf1ba232407ec8d591d3940b4fe9c17168a91445592f89",
+      "tests/e2e/check_nonstream_disconnect.py": "8ba92a2e2519cabe163b77c6a0e46e1ff4e9723f5a4bc6a43099797ce0f76ed6",
+      "tests/e2e/check_preprocessing_budget.py": "5cbb21c0389f335624451d78b4d3b5871897c2caed2fae982e6feba5e7230de3",
+      "tests/e2e/check_responses_chat_bridge.py": "2cb4706dcb3d3c183b38ad5360f32600ce73139f7c4185d134d97029b6819565",
+      "tests/e2e/check_responses_history.py": "57249aa1b8df96635e677e2ab134f25660dbcacce5e4ddb9a3d06d8509921722",
+      "tests/e2e/check_responses_state_redis.py": "7ff1c3917adf91146c06447ff9a249f154bc3203f70fabb38e70adf1a1d3ba31",
+      "tests/e2e/check_stream_disconnect.py": "7acb0792406ff7c49664cbdadf3c13958a1c1f418ad0ab7a88242f4deb905621",
+      "tests/e2e/check_upstream_transport.py": "e32a84a10600f0b33a6c4c75bb0ae2f90251caab1705c3dad07089e577a16cbc",
+      "tests/e2e/controlled_sse.py": "acf8ee7e32e3b6b77ed352018d7f58491f52edddcc4fe9970f1b789e199b6ed5",
+      "tests/e2e/deployment_topology_gate.py": "ef181027bcddf337ab416417aab29375c9007f75b2d7d8430291c73f10897691",
+      "tests/e2e/disconnect_observer.py": "ec286aec28ac427d110074da85f888d7c8ae15f4ba22f55099e87dd687fe8603",
+      "tests/e2e/dkb_corpus_checks.py": "f4c5d67817c0bade355eb1acfa7f2bd9596ed12a00c3f8138560a359065d14b7",
+      "tests/e2e/docker-compose.disconnect.yml": "a614274ffc71b21dd3522ea1e71a723722688ec8015f9c8c08d067c02cf3f5f1",
+      "tests/e2e/docker-compose.ner-proxy.yml": "1608c49ddf3497ecee0d15499054f328da11b1ec6ea0d9b395ee7ad326bb308d",
+      "tests/e2e/docker-compose.pre-egress-proxy.yml": "83f31c5cf91e2abcd76cb886b4bea4c70287980c30a034392c32529a881b1e26",
+      "tests/e2e/litellm-config.ner-proxy.yaml": "da98757f68e6df5c275dc02471ffcf3566a17f56d0d9d45a0b82dfbfd032aa39",
+      "tests/e2e/litellm-config.pre-egress-proxy.yaml": "abbc4dbc0f32f1ac0ca96394f3fcfcdba9406d12f3d5f5d99df315be2f3033e2",
+      "tests/e2e/litellm-config.topologies.yaml": "4c43a0d09efc0310219164830c01600d49033d43009ca926f174302cda0ca121",
+      "tests/e2e/mock_capacity_analyzer.py": "6a4a1604c3d197ca76ba03f9ee44c30e033de717b6f933df8f92ea2385112a69",
+      "tests/e2e/mock_openai_upstream.py": "72c295a99b8d01a251d8056396e334da9c04594e858cbff3fe2726b1a20dab55",
+      "tests/e2e/model_smoke.py": "76cc49378f0a44450876be79deb603e6df0281aed45aeb96e5505d16ee7440b7",
+      "tests/e2e/ner_instruction_checks.py": "1c30715622c00bf16c1f6581d44e00fdec4d397eea654bb22b4a763d9738caeb",
+      "tests/e2e/ner_integration.py": "2dd6820f924a8b80bfb0ae7869d58e89d675a4da060058ba38fa4ccaf1fd09da",
+      "tests/e2e/ner_model_limits.py": "9b406452fddcc8ebb853c6ed1f8d467a810a44aab935fdb571ad122914af7f49",
+      "tests/e2e/ner_protocol_checks.py": "369cdd54a2e04390ef16ea8a48161435d88a5dd7c2ccd95c2e0d46f2ad1f2b0c",
+      "tests/e2e/ner_test_support.py": "b71271338a4a7e2ef78fde1e9d60c5b20f20ebd510833175c09f04ff6e4e8df9",
+      "tests/e2e/nginx.ner-proxy.conf": "2f5a99bb31c454d3c97b9c7fda00419b521ff9ad5179fe9d4c6abd86d9a5b0e3",
+      "tests/e2e/test_client_auth.sh": "5c35532c32dc9bf1570218bcb4d39d86b2e6d318b761f0c5faec35bcf7357eff",
+      "tests/e2e/test_e2e.sh": "f59ae0a657b13cf972742104e0aa632b3e007ec3ee586a3393428b5e6cb5bf4d",
+      "tests/e2e/test_final_leak_proxy_non_egress.sh": "ee10358477fd349cc361d9bdaed4e8072b614959dd04a59d24f89949622e4e2a",
+      "tests/e2e/test_guardrail_flow.py": "28b28ceda7e99fc71a52e78b767ae28843bf91d85e4694e058b800a59c956c92",
+      "tests/e2e/test_guardrails_smoke.sh": "601b3ac042af857e56237b68c251bdbd8ab0e66fa5178a809eafd5ec204d7f19",
+      "tests/e2e/test_ner_proxy_flow.sh": "703b4b2ad317d10af175119b1278ee681354fe906f1e0960a4e26457c52070c9",
+      "tests/e2e/test_nonstream_disconnect.sh": "46d66be229199fc5fed29c4ec6052b68058ebf24e8311606a404f8d2d7abf4c7",
+      "tests/e2e/test_pre_egress_proxy_non_egress.sh": "9065a787c7f05a82962cc1215a30b70266768d57c9e30671eac400a81edde0cc",
+      "tests/e2e/topology-resources.env": "07f2957e33c481d9050de81b26ab647134a6d2ca1e54156e3a03f9e38b96b400",
+      "tests/e2e/triton_routing_checks.py": "0b8abc532982869d0bb0b870a3af6245f982984af75edca59de663f13dff6ff8",
+      "tests/fixtures/dkb/1.txt": "ac4c829a0f9ab773405924b414140e0903fca8062c715f5b6bda893f288c9249",
+      "tests/fixtures/dkb/10.txt": "c0f801a856eca4255a0c35ea15b7e265b8519062606848c783318e4a3cfec6c4",
+      "tests/fixtures/dkb/11.txt": "478ec51eacf139349b75249116cf576e753eec64922e8b71dcbe720ad4701494",
+      "tests/fixtures/dkb/12.txt": "4c53b87a13dd7385070769dcfda989a584aa3a40c94611f31c2e1442fad8f0c0",
+      "tests/fixtures/dkb/13.txt": "cac7c051d5c502effc3c731bafa1bccaad8b6d1489f729ce426f9e88449f0c0c",
+      "tests/fixtures/dkb/14.txt": "82f2192342cf64d5df54e419c8482523e6e5bc6fcf66582c7b5b21d8c854ff70",
+      "tests/fixtures/dkb/15.txt": "36be10a605652e68fef4769d30a7a84d0215c272d5892ad268178e065cfcdb35",
+      "tests/fixtures/dkb/16.txt": "08587dfe8b86785ef313c17697a765336e556f5c7616fc9d8a06519b8fa794b6",
+      "tests/fixtures/dkb/17.txt": "5be7684be98593085af6723a662533c5ff02803b0d88a7cc0d46f47d79b75c2c",
+      "tests/fixtures/dkb/18.txt": "74d06b246620e2241fb2d0ddcd75d30902fe1c470c64aa04e883b4a48028587b",
+      "tests/fixtures/dkb/2.txt": "b87876e86d78ea1bcb26115901da755cf63d50b781f091875a0e46fb2570896d",
+      "tests/fixtures/dkb/3.txt": "6ab36ef1704b5fad828af4a3931badb2065276f98237d3c816148333d9de8710",
+      "tests/fixtures/dkb/4.txt": "866dcabe7c2ef04f32182b29ed21b93d880f13198179ba59ae202ece6850f6e4",
+      "tests/fixtures/dkb/5.txt": "fd6f7d9a41af19969f8593bc846407f25ba2fd93d72724607339c7e45633e70b",
+      "tests/fixtures/dkb/6.txt": "0de72df7d31f6c3030cd63a08ca0e53fdfdc542fd723173f5132d87d11e08312",
+      "tests/fixtures/dkb/7.txt": "47dece9ea003363a7b2d63acdf795206d57b263ebb1c63dd358c7b839547905d",
+      "tests/fixtures/dkb/8.txt": "eea3b3e780c848faa6cb6da425c1ab525354002077b601df65403f9db0bef8cd",
+      "tests/fixtures/dkb/9.txt": "2c08d99d157de8455179373fa7fe22f4768f921d1fdea59995962decddd43e2d",
+      "tests/fixtures/dkb/README.md": "605148a3c21ad035fb1e66577cee339c6ebefb709a8151d02c45a7cf724d79e2",
+      "tests/fixtures/dkb/manifest.json": "8693cd751b6980b3b23010727ecfd467aad6f473c2913120ae47b3824a7adf18",
+      "tests/fixtures/ner-model-limitations.json": "21e7cb9ad483a5ab4b16141c48f7a76f61e15f7615a69d7d28e0d4f605f2cc7c",
+      "tests/fixtures/ner-value-repair.json": "ef3e677c2a3958333fb9fe77927877d03bbc0460f67baddaaab4b62102aa30bd",
+      "tests/load/burst_probe.py": "bb58d2aaece33a5ce28e4ce898711383a09fbe22b080a3afe14e93b50b07aef2",
+      "tests/load/cache_contract_probe.py": "6a7f30617431e306cd30588935b72d363555ec162f3088ad660f086cca37b01c",
+      "tests/load/compare_runs.py": "8b2745e543176e4f89a883046cbe1c7ceb6f2cd60b5e186535a66bee2df3cc11",
+      "tests/load/docker-compose.yml": "b6e8c30e7f872ba1d6db3c58df8a4cf4916c038111051bf091c3ce94400ddd9f",
+      "tests/load/http_pool_timing.py": "98d57b8e26feb30cffcc0e086bf300465b2c3c7c65c415feb13bcc1b75b659cb",
+      "tests/load/litellm-config.yaml": "15a4ebf99df598364e40b9e2abf921a80844dfbcdfd1c2424af70075f7d570e9",
+      "tests/load/load_support.py": "08868f5be4f90a4dcdaea582b3b11294c49a83f4bf794ea222461948736c46c2",
+      "tests/load/locustfile.py": "6bc7c7f6e9cab1ac452bfe5b2f0c202372ca37e1d3f92b428c0299b19a6efeb8",
+      "tests/load/manage_keys.py": "c22e77e935b59ad5e0a6ce96d29d5ff7382f950c2bafd098e4a4fb1dff2f5688",
+      "tests/load/ner_capacity_probe.py": "a4a266f3899db4f4cb48964806473935665ad4fa2e91556ff266bce082db3406",
+      "tests/load/nginx/analyzer.conf": "ed8d548d7d7925fb136906e405eb612f3537e55b364fd3b3340c88803a771f1c",
+      "tests/load/nginx/litellm.conf": "29a1edce8d83b6acfe4cc7208b5991b19e65482a0660447745cbb619c15cded4",
+      "tests/load/resilience_checks.py": "89b680020df67cd8c7322336aacbb2646fca0c90da7185797c69245fef9eb5f8",
+      "tests/load/run.sh": "1b9504523727e936fc2b98566a77a39ee81f590ffd14b5a6f48826c294301863",
+      "tests/load/run_matrix.sh": "063cfd7e091a0f37c1141ffa97c34474df3414e2da45b78b05dd042e33c8ca75",
+      "tests/load/sample_metrics.py": "0923c7c1a1eef14557ba45dc54c91f1529747e8a128efc1ea5be0e3e5fa1487c",
+      "tests/load/stateful_checks.py": "f85691a28e49f06e35b443480163b635a9aec5e51b907d23d48b394590f423ad",
+      "tests/load/summarize_run.py": "a3c5dea2f8a26a6bbc45c01b3740134f1947e27c76537ca20079da7772d17e31",
+      "tests/requirements-guardrails.txt": "9523f4feb3239e1c913694b1f78e28ce44473f1cb59334bcb4d96e4740771d55",
+      "tests/test_admin_auth_rbac_docs.py": "6317ce6c7f0566db766becdcb542efac5201e6f15d33ae50c50bba3d70968afb",
+      "tests/test_air_gapped_config.py": "8bc652d03e5b8d85c32543463a7a7cf8fa9f2889fe4876f6be709aca87559fcb",
+      "tests/test_analyzer_capacity_config.py": "7b12634879151865ba20488c3978ea60521e2d96ce8bee106ea1e168dfe8add6",
+      "tests/test_analyzer_image_contract.py": "0feadb24c14b3d2334b18094a6f29d2704b59b7e76940dfa72cc7e5147e1c260",
+      "tests/test_analyzer_telemetry_config.py": "50ea26e85591836890cde7818a221d13298bde7a28b0d24fce4d6d79d25707e5",
+      "tests/test_burst_probe.py": "f3b6171e2a3dbc1e94487592d86be5905e98a79fee98231557171f5968ddcd76",
+      "tests/test_codex_lb_compose_config.py": "d548f705472a98894abf64961bb177e029abcc5baf1db01556c47e1ab1805f47",
+      "tests/test_codex_lb_litellm_config.py": "0537e59b1a3dd671af9aa024b5c79228433c604207c8cf50ab73261dcd984fe8",
+      "tests/test_compliance_gate_config.py": "f35592aa4e4fd66d28c35cd62f6a1c7d03301062c654164eaca93d51c224d1f4",
+      "tests/test_configuration_docs.py": "32c77c9d021fcbe6ebec2a3313da5be30fd5ba24f6aa7bd662cf14b37d01abef",
+      "tests/test_controlled_sse.py": "a92ac9b22e0771f9d16cd0e396333fe9335b502603c02d826ebe1bcd8299108a",
+      "tests/test_deployment_topologies.py": "f2be0feb12f286f47da6b85c33db659ee1fe6ab7af51589d984dc8b6a0e604a1",
+      "tests/test_dictionary_substitution_config.py": "fc11063733d2eadcb65ced511e8347c367af821018c2356fc944f455ea517680",
+      "tests/test_final_payload_leak_check_config.py": "08de3922612661cd5f7bbed78820573f3b61884c025e96d55afa00aebe83fe25",
+      "tests/test_guardrail_dependency_config.py": "340022734107f78086a56d1f0d3856799959f6be400029e607fc64dbbccd5d61",
+      "tests/test_guardrail_entity_contract.py": "f5c4810aba06a646b8a3d74f057da21117de1c0eb7fa618f7529a203fccfc4b6",
+      "tests/test_http_pool_timing.py": "9fbb86752230235c7fc803c6ea354003ef757e7b17c3e23d2d2c1165eac5ddc3",
+      "tests/test_litellm_ca_image.sh": "7ed46a2d7d7058cd8f9a0492b4aa7f010c8719ef18cc2aad156073c921b63fda",
+      "tests/test_load_compose_config.py": "51f64e0610808f1522f90422dbfd75c81c6afd2e7a6fb7d3de395b18531cbcb7",
+      "tests/test_load_profile.py": "96302e4c48b7aa315bb0e50ba3b84d243cf75df46c5025934a288319ca7a2d03",
+      "tests/test_long_context_benchmark.py": "1f1760f4c7a2893a1e75ba9f5004ed9e61bb9b8a5307a00eac395f3e629247e4",
+      "tests/test_makefile_guardrails_smoke.py": "6811e9040ec2dfc0fdf7e7b06f557ccc2b45b50e5c937eb66678efde0b41cf48",
+      "tests/test_makefile_routing_smoke.py": "8d7c61ea5154967902be36fd6a9ea74680f1e8f8a1ae476b66ab035664261bd3",
+      "tests/test_model_profile_config.py": "5eece43b6107d2bdc99f9bb90a60b035e07b0c8c503f3b3bdaaaa96a0488c5f3",
+      "tests/test_ner_capacity_probe.py": "e2f2cf9aec90f8c2d1ea05246ba2a2401843a17ed6ee29efd30afb7ae0f462fc",
+      "tests/test_ner_integration_config.py": "4e5430c381379070337f2129c470621bce96f8e37bc21398fc978a3d01c83fa7",
+      "tests/test_ner_test_harness.py": "afdb4e72c16231586ca5d2a6313b1338c252c8333431b2d397c12493b6225a09",
+      "tests/test_nonstream_disconnect_config.py": "7a040b21218d4dd818396cafe18288d83bcee7df160cd3823584d4f487fff717",
+      "tests/test_pre_egress_policy_config.py": "7ada399967837e1995d2f1cd7e49c6953d0354236897da13b7da35a45f4cfca0",
+      "tests/test_production_egress_controls_docs.py": "b42d3c25c812ee1b01a018ffc8346d34a953e22c6e63c7f0e6f5b83e5634f1c6",
+      "tests/test_recognizer_calibration_config.py": "88e9369a1f4da917a502ce845a2042501e352b86e690ed140c0c80090eab06e5",
+      "tests/test_regulated_topic_policy_config.py": "61565cfba6196f2e39d7395bffa6d355a24447f5674c3e6a0978136b7d5c7545",
+      "tests/test_repository_status_docs.py": "1a63f44fba7e79b418006c821dbc89a29d36930e73ea4623bff1eda6cc859781",
+      "tests/test_stack_lifecycle.py": "783ba5d8e362b92250f5ac1246f2d80455be95e25cfd3d9f03587ceff944df6a",
+      "tests/test_synthetic_pii_allowlist_config.py": "96cb8bf23e71cc0082c6adce051003ae53d51fee46609c349bb11942f76c443f",
+      "tests/test_zcode_client_docs.py": "9e3b81de87e5ed4f79f55cf17478c31a7b589d71fd989eed5a4231c3bfdf2723"
+    }
+  },
+  "images": {
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5",
+    "presidio-analyzer": "sha256:e2d5865a02760fd846d2d777317c250dec2c571927aa3bd0ac8acb74b7ce6346",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "codex-lb": "sha256:2ed6e2fd172a958c762707cd9f74faf427f048c6af23e23a3849aa73006b6c82"
+  },
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "host_cpu_count": 32,
+  "host_memory_bytes": 67417702400,
+  "reference_artifact_sha256": "8ba5d9ac6f803ac2bef65e21610e4a6a3f1c800020237bf9d9707d86cc71ea8b",
+  "raw_artifact_hashes": {
+    "results.json": "78a43172838c6f154b2bd8a0528fb2366268bccd46743dff67e2ac02153d3778",
+    "telemetry.jsonl": "eabe8cae751bd8c25d37910d797fbbf1061cbe718c7fd4974e43e1a1f15b9e8c"
+  },
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "external_provider_calls": 0,
+  "production_profile_accepted": false,
+  "startup_observation_remains_open": true,
+  "cache_events_are_not_disjoint": true,
+  "sizes_are_not_external_llm_tokens": true,
+  "variants": {
+    "A": {
+      "c": 2,
+      "i": 2,
+      "b": 4,
+      "h": 20
+    },
+    "B": {
+      "c": 1,
+      "i": 4,
+      "b": 4,
+      "h": 20
+    }
+  },
+  "active_payload_guards": {
+    "requests": 96,
+    "units": 4000000,
+    "bytes": 67108864
+  },
+  "stability_rule": "no errors/not-started; last unfinished <= first + max(5,5% offered); separate from 60s SLO",
+  "long_rate": null,
+  "rate_stops": [
+    {
+      "variant": "A",
+      "scenario": "N",
+      "rate": 2,
+      "reason": "failed_stability_rule_no_further_increase"
+    }
+  ],
+  "series": [
+    {
+      "name": "steady-screen-A-N-0.5-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "N",
+      "rate": 0.5,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 0,
+        "seconds": 1.258301199413836e-05,
+        "batches": []
+      },
+      "cache_entries_cleared": 9,
+      "cache_events": {
+        "hit": 0.0,
+        "miss": 120.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 4208776.0,
+      "ner_windows": 13258.0,
+      "provider_requests": 120,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 1.4919250509992708,
+      "client": {
+        "offered": 120,
+        "started": 120,
+        "successful": 120,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 120,
+        "successful_sse_within_60_seconds": 120,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 120
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 30,
+            "completed_in_minute": 24,
+            "unfinished_at_end": 6
+          },
+          {
+            "start_seconds": 60,
+            "offered": 30,
+            "completed_in_minute": 31,
+            "unfinished_at_end": 5
+          },
+          {
+            "start_seconds": 120,
+            "offered": 30,
+            "completed_in_minute": 30,
+            "unfinished_at_end": 5
+          },
+          {
+            "start_seconds": 180,
+            "offered": 30,
+            "completed_in_minute": 29,
+            "unfinished_at_end": 6
+          }
+        ],
+        "arrival_rate": 0.5,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 257.10623502700764,
+        "maximum_active": 7,
+        "maximum_active_units": 272000,
+        "maximum_active_bytes": 4460924,
+        "planned": 120,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 12.747,
+          "p95": 19.953,
+          "p99": 20.237
+        },
+        "restored_first_text_from_send": {
+          "p50": 12.731,
+          "p95": 19.935,
+          "p99": 20.221
+        },
+        "max_start_delay_seconds": 0.03978682399610989,
+        "actual_distinct_owners": 30,
+        "actual_distinct_dialogue_slots": 120,
+        "offered_by_kind": {
+          "fresh": 120
+        },
+        "completed_by_api": {
+          "chat": 60,
+          "responses": 60
+        },
+        "retry_after_seconds": {},
+        "offered_units": 3600000,
+        "started_utf8_bytes": 59036380,
+        "ordered_payload_fingerprints_sha256": "70055b3ad93f582e7877f605d85dfc0423ca5aafbad108f22b8ae5f00df854c1",
+        "outcomes_by_kind": {
+          "fresh": {
+            "offered": 120,
+            "started": 120,
+            "successful": 120,
+            "timely_from_due": 120
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 103,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 7.828217841669518,
+        "average_iowait_fraction": 0.00010834381265528772,
+        "average_steal_fraction": 1.339080830570972e-05,
+        "observed_peak": {
+          "busy_cores": 9.043026127648512,
+          "busy_percent": 28.259456648901597,
+          "interval_seconds": 2.4079111669998383
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.206122356990818,
+          "median": 2.4801746779994573,
+          "maximum": 2.813226514001144
+        }
+      },
+      "memory": {
+        "samples": 104,
+        "minimum_host_available_bytes": 46790004736,
+        "maximum_sampled_container_sum_bytes": 18766118912,
+        "container_rows": 4576,
+        "rows_with_memory_stat": 4576,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190050304,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183525376,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 418598912,
+            "maximum_kernel_peak_bytes": 422830080,
+            "maximum_sampled_anon_bytes": 412790784,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 37793792,
+            "maximum_kernel_peak_bytes": 44027904,
+            "maximum_sampled_anon_bytes": 22347776,
+            "maximum_sampled_file_bytes": 9453568,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 102391808,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 40734720,
+            "maximum_sampled_file_bytes": 51597312,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 153055232,
+            "maximum_kernel_peak_bytes": 173219840,
+            "maximum_sampled_anon_bytes": 32034816,
+            "maximum_sampled_file_bytes": 110669824,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 6979584,
+            "maximum_kernel_peak_bytes": 15683584,
+            "maximum_sampled_anon_bytes": 4706304,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 883990528,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 814161920,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 28327936,
+            "maximum_kernel_peak_bytes": 29945856,
+            "maximum_sampled_anon_bytes": 26693632,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 632262656,
+            "maximum_kernel_peak_bytes": 633626624,
+            "maximum_sampled_anon_bytes": 628367360,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 104,
+        "maximum_total_active_fields": 7.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 104,
+        "queue_unavailable_node_samples": 2,
+        "queue_available_node_samples": 2494,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-N-1-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "N",
+      "rate": 1,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 0,
+        "seconds": 1.5126002836041152e-05,
+        "batches": []
+      },
+      "cache_entries_cleared": 120,
+      "cache_events": {
+        "hit": 0.0,
+        "miss": 240.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 8492118.0,
+      "ner_windows": 26670.0,
+      "provider_requests": 240,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 3.087628951994702,
+      "client": {
+        "offered": 240,
+        "started": 240,
+        "successful": 240,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 240,
+        "successful_sse_within_60_seconds": 240,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 240
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 60,
+            "completed_in_minute": 46,
+            "unfinished_at_end": 14
+          },
+          {
+            "start_seconds": 60,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 14
+          },
+          {
+            "start_seconds": 120,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 14
+          },
+          {
+            "start_seconds": 180,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 14
+          }
+        ],
+        "arrival_rate": 1,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 259.4435602109879,
+        "maximum_active": 15,
+        "maximum_active_units": 618000,
+        "maximum_active_bytes": 10135573,
+        "planned": 240,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 14.618,
+          "p95": 23.253,
+          "p99": 23.499
+        },
+        "restored_first_text_from_send": {
+          "p50": 14.599,
+          "p95": 23.233,
+          "p99": 23.467
+        },
+        "max_start_delay_seconds": 0.0368658469960792,
+        "actual_distinct_owners": 60,
+        "actual_distinct_dialogue_slots": 240,
+        "offered_by_kind": {
+          "fresh": 240
+        },
+        "completed_by_api": {
+          "chat": 120,
+          "responses": 120
+        },
+        "retry_after_seconds": {},
+        "offered_units": 7200000,
+        "started_utf8_bytes": 118072760,
+        "ordered_payload_fingerprints_sha256": "05ed805ac892b40f0a2b2c090cfcae0683f69b7e41d69d3ce59e180e8a938dcc",
+        "outcomes_by_kind": {
+          "fresh": {
+            "offered": 240,
+            "started": 240,
+            "successful": 240,
+            "timely_from_due": 240
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 90,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 14.921936517932608,
+        "average_iowait_fraction": 0.00014560107200268949,
+        "average_steal_fraction": 5.9187427643369705e-05,
+        "observed_peak": {
+          "busy_cores": 17.00508806262231,
+          "busy_percent": 53.14090019569472,
+          "interval_seconds": 3.197266826988198
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.2885162780003157,
+          "median": 2.9709951214972534,
+          "maximum": 3.7569669989898102
+        }
+      },
+      "memory": {
+        "samples": 91,
+        "minimum_host_available_bytes": 46359642112,
+        "maximum_sampled_container_sum_bytes": 19181641728,
+        "container_rows": 4004,
+        "rows_with_memory_stat": 4004,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190070784,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183521280,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 423657472,
+            "maximum_kernel_peak_bytes": 425758720,
+            "maximum_sampled_anon_bytes": 417738752,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 51896320,
+            "maximum_kernel_peak_bytes": 55779328,
+            "maximum_sampled_anon_bytes": 26238976,
+            "maximum_sampled_file_bytes": 19709952,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 100777984,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 39481344,
+            "maximum_sampled_file_bytes": 51687424,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 164704256,
+            "maximum_kernel_peak_bytes": 173219840,
+            "maximum_sampled_anon_bytes": 42377216,
+            "maximum_sampled_file_bytes": 112111616,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 10448896,
+            "maximum_kernel_peak_bytes": 15683584,
+            "maximum_sampled_anon_bytes": 8110080,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 913346560,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 843599872,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 28258304,
+            "maximum_kernel_peak_bytes": 29945856,
+            "maximum_sampled_anon_bytes": 26714112,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 632934400,
+            "maximum_kernel_peak_bytes": 633831424,
+            "maximum_sampled_anon_bytes": 628850688,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 91,
+        "maximum_total_active_fields": 14.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 91,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2184,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-N-2-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "N",
+      "rate": 2,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 0,
+        "seconds": 8.257993613369763e-06,
+        "batches": []
+      },
+      "cache_entries_cleared": 240,
+      "cache_events": {
+        "hit": 0.0,
+        "miss": 398.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 13938722.0,
+      "ner_windows": 43759.0,
+      "provider_requests": 398,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": false,
+      "drain_seconds": 3.4274236330093117,
+      "client": {
+        "offered": 480,
+        "started": 398,
+        "successful": 398,
+        "failed": 82,
+        "not_started": 82,
+        "successful_from_due_within_60": 225,
+        "successful_sse_within_60_seconds": 225,
+        "cancelled": 0,
+        "local_reasons": {
+          "active_request_cap": 82
+        },
+        "http_statuses": {
+          "200": 398,
+          "None": 82
+        },
+        "failure_classes": {
+          "": 82
+        },
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 120,
+            "completed_in_minute": 59,
+            "unfinished_at_end": 61
+          },
+          {
+            "start_seconds": 60,
+            "offered": 120,
+            "completed_in_minute": 84,
+            "unfinished_at_end": 94
+          },
+          {
+            "start_seconds": 120,
+            "offered": 120,
+            "completed_in_minute": 76,
+            "unfinished_at_end": 96
+          },
+          {
+            "start_seconds": 180,
+            "offered": 120,
+            "completed_in_minute": 83,
+            "unfinished_at_end": 96
+          }
+        ],
+        "arrival_rate": 2,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 308.4431697920081,
+        "maximum_active": 96,
+        "maximum_active_units": 3354000,
+        "maximum_active_bytes": 55004888,
+        "planned": 480,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 54.075,
+          "p95": 91.94,
+          "p99": 100.925
+        },
+        "restored_first_text_from_send": {
+          "p50": 54.068,
+          "p95": 91.904,
+          "p99": 100.876
+        },
+        "max_start_delay_seconds": 0.05853997899976093,
+        "actual_distinct_owners": 63,
+        "actual_distinct_dialogue_slots": 245,
+        "offered_by_kind": {
+          "fresh": 480
+        },
+        "completed_by_api": {
+          "chat": 200,
+          "responses": 198
+        },
+        "retry_after_seconds": {},
+        "offered_units": 14400000,
+        "started_utf8_bytes": 193605614,
+        "ordered_payload_fingerprints_sha256": "a1a837ee25328ac699f72f81079c72c2bbd378e22f2fffd6224a0cb45ca20d19",
+        "outcomes_by_kind": {
+          "fresh": {
+            "offered": 480,
+            "started": 398,
+            "successful": 398,
+            "timely_from_due": 225
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 96,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 29.19963583766872,
+        "average_iowait_fraction": 4.516897714349381e-05,
+        "average_steal_fraction": 0.0015658578743077854,
+        "observed_peak": {
+          "busy_cores": 31.825649622799666,
+          "busy_percent": 99.45515507124895,
+          "interval_seconds": 2.9854695059912046
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.3405834309960483,
+          "median": 3.2662658955014194,
+          "maximum": 4.403122338000685
+        }
+      },
+      "memory": {
+        "samples": 97,
+        "minimum_host_available_bytes": 43373522944,
+        "maximum_sampled_container_sum_bytes": 22070099968,
+        "container_rows": 4268,
+        "rows_with_memory_stat": 4268,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190103552,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183808000,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 485453824,
+            "maximum_kernel_peak_bytes": 488833024,
+            "maximum_sampled_anon_bytes": 479834112,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 120770560,
+            "maximum_kernel_peak_bytes": 126242816,
+            "maximum_sampled_anon_bytes": 29253632,
+            "maximum_sampled_file_bytes": 83304448,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 105873408,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 42840064,
+            "maximum_sampled_file_bytes": 51744768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 181649408,
+            "maximum_kernel_peak_bytes": 186830848,
+            "maximum_sampled_anon_bytes": 57430016,
+            "maximum_sampled_file_bytes": 113905664,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 10285056,
+            "maximum_kernel_peak_bytes": 15683584,
+            "maximum_sampled_anon_bytes": 7839744,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 999432192,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 929521664,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 29937664,
+            "maximum_kernel_peak_bytes": 31002624,
+            "maximum_sampled_anon_bytes": 27987968,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 814731264,
+            "maximum_kernel_peak_bytes": 818905088,
+            "maximum_sampled_anon_bytes": 810491904,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 97,
+        "maximum_total_active_fields": 42.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 97,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2328,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-H-0.5-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "H",
+      "rate": 0.5,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 120,
+        "seconds": 256.0520383109979,
+        "batches": [
+          "prefill-steady-screen-A-H-0.5-r0-0",
+          "prefill-steady-screen-A-H-0.5-r0-1",
+          "prefill-steady-screen-A-H-0.5-r0-2",
+          "prefill-steady-screen-A-H-0.5-r0-3",
+          "prefill-steady-screen-A-H-0.5-r0-4",
+          "prefill-steady-screen-A-H-0.5-r0-5",
+          "prefill-steady-screen-A-H-0.5-r0-6",
+          "prefill-steady-screen-A-H-0.5-r0-7"
+        ]
+      },
+      "cache_entries_cleared": 398,
+      "cache_events": {
+        "hit": 360.0,
+        "miss": 120.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 1015111.0,
+      "ner_windows": 3176.0,
+      "provider_requests": 120,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 3.5203449459950207,
+      "client": {
+        "offered": 120,
+        "started": 120,
+        "successful": 120,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 120,
+        "successful_sse_within_60_seconds": 120,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 120
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 30,
+            "completed_in_minute": 29,
+            "unfinished_at_end": 1
+          },
+          {
+            "start_seconds": 60,
+            "offered": 30,
+            "completed_in_minute": 30,
+            "unfinished_at_end": 1
+          },
+          {
+            "start_seconds": 120,
+            "offered": 30,
+            "completed_in_minute": 30,
+            "unfinished_at_end": 1
+          },
+          {
+            "start_seconds": 180,
+            "offered": 30,
+            "completed_in_minute": 30,
+            "unfinished_at_end": 1
+          }
+        ],
+        "arrival_rate": 0.5,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 242.74777143698884,
+        "maximum_active": 2,
+        "maximum_active_units": 82002,
+        "maximum_active_bytes": 1343726,
+        "planned": 120,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 2.998,
+          "p95": 4.775,
+          "p99": 4.822
+        },
+        "restored_first_text_from_send": {
+          "p50": 2.983,
+          "p95": 4.761,
+          "p99": 4.799
+        },
+        "max_start_delay_seconds": 0.031154193988186307,
+        "actual_distinct_owners": 30,
+        "actual_distinct_dialogue_slots": 120,
+        "offered_by_kind": {
+          "history": 120
+        },
+        "completed_by_api": {
+          "chat": 60,
+          "responses": 60
+        },
+        "retry_after_seconds": {},
+        "offered_units": 3600120,
+        "started_utf8_bytes": 59001560,
+        "ordered_payload_fingerprints_sha256": "76f6c702534958bdd88328f1f28cdaa3e93a904ecad72e33c90b22f921d278aa",
+        "outcomes_by_kind": {
+          "history": {
+            "offered": 120,
+            "started": 120,
+            "successful": 120,
+            "timely_from_due": 120
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 104,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 3.6076494983141107,
+        "average_iowait_fraction": 0.00014155346640209345,
+        "average_steal_fraction": 4.973500170884365e-05,
+        "observed_peak": {
+          "busy_cores": 4.067033114358493,
+          "busy_percent": 12.70947848237029,
+          "interval_seconds": 2.3353223470039666
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.2912837129988475,
+          "median": 2.3358411730077933,
+          "maximum": 3.535197478006012
+        }
+      },
+      "memory": {
+        "samples": 105,
+        "minimum_host_available_bytes": 43125059584,
+        "maximum_sampled_container_sum_bytes": 22254059520,
+        "container_rows": 4620,
+        "rows_with_memory_stat": 4620,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190279680,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183812096,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 507731968,
+            "maximum_kernel_peak_bytes": 508874752,
+            "maximum_sampled_anon_bytes": 493801472,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 35672064,
+            "maximum_kernel_peak_bytes": 126242816,
+            "maximum_sampled_anon_bytes": 26042368,
+            "maximum_sampled_file_bytes": 2736128,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 102703104,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 41082880,
+            "maximum_sampled_file_bytes": 51916800,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 187109376,
+            "maximum_kernel_peak_bytes": 192815104,
+            "maximum_sampled_anon_bytes": 61730816,
+            "maximum_sampled_file_bytes": 114909184,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 21585920,
+            "maximum_kernel_peak_bytes": 27623424,
+            "maximum_sampled_anon_bytes": 20099072,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 1005768704,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 935821312,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 29966336,
+            "maximum_kernel_peak_bytes": 31002624,
+            "maximum_sampled_anon_bytes": 28004352,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 818786304,
+            "maximum_kernel_peak_bytes": 819441664,
+            "maximum_sampled_anon_bytes": 814080000,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 105,
+        "maximum_total_active_fields": 2.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 105,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2520,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-H-1-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "H",
+      "rate": 1,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 240,
+        "seconds": 493.3574709099921,
+        "batches": [
+          "prefill-steady-screen-A-H-1-r0-0",
+          "prefill-steady-screen-A-H-1-r0-1",
+          "prefill-steady-screen-A-H-1-r0-2",
+          "prefill-steady-screen-A-H-1-r0-3",
+          "prefill-steady-screen-A-H-1-r0-4",
+          "prefill-steady-screen-A-H-1-r0-5",
+          "prefill-steady-screen-A-H-1-r0-6",
+          "prefill-steady-screen-A-H-1-r0-7",
+          "prefill-steady-screen-A-H-1-r0-8",
+          "prefill-steady-screen-A-H-1-r0-9",
+          "prefill-steady-screen-A-H-1-r0-10",
+          "prefill-steady-screen-A-H-1-r0-11",
+          "prefill-steady-screen-A-H-1-r0-12",
+          "prefill-steady-screen-A-H-1-r0-13",
+          "prefill-steady-screen-A-H-1-r0-14"
+        ]
+      },
+      "cache_entries_cleared": 540,
+      "cache_events": {
+        "hit": 720.0,
+        "miss": 240.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 2025130.0,
+      "ner_windows": 6337.0,
+      "provider_requests": 240,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 3.650441652003792,
+      "client": {
+        "offered": 240,
+        "started": 240,
+        "successful": 240,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 240,
+        "successful_sse_within_60_seconds": 240,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 240
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 60,
+            "completed_in_minute": 57,
+            "unfinished_at_end": 3
+          },
+          {
+            "start_seconds": 60,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 3
+          },
+          {
+            "start_seconds": 120,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 3
+          },
+          {
+            "start_seconds": 180,
+            "offered": 60,
+            "completed_in_minute": 60,
+            "unfinished_at_end": 3
+          }
+        ],
+        "arrival_rate": 1,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 243.64110306899238,
+        "maximum_active": 5,
+        "maximum_active_units": 172005,
+        "maximum_active_bytes": 2818741,
+        "planned": 240,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 3.08,
+          "p95": 4.894,
+          "p99": 4.96
+        },
+        "restored_first_text_from_send": {
+          "p50": 3.071,
+          "p95": 4.879,
+          "p99": 4.94
+        },
+        "max_start_delay_seconds": 0.029203507001511753,
+        "actual_distinct_owners": 60,
+        "actual_distinct_dialogue_slots": 240,
+        "offered_by_kind": {
+          "history": 240
+        },
+        "completed_by_api": {
+          "chat": 120,
+          "responses": 120
+        },
+        "retry_after_seconds": {},
+        "offered_units": 7200240,
+        "started_utf8_bytes": 118003120,
+        "ordered_payload_fingerprints_sha256": "490905daf3e2934c67a283a38ae48bdc2ce14239e651ddfd645bf2804d6c856f",
+        "outcomes_by_kind": {
+          "history": {
+            "offered": 240,
+            "started": 240,
+            "successful": 240,
+            "timely_from_due": 240
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 103,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 5.064810926470294,
+        "average_iowait_fraction": 0.00010373547703321535,
+        "average_steal_fraction": 9.998600195972564e-06,
+        "observed_peak": {
+          "busy_cores": 5.846600660066007,
+          "busy_percent": 18.27062706270627,
+          "interval_seconds": 2.3695308000023942
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.2980791500012856,
+          "median": 2.408835462993011,
+          "maximum": 3.5168641149939504
+        }
+      },
+      "memory": {
+        "samples": 104,
+        "minimum_host_available_bytes": 42843238400,
+        "maximum_sampled_container_sum_bytes": 22356500480,
+        "container_rows": 4576,
+        "rows_with_memory_stat": 4576,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190353408,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183525376,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 502104064,
+            "maximum_kernel_peak_bytes": 508874752,
+            "maximum_sampled_anon_bytes": 495910912,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 33775616,
+            "maximum_kernel_peak_bytes": 126242816,
+            "maximum_sampled_anon_bytes": 22851584,
+            "maximum_sampled_file_bytes": 4124672,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 99241984,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 37273600,
+            "maximum_sampled_file_bytes": 52064256,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 194433024,
+            "maximum_kernel_peak_bytes": 197885952,
+            "maximum_sampled_anon_bytes": 66949120,
+            "maximum_sampled_file_bytes": 116899840,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 47685632,
+            "maximum_kernel_peak_bytes": 53284864,
+            "maximum_sampled_anon_bytes": 46018560,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 1006268416,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 936353792,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 29679616,
+            "maximum_kernel_peak_bytes": 31035392,
+            "maximum_sampled_anon_bytes": 28037120,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 818208768,
+            "maximum_kernel_peak_bytes": 819625984,
+            "maximum_sampled_anon_bytes": 813936640,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 104,
+        "maximum_total_active_fields": 4.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 104,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2496,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-H-2-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "H",
+      "rate": 2,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 256,
+        "seconds": 544.2459940539993,
+        "batches": [
+          "prefill-steady-screen-A-H-2-r0-0",
+          "prefill-steady-screen-A-H-2-r0-1",
+          "prefill-steady-screen-A-H-2-r0-2",
+          "prefill-steady-screen-A-H-2-r0-3",
+          "prefill-steady-screen-A-H-2-r0-4",
+          "prefill-steady-screen-A-H-2-r0-5",
+          "prefill-steady-screen-A-H-2-r0-6",
+          "prefill-steady-screen-A-H-2-r0-7",
+          "prefill-steady-screen-A-H-2-r0-8",
+          "prefill-steady-screen-A-H-2-r0-9",
+          "prefill-steady-screen-A-H-2-r0-10",
+          "prefill-steady-screen-A-H-2-r0-11",
+          "prefill-steady-screen-A-H-2-r0-12",
+          "prefill-steady-screen-A-H-2-r0-13",
+          "prefill-steady-screen-A-H-2-r0-14",
+          "prefill-steady-screen-A-H-2-r0-15"
+        ]
+      },
+      "cache_entries_cleared": 1080,
+      "cache_events": {
+        "hit": 1440.0,
+        "miss": 480.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 4037902.0,
+      "ner_windows": 12637.0,
+      "provider_requests": 480,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 3.9141827410057886,
+      "client": {
+        "offered": 480,
+        "started": 480,
+        "successful": 480,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 480,
+        "successful_sse_within_60_seconds": 480,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 480
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 120,
+            "completed_in_minute": 115,
+            "unfinished_at_end": 5
+          },
+          {
+            "start_seconds": 60,
+            "offered": 120,
+            "completed_in_minute": 119,
+            "unfinished_at_end": 6
+          },
+          {
+            "start_seconds": 120,
+            "offered": 120,
+            "completed_in_minute": 121,
+            "unfinished_at_end": 5
+          },
+          {
+            "start_seconds": 180,
+            "offered": 120,
+            "completed_in_minute": 120,
+            "unfinished_at_end": 5
+          }
+        ],
+        "arrival_rate": 2,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 243.43420745700132,
+        "maximum_active": 7,
+        "maximum_active_units": 296007,
+        "maximum_active_bytes": 4850415,
+        "planned": 480,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 3.227,
+          "p95": 5.089,
+          "p99": 5.173
+        },
+        "restored_first_text_from_send": {
+          "p50": 3.216,
+          "p95": 5.071,
+          "p99": 5.145
+        },
+        "max_start_delay_seconds": 0.0332002680079313,
+        "actual_distinct_owners": 64,
+        "actual_distinct_dialogue_slots": 256,
+        "offered_by_kind": {
+          "history": 480
+        },
+        "completed_by_api": {
+          "chat": 240,
+          "responses": 240
+        },
+        "retry_after_seconds": {},
+        "offered_units": 14358480,
+        "started_utf8_bytes": 235318244,
+        "ordered_payload_fingerprints_sha256": "233b7a121c33f6ba3925cdb3594843143ff61052dba7a853d8467eaa590f765e",
+        "outcomes_by_kind": {
+          "history": {
+            "offered": 480,
+            "started": 480,
+            "successful": 480,
+            "timely_from_due": 480
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 98,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 8.169548450207872,
+        "average_iowait_fraction": 0.00012541307933004332,
+        "average_steal_fraction": 1.3795438726304766e-05,
+        "observed_peak": {
+          "busy_cores": 8.74714403486044,
+          "busy_percent": 27.334825108938876,
+          "interval_seconds": 2.6544252970052185
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.328633793993504,
+          "median": 2.521342727501178,
+          "maximum": 3.6349284289899515
+        }
+      },
+      "memory": {
+        "samples": 99,
+        "minimum_host_available_bytes": 42645712896,
+        "maximum_sampled_container_sum_bytes": 22483943424,
+        "container_rows": 4356,
+        "rows_with_memory_stat": 4356,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190316544,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183808000,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 502472704,
+            "maximum_kernel_peak_bytes": 508874752,
+            "maximum_sampled_anon_bytes": 496713728,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 36945920,
+            "maximum_kernel_peak_bytes": 126242816,
+            "maximum_sampled_anon_bytes": 23068672,
+            "maximum_sampled_file_bytes": 6672384,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 105934848,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 43352064,
+            "maximum_sampled_file_bytes": 52277248,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 200740864,
+            "maximum_kernel_peak_bytes": 206397440,
+            "maximum_sampled_anon_bytes": 70455296,
+            "maximum_sampled_file_bytes": 119803904,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 85876736,
+            "maximum_kernel_peak_bytes": 91734016,
+            "maximum_sampled_anon_bytes": 84230144,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 1007603712,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 937463808,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 30461952,
+            "maximum_kernel_peak_bytes": 31068160,
+            "maximum_sampled_anon_bytes": 28733440,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 818716672,
+            "maximum_kernel_peak_bytes": 819625984,
+            "maximum_sampled_anon_bytes": 814075904,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 99,
+        "maximum_total_active_fields": 7.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 99,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2376,
+        "triton_statistics_errors": {}
+      }
+    },
+    {
+      "name": "steady-screen-A-H-4-r0",
+      "phase": "screen",
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "scenario": "H",
+      "rate": 4,
+      "repeat": 0,
+      "status": "completed",
+      "prefill": {
+        "requests": 256,
+        "seconds": 565.0250219400041,
+        "batches": [
+          "prefill-steady-screen-A-H-4-r0-0",
+          "prefill-steady-screen-A-H-4-r0-1",
+          "prefill-steady-screen-A-H-4-r0-2",
+          "prefill-steady-screen-A-H-4-r0-3",
+          "prefill-steady-screen-A-H-4-r0-4",
+          "prefill-steady-screen-A-H-4-r0-5",
+          "prefill-steady-screen-A-H-4-r0-6",
+          "prefill-steady-screen-A-H-4-r0-7",
+          "prefill-steady-screen-A-H-4-r0-8",
+          "prefill-steady-screen-A-H-4-r0-9",
+          "prefill-steady-screen-A-H-4-r0-10",
+          "prefill-steady-screen-A-H-4-r0-11",
+          "prefill-steady-screen-A-H-4-r0-12",
+          "prefill-steady-screen-A-H-4-r0-13",
+          "prefill-steady-screen-A-H-4-r0-14",
+          "prefill-steady-screen-A-H-4-r0-15"
+        ]
+      },
+      "cache_entries_cleared": 1376,
+      "cache_events": {
+        "hit": 2880.0,
+        "miss": 960.0,
+        "coalesced": 0.0
+      },
+      "ner_tokens": 8079477.0,
+      "ner_windows": 25282.0,
+      "provider_requests": 960,
+      "raw_marker_seen": false,
+      "nginx": {
+        "no live upstreams": 0,
+        "temporarily disabled": 0,
+        "upstream timed out": 0
+      },
+      "stable": true,
+      "drain_seconds": 3.849503787001595,
+      "client": {
+        "offered": 960,
+        "started": 960,
+        "successful": 960,
+        "failed": 0,
+        "not_started": 0,
+        "successful_from_due_within_60": 960,
+        "successful_sse_within_60_seconds": 960,
+        "cancelled": 0,
+        "local_reasons": {},
+        "http_statuses": {
+          "200": 960
+        },
+        "failure_classes": {},
+        "error_reasons": {},
+        "bins": [
+          {
+            "start_seconds": 0,
+            "offered": 240,
+            "completed_in_minute": 226,
+            "unfinished_at_end": 14
+          },
+          {
+            "start_seconds": 60,
+            "offered": 240,
+            "completed_in_minute": 239,
+            "unfinished_at_end": 15
+          },
+          {
+            "start_seconds": 120,
+            "offered": 240,
+            "completed_in_minute": 241,
+            "unfinished_at_end": 14
+          },
+          {
+            "start_seconds": 180,
+            "offered": 240,
+            "completed_in_minute": 239,
+            "unfinished_at_end": 15
+          }
+        ],
+        "arrival_rate": 4,
+        "arrival_duration_seconds": 240,
+        "elapsed_seconds": 244.9196725640213,
+        "maximum_active": 18,
+        "maximum_active_units": 682017,
+        "maximum_active_bytes": 11175845,
+        "planned": 960,
+        "new_observation": null,
+        "restored_first_text_from_due": {
+          "p50": 3.786,
+          "p95": 6.149,
+          "p99": 6.436
+        },
+        "restored_first_text_from_send": {
+          "p50": 3.769,
+          "p95": 6.12,
+          "p99": 6.403
+        },
+        "max_start_delay_seconds": 0.046376795013202354,
+        "actual_distinct_owners": 64,
+        "actual_distinct_dialogue_slots": 256,
+        "offered_by_kind": {
+          "history": 960
+        },
+        "completed_by_api": {
+          "chat": 480,
+          "responses": 480
+        },
+        "retry_after_seconds": {},
+        "offered_units": 28734960,
+        "started_utf8_bytes": 470931524,
+        "ordered_payload_fingerprints_sha256": "69a7ebd536f9986f9f0b9b6f729010773e1a3bc2d0f0837f2ad406c95dac239a",
+        "outcomes_by_kind": {
+          "history": {
+            "offered": 960,
+            "started": 960,
+            "successful": 960,
+            "timely_from_due": 960
+          }
+        }
+      },
+      "host_cpu": {
+        "valid_intervals": 84,
+        "invalid_intervals": 0,
+        "skipped_trial_boundaries": 0,
+        "average_busy_cores": 16.111070007175258,
+        "average_iowait_fraction": 0.0001713123769468162,
+        "average_steal_fraction": 0.0005586273161309223,
+        "observed_peak": {
+          "busy_cores": 17.284822389666306,
+          "busy_percent": 54.01506996770721,
+          "interval_seconds": 2.9050776079820935
+        },
+        "sample_interval_seconds": {
+          "minimum": 2.324019491992658,
+          "median": 2.973904501501238,
+          "maximum": 3.6460053580231033
+        }
+      },
+      "memory": {
+        "samples": 85,
+        "minimum_host_available_bytes": 42263965696,
+        "maximum_sampled_container_sum_bytes": 22624169984,
+        "container_rows": 3740,
+        "rows_with_memory_stat": 3740,
+        "memory_stat_errors": {},
+        "triton_statistics_errors": {},
+        "roles": {
+          "codex-lb": {
+            "maximum_sampled_current_bytes": 190115840,
+            "maximum_kernel_peak_bytes": 195727360,
+            "maximum_sampled_anon_bytes": 183525376,
+            "maximum_sampled_file_bytes": 2060288,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "presidio-analyzer": {
+            "maximum_sampled_current_bytes": 503754752,
+            "maximum_kernel_peak_bytes": 508874752,
+            "maximum_sampled_anon_bytes": 495607808,
+            "maximum_sampled_file_bytes": 0,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "nginx": {
+            "maximum_sampled_current_bytes": 47349760,
+            "maximum_kernel_peak_bytes": 126242816,
+            "maximum_sampled_anon_bytes": 26877952,
+            "maximum_sampled_file_bytes": 13897728,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "codex-lb-db": {
+            "maximum_sampled_current_bytes": 100069376,
+            "maximum_kernel_peak_bytes": 140423168,
+            "maximum_sampled_anon_bytes": 37466112,
+            "maximum_sampled_file_bytes": 52531200,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "db": {
+            "maximum_sampled_current_bytes": 221040640,
+            "maximum_kernel_peak_bytes": 224718848,
+            "maximum_sampled_anon_bytes": 85807104,
+            "maximum_sampled_file_bytes": 124899328,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "redis": {
+            "maximum_sampled_current_bytes": 152862720,
+            "maximum_kernel_peak_bytes": 158470144,
+            "maximum_sampled_anon_bytes": 150773760,
+            "maximum_sampled_file_bytes": 802816,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "litellm": {
+            "maximum_sampled_current_bytes": 1014284288,
+            "maximum_kernel_peak_bytes": 1282097152,
+            "maximum_sampled_anon_bytes": 944128000,
+            "maximum_sampled_file_bytes": 45867008,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "mock-upstream": {
+            "maximum_sampled_current_bytes": 30793728,
+            "maximum_kernel_peak_bytes": 31268864,
+            "maximum_sampled_anon_bytes": 28585984,
+            "maximum_sampled_file_bytes": 471040,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          },
+          "ner-triton": {
+            "maximum_sampled_current_bytes": 818143232,
+            "maximum_kernel_peak_bytes": 819625984,
+            "maximum_sampled_anon_bytes": 813723648,
+            "maximum_sampled_file_bytes": 32768,
+            "memory_events_maxima": {
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0
+            }
+          }
+        }
+      },
+      "analyzer_queues": {
+        "samples": 85,
+        "maximum_total_active_fields": 15.0,
+        "maximum_total_waiting_fields": 0.0,
+        "maximum_waiting_fields_per_analyzer": 0.0
+      },
+      "telemetry": {
+        "samples": 85,
+        "queue_unavailable_node_samples": 0,
+        "queue_available_node_samples": 2040,
+        "triton_statistics_errors": {}
+      }
+    }
+  ],
+  "cache_checks": [
+    {
+      "name": "cold",
+      "requests": 1,
+      "cache_events": {
+        "miss": 1.0
+      },
+      "ner_windows": 3.0
+    },
+    {
+      "name": "exact-repeat",
+      "requests": 1,
+      "cache_events": {
+        "miss": 0.0,
+        "hit": 1.0
+      },
+      "ner_windows": 0.0
+    },
+    {
+      "name": "one-character-change",
+      "requests": 1,
+      "cache_events": {
+        "miss": 1.0,
+        "hit": 0.0
+      },
+      "ner_windows": 3.0
+    },
+    {
+      "name": "other-replica",
+      "requests": 1,
+      "cache_events": {
+        "miss": 0.0,
+        "hit": 1.0
+      },
+      "ner_windows": 0.0
+    },
+    {
+      "name": "other-key",
+      "requests": 1,
+      "cache_events": {
+        "miss": 1.0,
+        "hit": 0.0
+      },
+      "ner_windows": 3.0
+    },
+    {
+      "name": "other-model",
+      "requests": 1,
+      "cache_events": {
+        "miss": 1.0,
+        "hit": 0.0
+      },
+      "ner_windows": 3.0
+    },
+    {
+      "name": "other-model-repeat",
+      "requests": 1,
+      "cache_events": {
+        "miss": 0.0,
+        "hit": 1.0
+      },
+      "ner_windows": 0.0
+    },
+    {
+      "name": "parallel-dialogues-one-key",
+      "requests": 4,
+      "cache_events": {
+        "miss": 4.0,
+        "hit": 0.0
+      },
+      "ner_windows": 12.0
+    },
+    {
+      "name": "parallel-dialogues-repeat",
+      "requests": 4,
+      "cache_events": {
+        "miss": 0.0,
+        "hit": 4.0
+      },
+      "ner_windows": 0.0
+    },
+    {
+      "name": "local-inflight-coalescing",
+      "requests": 2,
+      "cache_events": {
+        "hit": 0.0,
+        "miss": 2.0,
+        "coalesced": 1.0
+      },
+      "ner_windows": 3.0
+    }
+  ],
+  "cache_value_check": {
+    "entries": 9,
+    "values_with_source_text": 0
+  },
+  "configuration_attempts": [
+    {
+      "variant": "A",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "hold": 0,
+      "status": "ready",
+      "runtime_verified": {
+        "litellm": 2,
+        "presidio-analyzer": 24,
+        "ner-triton": 12
+      }
+    }
+  ],
+  "quality_checks": [
+    {
+      "variant": "A",
+      "density": "R6",
+      "settings": {
+        "c": 2,
+        "i": 2,
+        "b": 4,
+        "h": 20
+      },
+      "matches_control": true,
+      "cases": {
+        "person_full_name_ru": {
+          "entity_count": 1,
+          "spans_sha256": "6d21bcaa11f3b68af672aee918b1c82329f139a7590aaa137e71226d795a3534"
+        },
+        "person_label_negative": {
+          "entity_count": 0,
+          "spans_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "location_city_ru": {
+          "entity_count": 1,
+          "spans_sha256": "ba7784e3c7476eed16c2fc271383240d75e387f6ec50d7c831267dda9d8063f8"
+        },
+        "person_after_emoji": {
+          "entity_count": 1,
+          "spans_sha256": "ecd7a91c2d49e1c3b038acbff0c5945c162e5bedb52811cecd6648c372566e76"
+        },
+        "secret_key_assignment": {
+          "entity_count": 1,
+          "spans_sha256": "58bbc7feb3168ad7efbce804a14360d0babd217bf3db47d8a7b81fdbc14c86b8"
+        },
+        "contract_number_symbol_ru": {
+          "entity_count": 1,
+          "spans_sha256": "fb0d5aed0fe58e129623825c10a8809fb6ac6ce7a625f1b33e94c48e9b00ec1e"
+        },
+        "mixed_identity_and_contract": {
+          "entity_count": 4,
+          "spans_sha256": "d5127cb1dbd3967f335076f68038056af779f06934d19faf2c019c058333f64d"
+        },
+        "mixed_org_location_secrets": {
+          "entity_count": 4,
+          "spans_sha256": "3a6479f98ec3f7e7213a12abefc8f465b8e11f5819cbba7d16edb1144585ab45"
+        },
+        "long_person_full_name_ru": {
+          "entity_count": 1,
+          "spans_sha256": "82e6c621b20281a0b5a900c8e6b6fbacf4ed44b5ee463482fe62027b43fe3a8e"
+        },
+        "long_secret_key_assignment": {
+          "entity_count": 1,
+          "spans_sha256": "06afd27dfe76db295830b06c429049340bf7962f199a2c48775afc508047546a"
+        }
+      }
+    }
+  ],
+  "preload_total": {
+    "requests": 936,
+    "successful": 935,
+    "ner_tokens": 24794496.0,
+    "ner_windows": 78228.0,
+    "completed_series_prefill_seconds": 1858.6805611820018,
+    "all_prefill_client_and_drain_seconds": 1373.078636857841,
+    "failed_batches": [
+      {
+        "name": "prefill-steady-screen-A-M-0.5-r0-3",
+        "scheduled": 16,
+        "successful": 15,
+        "failed": 1,
+        "failed_rows": [
+          {
+            "index": 5,
+            "owner_index": 50,
+            "units": 24002,
+            "api": "chat",
+            "stream": true,
+            "offset": 0.6666666666666666,
+            "started": true,
+            "outcome": "error",
+            "text_fields": 4,
+            "start_delay_seconds": 0.00027804232862160827,
+            "actual_start_offset": 0.6669447089952882,
+            "http_status": 503,
+            "code": "503",
+            "type": "analyzer_unavailable",
+            "message_family": "analyzer_unavailable",
+            "phase": "windowing",
+            "failure_class": "window_boundary_unresolved",
+            "retry_after_seconds": 1,
+            "seconds": 3.383977372024674,
+            "completed_offset": 4.050923168018926
+          }
+        ],
+        "nginx": {
+          "no live upstreams": 0,
+          "temporarily disabled": 0,
+          "upstream timed out": 0
+        },
+        "raw_marker_seen": false
+      }
+    ]
+  },
+  "warmup_total": {
+    "requests": 4,
+    "successful": 4
+  },
+  "memory_all_phases": {
+    "samples": 1614,
+    "minimum_host_available_bytes": 42084827136,
+    "maximum_sampled_container_sum_bytes": 22674124800,
+    "container_rows": 62172,
+    "rows_with_memory_stat": 62172,
+    "memory_stat_errors": {},
+    "triton_statistics_errors": {},
+    "roles": {
+      "codex-lb": {
+        "maximum_sampled_current_bytes": 190353408,
+        "maximum_kernel_peak_bytes": 195727360,
+        "maximum_sampled_anon_bytes": 183812096,
+        "maximum_sampled_file_bytes": 2060288,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "presidio-analyzer": {
+        "maximum_sampled_current_bytes": 523624448,
+        "maximum_kernel_peak_bytes": 581345280,
+        "maximum_sampled_anon_bytes": 519135232,
+        "maximum_sampled_file_bytes": 0,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "nginx": {
+        "maximum_sampled_current_bytes": 120770560,
+        "maximum_kernel_peak_bytes": 126242816,
+        "maximum_sampled_anon_bytes": 29253632,
+        "maximum_sampled_file_bytes": 83304448,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "codex-lb-db": {
+        "maximum_sampled_current_bytes": 106061824,
+        "maximum_kernel_peak_bytes": 140423168,
+        "maximum_sampled_anon_bytes": 43352064,
+        "maximum_sampled_file_bytes": 52604928,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "db": {
+        "maximum_sampled_current_bytes": 223739904,
+        "maximum_kernel_peak_bytes": 226807808,
+        "maximum_sampled_anon_bytes": 87494656,
+        "maximum_sampled_file_bytes": 125153280,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "redis": {
+        "maximum_sampled_current_bytes": 154996736,
+        "maximum_kernel_peak_bytes": 158470144,
+        "maximum_sampled_anon_bytes": 152580096,
+        "maximum_sampled_file_bytes": 802816,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "litellm": {
+        "maximum_sampled_current_bytes": 1014284288,
+        "maximum_kernel_peak_bytes": 1282097152,
+        "maximum_sampled_anon_bytes": 944128000,
+        "maximum_sampled_file_bytes": 45867008,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "mock-upstream": {
+        "maximum_sampled_current_bytes": 30793728,
+        "maximum_kernel_peak_bytes": 31449088,
+        "maximum_sampled_anon_bytes": 28733440,
+        "maximum_sampled_file_bytes": 471040,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "ner-triton": {
+        "maximum_sampled_current_bytes": 818909184,
+        "maximum_kernel_peak_bytes": 819625984,
+        "maximum_sampled_anon_bytes": 814088192,
+        "maximum_sampled_file_bytes": 32768,
+        "memory_events_maxima": {
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      }
+    }
+  },
+  "abort_reason": null,
+  "error_type": "AssertionError"
+}

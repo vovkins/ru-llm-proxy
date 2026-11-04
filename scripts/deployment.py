@@ -84,8 +84,6 @@ def resources(path: Path) -> dict[str, str]:
         if key in COUNT_KEYS:
             if not re.fullmatch(r"[1-9][0-9]*", value):
                 raise DeploymentError(f"{key}: требуется положительное целое число")
-            if key == "TRITON_REPLICAS" and value not in {"1", "2"}:
-                raise DeploymentError("TRITON_REPLICAS: поддерживаются один или два контейнера")
             if key == "TRITON_MODEL_INSTANCES" and int(value) > 32:
                 raise DeploymentError("TRITON_MODEL_INSTANCES: допустимо от 1 до 32")
         elif key.endswith("CPUS"):

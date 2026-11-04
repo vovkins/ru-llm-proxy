@@ -36,6 +36,20 @@ def test_readme_describes_current_inn_policy():
     assert "10-значный ИНН требует контекст" in readme
 
 
+def test_responses_client_docs_match_shipped_glm_bridge_and_retry_contract():
+    codex = (ROOT / "docs/clients/codex.md").read_text()
+    examples = (ROOT / "docs/examples.md").read_text()
+    assert "дополнительный провайдер не нужен" in codex
+    assert "`retryable` и `Retry-After`" in codex
+    assert "`window_boundary_unresolved` — нет" in codex
+    assert "`503` допускает повтор позднее" not in codex
+    assert "Полная приёмка текущей серии ещё не завершена" not in codex
+    responses = examples.split("## Дополнительный пример OpenAI Responses API", 1)[1].split(
+        "## Дополнительный базовый пример Anthropic Messages API", 1)[0]
+    assert '"model": "glm-5.3-flash"' in responses
+    assert "RESPONSES_MODEL=glm-5.3-flash" in responses
+
+
 def test_readme_status_does_not_overstate_anthropic_messages_coverage():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status_section = readme.split("## Статус проекта", 1)[1].split(
