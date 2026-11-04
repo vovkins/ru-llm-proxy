@@ -54,7 +54,7 @@ Triton — ONNX из образа; Hugging Face при обработке не �
 | `litellm` | `presidio-analyzer:5001` | Поиск персональных данных через `POST /api/v1/analyze` |
 | `litellm`, production | `nginx:5001` | Балансируемый маршрут к Analyzer вместо прямого обращения к одной реплике |
 | `presidio-analyzer` | `nginx:8000` | Проверки комплекта и Binary HTTP-вызовы модели |
-| `nginx` | `ner-triton:8000` | Внутренний пул из одного/двух Triton |
+| `nginx` | `ner-triton:8000` | Внутренний пул: 12 Triton в production, один в functional |
 | `ner-triton` | нет | Вычисления по локальному ONNX, без интернет-доступа |
 | `litellm` | `redis:6379` | Сопоставления служебных меток персональных данных и закрепление провайдера модели в LiteLLM |
 | `litellm` | `db:5432` | Постоянное состояние LiteLLM |

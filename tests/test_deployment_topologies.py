@@ -745,6 +745,38 @@ def test_documentation_and_mock_gate_cover_context_contract():
     assert "from deployment_topology_gate import Gate" in runner
 
 
+def test_production_upgrade_guide_covers_existing_installation_without_reset():
+    doc = (ROOT / "docs/deployment.md").read_text()
+    migration = doc.split("#### Переход production с v0.5.0 на v0.6.0", 1)[1].split(
+        "### Возврат к предыдущему выпуску", 1)[0]
+    for fragment in ("4 по 2 CPU / 4 GiB", "24 по 1 CPU / 2 GiB",
+                     "2 по 2 CPU / 2 GiB", "12 по 2 CPU / 4 GiB", "32 / 45 с",
+                     "git switch --detach v0.6.0", "TOPOLOGY_ENV",
+                     "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=30", "TRITON_REPLICAS=2",
+                     "TRITON_MODEL_INSTANCES=2", "compose config --quiet",
+                     "make build STACK=", "make restart STACK=", "make health STACK=",
+                     "make metrics STACK=", "повторные `setup`, OAuth-вход и `down -v` не требуются"):
+        assert fragment in migration
+    anchor = "deployment.md#переход-production-с-v050-на-v060"
+    for name in ("README.md", "docs/air-gapped.md", "docs/codex-lb.md", "docs/configuration.md"):
+        assert anchor in (ROOT / name).read_text()
+
+
+def test_deployment_docs_do_not_recommend_replaying_analyzer_503():
+    doc = (ROOT / "docs/deployment.md").read_text().split("## Балансировка и диагностика", 1)[1]
+    assert "при ошибке соединения или HTTP `502`" in doc
+    assert "HTTP `503` Analyzer передаётся без повтора" in doc
+    assert "`502` или `503`" not in doc
+
+
+def test_architecture_describes_current_production_capacity_not_only_functional():
+    doc = (ROOT / "docs/architecture.md").read_text()
+    assert "30 секунд в functional и 45 секунд в production" in doc
+    assert "Каждый Triton проверяется отдельно" in doc
+    assert "в production их 12, в functional один" in doc
+    assert "Один или два Triton" not in doc
+
+
 @pytest.fixture
 def topology_module():
     module_spec = importlib.util.spec_from_file_location(
