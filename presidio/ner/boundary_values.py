@@ -7,6 +7,7 @@ evaluates code, or treats an artificial Analyzer chunk as a document boundary.
 from bisect import bisect_right
 from dataclasses import dataclass
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 from string_spans import StringSpans
@@ -17,8 +18,9 @@ _REFERENCES = re.compile(
     r"[A-Za-z0-9._~-]+/)[^\s\"'`<>]+"
 )
 _LINE_BREAK = r"(?:\r\n|\r(?!\n)|(?<!\r)\n|\u2028|\u2029)"
+_LINE_END = re.compile(_LINE_BREAK)
 _BLANK_LINE = re.compile(rf"{_LINE_BREAK}[ \t]*{_LINE_BREAK}")
-_FENCE = re.compile(r"(?m)^[ ]{0,3}(`{3,}|~{3,})[^\r\n]*")
+_FENCE = re.compile(r"(?:\A|(?<=[\r\n\u2028\u2029]))[ ]{0,3}(`{3,}|~{3,})([^\r\n\u2028\u2029]*)")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
 
@@ -115,6 +117,26 @@ def _references(text):
     return components, owners
 
 
+def _paragraphs(text, start, end):
+    boundaries = []
+    for separator in _BLANK_LINE.finditer(text, start, end):
+        boundaries.append((start, separator.start()))
+        start = separator.end()
+    boundaries.append((start, end))
+    for start, end in boundaries:
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if start < end:
+            yield start, end
+
+
+def _plain_fenced_paragraph(text):
+    return all(char.isalnum() or char.isspace() or char in "_.,:!?-\u2013\u2014\u2026"
+               or unicodedata.category(char).startswith("M") for char in text)
+
+
 class BoundaryValues:
     """Lazy, request-local index of complete original-source containers."""
 
@@ -135,31 +157,26 @@ class BoundaryValues:
         self.string_owners = _Ranges((span.start, span.end) for span in strings.spans)
         components, owners = _references(self.text)
         self.components, self.references = _Ranges(components), _Ranges(owners)
-        fences, opening = [], None
+        fences, bodies, opening = [], [], None
         for match in _FENCE.finditer(self.text):
             marker = match.group(1)
             if opening is None:
-                opening = match.start(), marker
-            elif marker[0] == opening[1][0] and len(marker) >= len(opening[1]):
+                line_end = _LINE_END.match(self.text, match.end())
+                opening = (match.start(), marker, line_end.end() if line_end else match.end(),
+                           marker[0] != "`" or "`" not in match.group(2))
+            elif (marker[0] == opening[1][0] and len(marker) >= len(opening[1])
+                  and not match.group(2).strip(" \t")):
                 fences.append((opening[0], match.end()))
+                if opening[3]:
+                    bodies.append((opening[2], match.start()))
                 opening = None
         if opening is not None:
             fences.append((opening[0], len(self.text)))
         self.fences = _Ranges(fences)
-        paragraphs, start = [], 0
-        for separator in _BLANK_LINE.finditer(self.text):
-            paragraphs.append((start, separator.start()))
-            start = separator.end()
-        paragraphs.append((start, len(self.text)))
-        trimmed = []
-        for start, end in paragraphs:
-            while start < end and self.text[start].isspace():
-                start += 1
-            while end > start and self.text[end - 1].isspace():
-                end -= 1
-            if start < end:
-                trimmed.append((start, end))
-        self.paragraphs = _Ranges(trimmed)
+        self.paragraphs = _Ranges(_paragraphs(self.text, 0, len(self.text)))
+        self.fenced_paragraphs = _Ranges(
+            bounds for start, end in bodies for bounds in _paragraphs(self.text, start, end)
+        )
         self._prepared = True
 
     def _not_document(self, bounds):
@@ -177,12 +194,16 @@ class BoundaryValues:
         if candidates:
             return min(candidates, key=lambda bounds: bounds[1] - bounds[0])
         bounds = self.paragraphs.containing(start, end)
+        if bounds is not None and self.fences.intersects(*bounds):
+            # Only closed bodies have paragraphs independent of their delimiters.
+            bounds = self.fenced_paragraphs.containing(start, end)
+            if bounds is not None and not _plain_fenced_paragraph(self.text[slice(*bounds)]):
+                return None
         if not self._not_document(bounds):
             return None
         left, right = bounds
         # A prose paragraph must not swallow syntax or several string values.
         if (self.string_owners.intersects(left, right)
-                or self.fences.intersects(left, right)
                 or any(c in self.text[left:right] for c in "{}[]")):
             return None
         return bounds

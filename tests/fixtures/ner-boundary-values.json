@@ -4,5 +4,7 @@
   {"id":"quoted-name","text":"{\"person\":\"Ivan Petrov\",\"keep\":\"visible\"}","pieces":[["Pet","PERSON"]],"expected":[["Ivan Petrov","PERSON"]]},
   {"id":"separate-paragraph","text":"Header\n\nOTHER\n\nTail","pieces":[["THE","PERSON"]],"expected":[["OTHER","PERSON"]]},
   {"id":"link-delimiter","text":"Header\n\nReference (/docs/item)\n\nTail","pieces":[[")","PERSON"]],"expected":[["(/docs/item)","PERSON"]]},
-  {"id":"unicode-source-value","text":"{\"person\":\"Ame\u0301lie Petrov\",\"keep\":\"visible\"}","pieces":[["Pet","PERSON"]],"expected":[["Ame\u0301lie Petrov","PERSON"]]}
+  {"id":"unicode-source-value","text":"{\"person\":\"Ame\u0301lie Petrov\",\"keep\":\"visible\"}","pieces":[["Pet","PERSON"]],"expected":[["Ame\u0301lie Petrov","PERSON"]]},
+  {"id":"fenced-plain-paragraph","text":"Header\n\n```text\n\nOTHER\n\n```\n\nTail","pieces":[["THE","PERSON"]],"expected":[["OTHER","PERSON"]]},
+  {"id":"fenced-multiline-paragraph","text":"Header\n\n~~~~text\nFIRST\nSECOND\n~~~~\n\nTail","pieces":[["RST\nSE","PERSON"]],"expected":[["FIRST\nSECOND","PERSON"]]}
 ]
