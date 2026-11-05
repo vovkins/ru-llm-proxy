@@ -65,6 +65,7 @@ def test_python_images_validate_proxy_ca_before_using_it():
 
 def test_compose_routes_external_runtime_egress_through_proxy():
     compose = _read("docker-compose.yml")
+    ner = _read("docker-compose.ner.yml")
     codex_overlay = _read("docker-compose.codex-lb.yml")
 
     assert "nginx:" in compose
@@ -73,14 +74,14 @@ def test_compose_routes_external_runtime_egress_through_proxy():
     assert "DISABLE_AIOHTTP_TRANSPORT=True" in compose
     assert "AIOHTTP_TRUST_ENV=True" in compose
     assert "NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}" in compose
-    assert "dockerfile: presidio/Dockerfile" in compose
-    assert "NER_MODEL_PROXY: ${NER_MODEL_PROXY:-}" in compose
+    assert "dockerfile: presidio/Dockerfile" in ner
+    assert "NER_MODEL_PROXY: ${NER_MODEL_PROXY:-}" in ner
     assert "HTTP_PROXY: ${HTTP_PROXY:-}" in codex_overlay
     assert "HTTPS_PROXY: ${HTTPS_PROXY:-}" in codex_overlay
     assert "dockerfile: codex-lb/Dockerfile" in codex_overlay
 
-    analyzer_environment = compose.split("presidio-analyzer:", maxsplit=1)[1].split(
-        "# === PostgreSQL", maxsplit=1
+    analyzer_environment = ner.split("presidio-analyzer:", maxsplit=1)[1].split(
+        "ner-triton:", maxsplit=1
     )[0].split("environment:", maxsplit=1)[1]
     assert "HTTP_PROXY=" not in analyzer_environment
     assert "HTTPS_PROXY=" not in analyzer_environment

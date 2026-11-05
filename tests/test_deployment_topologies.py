@@ -23,7 +23,7 @@ spec.loader.exec_module(deployment)
 
 @pytest.fixture(autouse=True)
 def clean_context(monkeypatch):
-    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
+    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "NODE_ROLE", "NODE_CONFIG", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ENV_FILE", "/nonexistent/issue96-test-env")
 
@@ -270,10 +270,11 @@ def test_unified_compose_carries_only_operational_ner_settings():
     import yaml
 
     triton = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-    analyzer = dict(item.split("=", 1) for item in triton["services"]["presidio-analyzer"]["environment"])
+    ner = yaml.safe_load((ROOT / "docker-compose.ner.yml").read_text())["services"]
+    analyzer = dict(item.split("=", 1) for item in ner["presidio-analyzer"]["environment"])
     assert not deployment.REMOVED_SETTINGS.intersection(analyzer)
     assert analyzer["PRESIDIO_ANALYZER_WORKERS"] == "${PRESIDIO_ANALYZER_WORKERS:-1}"
-    assert triton["services"]["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "2"
+    assert ner["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "2"
     assert analyzer["PRESIDIO_ANALYZER_CONCURRENCY_LIMIT"] == "${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-2}"
     assert analyzer["PRESIDIO_ANALYZER_QUEUE_LIMIT"] == "${PRESIDIO_ANALYZER_QUEUE_LIMIT:-32}"
     assert analyzer["PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS"] == "${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}"

@@ -54,6 +54,35 @@ make health STACK=litellm-presidio-codex-lb TOPOLOGY=production
 При смене политики или топологии старые LiteLLM также останавливаются до
 записи режима: в functional это закрывает прямой вход на порт `4000`.
 
+## Двухузловые роли: пока только конфигурация
+
+В черновике #116 добавлено разделение `primary`/`compute` через штатный Compose
+`extends`. Общие определения NER лежат в `docker-compose.ner.yml`; это не
+самостоятельный файл запуска. Обычные команды выше без `NODE_ROLE` не меняются.
+
+На этом этапе разрешены только прямые проверки через `scripts/deployment.py`:
+
+```bash
+NODE_ROLE=compute NODE_CONFIG=deploy/nodes.example.json TOPOLOGY=production \
+  STACK=litellm-presidio-codex-lb ENV_FILE=.env.compute.example \
+  python3 scripts/deployment.py validate
+NODE_ROLE=compute NODE_CONFIG=deploy/nodes.example.json TOPOLOGY=production \
+  STACK=litellm-presidio-codex-lb ENV_FILE=.env.compute.example \
+  python3 scripts/deployment.py compose config --services
+```
+
+Проверки не запускают контейнеры и не проверяют доступность B.
+Compute содержит только три вычислительных сервиса, без БД, томов состояния,
+подписок, пользовательских админок и опубликованных портов. Primary пока
+использует только местный пул, без отправки запросов на B. Сам JSON описан
+в [справочнике](configuration.md#роли-двух-узлов-конфигурационный-черновик).
+
+**Не запускайте эти файлы напрямую через Docker Compose.** С `NODE_ROLE`
+команды управления, включая `make build/setup/up/restart/down/clean`, временно
+отклоняются до действий Docker. Их поддержка относится к этапу 3, публикация
+ограниченного межузлового входа и маршрутизация — к этапу 4. Сейчас это не
+готовая двухсерверная поставка; существующий production переводить на роли нельзя.
+
 ## Режим обработки
 
 Приоритет: **параметр make > окружение оболочки > ENV_FILE > mask**.

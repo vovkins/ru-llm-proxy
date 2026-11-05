@@ -1,0 +1,4 @@
+services:
+  nginx:
+    labels:
+      ru-llm-proxy.node-role: primary

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared context for the project's single-server Compose deployments."""
+"""Shared configuration context for the project's Compose deployments."""
 
 from __future__ import annotations
 
@@ -15,12 +15,15 @@ from decimal import Decimal
 from pathlib import Path
 
 from setup_codex_lb import update_env_value
+from node_config import NodeConfigurationError, load_node_configuration
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from presidio.model_contract import REMOVED_SETTINGS, reject_removed_settings
 STACKS = {"litellm-presidio", "litellm-presidio-codex-lb"}
+NODE_ROLES = {"primary", "compute"}
+READ_ONLY_CONFIG = {(), ("--quiet",), ("--format", "json"), ("--services",), ("--images",)}
 RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB", "TRITON")
 RESOURCE_KEYS = {f"{name}_{suffix}" for name in RESOURCE_COMPONENTS for suffix in ("CPUS", "MEMORY")}
 COUNT_KEYS = {"LITELLM_REPLICAS", "ANALYZER_REPLICAS", "TRITON_REPLICAS", "TRITON_MODEL_INSTANCES"}
@@ -110,6 +113,18 @@ class Context:
             raise DeploymentError("Укажите STACK=litellm-presidio или STACK=litellm-presidio-codex-lb")
         if self.topology not in {"functional", "production"}:
             raise DeploymentError("TOPOLOGY должен быть functional или production")
+        self.node_role = os.environ.get("NODE_ROLE")
+        if self.node_role is not None and self.node_role not in NODE_ROLES:
+            raise DeploymentError("NODE_ROLE должен быть primary или compute; для одного узла не задавайте его")
+        if self.node_role is not None and self.topology != "production":
+            raise DeploymentError("NODE_ROLE применяется только к TOPOLOGY=production")
+        if {"NODE_ROLE", "NODE_CONFIG"} & file_keys:
+            raise DeploymentError("NODE_ROLE/NODE_CONFIG задаются контекстом команды, не через ENV_FILE")
+        config_path = os.environ.get("NODE_CONFIG")
+        if config_path is not None and (not config_path or self.node_role is None):
+            raise DeploymentError("NODE_CONFIG требует явного NODE_ROLE и непустого пути")
+        self.node_config_path = Path(config_path) if config_path is not None else None
+        self._node_config = None
         self.explicit_mode = os.getenv("PII_MODE_ORIGIN") == "command line"
         raw_mode = os.environ["PII_GUARDRAIL_MODE"] if "PII_GUARDRAIL_MODE" in os.environ else setting(self.env_file, "PII_GUARDRAIL_MODE", "mask")
         self.mode = raw_mode.strip().lower()
@@ -128,6 +143,10 @@ class Context:
                 self.files.append("docker-compose.production.codex-lb.yml")
         elif os.getenv("TOPOLOGY_ENV"):
             raise DeploymentError("TOPOLOGY_ENV применяется только к production")
+        if self.node_role == "compute":
+            self.files = ["docker-compose.production.compute.yml"]
+        elif self.node_role == "primary":
+            self.files.append("docker-compose.production.primary.yml")
         self.environment = dict(os.environ, **self.values)
         self.environment.update(PII_GUARDRAIL_MODE=self.mode, TOPOLOGY=self.topology)
         for key in ("TRITON_REPLICAS", "TRITON_MODEL_INSTANCES", "TRITON_CPUS", "TRITON_MEMORY"):
@@ -148,6 +167,21 @@ class Context:
     @property
     def extended(self):
         return self.stack == "litellm-presidio-codex-lb"
+
+    @property
+    def node_config(self):
+        if self.node_role is None or self.node_config_path is None:
+            raise DeploymentError("Для проверки узла укажите NODE_ROLE и NODE_CONFIG")
+        if self._node_config is None:
+            try:
+                self._node_config = load_node_configuration(self.node_config_path)
+            except NodeConfigurationError as error:
+                raise DeploymentError(str(error)) from None
+        return self._node_config
+
+    def require_lifecycle_ready(self):
+        if self.node_role is not None:
+            raise DeploymentError("Команды запуска и управления NODE_ROLE появятся в этапе 3; сейчас доступна только проверка конфигурации")
 
     def _validate_ner_settings(self):
         rules = {
@@ -175,6 +209,9 @@ class Context:
 
     @property
     def counts(self):
+        if self.node_role == "compute":
+            return {"nginx": 1, "presidio-analyzer": int(self.values["ANALYZER_REPLICAS"]),
+                    "ner-triton": int(self.values["TRITON_REPLICAS"])}
         counts = {"nginx": 1, "db": 1, "redis": 1, "litellm": 1, "presidio-analyzer": 1}
         if self.topology == "production":
             counts.update(litellm=int(self.values["LITELLM_REPLICAS"]), **{"presidio-analyzer": int(self.values["ANALYZER_REPLICAS"])})
@@ -191,6 +228,8 @@ class Context:
         return command
 
     def compose(self, *args, capture=False):
+        if self.node_role is not None and (not args or args[0] != "config" or tuple(args[1:]) not in READ_ONLY_CONFIG):
+            self.require_lifecycle_ready()
         result = subprocess.run(self.command + list(args), env=self.environment, cwd=ROOT, text=True, capture_output=capture)
         if result.returncode:
             # Do not relay config output or environment values containing credentials.
@@ -214,6 +253,7 @@ class Context:
         return json.loads(subprocess.check_output(["docker", "inspect", *ids], text=True))
 
     def guard(self, operation):
+        self.require_lifecycle_ready()
         if operation not in {"preflight", "mutation", "switch"}:
             raise DeploymentError("Неизвестная операция проверки состава")
         if operation == "preflight":
@@ -246,10 +286,12 @@ class Context:
             print(f"Суммарные лимиты: {cpu} CPU / {memory / 1024**3:g} GiB (не резервирование ресурсов)", flush=True)
 
     def persist_mode(self):
+        self.require_lifecycle_ready()
         if self.explicit_mode:
             update_env_value(self.env_file, "PII_GUARDRAIL_MODE", self.mode, preserve_permissions=True)
 
     def setup(self):
+        self.require_lifecycle_ready()
         # Validate Compose and the running context before generating any secrets.
         original_file, original_environment = self.env_file, self.environment
         try:
@@ -273,6 +315,7 @@ class Context:
             subprocess.run(["bash", "scripts/setup_codex_lb.sh", str(self.env_file)], cwd=ROOT, env=self.environment, check=True)
 
     def health(self, wait=0, services=None):
+        self.require_lifecycle_ready()
         if wait < 0:
             raise DeploymentError("Время ожидания готовности не может быть отрицательным")
         deadline = time.monotonic() + wait
@@ -487,6 +530,15 @@ def main():
     args = parser.parse_args()
     try:
         context = Context(stack=args.stack, env_file=args.env_file)
+        if context.node_role is not None:
+            # Old Make recipes call validate before direct Docker operations.
+            if args.action == "validate" and "MAKELEVEL" in os.environ:
+                context.require_lifecycle_ready()
+            if args.action not in {"validate", "compose"}:
+                context.require_lifecycle_ready()
+            if args.action == "compose" and (not args.args or args.args[0] != "config" or tuple(args.args[1:]) not in READ_ONLY_CONFIG):
+                context.require_lifecycle_ready()
+            context.node_config
         if args.action == "validate":
             return
         if args.action == "setup":

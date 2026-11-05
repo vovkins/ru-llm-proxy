@@ -152,6 +152,7 @@ test-static: test-routing-diagnostics
 		tests/test_codex_lb_litellm_config.py \
 		tests/test_stack_lifecycle.py \
 		tests/test_deployment_topologies.py \
+		tests/test_node_role_config.py \
 		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \

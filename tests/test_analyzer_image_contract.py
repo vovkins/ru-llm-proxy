@@ -23,6 +23,8 @@ def test_legacy_ner_runtime_files_are_removed():
 def test_active_analyzer_path_has_no_deeppavlov_or_crf_runtime():
     active_paths = [
         ROOT / "docker-compose.yml",
+        ROOT / "docker-compose.ner.yml",
+        ROOT / "docker-compose.production.compute.yml",
         PRESIDIO / "Dockerfile",
         PRESIDIO / "requirements-export-cpu.txt",
         PRESIDIO / "requirements-analyzer.txt",
@@ -121,7 +123,7 @@ def test_makefile_builds_the_single_cpu_stack_without_model_or_gpu_switches():
 def test_analyzer_healthchecks_use_python_standard_library():
     dockerfile = _read(PRESIDIO / "Dockerfile")
     compose_files = (
-        _read(ROOT / "docker-compose.yml"),
+        _read(ROOT / "docker-compose.ner.yml"),
         _read(ROOT / "tests" / "e2e" / "docker-compose.ner-proxy.yml"),
     )
 
