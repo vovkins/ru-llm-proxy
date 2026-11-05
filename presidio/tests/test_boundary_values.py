@@ -226,6 +226,100 @@ def test_a_single_crlf_is_not_a_blank_line_or_a_value_boundary():
     assert BoundaryValues(source).resolve(0, 4) is None
 
 
+@pytest.mark.parametrize('separator', ['\n', '\r\n', '\r', '\u2028', '\u2029'])
+@pytest.mark.parametrize('marker,closing', [('```', '```'), ('~~~~', '~~~~~')])
+@pytest.mark.parametrize('padding', ['', '\n'])
+def test_closed_fence_has_bounded_plain_text_paragraphs(separator, marker, closing, padding):
+    blank = separator if padding else ''
+    source = f'Header{separator}{separator}{marker}text{separator}{blank}OTHER{blank}{separator}{closing}{separator}Tail'
+    start = source.index('THE')
+    bounds = BoundaryValues(source).resolve(start, start + 3)
+    assert bounds is not None
+    assert source[slice(*bounds)] == 'OTHER'
+    assert bounds[0] <= start < start + 3 <= bounds[1]
+    assert marker not in source[slice(*bounds)]
+
+
+@pytest.mark.parametrize('value', ['OTHER', 'Another ordinary value.', 'first\nsecond',
+                                  'Ame\u0301lie Petrov', '\u0418\u041b\u0418', '\u4e00\u4e2a\u503c'])
+def test_fenced_paragraph_rule_does_not_depend_on_a_word_or_alphabet(value):
+    source = f'Header\n\n```text\n\n{value}\n\n```\n\nTail'
+    start = source.index(value)
+    bounds = BoundaryValues(source).resolve(start, start + 1)
+    assert source[slice(*bounds)] == value
+
+
+@pytest.mark.parametrize('body,closing', [
+    ('plain value', ''),
+    ('plain value', '``` trailing text'),
+    ('plain value', '~~~'),
+    ('plain value', '``'),
+    ('print(abc)', '```'),
+    ('x = abc', '```'),
+    ('abc; exit', '```'),
+    ('{"one":abc,"two":def}', '```'),
+    ('[abc, def]', '```'),
+    ('unfinished "abc', '```'),
+])
+@pytest.mark.parametrize('separator', ['\n', '\r\n', '\r', '\u2028', '\u2029'])
+def test_fenced_fallback_does_not_infer_unknown_syntax_or_unclosed_bodies(body, closing, separator):
+    source = f'Header\n\n```python\n\n{body}\n\n{closing}\n\nTail'
+    source = source.replace('\n', separator)
+    start = source.index(body)
+    assert BoundaryValues(source).resolve(start, start + len(body)) is None
+
+
+def test_fenced_fallback_cannot_join_paragraphs_or_cover_delimiters():
+    source = 'Header\n\n```text\nFIRST\n\nSECOND\n```\n\nTail'
+    values = BoundaryValues(source)
+    assert values.resolve(source.index('FIRST'), source.index('SECOND') + 6) is None
+    assert values.resolve(source.index('```'), source.index('FIRST') + 5) is None
+    assert values.resolve(source.index('SECOND'), source.rindex('```') + 3) is None
+    assert values.resolve(0, len(source)) is None
+
+
+def test_closed_and_unclosed_fences_are_not_combined():
+    source = '```text\nFIRST\n```\n\n```text\n\nSECOND\n\nTail'
+    values = BoundaryValues(source)
+    start = source.index('FIRST')
+    bounds = values.resolve(start, start + 1)
+    assert source[slice(*bounds)] == 'FIRST'
+    start = source.index('SECOND')
+    assert values.resolve(start, start + 1) is None
+
+
+def test_invalid_backtick_info_does_not_authorize_a_paragraph_fallback():
+    source = 'Header\n\n```text`invalid\n\nplain value\n\n```\n\nTail'
+    start = source.index('plain value')
+    assert BoundaryValues(source).resolve(start, start + 5) is None
+
+
+@pytest.mark.parametrize('kind', ['PERSON', 'LOCATION', 'ORGANIZATION', 'LOGIN', 'PASSWORD',
+                                 'AUTH_TOKEN', 'SECRET_KEY', 'CONTRACT_NUMBER'])
+def test_fenced_recovery_preserves_initial_and_shifted_coverage(monkeypatch, kind):
+    source = 'Header\n\n```text\n\nFIRST SECOND\n\n```\n\nTail'
+    start = source.index('FIRST')
+    initial = prediction(kind, start + 1, start + 5, right=True)
+    shifted = prediction(kind, start + 3, start + 9, 1, right=True)
+    instance, _, _ = recognizer(monkeypatch, [initial], [shifted])
+    candidates = instance.analyze(source)
+    result, = merge_results(source, candidates, score_threshold=.35).results
+    assert (result.entity_type, source[result.start:result.end]) == (kind, 'FIRST SECOND')
+    assert result.start <= initial.entity.start < initial.entity.end <= result.end
+    assert result.start <= shifted.entity.start < shifted.entity.end <= result.end
+    assert boundary_coverage_preserved(candidates, [result])
+
+
+def test_fenced_container_uses_document_coordinates_across_analyzer_chunks(monkeypatch):
+    source = 'Header\n\n```text\n\nFIRST SECOND\n\n```\n\nTail'
+    offset = source.index('SECOND')
+    local = source[offset:]
+    instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', 0, 3, left=True)], [])
+    result, = instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(source), offset))
+    assert source[offset + result.start:offset + result.end] == 'FIRST SECOND'
+    assert result.start < 0
+
+
 def test_one_unresolved_cluster_refuses_the_whole_request_without_poisoning_ner(monkeypatch):
     source = '{"good":"Ivan Petrov","a":"abc","b":"def"}'
     name, start, end = source.index('Ivan'), source.index('abc'), source.index('def') + 3

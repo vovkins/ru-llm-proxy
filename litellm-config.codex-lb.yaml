@@ -90,7 +90,7 @@ router_settings:
     - deployment_affinity
   deployment_affinity_ttl_seconds: 86400
   num_retries: 3
-  timeout: 60
+  timeout: 600
 
 guardrails:
   - guardrail_name: "ru-pii-mask-pre"

@@ -2,8 +2,11 @@
 
 import asyncio
 import gzip
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import ssl
+import threading
+import time
 import tracemalloc
 import zlib
 from pathlib import Path
@@ -14,6 +17,7 @@ import httpx
 import litellm
 import pytest
 import pytest_asyncio
+import yaml
 from openai import AsyncOpenAI
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.proxy.types_utils.utils import get_instance_fn
@@ -22,6 +26,7 @@ from litellm_guardrails import upstream_stream as upstream
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream, SSEIntegrity, verified_response
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup
+from tests.e2e.test_guardrail_flow import llm_logging_lifecycle
 
 
 def test_config_loader_returns_the_same_adapter_as_guardrail_imports():
@@ -204,6 +209,114 @@ async def test_real_stock_router_uses_public_injection_and_closes_owned_source(m
         assert "response.completed" not in [e.get("type") for e in events]
     else:
         assert not error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('api', ['chat', 'responses'])
+@pytest.mark.parametrize('profile', ['litellm-config.yaml', 'litellm-config.codex-lb.yaml'])
+async def test_profile_timeout_reaches_router_and_owned_http_client(manager, api, profile, llm_logging_lifecycle):
+    value, _, requests = manager
+    config = yaml.safe_load((Path(__file__).resolve().parents[2] / profile).read_text())
+    before = litellm.callbacks
+    litellm.callbacks = [upstream.adapter]
+    router = litellm.Router(model_list=[{'model_name': 'test', 'litellm_params': {
+        'model': 'openai/mock-chat', 'api_base': 'http://test.invalid/v1',
+        'api_key': 'synthetic-test', 'max_retries': 0}}],
+        timeout=config['router_settings']['timeout'], num_retries=0)
+    try:
+        for streaming in (False, True):
+            assert router._get_timeout({'stream': streaming}, {}) == 600
+        kwargs = {'model': 'test', 'stream': True,
+                  'litellm_metadata': {upstream.TRANSPORT_ID: 'timeout-server-id'}}
+        stream = await (router.acompletion(messages=[{'role': 'user', 'content': 'safe'}], **kwargs)
+                        if api == 'chat' else router.aresponses(input='safe', **kwargs))
+        async for _ in stream:
+            pass
+        await stream.aclose()
+        assert len(requests) == 1
+        assert requests[0].extensions['timeout']['read'] == 600
+    finally:
+        await value.close_request('timeout-server-id')
+        litellm.callbacks = before
+
+
+@pytest.fixture
+def delayed_provider():
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            calls.append(payload)
+            api = 'responses' if self.path.endswith('/responses') else 'chat'
+            time.sleep(.75)
+            if payload.get('stream'):
+                body = b''.join(frames(api))
+            elif api == 'responses':
+                body = json.dumps({'id': 'resp_timeout', 'object': 'response', 'created_at': 1,
+                    'model': 'mock-chat', 'status': 'completed', 'output': []}).encode()
+            else:
+                body = json.dumps({'id': 'chat_timeout', 'object': 'chat.completion', 'created': 1,
+                    'model': 'mock-chat', 'choices': [{'index': 0, 'finish_reason': 'stop',
+                        'message': {'role': 'assistant', 'content': 'safe'}}]}).encode()
+            try:
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream' if payload.get('stream') else 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=.01), daemon=True)
+    thread.start()
+    try:
+        yield f'http://127.0.0.1:{server.server_port}/v1', calls
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('api', ['chat', 'responses'])
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('timeout', [.25, 3])
+async def test_delayed_provider_respects_bounded_wait_for_both_apis(
+    delayed_provider, monkeypatch, api, streaming, timeout, llm_logging_lifecycle,
+):
+    base, calls = delayed_provider
+    monkeypatch.setattr(litellm, 'callbacks', [])
+    router = litellm.Router(model_list=[{'model_name': 'test', 'litellm_params': {
+        'model': 'openai/mock-chat', 'api_base': base, 'api_key': 'synthetic-test',
+        'max_retries': 0}}], timeout=timeout, num_retries=0, disable_cooldowns=True)
+
+    async def consume():
+        kwargs = {'model': 'test', 'stream': streaming, 'max_retries': 0, 'num_retries': 0}
+        result = await (router.acompletion(messages=[{'role': 'user', 'content': 'safe'}], **kwargs)
+                        if api == 'chat' else router.aresponses(input='safe', **kwargs))
+        if streaming:
+            try:
+                events = [event async for event in result]
+                assert events
+            finally:
+                await result.aclose()
+        else:
+            assert result is not None
+
+    if timeout < .75:
+        with pytest.raises(litellm.Timeout) as error:
+            await consume()
+        assert error.value.status_code == 408
+    else:
+        await consume()
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
