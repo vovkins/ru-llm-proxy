@@ -51,7 +51,14 @@ jobs:
           class ComposeLoader(yaml.SafeLoader):
               pass
 
-          ComposeLoader.add_constructor("!reset", lambda loader, node: loader.construct_sequence(node))
+          def reset_value(loader, node):
+              if isinstance(node, yaml.ScalarNode):
+                  return loader.construct_scalar(node)
+              if isinstance(node, yaml.SequenceNode):
+                  return loader.construct_sequence(node)
+              return loader.construct_mapping(node)
+
+          ComposeLoader.add_constructor("!reset", reset_value)
           for path in (
               "litellm-config.yaml",
               "docker-compose.yml",

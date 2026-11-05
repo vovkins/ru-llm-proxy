@@ -341,3 +341,16 @@ def test_ci_and_docs_keep_configuration_only_stage_explicit():
     compute = (ROOT / ".env.compute.example").read_text()
     for name in ("LITELLM_MASTER_KEY", "POSTGRES_PASSWORD", "CODEX_LB_API_KEY", "ZAI_API_KEY"):
         assert name not in compute
+
+
+def test_baseline_yaml_step_parses_all_actual_configs_including_scalar_reset():
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/baseline.yml").read_text())
+    step = next(item for item in workflow["jobs"]["baseline"]["steps"] if item.get("name") == "Parse YAML configs")
+    env = dict(os.environ, PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
+    result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, env=env,
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert "docker-compose.production.yml ok" in result.stdout
+    assert "docker-compose.production.compute.yml ok" in result.stdout
