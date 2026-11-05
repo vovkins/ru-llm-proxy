@@ -63,7 +63,7 @@
 | [Постоянная нагрузка и кэш](research/production-steady-cache-corrected.md), [границы NER](research/ner-window-boundary-diagnostic.md) | Сравнение финалистов на одной исправленной сборке, всплески и оставшаяся приёмка #116 |
 | [Большие входы и отмены](research/production-acceptance.md) | Приёмка финалиста до миллиона текстовых токенов, TCP-отключения и отказ реплик #116 |
 | [Итоговый production](research/production-defaults.md) | Штатный профиль 2/24/12, проверка поставки и границы одноузлового выпуска #116 |
-| [Выбор двухузловой схемы](research/production-two-node-design.md) | Исследование общего и локальных вычислительных пулов; не инструкция развёртывания |
+| [Двухузловая схема](research/production-two-node-design.md) | Принятое решение A/B и история сравнения; рабочая двухузловая конфигурация ещё не реализована |
 | [Проверка здоровья](research/production-two-node-health-fix.md), [межузловые соединения](research/production-two-node-idle-fix.md), [TCP-пробы](research/production-two-node-tcp-probes.md) | Испытательные исправления и открытые ограничения; не production-настройки |
 | [Нагрузочный прототип](research/load-prototype.md) | Воспроизводимые испытания с имитацией провайдера |
 | [Длинный контекст](research/long-context-benchmark.md) | Методика ручной проверки |
