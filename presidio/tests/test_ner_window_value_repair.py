@@ -119,14 +119,13 @@ def test_captured_dkb_json_edges_expand_without_discarding_positive_evidence(
 
 
 @pytest.mark.parametrize("kind", ["PERSON", "ORGANIZATION", "LOCATION"])
-def test_value_repair_does_not_reinterpret_unresolved_names(monkeypatch, kind):
+def test_value_repair_preserves_name_type_and_masks_complete_value(monkeypatch, kind):
     source = '{"value":"abcdef"}'
     start = source.index("bcd")
     initial = [prediction(kind, start, start + 3, right=True)]
     instance, _, _ = recognizer(monkeypatch, initial, [])
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(source)
-    assert error.value.failure_class == "window_boundary_unresolved"
+    result, = instance.analyze(source)
+    assert (result.entity_type, source[result.start:result.end]) == (kind, "abcdef")
     assert instance.is_ready()
 
 

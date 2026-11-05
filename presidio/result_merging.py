@@ -14,12 +14,39 @@ from string_spans import StringSpans
 
 DETECTION_SOURCE_METADATA_KEY = "ru_llm_detection_source"
 NER_MODEL_METADATA_KEY = "ru_llm_ner_model"
+NER_BOUNDARY_CONTAINER_KEY = "ru_llm_ner_boundary_container"
 
 SOURCE_NER = "ner"
 SOURCE_NATIVE_CREDENTIAL = "native_credential"
 SOURCE_STRUCTURAL = "structural"
 SOURCE_CONTEXTUAL_CONTRACT = "contextual_contract"
 SOURCE_NONE = "none"
+
+
+def is_boundary_container(result):
+    metadata = getattr(result, "recognition_metadata", None) or {}
+    return (metadata.get(NER_BOUNDARY_CONTAINER_KEY) is True
+            and detection_source(result) == SOURCE_NER)
+
+
+def boundary_coverage_preserved(candidates, results, *, requested_entities=None,
+                                score_threshold=0.0):
+    """Check the exact union, including punctuation and string escape bytes."""
+    ranges = []
+    for result in sorted(results, key=lambda r: (r.start, r.end)):
+        if ranges and result.start <= ranges[-1][1]:
+            ranges[-1] = ranges[-1][0], max(ranges[-1][1], result.end)
+        else:
+            ranges.append((result.start, result.end))
+    starts = [start for start, _ in ranges]
+    for result in candidates:
+        if (not is_boundary_container(result) or result.score < score_threshold
+                or (requested_entities and result.entity_type not in requested_entities)):
+            continue
+        index = bisect_right(starts, result.start) - 1
+        if index < 0 or ranges[index][1] < result.end:
+            return False
+    return True
 
 CONTRACT_CONTEXT_SCORE = 0.85
 CONTRACT_CONTEXT_RECOGNIZER_NAME = "ContractContextFallback"
@@ -476,7 +503,9 @@ def merge_results(
             or _recognizer_name(result) in _ADDITIVE_RECOGNIZERS
         )
         ranges = [(result.start, result.end)]
-        if bound_to_values:
+        if is_boundary_container(result):
+            pass
+        elif bound_to_values:
             ranges = strings.mask_ranges(
                 result.start, result.end, name=result.entity_type in _JOINED_NAME_TYPES,
             )
@@ -508,6 +537,10 @@ def merge_results(
             decisions.append(
                 MergeDecision("invalid_span", SOURCE_NONE, source)
             )
+            continue
+        if is_boundary_container(result):
+            if result.score >= score_threshold:
+                valid_results.append(result)
             continue
         if result.entity_type in _JOINED_NAME_TYPES:
             trimmed = result if strings.at(result.start) else _skip_escape_letter(text, result)
@@ -789,6 +822,8 @@ def _join_name_fragments(
         last = out[-1] if out else None
         if (
             last is not None
+            and not is_boundary_container(last)
+            and not is_boundary_container(result)
             and result.entity_type == last.entity_type
             and result.entity_type in _JOINED_NAME_TYPES
             and _is_statistical(last)
@@ -802,6 +837,8 @@ def _join_name_fragments(
         else:
             out.append(result)
     for index, result in enumerate(out):
+        if is_boundary_container(result):
+            continue
         if result.entity_type not in _JOINED_NAME_TYPES or not _is_statistical(result):
             continue
         start, end = _balance_name_quotes(text, result.start, result.end)
@@ -1020,10 +1057,11 @@ def _uncovered_fragments(
             while run_end < result.end and not covered[run_end]:
                 run_end += 1
             start, end = index, run_end
-            while start < end and text[start].isspace():
-                start += 1
-            while end > start and text[end - 1].isspace():
-                end -= 1
+            if not is_boundary_container(result):
+                while start < end and text[start].isspace():
+                    start += 1
+                while end > start and text[end - 1].isspace():
+                    end -= 1
             if start < end:
                 fragments.append(_copy_name(result, start=start, end=end))
                 # Mark only emitted coverage, not the trimmed edge whitespace.
@@ -1155,7 +1193,9 @@ def _refine_names(
         previous = unique_names.get(key)
         if previous is not None:
             decisions.append(MergeDecision("exact_duplicate", SOURCE_NER, SOURCE_NER))
-        if previous is None or _priority_key(result) < _priority_key(previous):
+        if (previous is None or (is_boundary_container(result) and not is_boundary_container(previous))
+                or (is_boundary_container(result) == is_boundary_container(previous)
+                    and _priority_key(result) < _priority_key(previous))):
             unique_names[key] = result
     results = [*retained, *unique_names.values()]
     results, context_decisions = _refine_explicit_name_values(
@@ -1164,6 +1204,9 @@ def _refine_names(
     decisions.extend(context_decisions)
     refined = []
     for result in results:
+        if is_boundary_container(result):
+            refined.append(result)
+            continue
         if (
             detection_source(result) != SOURCE_NER
             or result.entity_type not in _NAME_TYPES
@@ -1291,6 +1334,7 @@ def _refine_explicit_name_values(
     for result in results:
         if (
             detection_source(result) == SOURCE_NER
+            and not is_boundary_container(result)
             and result.entity_type in _NAME_TYPES
             and any(start <= result.start and result.end <= end for start, end in headers)
         ):
@@ -1359,6 +1403,8 @@ def _refine_explicit_name_values(
             start=context.start, end=context.end,
             score=min(r.score for r in fragments),
         )
+        if any(is_boundary_container(r) for r in fragments):
+            merged.recognition_metadata[NER_BOUNDARY_CONTAINER_KEY] = True
         removed.update(consumed)
         replacements.append(merged)
         if removable_location:

@@ -35,6 +35,15 @@ def test_codex_lb_profile_keeps_base_models_and_shared_settings_unchanged():
         assert codex_lb[section] == base[section]
 
 
+def test_both_profiles_allow_bounded_long_provider_waits_without_more_retries():
+    for path in (BASE_CONFIG_PATH, CODEX_LB_CONFIG_PATH):
+        config = _load(path)
+        assert config['router_settings']['timeout'] == 600
+        assert config['router_settings']['num_retries'] == 3
+        assert all('timeout' not in item['litellm_params'] and 'stream_timeout' not in item['litellm_params']
+                   for item in config['model_list'])
+
+
 def test_codex_lb_profile_adds_explicit_openai_compatible_public_models():
     config = _load(CODEX_LB_CONFIG_PATH)
     base = _load(BASE_CONFIG_PATH)

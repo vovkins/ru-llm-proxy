@@ -221,6 +221,19 @@ def test_docs_index_maps_reader_tasks_to_canonical_docs():
     assert len(readme.splitlines()) < 230
 
 
+def test_provider_wait_and_upgrade_instructions_match_both_profiles():
+    configuration = _read('docs/configuration.md')
+    deployment = _read('docs/deployment.md')
+    assert 'router_settings.timeout: 600' in configuration
+    assert 'router_settings.timeout: 600' in deployment
+    assert 'всех LiteLLM-реплик' in deployment
+    assert 'нового образа каждого Analyzer' in deployment
+    assert '240 секунд' in deployment and '1500 секунд' in deployment
+    assert 'Число повторов не увеличено' in configuration
+    assert 'LiteLLM задаёт 60 секунд' not in configuration
+    assert 'провайдера 60 секунд не меняется' not in deployment
+
+
 def test_quick_start_env_example_stays_minimal_and_grouped():
     env_example = _read(".env.example")
     env_names = {

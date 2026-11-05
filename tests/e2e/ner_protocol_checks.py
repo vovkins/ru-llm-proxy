@@ -110,6 +110,70 @@ def check_punctuation_passwords(proxy, blocked, provider):
     return counts
 
 
+def native_json_result(body, api, stream, tool):
+    if not tool:
+        return _restored_text(body, api, stream)
+    if api == 'responses':
+        text = response_snapshot(body, stream)['output'][0]['arguments']
+        if stream:
+            deltas = ''.join(event.get('delta', '') for event in body if isinstance(event, dict)
+                            and event.get('type') == 'response.function_call_arguments.delta')
+            assert json.loads(deltas) == json.loads(text)
+        return text
+    if not stream:
+        return body['choices'][0]['message']['tool_calls'][0]['function']['arguments']
+    return ''.join(call.get('function', {}).get('arguments', '') for event in body
+                   if isinstance(event, dict) for choice in event.get('choices', [])
+                   for call in choice.get('delta', {}).get('tool_calls', []))
+
+
+def check_native_json_strings(proxy, blocked, provider):
+    counts = {'native_string_mask': 0, 'native_string_block': 0}
+    for password in ('Alpha\nBeta"\\file', r'Literal\nValue\\path', 'Синтетический\tПароль😀'):
+        values = {'password': password, 'ticket': 654321}
+        source = json.dumps(values)
+        raw = json.dumps(password)[1:-1]
+        for api in ('chat/completions', 'responses'):
+            for stream in (False, True):
+                for tool in (False, True):
+                    # Reuse the existing native-argument echo; it is not number-specific.
+                    behavior = 'JSON_NUMBER_ECHO E9_FRAGMENTED_RESPONSE' + (' NATIVE_ARGUMENT_TOOL' if tool else '')
+                    payload = payload_for(behavior, api, stream, True)
+                    payload['metadata'] = {'test_behavior': behavior}
+                    target = (payload['messages'][1]['tool_calls'][0]['function']
+                              if api == 'chat/completions' else payload['input'][1])
+                    target['arguments'] = source
+                    if tool:
+                        function = {'name': 'inspect', 'parameters': {'type': 'object', 'properties': {
+                            'password': {'type': 'string'}, 'ticket': {'type': 'integer'},
+                        }}}
+                        payload['tools'] = ([{'type': 'function', 'function': function}] if api == 'chat/completions'
+                                            else [{'type': 'function', **function}])
+                    reset(provider)
+                    body = _request(proxy, '/v1/' + api, payload, stream=stream)
+                    state = capture(provider)
+                    captured = state['provider_native_arguments']
+                    assert len(captured) == 1 and state['provider_requests'] == 1, (api, stream, tool, state)
+                    outgoing = json.loads(captured[0])
+                    assert outgoing['ticket'] == 654321 and raw not in captured[0]
+                    assert outgoing['password'].startswith('<PASSWORD_'), (api, stream, tool, outgoing)
+                    text = native_json_result(body, api, stream, tool)
+                    assert json.loads(text) == values, (api, stream, tool, text)
+                    if not tool:
+                        assert text == source
+                    counts['native_string_mask'] += 1
+                    reset(provider)
+                    try:
+                        _request(blocked, '/v1/' + api, payload, stream=stream)
+                    except urllib.error.HTTPError as exc:
+                        assert exc.code == 422
+                    else:
+                        raise AssertionError('Native JSON password was not blocked')
+                    assert capture(provider)['provider_requests'] == 0
+                    counts['native_string_block'] += 1
+    return counts
+
+
 def check_native_json_numbers(proxy, blocked, provider):
     counts = {'native_number_mask': 0, 'native_number_block': 0, 'native_number_history': 0}
     cases = [
@@ -144,20 +208,7 @@ def check_native_json_numbers(proxy, blocked, provider):
                     assert outgoing['passport_number'].startswith('<RU_PASSPORT_')
                     assert outgoing['passport'].startswith('<RU_PASSPORT_')
                     assert outgoing['passport_number'] != outgoing['passport']
-                    if not tool:
-                        text = _restored_text(body, api, stream)
-                    elif api == 'responses':
-                        text = response_snapshot(body, stream)['output'][0]['arguments']
-                        if stream:
-                            deltas = ''.join(event.get('delta', '') for event in body if isinstance(event, dict)
-                                            and event.get('type') == 'response.function_call_arguments.delta')
-                            assert json.loads(deltas) == json.loads(text)
-                    elif not stream:
-                        text = body['choices'][0]['message']['tool_calls'][0]['function']['arguments']
-                    else:
-                        text = ''.join(call.get('function', {}).get('arguments', '') for event in body
-                                       if isinstance(event, dict) for choice in event.get('choices', [])
-                                       for call in choice.get('delta', {}).get('tool_calls', []))
+                    text = native_json_result(body, api, stream, tool)
                     actual = json.loads(text)
                     assert actual == values, (api, stream, tool, actual, values)
                     assert type(actual['passport_number']) is type(values['passport_number'])
@@ -291,6 +342,7 @@ def check(proxy, blocked, provider):
         assert_capture(provider)
         counts["encrypted"] += 1
     counts.update(check_native_json_numbers(proxy, blocked, provider))
+    counts.update(check_native_json_strings(proxy, blocked, provider))
     counts.update(check_punctuation_passwords(proxy, blocked, provider))
     print(json.dumps({"status": "passed", "real_ner_protocol_checks": counts}))
     return counts

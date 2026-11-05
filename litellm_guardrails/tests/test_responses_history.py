@@ -159,6 +159,35 @@ async def test_numeric_provenance_survives_three_turns_and_immutable_branches(ha
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+@pytest.mark.parametrize('arguments', [False, True])
+async def test_json_string_provenance_survives_history_and_separate_branches(harness, stream, arguments):
+    guardrail, store, temporary, auth = harness
+
+    async def analyze(text, *_args):
+        return [{'entity_type': 'PERSON', 'start': match.start(), 'end': match.end(), 'score': .9}
+                for match in re.finditer(r'Ivan\\nPetrov|Anna\\tSidorova|Olga\\rVolkova', text)]
+
+    guardrail._analyze_text_with_cache.side_effect = analyze
+    captured, output, _ = await complete(harness, '{"value":"Ivan\\nPetrov"}', 'string-parent',
+        '{"value":"<PERSON_1>"}', stream=stream, arguments=arguments)
+    assert json.loads(captured) == {'value': '<PERSON_1>'}
+    assert json.loads(output) == {'value': 'Ivan\nPetrov'}
+    parent = await store.load(store.owner(auth.token), 'gpt-6-luna', 'string-parent')
+    assert parent.json_strings == {'<PERSON_1>'}
+    for response_id, raw in [('left-string', r'Anna\tSidorova'), ('right-string', r'Olga\rVolkova')]:
+        template = '{"old":"<PERSON_1>","new":"<PERSON_2>"}'
+        captured, output, _ = await complete(harness, '{"value":"' + raw + '"}', response_id,
+            template, previous='string-parent', stream=stream, arguments=arguments)
+        assert raw not in captured
+        assert json.loads(output) == {'old': 'Ivan\nPetrov', 'new': json.loads('"' + raw + '"')}
+        child = await store.load(store.owner(auth.token), 'gpt-6-luna', response_id)
+        assert child.json_strings == {'<PERSON_1>', '<PERSON_2>'}
+    assert parent.json_strings == {'<PERSON_1>'} and len(parent) == 1
+    assert not temporary
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("stream", [False, True])
 async def test_clean_first_and_empty_input_continue(harness, stream):
     await complete(harness, "No private values", "resp-clean", "ok", stream=stream)

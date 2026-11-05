@@ -22,6 +22,7 @@ from presidio.entity_types import SUPPORTED_ENTITY_TYPES
 DKB_CORPUS = Path(__file__).resolve().parents[1] / "fixtures/dkb"
 DKB_CASES = json.loads((DKB_CORPUS / "manifest.json").read_text())
 NER_VALUE_CASES = json.loads((Path(__file__).resolve().parents[1] / "fixtures/ner-value-repair.json").read_text())
+NER_BOUNDARY_CASES = json.loads((Path(__file__).resolve().parents[1] / "fixtures/ner-boundary-values.json").read_text())
 
 
 @pytest_asyncio.fixture
@@ -150,6 +151,34 @@ async def test_round_trip_through_litellm_parser(
 @pytest.mark.parametrize("case", NER_VALUE_CASES, ids=lambda c: c["id"])
 async def test_repaired_ner_values_round_trip(api, output_kind, stream, case, llm_logging_lifecycle):
     await _round_trip_through_litellm_parser(api, output_kind, stream, "ner-value", case)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("output_kind", ["text", "arguments"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("case", NER_BOUNDARY_CASES, ids=lambda c: c["id"])
+async def test_boundary_container_values_round_trip(api, output_kind, stream, case, llm_logging_lifecycle):
+    await _round_trip_through_litellm_parser(api, output_kind, stream, "ner-value", case)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("output_kind", ["text", "arguments"])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_dictionary_overlap_keeps_both_ner_sides(api, output_kind, stream, llm_logging_lifecycle):
+    await _round_trip_through_litellm_parser(api, output_kind, stream, "dictionary-overlap", "PERSON")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("output_kind", ["text", "arguments"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("replacement", ["json-string-native", "json-string-text"])
+async def test_json_string_provenance_through_sdk_and_wire(
+    api, output_kind, stream, replacement, llm_logging_lifecycle,
+):
+    await _round_trip_through_litellm_parser(api, output_kind, stream, replacement, "PERSON")
 
 
 @pytest.mark.asyncio
@@ -339,7 +368,7 @@ async def _round_trip_through_litellm_parser(
     require_tool=False, bridge=False, required_tool_choice=False, analyzer=None,
 ):
     provider_api = "chat" if bridge else api
-    dictionary = replacement == "dictionary"
+    dictionary = replacement in {"dictionary", "dictionary-overlap"}
     corpus_case = entity_type if replacement in {"dkb", "ner-value"} else None
     guardrail = RuPIIGuardrail(
         pre_egress_policy_mode="off" if replacement == "dkb" else None,
@@ -377,6 +406,11 @@ async def _round_trip_through_litellm_parser(
     redis.delete.side_effect = delete
     guardrail._redis = redis
     original = "Т-Банк" if dictionary else 'Москва "центр"\nC:\\work\\main.py\t😀'
+    json_string = replacement in {"json-string-native", "json-string-text"}
+    if json_string:
+        original = '{"value":"Ivan\\nPetrov\\\"","ticket":123456}'
+    if replacement == "dictionary-overlap":
+        original = "Ivan Т-Банк Petrov"
     if replacement == "dkb":
         original = (DKB_CORPUS / corpus_case["file"]).read_bytes().decode("utf-8")
     elif replacement == "ner-value":
@@ -403,7 +437,7 @@ async def _round_trip_through_litellm_parser(
         if not corpus_case and replacement != "long-base64":
             original = "Т-Банк" if dictionary else "Москва"
         expected = f'let city = "{original}"\nlet path = "C:\\work"\nprint(city)\n'
-    prompt = "Верни без изменений: " + (strict_expected or expected)
+    prompt = original if json_string else "Верни без изменений: " + (strict_expected or expected)
     data = (
         {"messages": [{"role": "user", "content": prompt}]}
         if api == "chat"
@@ -430,6 +464,11 @@ async def _round_trip_through_litellm_parser(
         data.update(tool_options)
     expected_tool_options = deepcopy(tool_options)
     entities = [] if dictionary else [_entity(prompt, original, entity_type)]
+    if json_string:
+        entities = [_entity(prompt, r'Ivan\nPetrov\"', entity_type)]
+    if replacement == "dictionary-overlap":
+        transformed = guardrail.dictionary_substitution_policy.apply(prompt).text
+        entities = [_entity(transformed, "Ivan Зетта Групп Petrov", entity_type)]
     if behavior and instruction == "repeat":
         start = prompt.rindex(original)
         entities.append({
@@ -453,7 +492,19 @@ async def _round_trip_through_litellm_parser(
     provider_value = "Зетта Групп" if dictionary else f"<{entity_type}_1>"
     mapping_id = masked["metadata"]["pii_request_id"]
     mapping = json.loads(store[f"pii_mapping:{mapping_id}"])
-    if corpus_case:
+    if json_string:
+        assert mapping == {'version': 3, 'values': {'<PERSON_1>': r'Ivan\nPetrov\"'},
+                           'json_numbers': [], 'json_strings': ['<PERSON_1>']}
+        upstream_text = masked["messages"][0]["content"] if api == "chat" else masked["input"]
+        assert json.loads(upstream_text) == {'value': '<PERSON_1>', 'ticket': 123456}
+        assert 'Ivan' not in upstream_text and 'Petrov' not in upstream_text
+    elif replacement == "dictionary-overlap":
+        assert mapping == {"Зетта Групп": "Т-Банк", "<PERSON_1>": "Ivan ", "<PERSON_2>": " Petrov"}
+        provider_value = "<PERSON_1>"
+        upstream_text = "<PERSON_1>Зетта Групп<PERSON_2>"
+        provider_text = masked["messages"][0]["content"] if api == "chat" else masked["input"]
+        assert "Ivan" not in provider_text and "Petrov" not in provider_text
+    elif corpus_case:
         assert set(mapping.values()) == {original[span["start"]:span["end"]] for span in corpus_case["expected"]}
         provider_value = next(iter(mapping))
         provider_text = masked["messages"][0]["content"] if api == "chat" else masked["input"]
@@ -468,9 +519,10 @@ async def _round_trip_through_litellm_parser(
         upstream_text = provider_template.format(value=provider_value)
     upstream_output = (
         json.dumps({"city": upstream_text})
-        if output_kind == "arguments"
+        if output_kind == "arguments" and replacement != "json-string-native"
         else upstream_text
     )
+    expected_arguments = json.loads(original) if replacement == "json-string-native" else {"city": expected}
     pieces = [
         upstream_output[index : index + 3]
         for index in range(0, len(upstream_output), 3)
@@ -719,7 +771,7 @@ async def _round_trip_through_litellm_parser(
                 for call in (choice.delta if stream else choice.message).tool_calls
                 or []
             )
-            assert json.loads(output) == {"city": expected}
+            assert json.loads(output) == expected_arguments
         else:
             output = "".join(
                 (choice.delta if stream else choice.message).content or ""
@@ -752,7 +804,7 @@ async def _round_trip_through_litellm_parser(
             )
         )
         if output_kind == "arguments":
-            assert json.loads(output) == {"city": expected}
+            assert json.loads(output) == expected_arguments
             assert json.loads(final_item["arguments"]) == json.loads(output)
         else:
             assert output.encode() == expected.encode()
