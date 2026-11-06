@@ -131,6 +131,9 @@ def check_node_roles(images=None):
                     capture = json.loads(request(mock, "/capture")[1])
                     assert capture["provider_requests"] == 4 and not capture["provider_saw_raw_phone"]
                     assert capture["provider_saw_pii_placeholder"]
+                    assert call(client, f"http://{a}:5001/api/v1/health", method="HEAD")["status"] == 200
+                    for endpoint in ("http://127.0.0.1:5002", f"http://{b}:5001"):
+                        ctx.compose("exec", "-T", "nginx", "wget", "--spider", "-q", endpoint + "/api/v1/health", capture=True)
                     # Address each genuine pool explicitly, independent of
                     # cache hits or the balance of health versus POST requests.
                     def inference_counts():
@@ -205,6 +208,8 @@ def check_node_roles(images=None):
                                "python:3.12-slim", "sleep", "120")
                         assert call(old_source_probe, f"http://{b}:5001/api/v1/health",
                                     headers={"X-Forwarded-For": a})["status"] == 403
+                        assert call(old_source_probe, f"http://{b}:5001/api/v1/health", method="HEAD",
+                                    headers={"X-Forwarded-For": a})["status"] == 403
                         output("rm", "-f", old_source_probe)
                         result["address_and_acl_generation_update"] = "passed"
                     # Local diagnostics and teardown do not need the source JSON.
@@ -216,7 +221,7 @@ def check_node_roles(images=None):
                     gate.last_context = fresh
                     result["cases"].append({"stack": stack, "mask": 4, "block": 4,
                         "local_and_remote_ner": "passed", "inference_deltas_A_B": counters,
-                        "restart_state": "preserved", "logs_without_node_config": True})
+                        "restart_state": "preserved", "logs_without_node_config": True, "head_health": "passed"})
                 except BaseException as exc:
                     gate.capture_failure(exc)
                     print(json.dumps(gate.result.get("diagnostics", {})), flush=True)

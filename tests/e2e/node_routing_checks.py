@@ -22,14 +22,16 @@ CLIENT = """
 import json,sys,urllib.request,urllib.error
 d=json.load(sys.stdin)
 r=urllib.request.Request(d['url'], data=json.dumps(d['payload']).encode() if 'payload' in d else None,
-    headers={'Content-Type':'application/json',**d.get('headers',{})})
+    headers={'Content-Type':'application/json',**d.get('headers',{})},method=d.get('method'))
 try: response=urllib.request.build_opener(urllib.request.ProxyHandler({})).open(r,timeout=d.get('timeout',90))
 except urllib.error.HTTPError as e: response=e
 with response:
- b=response.read(16384)
- try: b=json.loads(b)
+ raw=response.read(16384)
+ try: b=json.loads(raw)
  except ValueError: b=None
- print(json.dumps({'status':response.status,'body':b,'retry_after':response.headers.get('Retry-After')}))
+ result={'status':response.status,'body':b,'retry_after':response.headers.get('Retry-After')}
+ if d.get('method')=='HEAD': result['body_bytes']=len(raw)
+ print(json.dumps(result))
 """
 
 
@@ -37,8 +39,8 @@ def output(*args):
     return docker(*args, capture_output=True, text=True).stdout.strip()
 
 
-def call(client, url, payload=None, headers=None, timeout=90):
-    data = {"url": url, "headers": headers or {}, "timeout": timeout}
+def call(client, url, payload=None, headers=None, timeout=90, *, method=None):
+    data = {"url": url, "headers": headers or {}, "timeout": timeout, "method": method}
     if payload is not None:
         data["payload"] = payload
     result = subprocess.run(["docker", "exec", "-i", client, "python", "-c", CLIENT],
@@ -109,6 +111,14 @@ def check_node_responses(*, budget_probe=None):
             def stats():
                 return [call(peer, "http://127.0.0.1:5001/_stats")["body"] for peer in (first, second)]
             control("ready", "ready")
+            for _ in range(4):
+                response = call(client, base + "/api/v1/health", method="HEAD")
+                assert response == {"status": 200, "body": None, "retry_after": None, "body_bytes": 0}, response
+            for endpoint in ("http://127.0.0.1:5002", f"http://{address_b}:5001"):
+                output("exec", a, "wget", "--spider", "-q", endpoint + "/api/v1/health")
+            assert call(client, base + "/api/v1/health", method="PUT")["status"] == 405
+            assert call(client, base + "/api/v1/analyze", method="HEAD")["status"] == 405
+            assert sum(len(row["calls"]) for row in stats()) == 0
             for index in range(8):
                 assert call(client, base + "/api/v1/analyze", {"text": "synthetic " + str(index)})["status"] == 200
             counts = [len(item["calls"]) for item in stats()]
@@ -134,6 +144,14 @@ def check_node_responses(*, budget_probe=None):
                     assert response == {"status": status, "body": expected, "retry_after": retry}, response
                 counts = [len(item["calls"]) for item in stats()]
                 assert sum(counts) == 6 and all(counts), counts
+                if mode in {"unavailable", "boundary"}:
+                    head_id = "head-" + mode
+                    response = call(client, base + "/api/v1/health", headers={"X-Ru-LLM-Request-ID": head_id}, method="HEAD")
+                    assert response == {"status": 503, "body": None, "retry_after": retry, "body_bytes": 0}, response
+                    logs = output("logs", a)
+                    rows = [json.loads(line) for line in logs.splitlines() if line.startswith('{"request_id"')]
+                    central = [row for row in rows if row["request_id"] == head_id and row["method"] == "HEAD"]
+                    assert len(central) == 1 and central[0]["upstream_status"] == "503", central
                 result["cases"].append({"semantic": mode, "posts": counts, "retry_after": retry})
             control("drop", "drop")
             assert call(client, base + "/api/v1/analyze", {"text": "synthetic"})["status"] == 502
@@ -204,6 +222,7 @@ def check_node_responses(*, budget_probe=None):
             result["container_keepalive_values"] = {"primary": values[0], "compute_control": values[1]}
             denied = call(client, f"http://{address_b}:5001/api/v1/health", headers={"X-Forwarded-For": address_a, "X-Real-IP": address_a})
             assert denied["status"] == 403, denied
+            assert call(client, f"http://{address_b}:5001/api/v1/health", method="HEAD")["status"] == 403
             assert call(client, base + "/metrics")["status"] == 404
             assert call(client, base + "/api/v1/analyze")["status"] == 405
             for node in (a, b):
@@ -260,7 +279,7 @@ def check_node_responses(*, budget_probe=None):
             assert ["504", "200"] in attempts and all(len(row) <= 2 for row in attempts), attempts
             result["cases"].append({"link_lost_before_connect": "passed", "posts": counts,
                                     "pair_elapsed_seconds": round(time.monotonic() - began, 2)})
-            result.update(status="passed", acl_denied_untrusted_source=True)
+            result.update(status="passed", acl_denied_untrusted_source=True, head_health="passed")
             return result
         except BaseException:
             diagnostic = Path(tempfile.mkdtemp(prefix="ru-node-routing-diagnostic-"))

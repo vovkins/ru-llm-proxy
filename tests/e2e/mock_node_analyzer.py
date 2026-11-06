@@ -30,7 +30,12 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot = dict(STATE, calls=list(STATE["calls"]))
             self.reply(200, snapshot)
         elif self.path == "/api/v1/health":
-            self.reply(200, {"status": "ok", "ner_state": "ready", "analysis_signature": "0" * 64})
+            with LOCK:
+                mode = STATE["mode"]
+            if mode in {"unavailable", "boundary"}:
+                self.reply(503, {"status": "error", "ner_state": "failed"}, 5 if mode == "unavailable" else None)
+            else:
+                self.reply(200, {"status": "ok", "ner_state": "ready", "analysis_signature": "0" * 64})
         else:
             self.reply(404, {})
 

@@ -129,6 +129,21 @@ def test_compute_acl_uses_only_canonical_sources_and_loopback(root):
     assert "/metrics" not in text and "listen 8000" not in text and "2455" not in text
 
 
+@pytest.mark.parametrize("role,count", [("primary", 2), ("compute", 1)])
+def test_only_health_converts_head_to_the_supported_analyzer_get(root, role, count):
+    text = bundle.render(root, role, config()).decode()
+    health = text.split("location = /api/v1/health {")[1:]
+    assert len(health) == count == text.count("proxy_method GET;")
+    for location in health:
+        content = location.split("\n    }", 1)[0]
+        assert "proxy_method GET;" in content
+        assert "^(GET|HEAD)$" in content
+    for location in text.split("location = /api/v1/analyze {")[1:]:
+        content = location.split("\n    }", 1)[0]
+        assert "proxy_method" not in content
+        assert "$request_method != POST" in content
+
+
 def test_context_can_load_installed_bundle_without_original_node_config(root, monkeypatch):
     spec = importlib.util.spec_from_file_location("bundle_deployment", ROOT / "scripts/deployment.py")
     deployment = importlib.util.module_from_spec(spec)
