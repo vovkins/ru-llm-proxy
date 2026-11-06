@@ -51,7 +51,7 @@ help:
 	@echo "  NER: обязательный CPU Tiny2/Triton, без выбора модели и устройства"
 	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 24 Analyzer / 12 Triton"
 	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
-	@echo "  NODE_ROLE=primary|compute NODE_CONFIG=<JSON> — локальная роль production (двухузловой транспорт пока не готов)"
+	@echo "  NODE_ROLE=primary|compute NODE_CONFIG=<JSON> — локальная роль production (черновая двухузловая схема)"
 	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
 	@echo "  Приоритет режима: параметр make, окружение, ENV_FILE, mask"
 	@echo ""
@@ -158,6 +158,7 @@ test-static: test-routing-diagnostics
 		tests/test_stack_lifecycle.py \
 		tests/test_deployment_topologies.py \
 		tests/test_node_role_config.py \
+		tests/test_node_bundle.py \
 		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \

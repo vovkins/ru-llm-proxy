@@ -29,6 +29,9 @@ def clean_context(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ENV_FILE", str(ROOT / ".env.compute.example"))
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", "node-config-contract-only")
+    monkeypatch.setattr(deployment.Context, "prepare_runtime", lambda *_: None)
+    yield
+    shutil.rmtree(ROOT / "deploy/generated/node-config-contract-only", ignore_errors=True)
 
 
 @pytest.fixture
@@ -321,7 +324,7 @@ def test_shared_ner_definitions_use_standard_extends_without_publication():
     assert base["presidio-analyzer"]["ports"] == ["5001:5001"]
 
 
-def test_ci_and_docs_keep_local_only_stage_explicit():
+def test_ci_and_docs_describe_transport_without_claiming_physical_acceptance():
     import yaml
 
     baseline = (ROOT / ".github/workflows/baseline.yml").read_text()
@@ -335,7 +338,9 @@ def test_ci_and_docs_keep_local_only_stage_explicit():
         assert "deploy/nodes.local.json" in (ROOT / filename).read_text().splitlines()
     docs = (ROOT / "docs/deployment.md").read_text()
     assert "местные пулы" in docs
-    assert "этапу 4" in docs and "миграц" in docs
+    assert "миграц" in docs and "физическая/нагрузочная приёмка впереди" in docs
+    assert "Полученные HTTP 503/429/504" in docs
+    assert "deploy/generated/" in docs and "Nginx A" in docs
     compute = (ROOT / ".env.compute.example").read_text()
     for name in ("LITELLM_MASTER_KEY", "POSTGRES_PASSWORD", "CODEX_LB_API_KEY", "ZAI_API_KEY"):
         assert name not in compute
@@ -579,6 +584,7 @@ def fake_docker(tmp_path, model):
         "elif sys.argv[1] == 'ps':\n" +
         "    if os.environ.get('DOCKER_CONTAINERS'): print('existing-container')\n" +
         "elif sys.argv[1] == 'inspect': print(os.environ['DOCKER_CONTAINERS'])\n" +
+        "elif sys.argv[1] == 'run' and 'nginx' in sys.argv and '-t' in sys.argv: pass\n" +
         "elif 'pull' not in sys.argv and 'build' not in sys.argv: sys.exit(91)\n")
     script.chmod(0o755)
     env = dict(os.environ, PATH=str(tmp_path) + os.pathsep + os.environ["PATH"],
@@ -623,7 +629,11 @@ def test_make_compute_setup_without_existing_env_preserves_role_and_creates_no_f
     assert result.returncode == 0, result.stderr
     assert env_path.read_bytes() == (ROOT / ".env.compute.example").read_bytes()
     calls = [json.loads(line) for line in trace.read_text().splitlines()]
-    assert all("up" not in call and "run" not in call for call in calls)
+    assert all("up" not in call for call in calls)
+    for call in calls:
+        if "run" in call:
+            assert "--rm" in call and call[call.index("--network") + 1] == "none"
+            assert call[-1] == "-t" and call[call.index("--entrypoint") + 1] == "nginx"
 
 
 @pytest.mark.parametrize("role", ["primary", "compute"])

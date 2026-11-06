@@ -431,6 +431,8 @@ def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_
     import deployment_topology_gate as topology
     import triton_routing_checks as routing
     import analyzer_routing_checks as analyzer_routing
+    import node_routing_checks as node_routing
+    import node_role_checks as node_roles
     gate = Gate(tmp_path, images=dict(support.IMAGE_TAGS))
     calls = []
     result = {"check": "single_post_no_replay", "status": "passed", "ipv4_subnet": "172.28.0.0/16"}
@@ -447,11 +449,13 @@ def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_
     monkeypatch.setattr(topology, "identities", lambda images: {})
     monkeypatch.setattr(routing, "check_no_replay", no_replay)
     monkeypatch.setattr(analyzer_routing, "check_analyzer_responses", lambda: {"status": "passed"})
+    monkeypatch.setattr(node_routing, "check_node_responses", lambda **_: {"status": "passed"})
+    monkeypatch.setattr(node_roles, "check_node_roles", lambda *_: {"status": "passed"})
     with pytest.raises(RuntimeError):
         gate.run()
     assert calls == ([] if cleanup_failed else ["172.28.0.0/16"])
     assert gate.ipv4_subnet == (None if cleanup_failed else "172.28.0.0/16")
-    assert gate.result["checks"] == ([] if cleanup_failed else [result, {"status": "passed"}])
+    assert gate.result["checks"] == ([] if cleanup_failed else [result, *[{"status": "passed"}] * 3])
 
 
 def test_all_new_analyzer_tests_run_in_baseline_ci():
@@ -471,6 +475,8 @@ def test_ci_paths_include_every_shared_runtime_test_helper():
         patterns = triggers[event]["paths"]
         for name in ("model_smoke.py", "ner_integration.py", "ner_test_support.py",
                      "triton_routing_checks.py", "deployment_topology_gate.py",
+                     "node_routing_checks.py", "node_timeout_budget_checks.py", "node_role_checks.py",
+                     "mock_node_analyzer.py", "mock_syn_blackhole.py",
                      "topology-resources.env", "nginx.ner-proxy.conf", "check_responses_history.py"):
             assert any(fnmatch.fnmatch("tests/e2e/" + name, pattern) for pattern in patterns), (event, name)
     assert workflow["permissions"] == {"contents": "read"}

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from setup_codex_lb import update_env_value
 from node_config import NodeConfigurationError, load_node_configuration
+import node_bundle
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -163,6 +164,7 @@ class Context:
         self._validate_ner_settings()
         self._model = None
         self._identity = None
+        self._bundle = None
         try:
             self.start_timeout = int(os.getenv("STACK_START_TIMEOUT", "180"))
         except ValueError as exc:
@@ -180,8 +182,10 @@ class Context:
             raise DeploymentError("Для проверки узла укажите NODE_ROLE и NODE_CONFIG")
         if self._node_config is None:
             try:
-                self._node_config = load_node_configuration(self.node_config_path)
-            except NodeConfigurationError as error:
+                config = load_node_configuration(self.node_config_path)
+                node_bundle.endpoint(config)
+                self._node_config = config
+            except (NodeConfigurationError, node_bundle.BundleError) as error:
                 raise DeploymentError(str(error)) from None
         return self._node_config
 
@@ -241,7 +245,41 @@ class Context:
         command = ["docker", "compose", "--env-file", str(self.env_file)]
         for file in self.files:
             command += ["-f", file]
+        if self._bundle is not None:
+            command += ["-f", str(self._bundle.overlay)]
         return command
+
+    def prepare_runtime(self):
+        if self.node_role is None:
+            return
+        config = self.node_config
+        self._bundle, self._model = None, None
+        model = self.model
+        self.guard_role(self.containers())
+        try:
+            self._bundle = node_bundle.prepare(ROOT, model["name"], self.node_role,
+                                               config, model["services"]["nginx"]["image"])
+        except (node_bundle.BundleError, OSError, subprocess.SubprocessError) as error:
+            raise DeploymentError("Не удалось подготовить bundle Nginx; действующий комплект не применяется заново") from error
+        self._model = None
+
+    def load_runtime(self, validate_current=False):
+        if self.node_role is None or self._bundle is not None:
+            return
+        project = self.model["name"]
+        if not (node_bundle.location(ROOT, project, self.node_role) / "current.json").exists():
+            return
+        try:
+            self._bundle = node_bundle.load(ROOT, project, self.node_role)
+            if validate_current:
+                config = self.node_config
+                expected = node_bundle.payload(self.node_role, project, config,
+                    node_bundle.render(ROOT, self.node_role, config))
+                if node_bundle.checksum(expected) != self._bundle.digest:
+                    raise node_bundle.BundleError("NODE_CONFIG или шаблон изменён; примените setup/up с текущим комплектом")
+        except node_bundle.BundleError as error:
+            raise DeploymentError(str(error)) from None
+        self._model = None
 
     def compose(self, *args, capture=False):
         result = subprocess.run(self.command + list(args), env=self.environment, cwd=ROOT, text=True, capture_output=capture)
@@ -333,6 +371,9 @@ class Context:
 
     def build(self):
         original_file, original_environment = self.env_file, self.environment
+        original_bundle = self._bundle
+        if original_bundle is not None:
+            self._bundle, self._model = None, None
         try:
             if not self.env_file.exists():
                 self.env_file = ROOT / (".env.compute.example" if self.node_role == "compute" else ".env.example")
@@ -351,6 +392,7 @@ class Context:
                 self.compose("build", "--no-cache", *build)
         finally:
             self.env_file, self.environment, self._model = original_file, original_environment, None
+            self._bundle = original_bundle
 
     def setup(self):
         if self.node_role is not None:
@@ -369,6 +411,7 @@ class Context:
                     mode = next((entry.split("=", 1)[1].lower() for entry in item["Config"]["Env"] if entry.startswith("PII_GUARDRAIL_MODE=")), "mask")
                     if mode != self.mode:
                         raise DeploymentError("Перед setup с другой политикой остановите текущий состав через make down")
+            self.prepare_runtime()
         finally:
             self.env_file, self.environment, self._model = original_file, original_environment, None
         if self.node_role == "compute":
@@ -493,6 +536,7 @@ class Context:
             self.require_primary()
         self.guard("preflight")
         self.guard("mutation" if only_litellm else "switch")
+        self.prepare_runtime()
         self.model
         self.summary()
         previous = self.containers()
@@ -619,8 +663,10 @@ def main():
         elif args.action == "start":
             context.start(force="--force-recreate" in args.args, only_litellm="--only-litellm" in args.args)
         elif args.action == "guard":
+            context.load_runtime()
             context.guard(args.args[0])
         elif args.action == "health":
+            context.load_runtime()
             context.guard("mutation")
             context.summary()
             context.health(int(args.args[0]) if args.args else 0)
@@ -628,9 +674,15 @@ def main():
             if args.args and args.args[0] == "config" and tuple(args.args[1:]) in READ_ONLY_CONFIG:
                 if context.node_role is not None:
                     context.node_config
+                    context.load_runtime(validate_current=True)
             else:
                 if context.node_role is not None:
                     context.validate_operations(args.args)
+                    if args.args and args.args[0] in {"up", "start", "restart", "create", "run"}:
+                        context.guard("mutation")
+                        context.prepare_runtime()
+                    else:
+                        context.load_runtime()
                     context.guard("mutation")
                 else:
                     context.guard_role(context.containers())
@@ -638,12 +690,15 @@ def main():
         elif args.action == "url":
             print(context.url())
         elif args.action == "metrics":
+            context.load_runtime()
             context.metrics()
         elif args.action == "exec":
             context.require_primary()
+            context.load_runtime()
             context.guard("mutation")
             environment = dict(context.environment)
-            environment.update(ENV_FILE=str(context.env_file), LITELLM_URL=os.getenv("LITELLM_URL", context.url()), COMPOSE_FILE=os.pathsep.join(context.files), COMPOSE_ENV_FILES=str(context.env_file))
+            files = context.files + ([str(context._bundle.overlay)] if context._bundle is not None else [])
+            environment.update(ENV_FILE=str(context.env_file), LITELLM_URL=os.getenv("LITELLM_URL", context.url()), COMPOSE_FILE=os.pathsep.join(files), COMPOSE_ENV_FILES=str(context.env_file))
             subprocess.run(args.args, cwd=ROOT, env=environment, check=True)
     except (DeploymentError, subprocess.CalledProcessError, ValueError) as exc:
         print(f"Ошибка развёртывания: {exc}", file=sys.stderr)

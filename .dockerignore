@@ -10,6 +10,7 @@
 .env
 .env.*
 deploy/nodes.local.json
+deploy/generated/
 docker-compose.override.yml
 
 .venv/
