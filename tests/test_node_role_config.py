@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -499,11 +500,13 @@ def test_primary_setup_retains_stock_env_and_codex_bootstrap(tmp_path, monkeypat
 
 def test_compute_health_checks_all_model_and_analyzer_replicas(monkeypatch, node_file):
     context = role_context(monkeypatch, node_file, "compute")
+    context._bundle = SimpleNamespace(digest="a" * 64)
     items = [role_container(name, "compute") for name, count in context.counts.items() for _ in range(count)]
+    items[0]["Config"]["Labels"]["ru-llm-proxy.node-config-sha256"] = "a" * 64
     monkeypatch.setattr(context, "containers", lambda: items)
     calls = []
-    monkeypatch.setattr(context, "ner_ready", lambda item: calls.append(item) or True)
-    monkeypatch.setattr(context, "triton_ready", lambda item: calls.append(item) or True)
+    monkeypatch.setattr(context, "ner_readiness", lambda item: calls.append(item) or "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda item: calls.append(item) or "ready")
     monkeypatch.setattr(context, "gateway_ready", lambda *_: True)
     monkeypatch.setattr(context, "triton_route_ready", lambda *_: True)
     context.health()
@@ -552,6 +555,7 @@ def test_compute_metrics_are_per_replica_without_frontend_or_addresses(monkeypat
     context = role_context(monkeypatch, node_file, "compute")
     node_file.unlink()
     items = [role_container(name, "compute") for name in ("presidio-analyzer", "ner-triton")]
+    context.values.update(ANALYZER_REPLICAS="1", TRITON_REPLICAS="1")
     monkeypatch.setattr(context, "guard", lambda *_: None)
     monkeypatch.setattr(context, "health", lambda: None)
     monkeypatch.setattr(context, "containers", lambda: items)
@@ -563,6 +567,219 @@ def test_compute_metrics_are_per_replica_without_frontend_or_addresses(monkeypat
     context.metrics()
     assert len(calls) == 2
     assert "litellm" not in capsys.readouterr().out
+
+
+def diagnostic_context(monkeypatch, node_file, role="compute"):
+    context = role_context(monkeypatch, node_file, role)
+    context.values.update(ANALYZER_REPLICAS="2", TRITON_REPLICAS="2", LITELLM_REPLICAS="1")
+    context._model = {"name": "readiness-test", "services": {name: {} for name in context.counts}}
+    context._bundle = SimpleNamespace(digest="a" * 64)
+    items = []
+    for service, count in context.counts.items():
+        for index in range(count):
+            item = role_container(service, role)
+            item.update(Id=f"{service}-{index}", Name=f"/{service}-{index}")
+            item["Config"]["Labels"]["ru-llm-proxy.topology"] = "production"
+            if service == "nginx":
+                item["Config"]["Labels"]["ru-llm-proxy.node-config-sha256"] = "a" * 64
+            items.append(item)
+    monkeypatch.setattr(context, "containers", lambda: items)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "gateway_ready", lambda _: True)
+    monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
+    return context, items
+
+
+@pytest.mark.parametrize("role", ["primary", "compute"])
+def test_readiness_is_strictly_local_without_source_json(monkeypatch, node_file, role, capsys):
+    context, _ = diagnostic_context(monkeypatch, node_file, role)
+    node_file.unlink()
+    report = context.health()
+    assert report["scope"] == "local" and report["remote_node"] == "not_checked"
+    assert report["role"] == role and report["project"] == "readiness-test"
+    assert report["status"] == "full" and not report["failures"]
+    assert all(row["ready"] == row["expected"] == row["found"] for row in report["services"].values())
+    assert "scope=local" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("fault", ["stopped", "starting", "unhealthy", "identity_mismatch", "not_warmed_up", "missing", "extra"])
+def test_balanced_success_never_hides_an_incomplete_pool(monkeypatch, node_file, fault):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    target = next(item for item in items if item["Id"] == "presidio-analyzer-0")
+    if fault == "missing":
+        items.remove(target)
+    elif fault == "extra":
+        import copy
+        extra = copy.deepcopy(target)
+        extra.update(Id="extra-analyzer", Name="/extra-analyzer")
+        items.append(extra)
+    elif fault == "stopped":
+        target["State"]["Running"] = False
+    elif fault in {"starting", "unhealthy"}:
+        target["State"]["Health"]["Status"] = fault
+    else:
+        monkeypatch.setattr(context, "ner_readiness", lambda item: fault if item is target else "ready")
+    report = context.readiness()
+    assert report["routes"] == {"gateway": True, "triton": True}
+    assert report["status"] == "degraded" and report["failures"]
+    assert report["services"]["ner-triton"]["ready"] == 2
+    with pytest.raises(deployment.DeploymentError):
+        context.health()
+
+
+@pytest.mark.parametrize("fault", ["all_analyzers", "all_tritons", "gateway", "database"])
+def test_loss_of_required_capacity_or_core_is_unavailable(monkeypatch, node_file, fault):
+    context, items = diagnostic_context(monkeypatch, node_file, "primary")
+    services = {"all_analyzers": {"presidio-analyzer"}, "all_tritons": {"ner-triton"},
+                "gateway": {"nginx"}, "database": {"db"}}[fault]
+    for item in items:
+        if item["Config"]["Labels"]["com.docker.compose.service"] in services:
+            item["State"]["Running"] = False
+    assert context.readiness()["status"] == "unavailable"
+
+
+def test_readiness_collects_every_fault_without_private_environment(monkeypatch, node_file, capsys):
+    context, items = diagnostic_context(monkeypatch, node_file, "primary")
+    items[0]["State"]["Running"] = False
+    next(item for item in items if item["Id"] == "litellm-0")["Config"]["Env"] = ["PII_GUARDRAIL_MODE=private-sentinel"]
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "identity_mismatch")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "triton_probe_failed")
+    with pytest.raises(deployment.DeploymentError) as error:
+        context.health()
+    assert all(word in str(error.value) for word in ("nginx-0", "litellm-0", "presidio-analyzer-1", "ner-triton-1"))
+    assert "private-sentinel" not in str(error.value) + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("service", ["presidio-analyzer", "ner-triton"])
+@pytest.mark.parametrize("failure", ["timeout", "command", "json", "identity"])
+def test_model_probes_are_bounded_and_return_safe_reasons(monkeypatch, service, failure):
+    context = deployment.Context()
+    context._identity = {"model_id": "fixed/model", "revision": "fixed", "onnx_sha256": "a" * 64}
+    def run(command, **kwargs):
+        assert kwargs["timeout"] == 10 and kwargs["capture_output"]
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 10, output="private-sentinel")
+        if failure == "command":
+            return subprocess.CompletedProcess(command, 1, "private-sentinel", "private-sentinel")
+        return subprocess.CompletedProcess(command, 0, "private-sentinel" if failure == "json" else "{}")
+    monkeypatch.setattr(deployment.subprocess, "run", run)
+    probe = context.ner_readiness if service == "presidio-analyzer" else context.triton_readiness
+    reason = probe(role_container(service, None))
+    assert reason != "ready" and "private-sentinel" not in reason
+    if failure == "identity":
+        assert reason == "identity_mismatch"
+
+
+@pytest.mark.parametrize("warmed,expected", [(True, "ready"), (False, "not_warmed_up")])
+def test_analyzer_readiness_does_not_treat_a_busy_queue_as_model_failure(monkeypatch, warmed, expected):
+    context = deployment.Context()
+    context._identity = {"model_id": "fixed/model", "revision": "fixed", "onnx_sha256": "a" * 64}
+    data = {"ner_model": "fixed/model", "ner_revision": "fixed", "ner_onnx_sha256": "a" * 64,
+            "ner_state": "ready", "ner_warmed_up": warmed, "queue_waiting": 32, "private": "private-sentinel"}
+    monkeypatch.setattr(deployment.subprocess, "run", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, json.dumps(data)))
+    assert context.ner_readiness(role_container("presidio-analyzer", None)) == expected
+
+
+@pytest.mark.parametrize("identity", [{}, {"model_id": [], "revision": "fixed", "onnx_sha256": "a" * 64}])
+def test_invalid_trusted_metadata_does_not_poison_later_replica_checks(monkeypatch, identity):
+    context = deployment.Context()
+    context._model = {"services": {"ner-triton": {"image": "trusted-target-image"}}}
+    monkeypatch.setattr(deployment.subprocess, "check_output", lambda *args, **kwargs: json.dumps(identity))
+    monkeypatch.setattr(deployment.subprocess, "run", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, '{"ner_model":"fixed/model"}'))
+    for _ in range(2):
+        assert context.ner_readiness(role_container("presidio-analyzer", None)) == "ner_probe_failed"
+        assert context._identity is None
+
+
+@pytest.mark.parametrize("probe", ["gateway_ready", "triton_route_ready"])
+@pytest.mark.parametrize("failure", ["timeout", "command", "os"])
+def test_route_probes_are_bounded_and_do_not_relay_private_failures(monkeypatch, probe, failure):
+    context = deployment.Context()
+    def run(command, **kwargs):
+        assert kwargs["timeout"] == 10 and kwargs["capture_output"]
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 10, output="private-sentinel")
+        if failure == "command":
+            raise subprocess.CalledProcessError(1, command, stderr="private-sentinel")
+        raise OSError("private-sentinel")
+    monkeypatch.setattr(deployment.subprocess, "run", run)
+    assert getattr(context, probe)([role_container("nginx", None)]) is False
+
+
+@pytest.mark.parametrize("fault", ["timeout", "command", "missing_metrics", "stopped", "missing_replica", "extra_replica"])
+def test_metrics_survive_partial_failure_without_health_or_private_errors(monkeypatch, node_file, capsys, fault):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    monkeypatch.setattr(context, "health", lambda: pytest.fail("metrics must not require health"))
+    if fault == "stopped":
+        next(item for item in items if item["Id"] == "presidio-analyzer-0")["State"]["Running"] = False
+    elif fault == "missing_replica":
+        items.remove(next(item for item in items if item["Id"] == "presidio-analyzer-0"))
+    elif fault == "extra_replica":
+        import copy
+        extra = copy.deepcopy(items[-1])
+        extra.update(Id="extra-triton", Name="/extra-triton")
+        items.append(extra)
+    calls = []
+    def output(command, **kwargs):
+        assert kwargs["timeout"] == 15 and kwargs["stderr"] == subprocess.DEVNULL
+        calls.append(command[2])
+        if command[2] == "presidio-analyzer-0":
+            if fault == "timeout":
+                raise subprocess.TimeoutExpired(command, 15, output="private-sentinel")
+            if fault == "command":
+                raise subprocess.CalledProcessError(1, command, stderr="private-sentinel")
+            if fault == "missing_metrics":
+                return "private-sentinel"
+        return "ru_presidio_analyzer_requests_total 7\n" if "analyzer" in command[2] else "nv_inference_count 9\n"
+    monkeypatch.setattr(deployment.subprocess, "check_output", output)
+    with pytest.raises(deployment.DeploymentError, match="Неполный сбор") as error:
+        context.metrics()
+    text = capsys.readouterr()
+    assert "nv_inference_count 9" in text.out and "ru_presidio_analyzer_requests_total 7" in text.out
+    assert "scope=local role=compute project=readiness-test remote_node=not_checked" in text.out
+    assert "presidio-analyzer-1" in calls and "ner-triton-1" in calls
+    assert "private-sentinel" not in str(error.value) + text.out + text.err
+
+
+def test_running_unhealthy_replicas_still_expose_diagnostic_metrics(monkeypatch, node_file, capsys):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    for item in items:
+        item["State"]["Health"]["Status"] = "unhealthy"
+    monkeypatch.setattr(deployment.subprocess, "check_output", lambda *args, **kwargs: "ru_presidio_ner_ready 0\n")
+    context.metrics()
+    assert capsys.readouterr().out.count("status=collected") == 4
+
+
+def test_metrics_never_probe_a_foreign_role(monkeypatch, node_file, capsys):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    items[0]["Config"]["Labels"]["ru-llm-proxy.node-role"] = "primary"
+    monkeypatch.setattr(deployment.subprocess, "check_output", lambda *args, **kwargs: pytest.fail("foreign probe"))
+    with pytest.raises(deployment.DeploymentError, match="Роль|роль"):
+        context.metrics()
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("fault,reason", [("missing", "bundle_not_loaded"), ("stale", "bundle_mismatch")])
+def test_readiness_requires_the_configured_bundle_on_the_actual_gateway(monkeypatch, node_file, fault, reason):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    if fault == "missing":
+        context._bundle = None
+    else:
+        items[0]["Config"]["Labels"]["ru-llm-proxy.node-config-sha256"] = "b" * 64
+    report = context.readiness()
+    assert report["status"] == "unavailable"
+    assert report["services"]["nginx"]["replicas"][0]["reason"] == reason
+
+
+def test_empty_service_selection_does_not_skip_replica_checks(monkeypatch, node_file):
+    context, items = diagnostic_context(monkeypatch, node_file)
+    items.clear()
+    report = context.readiness({})
+    assert report["status"] == "unavailable" and report["services"]
+    assert report["services"]["presidio-analyzer"]["missing"] == 2
 
 
 @pytest.mark.parametrize("role", ["primary", "compute"])

@@ -434,48 +434,109 @@ class Context:
         if wait < 0:
             raise DeploymentError("Время ожидания готовности не может быть отрицательным")
         deadline = time.monotonic() + wait
-        wanted = services or self.counts
         while True:
-            containers = self.containers()
-            failures = []
-            for service, count in wanted.items():
-                found = [item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == service]
-                if len(found) != count:
-                    failures.append(f"{service}: ожидается {count}, найдено {len(found)}")
-                for item in found:
-                    state = item["State"]
-                    if not state["Running"] or state.get("Health", {}).get("Status") != "healthy":
-                        failures.append(f"{item['Name'].lstrip('/')}: не готов")
-                    elif service == "presidio-analyzer" and not self.ner_ready(item):
-                        failures.append(f"{item['Name'].lstrip('/')}: NER не прогрета")
-                    elif service == "ner-triton" and not self.triton_ready(item):
-                        failures.append(f"{item['Name'].lstrip('/')}: комплект Triton не подтверждён")
-                    if service == "litellm":
-                        mode = next((entry.split("=", 1)[1] for entry in item["Config"]["Env"] if entry.startswith("PII_GUARDRAIL_MODE=")), "mask")
-                        if mode != self.mode:
-                            failures.append(f"{item['Name'].lstrip('/')}: работает {mode.upper()}, ожидается {self.mode.upper()}")
-            if not failures and services is None and not self.gateway_ready(containers):
-                failures.append("Nginx: локальный маршрут не готов")
-            if not failures and "ner-triton" in wanted and not self.triton_route_ready(containers):
-                failures.append("Nginx: внутренний маршрут к Triton не готов")
-            if not failures:
-                for item in containers:
-                    service = item["Config"]["Labels"].get("com.docker.compose.service")
-                    if service in wanted:
-                        print(f"{item['Name'].lstrip('/')}: healthy", flush=True)
-                return
+            report = self.readiness(services)
+            if not report["failures"]:
+                self.print_readiness(report)
+                return report
             if time.monotonic() >= deadline:
-                raise DeploymentError("; ".join(failures))
+                self.print_readiness(report)
+                raise DeploymentError("; ".join(report["failures"]))
             time.sleep(1)
 
+    def diagnostic_scope(self):
+        return {"scope": "local", "role": self.node_role or "single",
+                "project": (self._model or {}).get("name", "unknown"),
+                "remote_node": "not_checked" if self.node_role else "not_applicable",
+                "configured_bundle": (self._bundle.digest if self._bundle is not None else
+                                      "not_loaded" if self.node_role else "not_applicable")}
+
+    def readiness(self, services=None):
+        """Inspect local replicas; balanced routes never certify remote pools."""
+        containers = self.containers()
+        wanted = services or self.counts
+        report = dict(self.diagnostic_scope(), services={}, routes={}, failures=[])
+        for service, count in wanted.items():
+            found = sorted((item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == service),
+                           key=lambda item: item["Name"])
+            rows = []
+            if len(found) != count:
+                report["failures"].append(f"{service}: ожидается {count}, найдено {len(found)}")
+            for item in found:
+                state = item["State"]
+                if not state["Running"]:
+                    reason = "stopped"
+                elif state.get("Health", {}).get("Status") != "healthy":
+                    reason = "starting" if state.get("Health", {}).get("Status") == "starting" else "unhealthy"
+                elif service == "presidio-analyzer":
+                    reason = self.ner_readiness(item)
+                elif service == "ner-triton":
+                    reason = self.triton_readiness(item)
+                else:
+                    reason = "ready"
+                if service == "nginx" and self.node_role and reason == "ready":
+                    if self._bundle is None:
+                        reason = "bundle_not_loaded"
+                    elif item["Config"]["Labels"].get("ru-llm-proxy.node-config-sha256") != self._bundle.digest:
+                        reason = "bundle_mismatch"
+                if service == "litellm":
+                    mode = next((entry.split("=", 1)[1] for entry in item["Config"]["Env"] if entry.startswith("PII_GUARDRAIL_MODE=")), "mask")
+                    if mode != self.mode:
+                        reason = "policy_mismatch"
+                        actual = mode.upper() if mode in {"mask", "block"} else "UNKNOWN"
+                        report["failures"].append(f"{item['Name'].lstrip('/')}: работает {actual}, ожидается {self.mode.upper()}")
+                rows.append({"name": item["Name"].lstrip("/"), "reason": reason})
+                if reason != "ready":
+                    detail = {"presidio-analyzer": "NER не прогрета или комплект не подтверждён",
+                              "ner-triton": "комплект Triton не подтверждён"}.get(service, "не готов")
+                    report["failures"].append(f"{item['Name'].lstrip('/')}: не готов ({detail}; {reason})")
+            report["services"][service] = {"expected": count, "found": len(found),
+                "ready": sum(row["reason"] == "ready" for row in rows),
+                "missing": max(count - len(found), 0), "extra": max(len(found) - count, 0), "replicas": rows}
+        if services is None:
+            report["routes"]["gateway"] = self.gateway_ready(containers)
+            if not report["routes"]["gateway"]:
+                report["failures"].append("Nginx: локальный маршрут не готов")
+        if "ner-triton" in wanted:
+            report["routes"]["triton"] = self.triton_route_ready(containers)
+            if not report["routes"]["triton"]:
+                report["failures"].append("Nginx: внутренний маршрут к Triton не готов")
+        pools = {"presidio-analyzer", "ner-triton"} & set(wanted)
+        core_ready = all(row["ready"] == row["expected"] == row["found"]
+                         for service, row in report["services"].items() if service not in pools)
+        capacity = bool(pools) and all(report["services"][service]["ready"] > 0 for service in pools)
+        report["status"] = ("full" if not report["failures"] else
+                            "degraded" if core_ready and capacity and all(report["routes"].values()) else "unavailable")
+        report["model_identity"] = dict(self._identity) if self._identity is not None else None
+        return report
+
+    @staticmethod
+    def print_readiness(report):
+        print("# readiness " + " ".join(f"{key}={report[key]}" for key in ("scope", "role", "project", "remote_node", "configured_bundle", "status")), flush=True)
+        if report["model_identity"] is not None:
+            print("# trusted_model " + json.dumps(report["model_identity"], sort_keys=True), flush=True)
+        for service, row in report["services"].items():
+            print(f"{service}: expected={row['expected']} found={row['found']} ready={row['ready']} missing={row['missing']} extra={row['extra']}", flush=True)
+            for replica in row["replicas"]:
+                state = "healthy" if replica["reason"] == "ready" else replica["reason"]
+                print(f"{replica['name']}: {state}", flush=True)
+        for route, ready in report["routes"].items():
+            print(f"route/{route}: {'ready' if ready else 'unavailable'}", flush=True)
+
     def gateway_ready(self, containers):
-        ingress = next(item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == "nginx")
+        ingress = next((item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == "nginx"
+                        and item["State"].get("Running")), None)
+        if ingress is None:
+            return False
         paths = (["http://127.0.0.1/nginx-health", "http://127.0.0.1:5001/api/v1/health"]
                  if self.node_role == "compute" else ["http://127.0.0.1/health/liveliness"])
         if "codex-lb" in self.counts:
             paths.append("http://127.0.0.1:2455/health/ready")
         for url in paths:
-            result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5", url], capture_output=True)
+            try:
+                result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5", url], capture_output=True, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                return False
             if result.returncode:
                 return False
         return True
@@ -486,23 +547,31 @@ class Context:
                         and item["State"].get("Running")), None)
         if ingress is None:
             return False
-        result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5",
-            "http://127.0.0.1:8000/v2/models/tiny2/versions/1/ready"], capture_output=True)
+        try:
+            result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5",
+                "http://127.0.0.1:8000/v2/models/tiny2/versions/1/ready"], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return False
         return result.returncode == 0
 
-    def ner_ready(self, item):
-        code = "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=5)); print(json.dumps(data))"
-        result = subprocess.run(["docker", "exec", item["Id"], "python", "-c", code], text=True, capture_output=True)
-        if result.returncode:
-            return False
+    def ner_readiness(self, item):
+        code = "import json, urllib.request; client=urllib.request.build_opener(urllib.request.ProxyHandler({})); data=client.open('http://127.0.0.1:5001/api/v1/health', timeout=5).read(65537); assert len(data)<=65536; print(data.decode())"
         try:
+            result = subprocess.run(["docker", "exec", item["Id"], "python", "-c", code], text=True, capture_output=True, timeout=10)
+            if result.returncode:
+                return "ner_probe_failed"
             data = json.loads(result.stdout)
-            return (isinstance(data, dict) and data.get("ner_state") == "ready" and data.get("ner_warmed_up") is True
-                    and data.get("ner_model") == self.model_identity["model_id"]
+            if not isinstance(data, dict):
+                return "ner_invalid_response"
+            if not (data.get("ner_model") == self.model_identity["model_id"]
                     and data.get("ner_revision") == self.model_identity["revision"]
-                    and data.get("ner_onnx_sha256") == self.model_identity["onnx_sha256"])
+                    and data.get("ner_onnx_sha256") == self.model_identity["onnx_sha256"]):
+                return "identity_mismatch"
+            return "ready" if data.get("ner_state") == "ready" and data.get("ner_warmed_up") is True else "not_warmed_up"
         except ValueError:
-            return False
+            return "ner_invalid_response"
+        except (OSError, DeploymentError, subprocess.SubprocessError):
+            return "ner_probe_failed"
 
     @property
     def model_identity(self):
@@ -512,24 +581,28 @@ class Context:
             image = self.model["services"]["ner-triton"]["image"]
             output = subprocess.check_output(["docker", "run", "--rm", "--network", "none",
                 "--entrypoint", "python3", image, "/opt/ru-ner/verify_triton_service.py", "--identity-only"],
-                text=True, timeout=30)
-            self._identity = json.loads(output)
-            if (not isinstance(self._identity, dict) or
-                    set(self._identity) != {"model_id", "revision", "onnx_sha256"} or
-                    not isinstance(self._identity["onnx_sha256"], str) or
-                    not re.fullmatch(r"[0-9a-f]{64}", self._identity["onnx_sha256"])):
+                text=True, stderr=subprocess.DEVNULL, timeout=30)
+            identity = json.loads(output)
+            if (not isinstance(identity, dict) or
+                    set(identity) != {"model_id", "revision", "onnx_sha256"} or
+                    any(not isinstance(identity[key], str) or not identity[key] for key in ("model_id", "revision")) or
+                    not isinstance(identity["onnx_sha256"], str) or
+                    not re.fullmatch(r"[0-9a-f]{64}", identity["onnx_sha256"])):
                 raise DeploymentError("Не удалось прочитать доверенную идентичность сборки Triton")
+            self._identity = identity
         return self._identity
 
-    def triton_ready(self, item):
+    def triton_readiness(self, item):
         try:
             result = subprocess.run(["docker", "exec", item["Id"], "python3",
                 "/opt/ru-ner/verify_triton_service.py"], text=True, capture_output=True, timeout=10)
             if result.returncode:
-                return False
-            return json.loads(result.stdout) == self.model_identity
-        except (ValueError, subprocess.TimeoutExpired):
-            return False
+                return "triton_probe_failed"
+            return "ready" if json.loads(result.stdout) == self.model_identity else "identity_mismatch"
+        except ValueError:
+            return "triton_invalid_response"
+        except (OSError, DeploymentError, subprocess.SubprocessError):
+            return "triton_probe_failed"
 
     def start(self, force=False, only_litellm=False):
         if only_litellm:
@@ -629,19 +702,44 @@ class Context:
         return f"http://localhost:{port}"
 
     def metrics(self):
+        """Keep each reachable replica's snapshot even when its peers fail."""
         self.guard("mutation")
-        self.health()
-        for item in self.containers():
-            service = item["Config"]["Labels"].get("com.docker.compose.service")
+        containers = self.containers()
+        print("# metrics " + " ".join(f"{key}={value}" for key, value in self.diagnostic_scope().items()), flush=True)
+        failures = []
+        for service, expected in self.counts.items():
             if service not in {"litellm", "presidio-analyzer", "ner-triton"}:
                 continue
+            found = sorted((item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == service),
+                           key=lambda item: item["Name"])
+            if len(found) != expected:
+                failures.append(f"{service}: ожидается {expected}, найдено {len(found)}")
             port = {"litellm": 4000, "presidio-analyzer": 5001, "ner-triton": 8002}[service]
-            print(f"# {item['Name'].lstrip('/')} /metrics", flush=True)
-            code = f"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:{port}/metrics', timeout=10).read().decode())"
-            result = subprocess.check_output(["docker", "exec", item["Id"], "python3", "-c", code], text=True)
-            if not any(line.startswith(("litellm_", "ru_pii_guardrail_", "ru_presidio_", "nv_inference_")) for line in result.splitlines()):
-                raise DeploymentError(f"В {service} отсутствуют метрики")
-            print(result)
+            for item in found:
+                name = item["Name"].lstrip("/")
+                reason = None
+                if not item["State"]["Running"]:
+                    reason = "stopped"
+                else:
+                    code = (f"import urllib.request; client=urllib.request.build_opener(urllib.request.ProxyHandler({{}})); "
+                            f"data=client.open('http://127.0.0.1:{port}/metrics', timeout=10).read(8388609); "
+                            "assert len(data)<=8388608; print(data.decode())")
+                    try:
+                        result = subprocess.check_output(["docker", "exec", item["Id"], "python3", "-c", code],
+                                                         text=True, stderr=subprocess.DEVNULL, timeout=15)
+                        if not any(line.startswith(("litellm_", "ru_pii_guardrail_", "ru_presidio_", "nv_inference_")) for line in result.splitlines()):
+                            reason = "metrics_missing"
+                    except subprocess.TimeoutExpired:
+                        reason = "metrics_timeout"
+                    except (OSError, subprocess.SubprocessError):
+                        reason = "metrics_unavailable"
+                print(f"# service={service} replica={name} /metrics status={reason or 'collected'}", flush=True)
+                if reason:
+                    failures.append(f"{name}: {reason}")
+                else:
+                    print(result, flush=True)
+        if failures:
+            raise DeploymentError("Неполный сбор метрик: " + "; ".join(failures))
 
 
 def main():

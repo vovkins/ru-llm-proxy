@@ -11,9 +11,9 @@ import tempfile
 import uuid
 
 from deployment_topology_gate import Gate, assert_request, request, require_http_status
-from ner_test_support import IMAGE_TAGS, ROOT, configure_test_ipv4_subnet, image_id
+from ner_test_support import IMAGE_TAGS, ROOT, configure_test_ipv4_subnet, image_id, wait_ready
 from node_routing_checks import call, output
-from deployment import Context
+from deployment import Context, DeploymentError
 
 
 class TestNodeContext(Context):
@@ -29,6 +29,68 @@ class TestNodeContext(Context):
         for path in self.test_files:
             command += ["-f", str(path)]
         return command
+
+
+def check_local_observability(context):
+    report = context.health()
+    assert report["scope"] == "local" and report["remote_node"] == "not_checked"
+    containers = context.containers()
+    checks = []
+    for service in ("presidio-analyzer", "ner-triton"):
+        replicas = [row for row in containers if row["Config"]["Labels"].get("com.docker.compose.service") == service]
+        assert len(replicas) == 2
+        target = replicas[0]
+        output("stop", "-t", "3", target["Id"])
+        try:
+            # A successful balanced route must not hide a stopped peer.
+            wait_ready(lambda: context.gateway_ready(context.containers()), 20)
+            report = context.readiness()
+            row = report["services"][service]
+            assert report["status"] != "full" and row["found"] == row["expected"] == 2
+            assert row["ready"] == 1
+            assert any(item["name"] == target["Name"].lstrip("/") and item["reason"] == "stopped" for item in row["replicas"])
+            try:
+                context.health()
+            except DeploymentError:
+                pass
+            else:
+                raise AssertionError("Balanced health hid a stopped local replica")
+            with contextlib.redirect_stdout(io.StringIO()) as stream:
+                try:
+                    context.metrics()
+                except DeploymentError:
+                    pass
+                else:
+                    raise AssertionError("Incomplete metrics collection was accepted")
+            text = stream.getvalue()
+            assert "status=stopped" in text and "ru_presidio_" in text and "nv_inference_" in text
+            assert "scope=local role=compute" in text
+            checks.append({"stopped_service": service, "balanced_health": "passed", "remaining_metrics": "passed"})
+        finally:
+            output("start", target["Id"])
+            context.health(120)
+    target = next(row for row in containers if row["Config"]["Labels"].get("com.docker.compose.service") == "ner-triton")
+    output("exec", target["Id"], "python3", "-c",
+           "import json; from pathlib import Path; p=Path('/models/tiny2/export-manifest.json'); "
+           "p.with_suffix('.observability-backup').write_bytes(p.read_bytes()); d=json.loads(p.read_text()); "
+           "d['onnx_sha256']='b'*64; p.write_text(json.dumps(d))")
+    try:
+        report = context.readiness()
+        assert report["status"] != "full" and report["services"]["ner-triton"]["ready"] == 1
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                context.health()
+            except DeploymentError:
+                pass
+            else:
+                raise AssertionError("An incorrect local model artifact was accepted")
+    finally:
+        output("exec", target["Id"], "python3", "-c",
+               "from pathlib import Path; p=Path('/models/tiny2/export-manifest.json'); "
+               "p.write_bytes(p.with_suffix('.observability-backup').read_bytes()); p.with_suffix('.observability-backup').unlink()")
+        context.health(120)
+    return {"status": "passed", "replicas_per_pool": 2, "partial_failures": checks,
+            "wrong_artifact_rejected": True, "recovery": "passed"}
 
 
 def check_node_roles(images=None):
@@ -53,6 +115,9 @@ def check_node_roles(images=None):
                                          "compute": {"analyzer_url": f"http://{b}:5001"}}))
             resource_file = directory / "small.env"
             resource_file.write_text("LITELLM_REPLICAS=1\nANALYZER_REPLICAS=1\nTRITON_REPLICAS=1\nANALYZER_MEMORY=1g\nTRITON_MEMORY=2g\n")
+            compute_resources = directory / "compute-small.env"
+            compute_resources.write_text(resource_file.read_text().replace("ANALYZER_REPLICAS=1", "ANALYZER_REPLICAS=2")
+                                         .replace("TRITON_REPLICAS=1", "TRITON_REPLICAS=2"))
             compute_env = directory / ".env.compute"
             compute_reset = directory / "compute-ports.yml"
             compute_reset.write_text("services:\n  nginx:\n    ports: !reset []\n")
@@ -63,15 +128,16 @@ def check_node_roles(images=None):
                           "healthcheck": {"interval": "3s"}} for name in ("presidio-analyzer", "ner-triton")},
             }, "networks": {"node-link": {"external": True, "name": link}}}))
             compute_base = dict(safe, STACK="litellm-presidio-codex-lb", TOPOLOGY="production", NODE_ROLE="compute",
-                NODE_CONFIG=str(nodes), ENV_FILE=str(compute_env), TOPOLOGY_ENV=str(resource_file),
+                NODE_CONFIG=str(nodes), ENV_FILE=str(compute_env), TOPOLOGY_ENV=str(compute_resources),
                 COMPOSE_PROJECT_NAME=prefix + "-compute", STACK_START_TIMEOUT="300")
             os.environ.clear()
             os.environ.update(compute_base)
             compute = TestNodeContext([compute_reset, compute_test])
             compute.setup()
             compute.start()
-            assert len(compute.containers()) == 3
+            assert len(compute.containers()) == 5
             assert not any(row["HostConfig"]["PortBindings"] for row in compute.containers())
+            result["local_observability"] = check_local_observability(compute)
             output("run", "-d", "--name", client, "--network", link, "--ip", stranger,
                    "python:3.12-slim", "sleep", "3600")
             denied = call(client, f"http://{b}:5001/api/v1/health",
@@ -130,6 +196,15 @@ def check_node_roles(images=None):
                     capture = json.loads(request(mock, "/capture")[1])
                     assert capture["provider_requests"] == 4 and not capture["provider_saw_raw_phone"]
                     assert capture["provider_saw_pii_placeholder"]
+                    compute.compose("stop", "-t", "3")
+                    try:
+                        local = ctx.health()
+                        assert local["status"] == "full" and local["remote_node"] == "not_checked"
+                        assert_request(url, "mask", "responses", False, token)
+                    finally:
+                        compute.start()
+                    result.setdefault("primary_without_compute", []).append({"stack": stack, "local_health": "full",
+                                                                              "request": "passed", "compute_recovery": "passed"})
                     assert call(client, f"http://{a}:5001/api/v1/health", method="HEAD")["status"] == 200
                     for endpoint in ("http://127.0.0.1:5002", f"http://{b}:5001"):
                         ctx.compose("exec", "-T", "nginx", "wget", "--spider", "-q", endpoint + "/api/v1/health", capture=True)
@@ -138,9 +213,9 @@ def check_node_roles(images=None):
                     def inference_counts():
                         counts = []
                         for context in (ctx, compute):
-                            item = next(row for row in context.containers()
-                                        if row["Config"]["Labels"].get("com.docker.compose.service") == "ner-triton")
-                            counts.append(sum(float(line.split()[-1]) for line in gate.metrics(item, 8002).splitlines()
+                            replicas = [row for row in context.containers()
+                                        if row["Config"]["Labels"].get("com.docker.compose.service") == "ner-triton"]
+                            counts.append(sum(float(line.split()[-1]) for item in replicas for line in gate.metrics(item, 8002).splitlines()
                                               if line.startswith("nv_inference_request_success{") and 'model="tiny2"' in line))
                         return counts
 
