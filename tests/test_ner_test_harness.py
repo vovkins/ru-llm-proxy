@@ -561,6 +561,131 @@ def test_unrecognized_recovery_stderr_is_not_disclosed(stderr):
     assert "private" not in json.dumps(result)
 
 
+@pytest.mark.parametrize("phase", ["network-setup", "fixture-startup", "healthy-head", "connect-timeout"])
+def test_node_routing_phase_uses_fixed_labels(phase, capsys):
+    import node_routing_checks as routing
+    progress = {}
+    routing.routing_phase(progress, phase)
+    assert progress == {"phase": phase, "status": "running"}
+    assert json.loads(capsys.readouterr().out.removeprefix("NER NODE ROUTING ")) == progress
+    with pytest.raises(ValueError, match="Unknown"):
+        routing.routing_phase(progress, "private-token")
+    assert "private" not in json.dumps(progress) + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("exception", [
+    AssertionError(("private request", {"Authorization": "Bearer private-token"})),
+    subprocess.TimeoutExpired(["docker", "exec", "private-token"], 1,
+                              output=b"private stdout", stderr=b"private stderr"),
+    subprocess.CalledProcessError(125, ["docker", "run", "private-token"],
+                                 output="private stdout", stderr="address already in use private-token"),
+    KeyboardInterrupt(), SystemExit(143),
+])
+def test_node_routing_failure_does_not_disclose_exception_values(exception):
+    import node_routing_checks as routing
+    result = routing.routing_failure("fixture-startup", exception)
+    assert result["phase"] == "fixture-startup"
+    assert result["status"] == ("failed" if isinstance(exception, Exception) else "interrupted")
+    assert result["error_type"] == type(exception).__name__
+    if isinstance(exception, subprocess.CalledProcessError):
+        assert result["operation"] == "docker run" and result["returncode"] == 125
+        assert result["stderr_classes"] == ["address_in_use"]
+    else:
+        assert result["operation"] == "check"
+    assert "private" not in json.dumps(result)
+    with pytest.raises(ValueError, match="Unknown"):
+        routing.routing_failure("private-token", exception)
+
+
+@pytest.mark.parametrize("raw", ["private stdout " * 5000, b"private stdout\xff" * 5000])
+@pytest.mark.parametrize("timeout", [False, True])
+def test_node_command_output_is_private_and_bounded(tmp_path, raw, timeout):
+    import node_routing_checks as routing
+    exc = (subprocess.TimeoutExpired(["private command"], 1, output=raw, stderr=raw) if timeout else
+           subprocess.CalledProcessError(125, ["private command"], output=raw, stderr=raw))
+    routing.private_command_output(tmp_path, exc)
+    for field in ("stdout", "stderr"):
+        path = tmp_path / ("command." + field)
+        assert path.stat().st_mode & 0o777 == 0o600
+        assert len(path.read_bytes()) == 16384
+        assert b"private stdout" in path.read_bytes()
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["command.stderr", "command.stdout"]
+
+
+def test_node_routing_failure_identifies_command_line_without_changing_failure_or_cleanup(monkeypatch, tmp_path, capsys):
+    import node_routing_checks as routing
+    progress, commands, cleanup = {}, [], []
+    exc = subprocess.CalledProcessError(125, ["docker", "run", "private-token"],
+        output=b"private stdout", stderr=b"private-token: invalid endpoint settings: user specified IP address is supported only when connecting to networks with user configured subnets")
+    def output(*args):
+        commands.append(args)
+        if args[:2] == ("network", "inspect"):
+            return '[{"IPAM":{"Config":[{"Subnet":"172.28.0.0/16"}]}}]'
+        if args[0] == "run" and "--ip" in args:
+            raise exc
+        return ""
+    def run(args, **kwargs):
+        cleanup.append(args)
+        return SimpleNamespace(stdout=b"private log", stderr=b"", returncode=0)
+    mkdtemp = routing.tempfile.mkdtemp
+    def private_directory(*args, **kwargs):
+        if kwargs.get("prefix") == "ru-node-routing-diagnostic-":
+            kwargs["dir"] = tmp_path
+        return mkdtemp(*args, **kwargs)
+    monkeypatch.setattr(routing, "output", output)
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    monkeypatch.setattr(routing.tempfile, "mkdtemp", private_directory)
+    with pytest.raises(subprocess.CalledProcessError) as captured:
+        routing.check_node_responses(diagnostic=progress)
+    assert captured.value is exc
+    assert progress["phase"] == "fixture-startup" and progress["returncode"] == 125
+    assert progress["operation"] == "docker run"
+    assert progress["stderr_classes"] == ["explicit_ip_requires_configured_subnet", "invalid_endpoint_settings"]
+    origin = progress["origin"]
+    assert origin["file"] == "node_routing_checks.py" and origin["function"] == "check_node_responses"
+    line = (ROOT / "tests/e2e/node_routing_checks.py").read_text().splitlines()[origin["line"] - 1]
+    assert 'output("run", "-d", "--name", client' in line
+    assert [command[:2] for command in commands] == [
+        ("network", "create"), ("network", "create"), ("network", "create"),
+        ("network", "inspect"), ("run", "-d"), ("run", "-d"), ("run", "-d")]
+    assert sum(command[:3] == ["docker", "rm", "-f"] for command in cleanup) == 1
+    assert sum(command[:3] == ["docker", "network", "rm"] for command in cleanup) == 3
+    public = json.dumps(progress) + capsys.readouterr().out
+    for secret in ("private-token", "private stdout", "private log"):
+        assert secret not in public
+    directory, = tmp_path.iterdir()
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert (directory / "command.stderr").read_bytes() == exc.stderr
+
+
+def test_node_routing_failure_details_survive_in_existing_topology_report(monkeypatch, tmp_path):
+    import deployment_topology_gate as topology
+    import triton_routing_checks as routing
+    import analyzer_routing_checks as analyzer_routing
+    import node_routing_checks as node_routing
+    gate = Gate(tmp_path, images=dict(support.IMAGE_TAGS))
+    exc = subprocess.CalledProcessError(125, ["docker", "run", "private-token"], stderr="private-body")
+    diagnostic = node_routing.routing_failure("fixture-startup", exc)
+    def fail(*, budget_probe, diagnostic):
+        diagnostic.update(node_routing.routing_failure("fixture-startup", exc))
+        raise exc
+    monkeypatch.setattr(gate, "sample_memory", lambda: None)
+    monkeypatch.setattr(gate, "capture_failure", lambda _: None)
+    monkeypatch.setattr(topology, "image_id", lambda value: value)
+    monkeypatch.setattr(topology, "identities", lambda images: {})
+    monkeypatch.setattr(routing, "check_no_replay", lambda: {"ipv4_subnet": "172.28.0.0/16"})
+    monkeypatch.setattr(analyzer_routing, "check_analyzer_responses", lambda: {"status": "passed"})
+    monkeypatch.setattr(node_routing, "check_node_responses", fail)
+    with pytest.raises(subprocess.CalledProcessError) as captured:
+        gate.run()
+    assert captured.value is exc and gate.result["node_routing"] == diagnostic
+    assert gate.result["status"] == "failed" and gate.result["phase"] == "node-routing"
+    report = tmp_path / "topologies.json"
+    support.write_report(report, gate.result)
+    assert json.loads(report.read_text())["node_routing"] == diagnostic
+    assert "private" not in report.read_text()
+
+
 @pytest.mark.parametrize("command", ["private-token", ["private-token"], ["docker", {"private": "token"}]])
 def test_unrecognized_recovery_argv_and_invalid_returncode_are_not_serialized(command):
     import triton_routing_checks as routing

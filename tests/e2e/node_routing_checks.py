@@ -13,10 +13,56 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from ner_test_support import ROOT, docker, wait_ready
+from triton_routing_checks import _command_diagnostic
 
 sys.path.insert(0, str(ROOT / "scripts"))
 import node_bundle
 from node_config import NodeConfiguration
+
+ROUTING_PHASES = frozenset({
+    "network-setup", "fixture-startup", "nginx-startup", "readiness", "healthy-head",
+    "healthy-posts", "semantic-responses", "both-network-failures", "network-failover",
+    "http-502-failover", "active-link-loss", "link-restored", "client-deadline",
+    "keepalive-and-acl", "read-timeout", "restore-normal-timeout", "external-budget",
+    "connect-timeout", "completed",
+})
+
+
+def routing_phase(progress, name):
+    if name not in ROUTING_PHASES:
+        raise ValueError("Unknown node routing diagnostic phase")
+    progress.update(phase=name, status="running")
+    print("NER NODE ROUTING " + json.dumps(progress, sort_keys=True), flush=True)
+
+
+def routing_failure(phase, exc):
+    if phase not in ROUTING_PHASES:
+        raise ValueError("Unknown node routing diagnostic phase")
+    result = {"phase": phase, "status": "failed" if isinstance(exc, Exception) else "interrupted",
+              "error_type": type(exc).__name__, "operation": "check"}
+    origin = exc.__traceback__
+    while origin is not None:
+        code = origin.tb_frame.f_code
+        if code.co_filename == __file__ and code.co_name not in {"output", "call"}:
+            result["origin"] = {"file": "node_routing_checks.py", "function": code.co_name,
+                                "line": origin.tb_lineno}
+        origin = origin.tb_next
+    if isinstance(exc, subprocess.CalledProcessError):
+        result.update(_command_diagnostic(exc))
+    return result
+
+
+def private_command_output(directory, exc):
+    if not isinstance(exc, (subprocess.CalledProcessError, subprocess.TimeoutExpired)):
+        return
+    for field in ("stdout", "stderr"):
+        value = getattr(exc, field, None)
+        if isinstance(value, str):
+            value = value[:16384].encode("utf-8", errors="replace")
+        if isinstance(value, bytes):
+            path = directory / ("command." + field)
+            path.write_bytes(value[:16384])
+            path.chmod(0o600)
 
 CLIENT = """
 import json,sys,urllib.request,urllib.error
@@ -60,7 +106,7 @@ def short_read_timeout_copy(root):
     return normal
 
 
-def check_node_responses(*, budget_probe=None):
+def check_node_responses(*, budget_probe=None, diagnostic=None):
     prefix = "ru-node-routing-" + uuid.uuid4().hex[:8]
     a, b, first, second, client = [prefix + suffix for suffix in ("-a", "-b", "-analyzer-a", "-analyzer-b", "-client")]
     networks = [prefix + suffix for suffix in ("-link", "-local-a", "-local-b")]
@@ -68,14 +114,17 @@ def check_node_responses(*, budget_probe=None):
     blackhole = prefix + "-syn-blackhole"
     names.append(blackhole)
     result = {"check": "two_node_transport", "status": "running", "cases": []}
+    progress = {} if diagnostic is None else diagnostic
     with tempfile.TemporaryDirectory(prefix="ru-node-routing-") as directory:
         root = Path(directory)
         shutil.copytree(ROOT / "nginx", root / "nginx")
         try:
+            routing_phase(progress, "network-setup")
             for network in networks:
                 output("network", "create", "--internal", network)
             subnet = ipaddress.ip_network(json.loads(output("network", "inspect", networks[0]))[0]["IPAM"]["Config"][0]["Subnet"])
             address_a, address_b, address_client = [str(subnet.network_address + n) for n in (20, 21, 22)]
+            routing_phase(progress, "fixture-startup")
             fixture = f"{ROOT}/tests/e2e/mock_node_analyzer.py:/fixture.py:ro"
             for name, network in ((first, networks[1]), (second, networks[2])):
                 output("run", "-d", "--name", name, "--network", network, "--network-alias", "presidio-analyzer",
@@ -83,6 +132,7 @@ def check_node_responses(*, budget_probe=None):
             output("run", "-d", "--name", client, "--network", networks[0], "--ip", address_client,
                    "python:3.12-slim", "sleep", "600")
             config = NodeConfiguration((address_a + "/32",), f"http://{address_b}:5001")
+            routing_phase(progress, "nginx-startup")
             def start_node(name, role, network, address):
                 bundle = node_bundle.prepare(root, prefix, role, config, "nginx:1.27-alpine")
                 args = ["create", "--name", name, "--network", networks[0], "--ip", address,
@@ -102,6 +152,7 @@ def check_node_responses(*, budget_probe=None):
                     return all(call(peer, "http://127.0.0.1:5001/_stats")["status"] == 200 for peer in (first, second)) and call(client, f"http://{address_a}:5001/api/v1/health")["status"] == 200
                 except (RuntimeError, subprocess.SubprocessError):
                     return False
+            routing_phase(progress, "readiness")
             wait_ready(ready, 30)
             base = f"http://{address_a}:5001"
             def control(mode_a, mode_b, delay=0):
@@ -110,6 +161,7 @@ def check_node_responses(*, budget_probe=None):
                 time.sleep(6)
             def stats():
                 return [call(peer, "http://127.0.0.1:5001/_stats")["body"] for peer in (first, second)]
+            routing_phase(progress, "healthy-head")
             control("ready", "ready")
             for _ in range(4):
                 response = call(client, base + "/api/v1/health", method="HEAD")
@@ -119,6 +171,7 @@ def check_node_responses(*, budget_probe=None):
             assert call(client, base + "/api/v1/health", method="PUT")["status"] == 405
             assert call(client, base + "/api/v1/analyze", method="HEAD")["status"] == 405
             assert sum(len(row["calls"]) for row in stats()) == 0
+            routing_phase(progress, "healthy-posts")
             for index in range(8):
                 assert call(client, base + "/api/v1/analyze", {"text": "synthetic " + str(index)})["status"] == 200
             counts = [len(item["calls"]) for item in stats()]
@@ -130,6 +183,7 @@ def check_node_responses(*, budget_probe=None):
             assert len(connections) == counts[1] == len(set(connections))
             assert all(row["connection_requests"] == 1 for row in records)
             result["fresh_central_connections"] = True
+            routing_phase(progress, "semantic-responses")
             for mode, retry, expected in (
                 ("overloaded", "7", {"detail": {"code": "analyzer_overloaded", "reason": "queue_timeout", "retry_after_seconds": 7}}),
                 ("unavailable", "5", {"detail": {"code": "required_ner_unavailable", "phase": "windowing", "failure_class": "not_ready"}}),
@@ -153,11 +207,13 @@ def check_node_responses(*, budget_probe=None):
                     central = [row for row in rows if row["request_id"] == head_id and row["method"] == "HEAD"]
                     assert len(central) == 1 and central[0]["upstream_status"] == "503", central
                 result["cases"].append({"semantic": mode, "posts": counts, "retry_after": retry})
+            routing_phase(progress, "both-network-failures")
             control("drop", "drop")
             assert call(client, base + "/api/v1/analyze", {"text": "synthetic"})["status"] == 502
             counts = [len(item["calls"]) for item in stats()]
             assert counts == [1, 1], counts
             result["cases"].append({"both_network_failures_posts": counts})
+            routing_phase(progress, "network-failover")
             control("drop", "ready")
             for index in range(6):
                 headers = {"X-Ru-LLM-Request-ID": "route-" + str(index), "X-Ru-LLM-Text-Field-Index": "3",
@@ -169,6 +225,7 @@ def check_node_responses(*, budget_probe=None):
                 matches = [item for item in snapshots[1]["calls"] if item["id"] == record["id"]]
                 assert len(matches) == 1 and matches[0] == record
             result["cases"].append({"failover_posts": [len(s["calls"]) for s in snapshots]})
+            routing_phase(progress, "http-502-failover")
             control("bad_gateway", "ready")
             for _ in range(4):
                 assert call(client, base + "/api/v1/analyze", {"text": "synthetic"})["status"] == 200
@@ -178,6 +235,7 @@ def check_node_responses(*, budget_probe=None):
 
             # Both first operations are held; inspect actual entries before
             # cutting B, without assuming round-robin after health requests.
+            routing_phase(progress, "active-link-loss")
             control("delay_first", "delay_first", delay=38)
             started = time.monotonic()
             with ThreadPoolExecutor(max_workers=2) as pool:
@@ -199,6 +257,7 @@ def check_node_responses(*, budget_probe=None):
             assert any(row["id"] == original_b for row in snapshots[0]["calls"])
             result["cases"].append({"active_link_loss_posts": counts, "pair_elapsed_seconds": round(elapsed, 2),
                                     "healthy_long_operation_passed": True})
+            routing_phase(progress, "link-restored")
             output("network", "connect", "--ip", address_b, networks[0], b)
             control("ready", "ready")
             for _ in range(6):
@@ -206,6 +265,7 @@ def check_node_responses(*, budget_probe=None):
             assert all(row["calls"] for row in stats())
             result["cases"].append({"link_restored": True})
 
+            routing_phase(progress, "client-deadline")
             control("delay_first", "delay_first", delay=5)
             try:
                 call(client, base + "/api/v1/analyze", {"text": "synthetic-cancel"}, timeout=1)
@@ -216,6 +276,7 @@ def check_node_responses(*, budget_probe=None):
             time.sleep(6)
             assert sum(len(row["calls"]) for row in stats()) == 1
             result["cases"].append({"client_deadline_no_replay": True})
+            routing_phase(progress, "keepalive-and-acl")
             keys = ("tcp_keepalive_time", "tcp_keepalive_intvl", "tcp_keepalive_probes")
             values = [[output("exec", node, "cat", "/proc/sys/net/ipv4/" + key) for key in keys] for node in (a, b)]
             assert values[0] == ["10", "5", "3"] and values[1] != values[0], values
@@ -227,6 +288,7 @@ def check_node_responses(*, budget_probe=None):
             assert call(client, base + "/api/v1/analyze")["status"] == 405
             for node in (a, b):
                 output("exec", node, "nginx", "-t")
+            routing_phase(progress, "read-timeout")
             template = root / "nginx/templates/node-primary.conf.template"
             normal = short_read_timeout_copy(root)
             output("rm", "-f", a)
@@ -241,13 +303,16 @@ def check_node_responses(*, budget_probe=None):
             assert 3.5 < elapsed < 10, elapsed
             result["cases"].append({"read_timeout_seconds_test_only": 2, "posts": counts,
                                     "status": response["status"], "elapsed_seconds": round(elapsed, 2)})
+            routing_phase(progress, "restore-normal-timeout")
             template.write_bytes(normal)
             output("rm", "-f", a)
             start_node(a, "primary", networks[1], address_a)
             wait_ready(ready, 30)
             control("ready", "ready")
             if budget_probe is not None:
+                routing_phase(progress, "external-budget")
                 result["external_budget"] = budget_probe(networks[1], client, base, control, stats)
+            routing_phase(progress, "connect-timeout")
             control("ready", "ready")
             output("network", "disconnect", networks[0], b)
             output("run", "-d", "--name", blackhole, "--network", networks[0], "--ip", address_b,
@@ -280,9 +345,13 @@ def check_node_responses(*, budget_probe=None):
             result["cases"].append({"link_lost_before_connect": "passed", "posts": counts,
                                     "pair_elapsed_seconds": round(time.monotonic() - began, 2)})
             result.update(status="passed", acl_denied_untrusted_source=True, head_health="passed")
+            progress.update(phase="completed", status="passed")
             return result
-        except BaseException:
+        except BaseException as exc:
+            progress.update(routing_failure(progress["phase"], exc))
+            print("NER NODE ROUTING " + json.dumps(progress, sort_keys=True), flush=True)
             diagnostic = Path(tempfile.mkdtemp(prefix="ru-node-routing-diagnostic-"))
+            private_command_output(diagnostic, exc)
             for name in names:
                 logs = subprocess.run(["docker", "logs", "--tail", "100", name], capture_output=True, timeout=15)
                 path = diagnostic / (name + ".log")

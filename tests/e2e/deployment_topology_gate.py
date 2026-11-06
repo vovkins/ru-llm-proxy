@@ -473,7 +473,9 @@ class Gate:
             self.result["phase"] = "analyzer-routing"
             self.result["checks"].append(check_analyzer_responses())
             self.result["phase"] = "node-routing"
-            self.result["checks"].append(check_node_responses(budget_probe=check_budget))
+            self.result["node_routing"] = {}
+            self.result["checks"].append(check_node_responses(budget_probe=check_budget,
+                                                            diagnostic=self.result["node_routing"]))
             self.result["phase"] = "node-roles"
             self.result["checks"].append(check_node_roles(self.images))
             for stack in ("litellm-presidio", "litellm-presidio-codex-lb"):
