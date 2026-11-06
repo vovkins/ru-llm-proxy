@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ner_test_support import ROOT, configure_test_ipv4_subnet, docker, wait_ready
 from triton_routing_checks import _command_diagnostic
+from mock_syn_blackhole import EVENT_PREFIX, PHASES as SYN_PHASES, STATUSES as SYN_STATUSES, ERROR_TYPES
 
 sys.path.insert(0, str(ROOT / "scripts"))
 import node_bundle
@@ -62,6 +64,106 @@ def private_command_output(directory, exc):
             path = directory / ("command." + field)
             path.write_bytes(value[:16384])
             path.chmod(0o600)
+
+
+def syn_probe_result(result):
+    code = result.returncode if type(result.returncode) is int else None
+    parts = []
+    for raw in (result.stderr, result.stdout):
+        if isinstance(raw, bytes):
+            parts.append(raw[:4096].decode("utf-8", errors="replace"))
+        elif isinstance(raw, str):
+            parts.append(raw[:4096])
+    text = "\n".join(parts)
+    category = "ready" if code == 0 else "marker_not_confirmed" if code == 1 else "command_failed"
+    if code != 0:
+        if "executable file not found" in text or "executable not found" in text:
+            category = "probe_executable_missing"
+        elif re.search(r"container[^\r\n]{0,200}is not running", text, re.IGNORECASE):
+            category = "container_not_running"
+    return {"returncode": code, "category": category}
+
+
+def syn_listener_ready(name, progress):
+    progress["attempts"] = progress.get("attempts", 0) + 1
+    try:
+        result = subprocess.run(["docker", "exec", name, "test", "-f", "/tmp/blackhole-ready"],
+                                capture_output=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        progress["last_probe"] = {"returncode": None, "category": "command_timeout"}
+        raise
+    progress["last_probe"] = syn_probe_result(result)
+    return result.returncode == 0
+
+
+def syn_fixture_diagnostic(name, readiness):
+    attempts = readiness.get("attempts")
+    last = readiness.get("last_probe", {})
+    last = last if isinstance(last, dict) else {}
+    code, category = last.get("returncode"), last.get("category")
+    report = {"readiness": {
+        "attempts": attempts if type(attempts) is int and 0 <= attempts <= 1000000 else None,
+        "last_probe": {"returncode": code if type(code) is int else None,
+            "category": category if isinstance(category, str) and category in {
+                "ready", "marker_not_confirmed", "command_failed", "probe_executable_missing",
+                "container_not_running", "command_timeout"} else "unreported"}},
+        "errors": [], "events": []}
+
+    def run(operation, *args):
+        try:
+            response = subprocess.run(["docker", *args], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            report["errors"].append({"operation": operation, "returncode": None})
+            return None
+        if response.returncode:
+            report["errors"].append({"operation": operation,
+                "returncode": response.returncode if type(response.returncode) is int else None})
+            return None
+        return response.stdout[:8192] if isinstance(response.stdout, bytes) else b""
+
+    state = run("container-state", "inspect", "--format",
+        '{"running":{{json .State.Running}},"exit_code":{{json .State.ExitCode}},"oom_killed":{{json .State.OOMKilled}},"image_id":{{json .Image}}}', name)
+    if state is not None:
+        try:
+            data = json.loads(state)
+            report["container"] = {key: data.get(key) if type(data.get(key)) is bool else None
+                                   for key in ("running", "oom_killed")}
+            report["container"]["exit_code"] = data.get("exit_code") if type(data.get("exit_code")) is int else None
+            identity = data.get("image_id")
+            if isinstance(identity, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", identity):
+                report["container"]["image_id"] = identity
+                architecture = run("image-architecture", "image", "inspect", "--format", '{{json .Architecture}}', identity)
+                if architecture is not None:
+                    value = json.loads(architecture)
+                    report["architecture"] = value if value in ("amd64", "arm64", "arm", "386", "ppc64le", "s390x") else "unreported"
+        except (ValueError, TypeError, AttributeError):
+            report["errors"].append({"operation": "container-state-parse", "returncode": None})
+    marker = run("marker-python", "exec", name, "python", "-c",
+                 "from pathlib import Path; print(int(Path('/tmp/blackhole-ready').is_file()))")
+    if marker is not None and marker.strip() in (b"0", b"1"):
+        report["marker_present"] = marker.strip() == b"1"
+    raw = run("fixture-events", "logs", "--tail", "20", name)
+    if raw is not None:
+        for line in raw.decode("utf-8", errors="replace").splitlines()[:32]:
+            if not line.startswith(EVENT_PREFIX):
+                continue
+            try:
+                event = json.loads(line[len(EVENT_PREFIX):])
+                phase, status = event.get("phase"), event.get("status")
+                if not isinstance(phase, str) or phase not in SYN_PHASES or not isinstance(status, str) or status not in SYN_STATUSES:
+                    continue
+                safe = {"phase": phase, "status": status}
+                if "error_type" in event:
+                    kind, number = event.get("error_type"), event.get("errno")
+                    safe.update(error_type=kind if isinstance(kind, str) and kind in ERROR_TYPES else "OtherError",
+                                errno=number if type(number) is int and 0 <= number < 4096 else None)
+                report["events"].append(safe)
+            except (ValueError, TypeError, AttributeError):
+                continue
+            if len(report["events"]) == 12:
+                break
+    return report
+
 
 CLIENT = """
 import json,sys,urllib.request,urllib.error
@@ -114,6 +216,7 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
     names.append(blackhole)
     result = {"check": "two_node_transport", "status": "running", "cases": []}
     progress = {} if diagnostic is None else diagnostic
+    syn_readiness = {}
     with tempfile.TemporaryDirectory(prefix="ru-node-routing-") as directory:
         root = Path(directory)
         shutil.copytree(ROOT / "nginx", root / "nginx")
@@ -319,8 +422,7 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
                    "-v", f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro",
                    "python:3.12-slim", "python", "/fixture.py")
             def silent_listener_ready():
-                return subprocess.run(["docker", "exec", blackhole, "test", "-f", "/tmp/blackhole-ready"],
-                                      capture_output=True, timeout=10).returncode == 0
+                return syn_listener_ready(blackhole, syn_readiness)
             wait_ready(silent_listener_ready, 10)
             probe = subprocess.run(["docker", "exec", client, "python", "-c",
                 "import socket;\ntry: socket.create_connection(('" + address_b + "',5001),timeout=1)\n"
@@ -347,6 +449,11 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
             progress.update(phase="completed", status="passed")
             return result
         except BaseException as exc:
+            if progress["phase"] == "connect-timeout":
+                try:
+                    progress["syn_fixture"] = syn_fixture_diagnostic(blackhole, syn_readiness)
+                except Exception:
+                    progress["syn_fixture"] = {"diagnostic_status": "collection_failed"}
             progress.update(routing_failure(progress["phase"], exc))
             print("NER NODE ROUTING " + json.dumps(progress, sort_keys=True), flush=True)
             diagnostic = Path(tempfile.mkdtemp(prefix="ru-node-routing-diagnostic-"))

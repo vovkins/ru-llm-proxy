@@ -723,6 +723,187 @@ def test_node_command_output_is_private_and_bounded(tmp_path, raw, timeout):
     assert sorted(path.name for path in tmp_path.iterdir()) == ["command.stderr", "command.stdout"]
 
 
+@pytest.mark.parametrize("failure", [None, "bind", "filter", "filter-errno", "listen", "marker", "waiting"])
+def test_syn_fixture_reports_stages_without_changing_socket_or_wait(monkeypatch, capsys, failure):
+    import mock_syn_blackhole as syn
+    operations, filters, closed = [], [], []
+    exc = KeyboardInterrupt() if failure == "waiting" else RuntimeError("private-body")
+    def operation(name, value):
+        operations.append((name, value))
+        if failure == name:
+            raise exc
+    class Listener:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            closed.append(True)
+        def bind(self, address):
+            operation("bind", address)
+        def fileno(self):
+            return 17
+        def listen(self, backlog):
+            operation("listen", backlog)
+    def setsockopt(fd, level, option, pointer, size):
+        program = pointer._obj
+        instruction = program.instructions[0]
+        filters.append((fd, level, option, size, program.length, instruction.code, instruction.k))
+        operation("filter", option)
+        return 1 if failure == "filter-errno" else 0
+    def path(value):
+        assert value == "/tmp/blackhole-ready"
+        return SimpleNamespace(touch=lambda: operation("marker", value))
+    monkeypatch.setattr(syn.socket, "socket", lambda: Listener())
+    monkeypatch.setattr(syn.ctypes, "CDLL", lambda *a, **k: SimpleNamespace(setsockopt=setsockopt))
+    monkeypatch.setattr(syn.ctypes, "get_errno", lambda: 13)
+    monkeypatch.setattr(syn, "Path", path)
+    monkeypatch.setattr(syn.threading, "Event", lambda: SimpleNamespace(wait=lambda seconds: operation("waiting", seconds)))
+    if failure:
+        with pytest.raises(PermissionError if failure == "filter-errno" else type(exc)) as caught:
+            syn.serve()
+        if failure != "filter-errno":
+            assert caught.value is exc
+    else:
+        syn.serve()
+        assert operations == [("bind", ("0.0.0.0", 5001)), ("filter", 26),
+                              ("listen", 8), ("marker", "/tmp/blackhole-ready"), ("waiting", 600)]
+    assert closed == [True]
+    if failure != "bind":
+        assert filters == [(17, syn.socket.SOL_SOCKET, 26, syn.ctypes.sizeof(syn.Program), 1, 0x06, 0)]
+    public = capsys.readouterr().out
+    assert "private-body" not in public
+    events = [json.loads(line.removeprefix(syn.EVENT_PREFIX)) for line in public.splitlines()]
+    if failure:
+        last = events[-1]
+        assert last["phase"] == ("filter" if failure == "filter-errno" else failure)
+        assert last["status"] == ("interrupted" if failure == "waiting" else "failed")
+        assert last["errno"] == (13 if failure == "filter-errno" else None)
+    else:
+        assert events[-2:] == [{"phase": "marker", "status": "passed"}, {"phase": "waiting", "status": "started"}]
+
+
+def test_syn_fixture_event_rejects_untrusted_labels_and_error_values(capsys):
+    import mock_syn_blackhole as syn
+    class PrivateError(RuntimeError):
+        errno = "private-errno"
+    syn.emit("marker", "failed", PrivateError("private-body"))
+    with pytest.raises(ValueError):
+        syn.emit("private-phase", "failed")
+    public = capsys.readouterr().out
+    assert "private" not in public and "PrivateError" not in public
+    assert json.loads(public.removeprefix(syn.EVENT_PREFIX))["error_type"] == "OtherError"
+
+
+@pytest.mark.parametrize("code,stderr,category", [
+    (0, b"", "ready"), (1, b"", "marker_not_confirmed"),
+    (127, b'exec: "test": executable file not found; private-token', "probe_executable_missing"),
+    (1, b"Container private-container is not running", "container_not_running"),
+    (126, b"private-body", "command_failed"),
+])
+def test_syn_readiness_retains_original_command_and_reports_only_safe_values(monkeypatch, code, stderr, category):
+    import node_routing_checks as routing
+    calls, progress = [], {}
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=code, stdout=b"private-stdout", stderr=stderr)
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    assert routing.syn_listener_ready("fixture", progress) is (code == 0)
+    assert progress == {"attempts": 1, "last_probe": {"returncode": code, "category": category}}
+    assert calls == [(["docker", "exec", "fixture", "test", "-f", "/tmp/blackhole-ready"],
+                      {"capture_output": True, "timeout": 10})]
+    assert "private" not in json.dumps(progress)
+
+
+def test_syn_readiness_timeout_is_not_hidden_or_retried(monkeypatch):
+    import node_routing_checks as routing
+    exc = subprocess.TimeoutExpired(["private-command"], 10, stderr=b"private-token")
+    calls, progress = [], {}
+    def run(*args, **kwargs):
+        calls.append(args)
+        raise exc
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        routing.syn_listener_ready("fixture", progress)
+    assert caught.value is exc and len(calls) == 1
+    assert progress["last_probe"] == {"returncode": None, "category": "command_timeout"}
+    assert "private" not in json.dumps(progress)
+
+
+def test_syn_probe_classifies_stdout_without_disclosing_it():
+    import node_routing_checks as routing
+    result = routing.syn_probe_result(SimpleNamespace(returncode=127, stderr=b"", stdout=
+        b'OCI runtime exec failed: exec: "test": executable file not found in $PATH private-token'))
+    assert result == {"returncode": 127, "category": "probe_executable_missing"}
+    assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("architecture", ["amd64", "arm64", "private-architecture"])
+def test_syn_snapshot_is_bounded_and_does_not_publish_logs_or_env(monkeypatch, architecture):
+    import node_routing_checks as routing
+    identity = "sha256:" + "a" * 64
+    events = [{"phase": "filter", "status": "failed", "error_type": "PermissionError", "errno": 13,
+               "Authorization": "private-token"}] * 30
+    raw = b"private-log\nSYN_FIXTURE broken private-body\n" + b"\n".join(
+        (routing.EVENT_PREFIX + json.dumps(event)).encode() for event in events)
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[1] == "inspect":
+            value = json.dumps({"running": False, "exit_code": 1, "oom_killed": False,
+                                "image_id": identity, "Env": ["PASSWORD=private-token"]}).encode()
+        elif args[1] == "image":
+            value = json.dumps(architecture).encode()
+        elif args[1] == "exec":
+            value = b"1\n"
+        else:
+            value = raw
+        return SimpleNamespace(returncode=0, stdout=value, stderr=b"private-stderr")
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    report = routing.syn_fixture_diagnostic("fixture", {
+        "attempts": 10, "private-key": "private-token",
+        "last_probe": {"returncode": 127, "category": "probe_executable_missing", "stderr": "private-stderr"}})
+    assert report["container"] == {"running": False, "exit_code": 1, "oom_killed": False, "image_id": identity}
+    assert report["architecture"] == (architecture if architecture in {"amd64", "arm64"} else "unreported")
+    assert report["marker_present"] is True
+    assert report["readiness"]["last_probe"]["returncode"] == 127
+    assert len(report["events"]) == 12 and report["events"][0] == {
+        "phase": "filter", "status": "failed", "error_type": "PermissionError", "errno": 13}
+    assert report["errors"] == [] and len(calls) == 4
+    assert "private" not in json.dumps(report) and len(json.dumps(report)) < 4096
+
+
+def test_syn_snapshot_partial_collection_does_not_raise_or_disclose_error(monkeypatch):
+    import node_routing_checks as routing
+    def run(*args, **kwargs):
+        raise subprocess.TimeoutExpired("private-command", 10, stderr=b"private-token")
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    result = routing.syn_fixture_diagnostic("fixture", {"attempts": "private-value", "last_probe": "private-token"})
+    assert len(result["errors"]) == 3 and result["events"] == []
+    assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("collection_fails", [False, True])
+def test_syn_diagnostics_never_turn_readiness_timeout_into_success(monkeypatch, collection_fails, capsys):
+    import node_routing_checks as routing
+    exc, progress = TimeoutError("private-timeout"), {}
+    def phase(report, _):
+        report.update(phase="connect-timeout", status="running")
+        raise exc
+    def snapshot(*args):
+        if collection_fails:
+            raise RuntimeError("private-collection-error")
+        return {"marker_present": True}
+    monkeypatch.setattr(routing, "routing_phase", phase)
+    monkeypatch.setattr(routing, "syn_fixture_diagnostic", snapshot)
+    monkeypatch.setattr(routing.subprocess, "run", lambda *a, **k:
+                        SimpleNamespace(stdout=b"", stderr=b"", returncode=0))
+    with pytest.raises(TimeoutError) as caught:
+        routing.check_node_responses(diagnostic=progress)
+    assert caught.value is exc and progress["status"] == "failed"
+    assert progress["syn_fixture"] == ({"diagnostic_status": "collection_failed"} if collection_fails else {"marker_present": True})
+    public = json.dumps(progress) + capsys.readouterr().out
+    assert "private-timeout" not in public and "private-collection-error" not in public
+
+
 def test_node_routing_failure_identifies_command_line_without_changing_failure_or_cleanup(monkeypatch, tmp_path, capsys):
     import node_routing_checks as routing
     progress, commands, cleanup = {}, [], []
