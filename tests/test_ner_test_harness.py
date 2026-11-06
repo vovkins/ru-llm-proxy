@@ -144,6 +144,117 @@ def test_network_isolation_is_checked_not_assumed(monkeypatch, internal):
             support.check_internal_network("test")
 
 
+@pytest.fixture
+def empty_node_link():
+    return {"Name": "ru-node-routing-0123abcd-link", "Driver": "bridge", "Internal": True,
+            "Containers": {}, "IPAM": {"Config": [{"Subnet": "172.28.0.0/16"}]}}
+
+
+@pytest.mark.parametrize("role", ["routing", "roles"])
+@pytest.mark.parametrize("cidr", ["10.80.0.0/24", "172.28.0.0/16", "172.28.0.0/27"])
+def test_node_link_reuses_docker_cidr_with_explicit_internal_subnet(monkeypatch, empty_node_link, role, cidr):
+    name = "ru-node-" + role + "-0123abcd-link"
+    empty_node_link["Name"] = name
+    empty_node_link["IPAM"]["Config"][0]["Subnet"] = cidr
+    calls = []
+    def docker(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(stdout=json.dumps([empty_node_link]) if args[:2] == ("network", "inspect") else "")
+    monkeypatch.setattr(support, "docker", docker)
+    subnet = support.configure_test_ipv4_subnet(name)
+    assert subnet == ipaddress.IPv4Network(cidr)
+    assert all(subnet.network_address + n in subnet.hosts() for n in (20, 21, 22, 23, 24))
+    assert calls == [("network", "inspect", name), ("network", "rm", name),
+                     ("network", "create", "--internal", "--subnet", cidr, name)]
+
+
+@pytest.mark.parametrize("name", [None, 1, "ru-llm-proxy_ru-llm-proxy", "ru-node-routing-other-link",
+                                "ru-node-roles-0123abcd-local-a"])
+def test_node_link_rejects_unowned_names_without_docker(monkeypatch, name):
+    calls = []
+    monkeypatch.setattr(support, "docker", lambda *a, **k: calls.append(a))
+    with pytest.raises(RuntimeError, match="owned"):
+        support.configure_test_ipv4_subnet(name)
+    assert calls == []
+
+
+@pytest.mark.parametrize("invalid", ["wrong-name", "external", "overlay", "attached", "missing-containers",
+                                   "ipv6", "small", "host-bits", "invalid-cidr", "no-config", "two-subnets",
+                                   "not-json", "not-a-list", "empty-list", "two-networks"])
+def test_node_link_rejects_unsafe_or_invalid_inspect_before_mutation(monkeypatch, empty_node_link, invalid):
+    name = empty_node_link["Name"]
+    if invalid == "wrong-name":
+        empty_node_link["Name"] = "private-other-network"
+    elif invalid == "external":
+        empty_node_link["Internal"] = False
+    elif invalid == "overlay":
+        empty_node_link["Driver"] = "overlay"
+    elif invalid == "attached":
+        empty_node_link["Containers"] = {"private-container": {}}
+    elif invalid == "missing-containers":
+        empty_node_link.pop("Containers")
+    elif invalid in {"ipv6", "small", "host-bits", "invalid-cidr"}:
+        empty_node_link["IPAM"]["Config"][0]["Subnet"] = {
+            "ipv6": "fd00::/64", "small": "172.28.0.0/28", "host-bits": "172.28.0.1/16",
+            "invalid-cidr": "private-cidr"}[invalid]
+    elif invalid == "no-config":
+        empty_node_link["IPAM"]["Config"] = []
+    elif invalid == "two-subnets":
+        empty_node_link["IPAM"]["Config"].append({"Subnet": "fd00::/64"})
+    raw = json.dumps([empty_node_link])
+    raw = {"not-json": "private-invalid-json", "not-a-list": "{}", "empty-list": "[]",
+           "two-networks": json.dumps([empty_node_link, empty_node_link])}.get(invalid, raw)
+    calls = []
+    monkeypatch.setattr(support, "docker", lambda *a, **k: calls.append(a) or SimpleNamespace(stdout=raw))
+    with pytest.raises(RuntimeError, match="empty internal bridge") as captured:
+        support.configure_test_ipv4_subnet(name)
+    assert calls == [("network", "inspect", name)]
+    assert "private" not in str(captured.value)
+
+
+@pytest.mark.parametrize("operation", ["inspect", "rm", "create"])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_node_link_command_failure_is_not_retried_or_replaced(monkeypatch, empty_node_link, operation, interrupted):
+    name = empty_node_link["Name"]
+    exc = KeyboardInterrupt() if interrupted else subprocess.CalledProcessError(125, ["docker", "network", operation])
+    calls = []
+    def docker(*args, **kwargs):
+        calls.append(args)
+        if args[1] == operation:
+            raise exc
+        return SimpleNamespace(stdout=json.dumps([empty_node_link]))
+    monkeypatch.setattr(support, "docker", docker)
+    with pytest.raises(type(exc)) as captured:
+        support.configure_test_ipv4_subnet(name)
+    assert captured.value is exc
+    assert [command[1] for command in calls] == ["inspect", "rm", "create"][:["inspect", "rm", "create"].index(operation) + 1]
+
+
+@pytest.mark.parametrize("module", ["node_routing_checks", "node_role_checks"])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_node_scenarios_clean_up_if_link_configuration_fails(monkeypatch, module, interrupted):
+    import importlib
+    node = importlib.import_module(module)
+    commands, cleanup, configured = [], [], []
+    previous = dict(os.environ)
+    exc = KeyboardInterrupt() if interrupted else subprocess.CalledProcessError(125, ["docker", "network", "create"])
+    def configure(name):
+        configured.append(name)
+        raise exc
+    monkeypatch.setattr(node, "configure_test_ipv4_subnet", configure)
+    monkeypatch.setattr(node, "output", lambda *a: commands.append(a) or "")
+    monkeypatch.setattr(node.subprocess, "run", lambda a, **k:
+                        cleanup.append(a) or SimpleNamespace(stdout=b"", stderr=b"", returncode=0))
+    if module == "node_role_checks":
+        monkeypatch.setattr(node, "image_id", lambda image: image)
+    with pytest.raises(type(exc)) as captured:
+        (node.check_node_responses if module == "node_routing_checks" else node.check_node_roles)()
+    assert captured.value is exc and len(configured) == 1
+    assert all(command[:2] == ("network", "create") for command in commands)
+    assert ["docker", "network", "rm", configured[0]] in cleanup
+    assert dict(os.environ) == previous
+
+
 def test_diagnostic_report_does_not_copy_container_secrets(monkeypatch):
     data = [{"Name": "/test", "Image": "sha256:test", "RestartCount": 0,
              "Config": {"Env": ["PASSWORD=not-for-report"]}, "State": {
@@ -619,11 +730,12 @@ def test_node_routing_failure_identifies_command_line_without_changing_failure_o
         output=b"private stdout", stderr=b"private-token: invalid endpoint settings: user specified IP address is supported only when connecting to networks with user configured subnets")
     def output(*args):
         commands.append(args)
-        if args[:2] == ("network", "inspect"):
-            return '[{"IPAM":{"Config":[{"Subnet":"172.28.0.0/16"}]}}]'
         if args[0] == "run" and "--ip" in args:
             raise exc
         return ""
+    def configure(name):
+        commands.append(("configure-test-network", name))
+        return ipaddress.IPv4Network("172.28.0.0/16")
     def run(args, **kwargs):
         cleanup.append(args)
         return SimpleNamespace(stdout=b"private log", stderr=b"", returncode=0)
@@ -633,6 +745,7 @@ def test_node_routing_failure_identifies_command_line_without_changing_failure_o
             kwargs["dir"] = tmp_path
         return mkdtemp(*args, **kwargs)
     monkeypatch.setattr(routing, "output", output)
+    monkeypatch.setattr(routing, "configure_test_ipv4_subnet", configure)
     monkeypatch.setattr(routing.subprocess, "run", run)
     monkeypatch.setattr(routing.tempfile, "mkdtemp", private_directory)
     with pytest.raises(subprocess.CalledProcessError) as captured:
@@ -647,7 +760,7 @@ def test_node_routing_failure_identifies_command_line_without_changing_failure_o
     assert 'output("run", "-d", "--name", client' in line
     assert [command[:2] for command in commands] == [
         ("network", "create"), ("network", "create"), ("network", "create"),
-        ("network", "inspect"), ("run", "-d"), ("run", "-d"), ("run", "-d")]
+        ("configure-test-network", commands[3][1]), ("run", "-d"), ("run", "-d"), ("run", "-d")]
     assert sum(command[:3] == ["docker", "rm", "-f"] for command in cleanup) == 1
     assert sum(command[:3] == ["docker", "network", "rm"] for command in cleanup) == 3
     public = json.dumps(progress) + capsys.readouterr().out

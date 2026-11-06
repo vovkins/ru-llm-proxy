@@ -1,7 +1,6 @@
 """Real stock Nginx: two logical pools, one local attempt and bounded failover."""
 
 import hashlib
-import ipaddress
 import json
 from pathlib import Path
 import shutil
@@ -12,7 +11,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from ner_test_support import ROOT, docker, wait_ready
+from ner_test_support import ROOT, configure_test_ipv4_subnet, docker, wait_ready
 from triton_routing_checks import _command_diagnostic
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -122,7 +121,7 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
             routing_phase(progress, "network-setup")
             for network in networks:
                 output("network", "create", "--internal", network)
-            subnet = ipaddress.ip_network(json.loads(output("network", "inspect", networks[0]))[0]["IPAM"]["Config"][0]["Subnet"])
+            subnet = configure_test_ipv4_subnet(networks[0])
             address_a, address_b, address_client = [str(subnet.network_address + n) for n in (20, 21, 22)]
             routing_phase(progress, "fixture-startup")
             fixture = f"{ROOT}/tests/e2e/mock_node_analyzer.py:/fixture.py:ro"

@@ -1,6 +1,7 @@
 """Bounded Docker operations shared by the isolated NER checks, not deployment."""
 from __future__ import annotations
 
+import ipaddress
 import json
 from datetime import datetime, timezone
 import os
@@ -76,6 +77,36 @@ def check_internal_network(name):
     result = docker("network", "inspect", name, capture_output=True, text=True)
     if json.loads(result.stdout)[0].get("Internal") is not True:
         raise RuntimeError("NER test compute network is not isolated")
+
+
+def configure_test_ipv4_subnet(name):
+    """Recreate an empty node-test link with its Docker-selected explicit CIDR.
+
+    The calling scenario owns creation and final cleanup, including failures.
+    """
+    if not isinstance(name, str) or not re.fullmatch(r"ru-node-(?:routing|roles)-[0-9a-f]{8}-link", name):
+        raise RuntimeError("Only an owned node-test link may be reconfigured")
+    raw = docker("network", "inspect", name, capture_output=True, text=True).stdout
+    try:
+        rows = json.loads(raw)
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise ValueError
+        row = rows[0]
+        if (row["Name"] != name or row["Driver"] != "bridge" or row["Internal"] is not True
+                or row["Containers"] != {}):
+            raise ValueError
+        configs = row["IPAM"]["Config"]
+        if not isinstance(configs, list) or len(configs) != 1:
+            raise ValueError
+        subnet = ipaddress.IPv4Network(configs[0]["Subnet"])
+        if subnet.num_addresses < 32:
+            raise ValueError
+    except (ValueError, TypeError, KeyError):
+        raise RuntimeError("Node-test link must be an empty internal bridge with one usable IPv4 subnet") from None
+    docker("network", "rm", name, capture_output=True, text=True)
+    docker("network", "create", "--internal", "--subnet", str(subnet), name,
+           capture_output=True, text=True)
+    return subnet
 
 
 def container_states(ids):

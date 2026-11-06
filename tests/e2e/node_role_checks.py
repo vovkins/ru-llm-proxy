@@ -2,7 +2,6 @@
 
 import contextlib
 import io
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,7 @@ import tempfile
 import uuid
 
 from deployment_topology_gate import Gate, assert_request, request, require_http_status
-from ner_test_support import IMAGE_TAGS, ROOT, image_id
+from ner_test_support import IMAGE_TAGS, ROOT, configure_test_ipv4_subnet, image_id
 from node_routing_checks import call, output
 from deployment import Context
 
@@ -47,7 +46,7 @@ def check_node_roles(images=None):
         directory = Path(temp)
         try:
             output("network", "create", "--internal", link)
-            subnet = ipaddress.ip_network(json.loads(output("network", "inspect", link))[0]["IPAM"]["Config"][0]["Subnet"])
+            subnet = configure_test_ipv4_subnet(link)
             a, b, stranger = [str(subnet.network_address + n) for n in (20, 21, 22)]
             nodes = directory / "nodes.json"
             nodes.write_text(json.dumps({"primary": {"source_cidrs": [a + "/32"]},
