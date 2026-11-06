@@ -444,7 +444,8 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
             routing_phase(progress, "connect-timeout")
             control("ready", "ready")
             output("network", "disconnect", networks[0], b)
-            output(*syn_fixture_args(blackhole, networks[0], address=address_b))
+            output(*syn_fixture_args(blackhole, networks[0], address=address_b, net_admin=True))
+            result["syn_fixture_security"] = syn_fixture_security(blackhole, networks[0], net_admin=True)
             def silent_listener_ready():
                 return syn_listener_ready(blackhole, syn_readiness)
             wait_ready(silent_listener_ready, 10)

@@ -939,6 +939,22 @@ def test_syn_ab_precedes_model_build_and_saves_only_bounded_report():
     assert saved["with"]["retention-days"] == 7
 
 
+def test_transport_grants_net_admin_only_at_the_explicit_syn_fixture_call():
+    import ast
+    tree = ast.parse((ROOT / "tests/e2e/node_routing_checks.py").read_text())
+    scenario = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "check_node_responses")
+    launches = [node for node in ast.walk(scenario) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == "syn_fixture_args"]
+    assert len(launches) == 1 and ast.unparse(launches[0].args[0]) == "blackhole"
+    assert next(item.value.value for item in launches[0].keywords if item.arg == "net_admin") is True
+    checks = [node for node in ast.walk(scenario) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Name) and node.func.id == "syn_fixture_security"]
+    assert len(checks) == 1 and ast.unparse(checks[0].args[0]) == "blackhole"
+    assert sum(isinstance(node, ast.Constant) and node.value == "--cap-add" for node in ast.walk(tree)) == 1
+    assert not any(isinstance(node, ast.Constant) and node.value in {"--privileged", "--pid=host"}
+                   for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str))
+
+
 @pytest.mark.parametrize("architecture", ["amd64", "arm64", "private-architecture"])
 def test_syn_snapshot_is_bounded_and_does_not_publish_logs_or_env(monkeypatch, architecture):
     import node_routing_checks as routing
