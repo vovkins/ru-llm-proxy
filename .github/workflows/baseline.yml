@@ -67,6 +67,7 @@ jobs:
               "docker-compose.production.yml",
               "docker-compose.production.codex-lb.yml",
               "docker-compose.production.primary.yml",
+              "docker-compose.production.primary.codex-lb.yml",
               "docker-compose.production.compute.yml",
               "tests/e2e/litellm-config.pre-egress-proxy.yaml",
               "tests/e2e/docker-compose.pre-egress-proxy.yml",

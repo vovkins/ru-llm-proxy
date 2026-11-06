@@ -24,6 +24,8 @@ from presidio.model_contract import REMOVED_SETTINGS, reject_removed_settings
 STACKS = {"litellm-presidio", "litellm-presidio-codex-lb"}
 NODE_ROLES = {"primary", "compute"}
 READ_ONLY_CONFIG = {(), ("--quiet",), ("--format", "json"), ("--services",), ("--images",)}
+PRIMARY_COMMANDS = {"update-litellm", "virtual-key-create", "client-auth-smoke", "guardrails-list",
+                    "guardrails-smoke", "routing-smoke", "test-e2e", "monitor-smoke", "ner-evaluate"}
 RESOURCE_COMPONENTS = ("LITELLM", "ANALYZER", "NGINX", "REDIS", "DB", "CODEX_LB", "CODEX_LB_DB", "TRITON")
 RESOURCE_KEYS = {f"{name}_{suffix}" for name in RESOURCE_COMPONENTS for suffix in ("CPUS", "MEMORY")}
 COUNT_KEYS = {"LITELLM_REPLICAS", "ANALYZER_REPLICAS", "TRITON_REPLICAS", "TRITON_MODEL_INSTANCES"}
@@ -126,6 +128,8 @@ class Context:
         self.node_config_path = Path(config_path) if config_path is not None else None
         self._node_config = None
         self.explicit_mode = os.getenv("PII_MODE_ORIGIN") == "command line"
+        if self.node_role == "compute" and ("PII_GUARDRAIL_MODE" in os.environ or "PII_GUARDRAIL_MODE" in file_keys):
+            raise DeploymentError("PII_GUARDRAIL_MODE задаётся на primary, не на compute")
         raw_mode = os.environ["PII_GUARDRAIL_MODE"] if "PII_GUARDRAIL_MODE" in os.environ else setting(self.env_file, "PII_GUARDRAIL_MODE", "mask")
         self.mode = raw_mode.strip().lower()
         if self.mode not in {"mask", "block"}:
@@ -147,6 +151,8 @@ class Context:
             self.files = ["docker-compose.production.compute.yml"]
         elif self.node_role == "primary":
             self.files.append("docker-compose.production.primary.yml")
+            if self.extended:
+                self.files.append("docker-compose.production.primary.codex-lb.yml")
         self.environment = dict(os.environ, **self.values)
         self.environment.update(PII_GUARDRAIL_MODE=self.mode, TOPOLOGY=self.topology)
         for key in ("TRITON_REPLICAS", "TRITON_MODEL_INSTANCES", "TRITON_CPUS", "TRITON_MEMORY"):
@@ -179,9 +185,19 @@ class Context:
                 raise DeploymentError(str(error)) from None
         return self._node_config
 
-    def require_lifecycle_ready(self):
-        if self.node_role is not None:
-            raise DeploymentError("Команды запуска и управления NODE_ROLE появятся в этапе 3; сейчас доступна только проверка конфигурации")
+    def validate_operations(self, operations):
+        if self.node_role is None:
+            return
+        if "clean-all" in operations:
+            raise DeploymentError("STACK=all несовместим с NODE_ROLE; выберите локальный STACK")
+        if self.node_role == "compute" and PRIMARY_COMMANDS.intersection(operations):
+            raise DeploymentError("Команда LiteLLM доступна только на primary, не на compute")
+        if not operations or {"setup", "up", "restart", "start"}.intersection(operations):
+            self.node_config
+
+    def require_primary(self):
+        if self.node_role == "compute":
+            raise DeploymentError("Команда LiteLLM доступна только на primary, не на compute")
 
     def _validate_ner_settings(self):
         rules = {
@@ -228,8 +244,6 @@ class Context:
         return command
 
     def compose(self, *args, capture=False):
-        if self.node_role is not None and (not args or args[0] != "config" or tuple(args[1:]) not in READ_ONLY_CONFIG):
-            self.require_lifecycle_ready()
         result = subprocess.run(self.command + list(args), env=self.environment, cwd=ROOT, text=True, capture_output=capture)
         if result.returncode:
             # Do not relay config output or environment values containing credentials.
@@ -253,12 +267,15 @@ class Context:
         return json.loads(subprocess.check_output(["docker", "inspect", *ids], text=True))
 
     def guard(self, operation):
-        self.require_lifecycle_ready()
         if operation not in {"preflight", "mutation", "switch"}:
             raise DeploymentError("Неизвестная операция проверки состава")
         if operation == "preflight":
+            if self.node_role is not None:
+                self.node_config
             if not self.env_file.is_file():
                 raise DeploymentError(f"Файл {self.env_file} не найден; выполните make setup")
+            if self.node_role == "compute":
+                return
             required = ["LITELLM_MASTER_KEY", "LITELLM_SALT_KEY", "POSTGRES_PASSWORD", "UI_PASSWORD"]
             if self.extended:
                 required += ["CODEX_LB_POSTGRES_PASSWORD", "CODEX_LB_API_KEY"]
@@ -266,7 +283,9 @@ class Context:
                 if setting(self.env_file, key) in {"", "***", "sk-replace-with-generated-key", "replace-with-generated-salt", "replace-with-generated-ui-password"}:
                     raise DeploymentError(f"В {self.env_file} не настроена {key}; выполните make setup")
             return
-        for container in self.containers():
+        containers = self.containers()
+        self.guard_role(containers)
+        for container in containers:
             labels = container["Config"]["Labels"]
             if not self.extended and labels.get("com.docker.compose.service") in {"codex-lb", "codex-lb-db"} and container["State"]["Running"]:
                 raise DeploymentError("Сейчас запущен расширенный состав; укажите STACK=litellm-presidio-codex-lb")
@@ -274,8 +293,31 @@ class Context:
             if operation == "mutation" and labels.get("com.docker.compose.service") in self.counts and actual != self.topology:
                 raise DeploymentError(f"Контейнеры имеют TOPOLOGY={actual}; используйте его для down/clean, а для переключения — up/restart")
 
+    def guard_role(self, containers):
+        if not containers:
+            return
+        labels = [item["Config"]["Labels"] for item in containers]
+        roles = {item.get("ru-llm-proxy.node-role") for item in labels} - {None}
+        if self.node_role is None:
+            if roles:
+                raise DeploymentError("Проект имеет NODE_ROLE; укажите его явно")
+            return
+        if roles != {self.node_role}:
+            raise DeploymentError("Роль существующего проекта не совпадает с NODE_ROLE; автоматическая миграция запрещена")
+        if any(item.get("com.docker.compose.service") == "nginx"
+               and item.get("ru-llm-proxy.node-role") != self.node_role for item in labels):
+            raise DeploymentError("Вход существующего проекта имеет другую NODE_ROLE")
+        allowed = set(self.model["services"])
+        if any(item.get("com.docker.compose.service") not in allowed for item in labels):
+            raise DeploymentError("В локальном проекте найдены компоненты другого состава")
+        if any(item.get("ru-llm-proxy.node-role") != self.node_role for item in labels):
+            raise DeploymentError("Локальная роль не может управлять компонентами другого узла")
+
     def summary(self):
-        print(f"Состав: {self.stack}; топология: {self.topology}; режим: {self.mode.upper()}", flush=True)
+        detail = f"роль: {self.node_role}" if self.node_role == "compute" else f"режим: {self.mode.upper()}"
+        if self.node_role == "primary":
+            detail += "; роль: primary"
+        print(f"Состав: {self.stack}; топология: {self.topology}; {detail}", flush=True)
         print("Экземпляры: " + ", ".join(f"{service}={count}" for service, count in self.counts.items()), flush=True)
         if self.topology == "production":
             cpu, memory = Decimal(0), 0
@@ -286,17 +328,38 @@ class Context:
             print(f"Суммарные лимиты: {cpu} CPU / {memory / 1024**3:g} GiB (не резервирование ресурсов)", flush=True)
 
     def persist_mode(self):
-        self.require_lifecycle_ready()
-        if self.explicit_mode:
+        if self.explicit_mode and self.node_role != "compute":
             update_env_value(self.env_file, "PII_GUARDRAIL_MODE", self.mode, preserve_permissions=True)
 
+    def build(self):
+        original_file, original_environment = self.env_file, self.environment
+        try:
+            if not self.env_file.exists():
+                self.env_file = ROOT / (".env.compute.example" if self.node_role == "compute" else ".env.example")
+            self.environment = dict(self.environment)
+            if self.node_role != "compute":
+                self.environment.update(CODEX_LB_API_KEY="build-only", CODEX_LB_POSTGRES_PASSWORD="build-only")
+            services = self.model["services"]
+            if self.node_role is not None:
+                self.guard_role(self.containers())
+            local = self.counts
+            pull = [name for name in local if "build" not in services[name]]
+            build = [name for name in local if "build" in services[name]]
+            if pull:
+                self.compose("pull", *pull)
+            if build:
+                self.compose("build", "--no-cache", *build)
+        finally:
+            self.env_file, self.environment, self._model = original_file, original_environment, None
+
     def setup(self):
-        self.require_lifecycle_ready()
+        if self.node_role is not None:
+            self.node_config
         # Validate Compose and the running context before generating any secrets.
         original_file, original_environment = self.env_file, self.environment
         try:
             if not self.env_file.exists():
-                self.env_file = ROOT / ".env.example"
+                self.env_file = ROOT / (".env.compute.example" if self.node_role == "compute" else ".env.example")
             self.environment = dict(self.environment)
             self.environment.setdefault("CODEX_LB_POSTGRES_PASSWORD", "setup-only")
             self.environment.setdefault("CODEX_LB_API_KEY", "setup-only")
@@ -308,6 +371,16 @@ class Context:
                         raise DeploymentError("Перед setup с другой политикой остановите текущий состав через make down")
         finally:
             self.env_file, self.environment, self._model = original_file, original_environment, None
+        if self.node_role == "compute":
+            if not self.env_file.exists():
+                try:
+                    descriptor = os.open(self.env_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                        stream.write((ROOT / ".env.compute.example").read_text(encoding="utf-8"))
+                except OSError:
+                    raise DeploymentError("Не удалось создать ENV_FILE compute") from None
+            print("ENV_FILE compute готов; секреты и политика LiteLLM на этом узле не настраиваются", flush=True)
+            return
         subprocess.run(["bash", "scripts/setup_env.sh", str(self.env_file), ".env.example", self.stack], cwd=ROOT, check=True)
         self.persist_mode()
         self.summary()
@@ -315,7 +388,6 @@ class Context:
             subprocess.run(["bash", "scripts/setup_codex_lb.sh", str(self.env_file)], cwd=ROOT, env=self.environment, check=True)
 
     def health(self, wait=0, services=None):
-        self.require_lifecycle_ready()
         if wait < 0:
             raise DeploymentError("Время ожидания готовности не может быть отрицательным")
         deadline = time.monotonic() + wait
@@ -340,7 +412,7 @@ class Context:
                         if mode != self.mode:
                             failures.append(f"{item['Name'].lstrip('/')}: работает {mode.upper()}, ожидается {self.mode.upper()}")
             if not failures and services is None and not self.gateway_ready(containers):
-                failures.append("Nginx: маршрут к LiteLLM или codex-lb не готов")
+                failures.append("Nginx: локальный маршрут не готов")
             if not failures and "ner-triton" in wanted and not self.triton_route_ready(containers):
                 failures.append("Nginx: внутренний маршрут к Triton не готов")
             if not failures:
@@ -355,8 +427,9 @@ class Context:
 
     def gateway_ready(self, containers):
         ingress = next(item for item in containers if item["Config"]["Labels"].get("com.docker.compose.service") == "nginx")
-        paths = ["http://127.0.0.1/health/liveliness"]
-        if self.extended:
+        paths = (["http://127.0.0.1/nginx-health", "http://127.0.0.1:5001/api/v1/health"]
+                 if self.node_role == "compute" else ["http://127.0.0.1/health/liveliness"])
+        if "codex-lb" in self.counts:
             paths.append("http://127.0.0.1:2455/health/ready")
         for url in paths:
             result = subprocess.run(["docker", "exec", ingress["Id"], "wget", "-qO-", "-T", "5", url], capture_output=True)
@@ -416,6 +489,8 @@ class Context:
             return False
 
     def start(self, force=False, only_litellm=False):
+        if only_litellm:
+            self.require_primary()
         self.guard("preflight")
         self.guard("mutation" if only_litellm else "switch")
         self.model
@@ -425,6 +500,8 @@ class Context:
         timeout = self.start_timeout
         if not force:
             for service in ("litellm", "presidio-analyzer", "ner-triton"):
+                if service not in self.counts:
+                    continue
                 existing = [item for item in previous if item["Config"]["Labels"].get("com.docker.compose.service") == service]
                 if existing:
                     expected_hash = self.compose("config", "--hash", service, capture=True).split()[-1]
@@ -469,8 +546,9 @@ class Context:
         self.compose("exec", "-T", "nginx", "nginx", "-t")
         self.health(timeout, {"nginx": 1})
         if not only_litellm:
-            self.compose("up", "-d", "--no-build", *flags, "db", "redis")
-            self.health(timeout, {"db": 1, "redis": 1})
+            if "db" in self.counts:
+                self.compose("up", "-d", "--no-build", *flags, "db", "redis")
+                self.health(timeout, {"db": 1, "redis": 1})
             for count in self.start_counts(previous, "ner-triton"):
                 self.compose("up", "-d", "--no-build", "--no-deps", *flags,
                              "--scale", f"ner-triton={count}", "ner-triton")
@@ -482,11 +560,11 @@ class Context:
             self.compose("up", "-d", "--no-build", "--no-deps", *flags, "--scale", f"presidio-analyzer={count}", "presidio-analyzer")
             self.health(timeout, {"presidio-analyzer": count})
             flags = []
-        if self.extended and not only_litellm:
+        if "codex-lb" in self.counts and not only_litellm:
             self.compose("up", "-d", "--no-build", *(["--force-recreate"] if force else []), "codex-lb-db", "codex-lb")
             self.health(timeout, {"codex-lb-db": 1, "codex-lb": 1})
         flags = ["--force-recreate"] if force else []
-        for count in self.start_counts(previous, "litellm"):
+        for count in (self.start_counts(previous, "litellm") if "litellm" in self.counts else []):
             self.compose("up", "-d", "--no-build", "--no-deps", *flags, "--scale", f"litellm={count}", "litellm")
             self.health(timeout, {"litellm": count})
             flags = []
@@ -498,6 +576,7 @@ class Context:
         return range(max(1, current), desired + 1) if current < desired else [desired]
 
     def url(self):
+        self.require_primary()
         if os.getenv("LITELLM_URL"):
             return os.environ["LITELLM_URL"].rstrip("/")
         port = os.environ["LITELLM_PORT"] if "LITELLM_PORT" in os.environ else setting(self.env_file, "LITELLM_PORT", "4000")
@@ -525,23 +604,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stack")
     parser.add_argument("--env-file")
-    parser.add_argument("action", choices=["validate", "setup", "start", "guard", "health", "compose", "url", "metrics", "exec"])
+    parser.add_argument("action", choices=["validate", "build", "setup", "start", "guard", "health", "compose", "url", "metrics", "exec"])
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
         context = Context(stack=args.stack, env_file=args.env_file)
-        if context.node_role is not None:
-            # Old Make recipes call validate before direct Docker operations.
-            if args.action == "validate" and "MAKELEVEL" in os.environ:
-                context.require_lifecycle_ready()
-            if args.action not in {"validate", "compose"}:
-                context.require_lifecycle_ready()
-            if args.action == "compose" and (not args.args or args.args[0] != "config" or tuple(args.args[1:]) not in READ_ONLY_CONFIG):
-                context.require_lifecycle_ready()
-            context.node_config
         if args.action == "validate":
+            context.validate_operations(args.args)
             return
-        if args.action == "setup":
+        if args.action == "build":
+            context.build()
+        elif args.action == "setup":
             context.setup()
         elif args.action == "start":
             context.start(force="--force-recreate" in args.args, only_litellm="--only-litellm" in args.args)
@@ -552,12 +625,22 @@ def main():
             context.summary()
             context.health(int(args.args[0]) if args.args else 0)
         elif args.action == "compose":
+            if args.args and args.args[0] == "config" and tuple(args.args[1:]) in READ_ONLY_CONFIG:
+                if context.node_role is not None:
+                    context.node_config
+            else:
+                if context.node_role is not None:
+                    context.validate_operations(args.args)
+                    context.guard("mutation")
+                else:
+                    context.guard_role(context.containers())
             context.compose(*args.args)
         elif args.action == "url":
             print(context.url())
         elif args.action == "metrics":
             context.metrics()
         elif args.action == "exec":
+            context.require_primary()
             context.guard("mutation")
             environment = dict(context.environment)
             environment.update(ENV_FILE=str(context.env_file), LITELLM_URL=os.getenv("LITELLM_URL", context.url()), COMPOSE_FILE=os.pathsep.join(context.files), COMPOSE_ENV_FILES=str(context.env_file))

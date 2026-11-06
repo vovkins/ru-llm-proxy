@@ -1,0 +1,7 @@
+services:
+  codex-lb:
+    labels:
+      ru-llm-proxy.node-role: primary
+  codex-lb-db:
+    labels:
+      ru-llm-proxy.node-role: primary
