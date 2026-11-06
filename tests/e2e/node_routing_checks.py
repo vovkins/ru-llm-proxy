@@ -96,6 +96,33 @@ def syn_listener_ready(name, progress):
     return result.returncode == 0
 
 
+def syn_fixture_args(name, network, *, address=None, net_admin=False, image="python:3.12-slim"):
+    args = ["run", "-d", "--name", name, "--network", network]
+    if address is not None:
+        args += ["--ip", address]
+    args += ["--cap-drop", "ALL"]
+    if net_admin:
+        args += ["--cap-add", "NET_ADMIN"]
+    return args + ["--security-opt", "no-new-privileges",
+                   "-v", f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro",
+                   image, "python", "/fixture.py"]
+
+
+def syn_fixture_security(name, network, *, net_admin):
+    response = subprocess.run(["docker", "inspect", "--format",
+        '{"add":{{json .HostConfig.CapAdd}},"drop":{{json .HostConfig.CapDrop}},"privileged":{{json .HostConfig.Privileged}},"security":{{json .HostConfig.SecurityOpt}},"network":{{json .HostConfig.NetworkMode}},"ports":{{json .HostConfig.PortBindings}},"binds":{{json .HostConfig.Binds}}}', name],
+        capture_output=True, text=True, check=True, timeout=10)
+    data = json.loads(response.stdout)
+    added = {value.removeprefix("CAP_") for value in (data["add"] or [])}
+    assert added == ({"NET_ADMIN"} if net_admin else set()), "Unexpected SYN fixture capabilities"
+    assert data["drop"] == ["ALL"] and data["privileged"] is False, "Unexpected SYN fixture isolation"
+    assert data["security"] in (["no-new-privileges"], ["no-new-privileges=true"]), "Unexpected SYN fixture security options"
+    assert data["network"] == network and data["ports"] in ({}, None), "Unexpected SYN fixture network exposure"
+    assert data["binds"] == [f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro"], "Unexpected SYN fixture mounts"
+    return {"net_admin": net_admin, "other_capabilities": False, "privileged": False,
+            "no_new_privileges": True, "ports_published": False, "script_read_only": True}
+
+
 def syn_fixture_diagnostic(name, readiness):
     attempts = readiness.get("attempts")
     last = readiness.get("last_probe", {})
@@ -417,10 +444,7 @@ def check_node_responses(*, budget_probe=None, diagnostic=None):
             routing_phase(progress, "connect-timeout")
             control("ready", "ready")
             output("network", "disconnect", networks[0], b)
-            output("run", "-d", "--name", blackhole, "--network", networks[0], "--ip", address_b,
-                   "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-                   "-v", f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro",
-                   "python:3.12-slim", "python", "/fixture.py")
+            output(*syn_fixture_args(blackhole, networks[0], address=address_b))
             def silent_listener_ready():
                 return syn_listener_ready(blackhole, syn_readiness)
             wait_ready(silent_listener_ready, 10)

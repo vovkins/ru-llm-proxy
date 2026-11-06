@@ -1,4 +1,4 @@
-"""Silent SYN loss on one fixture-owned socket; no firewall or network capability."""
+"""Silent SYN loss on one fixture-owned socket; no host firewall changes."""
 
 import ctypes
 import json
@@ -46,6 +46,7 @@ def serve():
             phase = "filter"
             emit(phase, "started")
             # Linux UAPI: BPF_RET|BPF_K returns zero (drop); SO_ATTACH_FILTER=26.
+            # Patched kernels require NET_ADMIN in this test container's namespace.
             instructions = (Filter * 1)(Filter(0x06, 0, 0, 0))
             program = Program(1, instructions)
             libc = ctypes.CDLL(None, use_errno=True)

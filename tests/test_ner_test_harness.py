@@ -587,7 +587,7 @@ def test_ci_paths_include_every_shared_runtime_test_helper():
         for name in ("model_smoke.py", "ner_integration.py", "ner_test_support.py",
                      "triton_routing_checks.py", "deployment_topology_gate.py",
                      "node_routing_checks.py", "node_timeout_budget_checks.py", "node_role_checks.py",
-                     "mock_node_analyzer.py", "mock_syn_blackhole.py",
+                     "mock_node_analyzer.py", "mock_syn_blackhole.py", "syn_capability_check.py",
                      "topology-resources.env", "nginx.ner-proxy.conf", "check_responses_history.py"):
             assert any(fnmatch.fnmatch("tests/e2e/" + name, pattern) for pattern in patterns), (event, name)
     assert workflow["permissions"] == {"contents": "read"}
@@ -834,6 +834,109 @@ def test_syn_probe_classifies_stdout_without_disclosing_it():
         b'OCI runtime exec failed: exec: "test": executable file not found in $PATH private-token'))
     assert result == {"returncode": 127, "category": "probe_executable_missing"}
     assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("admin", [False, True])
+def test_syn_launch_only_grants_explicit_net_admin(admin):
+    import node_routing_checks as routing
+    args = routing.syn_fixture_args("fixture", "none", net_admin=admin)
+    assert args[:6] == ["run", "-d", "--name", "fixture", "--network", "none"]
+    assert args[args.index("--cap-drop") + 1] == "ALL"
+    assert ("--cap-add" in args) is admin
+    if admin:
+        assert args[args.index("--cap-add") + 1] == "NET_ADMIN" and args.count("--cap-add") == 1
+    assert args[args.index("--security-opt") + 1] == "no-new-privileges"
+    assert args[args.index("-v") + 1] == f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro"
+    assert not any(value in args for value in ("--privileged", "--pid", "--env", "-p", "--device"))
+    assert routing.syn_fixture_args("fixture", "none") == routing.syn_fixture_args("fixture", "none", net_admin=False)
+
+
+@pytest.mark.parametrize("invalid", [None, "extra-cap", "privileged", "host-network", "ports", "mounts", "security"])
+def test_syn_security_inspects_actual_flags_without_disclosing_config(monkeypatch, invalid):
+    import node_routing_checks as routing
+    data = {"add": ["CAP_NET_ADMIN"], "drop": ["ALL"], "privileged": False,
+            "security": ["no-new-privileges"], "network": "none", "ports": {},
+            "binds": [f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro"], "Env": ["private-token"]}
+    if invalid == "extra-cap":
+        data["add"].append("CAP_SYS_ADMIN")
+    elif invalid == "privileged":
+        data["privileged"] = True
+    elif invalid == "host-network":
+        data["network"] = "host"
+    elif invalid == "ports":
+        data["ports"] = {"5001/tcp": [{"HostPort": "5001"}]}
+    elif invalid == "mounts":
+        data["binds"].append("/var/run/docker.sock:/var/run/docker.sock")
+    elif invalid == "security":
+        data["security"] = ["seccomp=unconfined"]
+    monkeypatch.setattr(routing.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=json.dumps(data)))
+    if invalid:
+        with pytest.raises(AssertionError) as captured:
+            routing.syn_fixture_security("fixture", "none", net_admin=True)
+        assert "private" not in str(captured.value)
+    else:
+        result = routing.syn_fixture_security("fixture", "none", net_admin=True)
+        assert result["net_admin"] is True and result["other_capabilities"] is False
+        assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("control", ["eperm", "ready", "unrelated"])
+@pytest.mark.parametrize("positive_ready", [False, True])
+def test_syn_capability_ab_is_sequential_bounded_and_never_accepts_unrelated_failure(monkeypatch, control, positive_ready):
+    import syn_capability_check as check
+    image = "sha256:" + "a" * 64
+    launches, removed = [], []
+    current = {"admin": False}
+    def output(*args):
+        if args[0] == "run":
+            launches.append(args)
+            current["admin"] = "--cap-add" in args
+            assert args[args.index("--network") + 1] == "none"
+            return "container"
+        return json.dumps(dict.fromkeys(("CapEff", "CapPrm", "CapBnd"), 4096 if current["admin"] else 0))
+    def wait(probe, timeout):
+        assert timeout == 10
+        if not probe():
+            raise TimeoutError
+    def diagnostic(*args):
+        return {"container": {"image_id": image, "exit_code": 1, "oom_killed": control == "unrelated"},
+                "events": [{"phase": "filter", "status": "failed", "errno": 1}]}
+    def run(args, **kwargs):
+        if args[:3] == ["docker", "rm", "-f"]:
+            removed.append(args[-1])
+        return SimpleNamespace(returncode=1 if args[:2] == ["docker", "inspect"] else 0)
+    monkeypatch.setattr(check, "output", output)
+    monkeypatch.setattr(check, "wait_ready", wait)
+    monkeypatch.setattr(check, "syn_listener_ready", lambda *a: positive_ready if current["admin"] else control == "ready")
+    monkeypatch.setattr(check, "syn_fixture_diagnostic", diagnostic)
+    monkeypatch.setattr(check, "syn_fixture_security", lambda *a, **k: {"net_admin": k["net_admin"]})
+    monkeypatch.setattr(check.subprocess, "run", run)
+    report = {}
+    if control == "unrelated" or not positive_ready:
+        with pytest.raises(AssertionError):
+            check.check_capabilities(report)
+        assert report["status"] == "failed"
+    else:
+        check.check_capabilities(report)
+        assert report["status"] == "passed"
+        assert report["cases"][1]["connect_timeout"] == "passed"
+    assert len(launches) == len(removed) == (1 if control == "unrelated" else 2)
+    assert all(row["cleanup_ok"] for row in report["cases"])
+    if len(launches) == 2:
+        assert launches[1][-3] == image
+    assert "--cap-add" not in launches[0]
+
+
+def test_syn_ab_precedes_model_build_and_saves_only_bounded_report():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
+    steps = workflow["jobs"]["real-model-integration"]["steps"]
+    names = [step["name"] for step in steps]
+    assert names.index("Check isolated SYN fixture capability controls") < names.index("Build pinned Analyzer image")
+    step = steps[names.index("Check isolated SYN fixture capability controls")]
+    assert not step.get("continue-on-error")
+    saved = steps[names.index("Save bounded SYN capability report")]
+    assert saved["if"] == "always()" and saved["with"]["path"] == "tmp/syn-capability-ab.json"
+    assert saved["with"]["retention-days"] == 7
 
 
 @pytest.mark.parametrize("architecture", ["amd64", "arm64", "private-architecture"])
