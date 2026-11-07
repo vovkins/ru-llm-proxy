@@ -454,6 +454,9 @@ class Gate:
 
     def run(self):
         from analyzer_routing_checks import check_analyzer_responses
+        from node_routing_checks import check_node_responses
+        from node_timeout_budget_checks import check_budget
+        from node_role_checks import check_node_roles
         from triton_routing_checks import check_no_replay, check_replica_recovery
 
         monitor = threading.Thread(target=self.sample_memory, daemon=True)
@@ -469,6 +472,12 @@ class Gate:
             self.result["checks"].append(no_replay)
             self.result["phase"] = "analyzer-routing"
             self.result["checks"].append(check_analyzer_responses())
+            self.result["phase"] = "node-routing"
+            self.result["node_routing"] = {}
+            self.result["checks"].append(check_node_responses(budget_probe=check_budget,
+                                                            diagnostic=self.result["node_routing"]))
+            self.result["phase"] = "node-roles"
+            self.result["checks"].append(check_node_roles(self.images))
             for stack in ("litellm-presidio", "litellm-presidio-codex-lb"):
                 token = None
                 affinity = None

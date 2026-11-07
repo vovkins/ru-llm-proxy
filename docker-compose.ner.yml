@@ -1,0 +1,67 @@
+# Shared runtime definitions; host ports and replica counts belong to callers.
+services:
+  presidio-analyzer:
+    build:
+      context: .
+      dockerfile: presidio/Dockerfile
+      target: analyzer
+      args: &ner-build-args
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        http_proxy: ${HTTP_PROXY:-}
+        https_proxy: ${HTTPS_PROXY:-}
+        no_proxy: ${NO_PROXY:-localhost,127.0.0.1,db,redis,presidio-analyzer,litellm,nginx,codex-lb,codex-lb-db}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+        PIP_PROXY: ${PIP_PROXY:-}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+        NER_MODEL_PROXY: ${NER_MODEL_PROXY:-}
+    restart: unless-stopped
+    environment:
+      - PRESIDIO_ANALYZER_WORKERS=${PRESIDIO_ANALYZER_WORKERS:-1}
+      - PRESIDIO_ANALYZER_CONCURRENCY_LIMIT=${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-2}
+      - PRESIDIO_ANALYZER_BASE64_POLICY=${PRESIDIO_ANALYZER_BASE64_POLICY:-content}
+      - PRESIDIO_ANALYZER_QUEUE_LIMIT=${PRESIDIO_ANALYZER_QUEUE_LIMIT:-32}
+      - PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}
+      - PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM=${PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM:-true}
+      - PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES=${PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES:-internal,local,lan,corp,corp.local,cluster.local,svc.cluster.local}
+      - PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS=${PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS:-true}
+      - PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS=${PRESIDIO_ANALYZER_TRITON_TIMEOUT_SECONDS:-60}
+      - PRESIDIO_ANALYZER_NER_BATCH_SIZE=${PRESIDIO_ANALYZER_NER_BATCH_SIZE:-4}
+    depends_on:
+      nginx:
+        condition: service_healthy
+      ner-triton:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/v1/health', timeout=5).read()
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ru-llm-proxy
+
+  ner-triton:
+    image: ru-llm-proxy-ner-triton:latest
+    build:
+      context: .
+      dockerfile: presidio/Dockerfile
+      target: ner-triton
+      args: *ner-build-args
+    environment:
+      TRITON_MODEL_INSTANCES: "2"
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python3, /opt/ru-ner/verify_triton_service.py]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - ru-llm-proxy

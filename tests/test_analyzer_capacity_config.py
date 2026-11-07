@@ -19,7 +19,7 @@ def test_analyzer_dockerfile_uses_uvicorn_worker_setting():
 
 
 def test_compose_exposes_analyzer_capacity_env():
-    compose = (ROOT / "docker-compose.yml").read_text()
+    compose = (ROOT / "docker-compose.ner.yml").read_text()
 
     assert "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT" in compose
     assert "PRESIDIO_ANALYZER_QUEUE_LIMIT" in compose
