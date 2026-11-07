@@ -255,6 +255,42 @@ def test_node_scenarios_clean_up_if_link_configuration_fails(monkeypatch, module
     assert dict(os.environ) == previous
 
 
+@pytest.mark.parametrize("pool,attempts", [("A", 1), ("B", 1), ("A", 2)])
+def test_node_client_route_matches_central_and_local_field(pool, attempts):
+    from node_role_checks import route_evidence
+
+    endpoint = "172.25.0.21:5001"
+    target = "127.0.0.1:5002" if pool == "A" else endpoint
+    central = {"upstream": target if attempts == 1 else f"{endpoint}, {target}",
+               "upstream_status": "200" if attempts == 1 else "502, 200",
+               "request_id": "test-id", "field": "0", "status": 200}
+    local = dict(central, upstream="172.26.0.2:5001", upstream_status="200")
+    primary, compute = ([central, local], []) if pool == "A" else ([central], [local])
+    assert route_evidence(primary, compute, endpoint) == {"pool": pool, "attempts": attempts}
+
+
+@pytest.mark.parametrize("fault", ["id", "field", "replay", "extra", "no_post"])
+def test_node_client_route_rejects_uncorrelated_or_ambiguous_evidence(fault):
+    from node_role_checks import route_evidence
+
+    endpoint = "172.25.0.21:5001"
+    central = {"upstream": endpoint, "upstream_status": "200", "request_id": "test-id", "field": "0", "status": 200}
+    local = dict(central, upstream="172.26.0.2:5001")
+    primary, compute = [central], [local]
+    if fault == "id":
+        local["request_id"] = "another-id"
+    elif fault == "field":
+        local["field"] = "1"
+    elif fault == "replay":
+        central.update(upstream=", ".join([endpoint] * 3), upstream_status="502, 502, 200")
+    elif fault == "extra":
+        primary.append(dict(local))
+    else:
+        primary.clear()
+    with pytest.raises((AssertionError, ValueError)):
+        route_evidence(primary, compute, endpoint)
+
+
 def test_diagnostic_report_does_not_copy_container_secrets(monkeypatch):
     data = [{"Name": "/test", "Image": "sha256:test", "RestartCount": 0,
              "Config": {"Env": ["PASSWORD=not-for-report"]}, "State": {
