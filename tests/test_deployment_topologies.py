@@ -909,7 +909,7 @@ def test_topology_captures_before_cleanup_without_masking_original_failure(topol
     events = []
     failure = topology_module.HTTPStatusFailure(503, 200, "private-body", "/v1/chat/completions")
     monkeypatch.setitem(sys.modules, "triton_routing_checks", SimpleNamespace(
-        check_no_replay=MagicMock(), check_replica_recovery=MagicMock()))
+        check_no_replay=MagicMock(), check_replica_recovery=MagicMock(), _command_diagnostic=MagicMock()))
     monkeypatch.setattr(topology_module.threading, "Thread", MagicMock())
     monkeypatch.setattr(topology_module, "image_id", lambda image: image)
     monkeypatch.setattr(topology_module, "identities", MagicMock(side_effect=failure))
