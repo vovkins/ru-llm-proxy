@@ -140,8 +140,9 @@ def _plain_fenced_paragraph(text):
 class BoundaryValues:
     """Lazy, request-local index of complete original-source containers."""
 
-    def __init__(self, text):
+    def __init__(self, text, *, confirmed_value=False):
         self.text = text
+        self.confirmed_value = confirmed_value
         self.content_start = len(text) - len(text.lstrip())
         self.content_end = len(text.rstrip())
         self._prepared = False
@@ -199,13 +200,14 @@ class BoundaryValues:
             bounds = self.fenced_paragraphs.containing(start, end)
             if bounds is not None and not _plain_fenced_paragraph(self.text[slice(*bounds)]):
                 return None
+        fallback = (0, len(self.text)) if self.confirmed_value else None
         if not self._not_document(bounds):
-            return None
+            return fallback
         left, right = bounds
         # A prose paragraph must not swallow syntax or several string values.
         if (self.string_owners.intersects(left, right)
                 or any(c in self.text[left:right] for c in "{}[]")):
-            return None
+            return fallback
         return bounds
 
 

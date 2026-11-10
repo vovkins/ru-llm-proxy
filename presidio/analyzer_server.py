@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -26,6 +27,7 @@ from capacity import CapacityRejected, build_limiter_from_env
 from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
 from recognizers.base64_data import Base64DataRecognizer
+from recognizers.json_strings import JsonArgumentView, JsonStringRecognizer, MAX_JSON_CHARS
 from result_merging import (
     MergeDecision, merge_results, is_boundary_container, boundary_coverage_preserved,
 )
@@ -497,6 +499,7 @@ class AnalyzeRequest(BaseModel):
     language: str = "ru"
     entities: list[str] | None = None
     score_threshold: float = 0.35
+    input_kind: Literal["text", "json_arguments"] = "text"
 
 
 class AnalyzeResponse(BaseModel):
@@ -816,6 +819,17 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
     try:
         ner_recognizer.require_ready()
 
+        def check():
+            _raise_if_cancelled(cancellation_event)
+
+        source_text = request.text
+        argument_view = (
+            JsonArgumentView.parse(source_text, check)
+            if request.input_kind == "json_arguments" else None
+        )
+        if argument_view is not None:
+            request = request.model_copy(update={"text": argument_view.text})
+
         presidio_entities = request.entities
         if (
             request.entities
@@ -866,10 +880,31 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         )
         ner_entities = request.entities
         boundary_values = BoundaryValues(request.text)
+        recheck_enabled = getattr(ner_recognizer, "boundary_recheck_enabled", False) is True
         if request.entities and name_context_needed:
             ner_entities = list(
                 dict.fromkeys([*request.entities, "PERSON", "ORGANIZATION"])
             )
+
+        def analyze_ner_chunk(chunk_text, chunk, source_length, boundaries, protected):
+            check()
+            ner_kwargs = dict(
+                score_threshold=request.score_threshold,
+                entities=ner_entities,
+                telemetry_callback=capture_ner_telemetry,
+                cancellation_event=cancellation_event,
+                boundary_context=BoundaryContext(boundaries, chunk.start),
+            )
+            if recheck_enabled:
+                ner_kwargs["protected_spans"] = protected
+            ner_results = ner_recognizer.analyze(chunk_text, **ner_kwargs)
+            check()
+            return (
+                _shift_recognizer_result(result, chunk.start)
+                for result in ner_results
+                if _is_complete_chunk_result(result, chunk, source_length)
+            )
+
         for chunk in chunks:
             _raise_if_cancelled(cancellation_event)
             chunk_text = request.text[chunk.start : chunk.end]
@@ -911,33 +946,57 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 )
             )
 
-            _raise_if_cancelled(cancellation_event)
-            ner_kwargs = dict(
-                score_threshold=request.score_threshold,
-                entities=ner_entities,
-                telemetry_callback=capture_ner_telemetry,
-                cancellation_event=cancellation_event,
-                boundary_context=BoundaryContext(boundary_values, chunk.start),
-            )
-            if getattr(ner_recognizer, "boundary_recheck_enabled", False) is True:
-                # Chunk-local original coordinates; the recognizer maps its
-                # normalized evidence back before checking this protection.
-                ner_kwargs["protected_spans"] = tuple(
-                    (result.start, result.end) for result in chunk_results
-                )
-            ner_results = ner_recognizer.analyze(chunk_text, **ner_kwargs)
-            results.extend(
-                _shift_recognizer_result(result, chunk.start)
-                for result in ner_results
-                if _is_complete_chunk_result(result, chunk, len(request.text))
-            )
-            _raise_if_cancelled(cancellation_event)
+            if argument_view is None:
+                results.extend(analyze_ner_chunk(
+                    chunk_text, chunk, len(request.text), boundary_values,
+                    tuple((result.start, result.end) for result in chunk_results) if recheck_enabled else (),
+                ))
+
+        if argument_view is not None and len(request.text) > MAX_JSON_CHARS:
+            # The legacy recognizer only projects small standalone JSON documents.
+            started_at = time.perf_counter()
+            try:
+                for recognizer in getattr(getattr(analyzer, "registry", None), "recognizers", ()):
+                    if isinstance(recognizer, JsonStringRecognizer) and recognizer.supported_language == request.language:
+                        results.extend(recognizer.analyze_arguments(argument_view, request.entities, check))
+            except Exception:
+                _record_analyzer_phase("presidio", "failure", presidio_duration + time.perf_counter() - started_at)
+                raise
+            presidio_duration += time.perf_counter() - started_at
 
         _record_analyzer_phase(
             "presidio",
             "success",
             presidio_duration,
         )
+
+        if argument_view is not None:
+            protected = None
+            if recheck_enabled:
+                protected = sorted((r.start, r.end) for r in results)
+            for scalar in argument_view.scalars:
+                check()
+                offsets = scalar.compact_offsets
+                value = scalar.decoded
+                if value is None and scalar.is_number:
+                    value = request.text[offsets[0]:offsets[-1]]
+                if not value or not value.strip():
+                    continue
+                boundaries = BoundaryValues(value, confirmed_value=True)
+                for chunk in plan_text_chunks(value):
+                    chunk_spans = () if protected is None else tuple(
+                        (bisect_left(offsets, left) - chunk.start,
+                         bisect_left(offsets, right) - chunk.start)
+                        for left, right in protected
+                        if offsets[chunk.start] <= left < right <= offsets[chunk.end]
+                    )
+                    for result in analyze_ner_chunk(
+                        value[chunk.start:chunk.end], chunk, len(value), boundaries, chunk_spans,
+                    ):
+                        if not 0 <= result.start < result.end <= len(value):
+                            raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed")
+                        result.start, result.end = offsets[result.start], offsets[result.end]
+                        results.append(result)
 
         # Record one aggregate NER event even when large input used many chunks.
         ner_telemetry = _aggregate_ner_telemetry(ner_telemetries)
@@ -979,17 +1038,38 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                                      failure_class="span_postprocessing_failed")
         results = merge_outcome.results
 
+        projected = []
+        for result in results:
+            check()
+            try:
+                spans = (
+                    tuple(argument_view.project(result.start, result.end))
+                    if argument_view is not None else ((result.start, result.end),)
+                )
+                if not spans:
+                    raise ValueError("JSON finding has no scalar coverage")
+            except ValueError as error:
+                raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed") from error
+            for start, end in spans:
+                projected.append((start, end, result))
+        if argument_view is not None:
+            # Distinct compact fragments can touch the same source escape.
+            # Keep their union so the guardrail cannot drop an uncovered tail.
+            aligned = []
+            for start, end, result in sorted(projected, key=lambda item: (item[0], -item[1])):
+                check()
+                if aligned and start < aligned[-1][1]:
+                    left, right, winner = aligned[-1]
+                    aligned[-1] = (left, max(right, end), winner)
+                else:
+                    aligned.append((start, end, result))
+            projected = aligned
         entities = [
-            {
-                "entity_type": r.entity_type,
-                "start": r.start,
-                "end": r.end,
-                "score": r.score,
-                "text": request.text[r.start : r.end],
-            }
-            for r in results
+            {"entity_type": result.entity_type, "start": start, "end": end,
+             "score": result.score, "text": source_text[start:end]}
+            for start, end, result in projected
         ]
-        return AnalyzeResponse(text=request.text, entities=entities)
+        return AnalyzeResponse(text=source_text, entities=entities)
     except NERBackendError as error:
         ner_telemetry = _aggregate_ner_telemetry(ner_telemetries)
         if ner_telemetry is None or ner_telemetry.outcome in {"success", "skipped"}:
