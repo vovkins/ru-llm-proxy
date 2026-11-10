@@ -51,7 +51,7 @@ help:
 	@echo "  NER: обязательный CPU Tiny2/Triton, без выбора модели и устройства"
 	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 24 Analyzer / 12 Triton"
 	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
-	@echo "  NODE_ROLE=primary|compute NODE_CONFIG=<JSON> — локальная роль production (черновая двухузловая схема)"
+	@echo "  NODE_ROLE=primary|compute NODE_CONFIG=<JSON> — локальная роль двухузлового production"
 	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
 	@echo "  Приоритет режима: параметр make, окружение, ENV_FILE, mask"
 	@echo ""

@@ -325,7 +325,7 @@ def test_shared_ner_definitions_use_standard_extends_without_publication():
     assert base["presidio-analyzer"]["ports"] == ["5001:5001"]
 
 
-def test_ci_and_docs_describe_transport_without_claiming_physical_acceptance():
+def test_ci_and_docs_describe_transport_and_safe_migration():
     import yaml
 
     baseline = (ROOT / ".github/workflows/baseline.yml").read_text()
@@ -339,7 +339,15 @@ def test_ci_and_docs_describe_transport_without_claiming_physical_acceptance():
         assert "deploy/nodes.local.json" in (ROOT / filename).read_text().splitlines()
     docs = (ROOT / "docs/deployment.md").read_text()
     assert "местные пулы" in docs
-    assert "миграц" in docs and "физическая/нагрузочная приёмка впереди" in docs
+    migration = docs.split("### Подключение B к работающему production", 1)[1].split(
+        "### Готовность и диагностика двух узлов", 1
+    )[0]
+    assert "### Возврат к одному узлу" in migration
+    assert "unset NODE_ROLE NODE_CONFIG" in migration and "make down" in migration
+    assert "**не** `down -v`" in migration and "те же постоянные тома" in migration
+    limits = " ".join(migration.split())
+    assert "не максимальная плотность и не SLA" in limits
+    assert "400 пользователей остаются за рамками приёмки" in limits
     assert "Полученные HTTP 503/429/504" in docs
     assert "deploy/generated/" in docs and "Nginx A" in docs
     compute = (ROOT / ".env.compute.example").read_text()
