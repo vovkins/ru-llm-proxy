@@ -3876,7 +3876,7 @@ class RuPIIGuardrail(CustomGuardrail):
 
         full_mapping = RestorationMapping(inherited_mapping)
         pii_mapping = RestorationMapping()
-        dictionary_mapping: dict[str, str] = {}
+        dictionary_mapping = RestorationMapping()
         dictionary_rule_counts: dict[str, int] = {}
         entity_counts: dict[str, int] = placeholder_counters(inherited_mapping)
         blocked_entity_counts: dict[str, int] = {}
