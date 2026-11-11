@@ -30,8 +30,9 @@ from recognizers.base64_data import Base64DataRecognizer
 from recognizers.json_strings import JsonArgumentView, JsonStringRecognizer, MAX_JSON_CHARS
 from result_merging import (
     MergeDecision, merge_results, is_boundary_container, boundary_coverage_preserved,
+    NER_PERSON_CONTROL_KEY, span_coverage_preserved,
 )
-from ner.boundary_values import BoundaryContext, BoundaryValues
+from ner.boundary_values import BoundaryContext, BoundaryValues, PersonWindowBudget
 from onnx_artifact import EXPORT_MANIFEST_PATH
 from text_chunking import TextChunk, plan_text_chunks
 from ner import (
@@ -880,6 +881,10 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         )
         ner_entities = request.entities
         boundary_values = BoundaryValues(request.text)
+        person_window = (
+            PersonWindowBudget() if request.input_kind == "text"
+            and (not request.entities or "PERSON" in request.entities) else None
+        )
         recheck_enabled = getattr(ner_recognizer, "boundary_recheck_enabled", False) is True
         if request.entities and name_context_needed:
             ner_entities = list(
@@ -893,7 +898,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 entities=ner_entities,
                 telemetry_callback=capture_ner_telemetry,
                 cancellation_event=cancellation_event,
-                boundary_context=BoundaryContext(boundaries, chunk.start),
+                boundary_context=BoundaryContext(boundaries, chunk.start, person_window),
             )
             if recheck_enabled:
                 ner_kwargs["protected_spans"] = protected
@@ -1009,14 +1014,19 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
 
         # 3. Merge overlaps using source-specific confidence contracts.
         merge_started_at = time.perf_counter()
+        merge_kwargs = dict(requested_entities=request.entities,
+                            score_threshold=request.score_threshold, sentence_starts=sentence_starts)
         try:
-            merge_outcome = merge_results(
-                request.text,
-                results,
-                requested_entities=request.entities,
-                score_threshold=request.score_threshold,
-                sentence_starts=sentence_starts,
-            )
+            merge_outcome = merge_results(request.text, results, **merge_kwargs)
+            if person_window is not None and person_window.used:
+                control = [r for r in results
+                           if (r.recognition_metadata or {}).get(NER_PERSON_CONTROL_KEY)]
+                if control:
+                    prior = merge_results(request.text, [r for r in results if r not in control],
+                                          **merge_kwargs).results
+                    if not span_coverage_preserved([*prior, *control], merge_outcome.results):
+                        raise NERProcessingError(phase="windowing",
+                                                 failure_class="window_boundary_unresolved")
         except Exception:
             _record_analyzer_phase(
                 "merge",
