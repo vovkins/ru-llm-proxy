@@ -45,6 +45,18 @@ WINDOW_PROSE_CASES = (
     ("window_numbered_parenthetical", WINDOW_NUMBERED_INSERT),
 )
 
+# Both independently authored texts reproduce an unresolved PERSON on v0.7.1.
+WINDOW_PERSON_CONTROL_CASES = (
+    ("window_person_inventory", "Морозов", "сведения " * 361
+     + "[вложение]\n- Лист проверки (помета Морозов\n- см. `demo.txt` [черновик]\n"
+     + "данные " * 150),
+    ("window_person_agent", "Mira Meadow", "[agent]\n" + "сведения " * 375
+     + "\nЗапись Mira Meadow\n[source]\n`artifact.md` " + "данные " * 150),
+)
+# Here the control window supplies no positive confirmation.
+WINDOW_PERSON_CONTROL_UNCONFIRMED = ("[agent]\n" + "пример " * 376
+                                     + "\nЗапись Коммит\n[source]\n`artifact.md` " + "данные " * 150)
+
 
 def response_snapshot(body, stream):
     if not stream:
@@ -272,7 +284,8 @@ def check(proxy, blocked, provider):
                   ("postfix", POSTFIX_TEXT), ("boundary", BOUNDARY_TEXT),
                   ("context", CONTEXT_TEXT), ("email", EMAIL_TEXT),
                   ("passport", PASSPORT_FRAGMENT_TEXT))
-    for case, text in text_cases + WINDOW_PROSE_CASES:
+    control_cases = tuple((case, text) for case, _, text in WINDOW_PERSON_CONTROL_CASES)
+    for case, text in text_cases + WINDOW_PROSE_CASES + control_cases:
         counts[case + "_mask"] = counts[case + "_block"] = 0
         for api in ("chat/completions", "responses"):
             for stream in (False, True):
@@ -297,19 +310,22 @@ def check(proxy, blocked, provider):
                 assert capture(provider)["provider_requests"] == 0
                 counts[case + "_block"] += 1
 
-    counts["window_numbered_unclosed_no_egress"] = 0
-    for api in ("chat/completions", "responses"):
-        for stream in (False, True):
-            payload = payload_for(WINDOW_NUMBERED_UNCLOSED, api, stream, False)
-            reset(provider)
-            try:
-                _request(proxy, "/v1/" + api, payload, stream=stream)
-            except urllib.error.HTTPError as exc:
-                assert exc.code == 503, (api, stream, exc.code)
-            else:
-                raise AssertionError((api, stream, "Unconfirmed boundary reached the provider"))
-            assert capture(provider)["provider_requests"] == 0
-            counts["window_numbered_unclosed_no_egress"] += 1
+    for case, text in (("window_numbered_unclosed", WINDOW_NUMBERED_UNCLOSED),
+                       ("window_person_control_unconfirmed", WINDOW_PERSON_CONTROL_UNCONFIRMED)):
+        counts[case + "_no_egress"] = 0
+        for api in ("chat/completions", "responses"):
+            for stream in (False, True):
+                payload = payload_for(text, api, stream, False)
+                reset(provider)
+                try:
+                    _request(proxy, "/v1/" + api, payload, stream=stream)
+                except urllib.error.HTTPError as exc:
+                    assert exc.code == 503, (case, api, stream, exc.code)
+                    assert "window_boundary_unresolved" in exc.read().decode()
+                else:
+                    raise AssertionError((case, api, stream, "Unconfirmed boundary reached the provider"))
+                assert capture(provider)["provider_requests"] == 0
+                counts[case + "_no_egress"] += 1
 
     for api in ("chat/completions", "responses"):
         for stream in (False, True):

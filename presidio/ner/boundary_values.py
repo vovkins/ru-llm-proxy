@@ -478,6 +478,15 @@ class BoundaryValues:
             self._inline = _inline_syntax(self.text, self.fences, self.string_owners)
         return self._inline
 
+    def is_plain_text_span(self, start, end):
+        if self.confirmed_value or not 0 <= start < end <= len(self.text):
+            return False
+        self._prepare()
+        inline, unknown_start = self._markup()
+        return end <= unknown_start and not any(index.intersects(start, end) for index in (
+            self.string_owners, self.references, self.fences, inline,
+        ))
+
     def _parentheses(self):
         if self._pairs is None:
             inline, unknown_start = self._markup()
@@ -567,7 +576,15 @@ class BoundaryValues:
         return bounds
 
 
+@dataclass
+class PersonWindowBudget:
+    """One additional inference shared by all chunks of an Analyzer request."""
+
+    used: bool = False
+
+
 @dataclass(frozen=True)
 class BoundaryContext:
     values: BoundaryValues
     offset: int = 0
+    person_window: PersonWindowBudget | None = None
