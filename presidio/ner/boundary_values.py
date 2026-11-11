@@ -6,11 +6,14 @@ evaluates code, or treats an artificial Analyzer chunk as a document boundary.
 
 from bisect import bisect_right
 from dataclasses import dataclass
+from itertools import chain
 import re
 import unicodedata
 from urllib.parse import urlsplit
 
 from string_spans import StringSpans
+from .initial_names import initial_person_ranges
+from .reference_records import subword_reference_scope_allowed
 
 
 _REFERENCES = re.compile(
@@ -23,6 +26,8 @@ _BLANK_LINE = re.compile(rf"{_LINE_BREAK}[ \t]*{_LINE_BREAK}")
 _FENCE = re.compile(r"(?:\A|(?<=[\r\n\u2028\u2029]))[ ]{0,3}(`{3,}|~{3,})([^\r\n\u2028\u2029]*)")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
+_NUMBERED_SOURCE_LINE = re.compile(r"[ \t]*([1-9][0-9]{0,8}):(?:[ \t](.*)|())\Z")
+MAX_NUMBERED_PARAGRAPH_CHARS = 2048
 
 
 class _Ranges:
@@ -137,6 +142,78 @@ def _plain_fenced_paragraph(text):
                or unicodedata.category(char).startswith("M") for char in text)
 
 
+def _numbered_source_paragraphs(text):
+    """Paragraphs bracketed by numbered blank lines in a consecutive source run.
+
+    Physical line boundaries, EOF and token/chunk boundaries are not sufficient.
+    Both source blank records must exist in the complete original field.
+    """
+    records = []
+    previous_number = None
+    preceding_blank = None
+    plain_prefix = False
+    start = 0
+    for separator in chain(_LINE_END.finditer(text), (None,)):
+        end = separator.start() if separator is not None else len(text)
+        match = _NUMBERED_SOURCE_LINE.fullmatch(text[start:end])
+        if match is None:
+            records = []
+            previous_number = None
+            preceding_blank = None
+            plain_prefix = False
+        else:
+            number = int(match.group(1))
+            if previous_number is None or number != previous_number + 1:
+                records = []
+                preceding_blank = None
+                # An excerpt beginning in the middle of a file could inherit
+                # an unclosed string, bracket or fence from omitted lines.
+                plain_prefix = number == 1
+            body = match.group(2) or ""
+            if any(c in body for c in "{}[]\"'\\=<>\x00") or "```" in body or "~~~" in body:
+                plain_prefix = False
+            if not body.strip():
+                if (plain_prefix and preceding_blank is not None and records
+                        and separator is not None):
+                    left, right = records[0][0], records[-1][1]
+                    # The numbered paragraph is plain prose. Do not swallow code,
+                    # JSON, a quote, a backslash or an unclosed Markdown fence.
+                    content = "\n".join(value for _, _, value in records)
+                    if (right - left <= MAX_NUMBERED_PARAGRAPH_CHARS
+                            and not any(c in content for c in "{}[]\"'\\=<>\x00")
+                            and "```" not in content and "~~~" not in content):
+                        yield left, right
+                preceding_blank = (start, end)
+                records = []
+            elif preceding_blank is not None:
+                body_start = start + match.start(2)
+                records.append((body_start, end, body))
+            previous_number = number
+        if separator is not None:
+            start = separator.end()
+
+
+# Phrase delimiters that a PERSON/ORGANIZATION/secret value does not cross.
+# Deliberately excluded: "." (initials), "," (inverted names), quotes and
+# guillemets (ООО «...»), "-" (double surnames), ":" (numbered prefixes).
+_OPENING_STOPS = frozenset("(;\u2014\u2013")
+_CLOSING_STOPS = frozenset(");\u2014\u2013")
+
+
+
+def _phrase_start(text, index, floor):
+    """Widen a model-decided left edge to the enclosing phrase, not just the word."""
+    while index > floor and text[index - 1] not in _OPENING_STOPS:
+        index -= 1
+    return index
+
+
+def _phrase_end(text, index, ceiling):
+    while index < ceiling and text[index] not in _CLOSING_STOPS:
+        index += 1
+    return index
+
+
 class BoundaryValues:
     """Lazy, request-local index of complete original-source containers."""
 
@@ -146,6 +223,8 @@ class BoundaryValues:
         self.content_start = len(text) - len(text.lstrip())
         self.content_end = len(text.rstrip())
         self._prepared = False
+        self.numbered_paragraphs = None
+        self.initial_persons = None
 
     def _prepare(self):
         if self._prepared:
@@ -185,7 +264,69 @@ class BoundaryValues:
             bounds[0] > self.content_start or bounds[1] < self.content_end
         )
 
-    def resolve(self, start, end):
+    def resolve(self, start, end, **scope):
+        bounds = self._resolve_existing(start, end)
+        if bounds is not None:
+            return bounds
+        if not 0 <= start < end <= len(self.text):
+            return None
+        numbered = self._numbered_container(start, end)
+        return self.narrow(numbered, start, end, **scope) if scope else numbered
+
+    def is_original_container(self, start, end):
+        """Whether the pre-numbered resolver already confirms ``[start, end)``."""
+        return 0 <= start < end <= len(self.text) and self._resolve_existing(start, end) is not None
+
+    def _numbered_container(self, start, end):
+        self._prepare()
+        if self.numbered_paragraphs is None:
+            self.numbered_paragraphs = _Ranges(_numbered_source_paragraphs(self.text))
+        numbered = self.numbered_paragraphs.containing(start, end)
+        if (self._not_document(numbered)
+                and not self.string_owners.intersects(*numbered)
+                and not self.fences.intersects(*numbered)):
+            return numbered
+        return None
+
+    def allows_subword_narrowing(self, bounds, start, end):
+        """Keep the conservative container for unknown inline reference values.
+
+        This guard never exempts paths from native/NER detection. It restricts
+        how a previously confirmed numbered container may be shortened.
+        """
+        if bounds is None or bounds != self._numbered_container(start, end):
+            return True
+        return subword_reference_scope_allowed(self.text, start, end, bounds)
+
+    def narrow(self, bounds, start, end, *, left_open=True, right_open=True, entity_type=None):
+        """Complete initial/surname units, then conservative numbered phrases.
+
+        Original literal/path/JSON-scalar decisions stay unchanged. No generic
+        name-colon boundary is inferred. Non-PERSON inference calls keep both
+        sides open in the recognizer; confirmed primary PERSON sides may narrow.
+        """
+        if not 0 <= start < end <= len(self.text):
+            return bounds
+        if self._resolve_existing(start, end) is not None:
+            return bounds
+        if entity_type == "PERSON":
+            if self.initial_persons is None:
+                self.initial_persons = _Ranges(initial_person_ranges(self.text))
+            person = self.initial_persons.containing(start, end)
+            if (self._not_document(person)
+                    and not self.string_owners.intersects(*person)
+                    and not self.fences.intersects(*person)):
+                return person
+        if bounds is None or bounds != self._numbered_container(start, end):
+            return bounds
+        left, right = bounds
+        if not left_open:
+            left = _phrase_start(self.text, start, left)
+        if not right_open:
+            right = _phrase_end(self.text, end, right)
+        return left, right
+
+    def _resolve_existing(self, start, end):
         if not 0 <= start < end <= len(self.text):
             return None
         self._prepare()
