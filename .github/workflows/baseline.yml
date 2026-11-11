@@ -51,10 +51,24 @@ jobs:
           class ComposeLoader(yaml.SafeLoader):
               pass
 
-          ComposeLoader.add_constructor("!reset", lambda loader, node: loader.construct_sequence(node))
+          def reset_value(loader, node):
+              if isinstance(node, yaml.ScalarNode):
+                  return loader.construct_scalar(node)
+              if isinstance(node, yaml.SequenceNode):
+                  return loader.construct_sequence(node)
+              return loader.construct_mapping(node)
+
+          ComposeLoader.add_constructor("!reset", reset_value)
           for path in (
               "litellm-config.yaml",
               "docker-compose.yml",
+              "docker-compose.ner.yml",
+              "docker-compose.codex-lb.yml",
+              "docker-compose.production.yml",
+              "docker-compose.production.codex-lb.yml",
+              "docker-compose.production.primary.yml",
+              "docker-compose.production.primary.codex-lb.yml",
+              "docker-compose.production.compute.yml",
               "tests/e2e/litellm-config.pre-egress-proxy.yaml",
               "tests/e2e/docker-compose.pre-egress-proxy.yml",
               "tests/e2e/docker-compose.disconnect.yml",
@@ -83,6 +97,11 @@ jobs:
           for stack in litellm-presidio litellm-presidio-codex-lb; do
             for topology in functional production; do
               STACK="$stack" TOPOLOGY="$topology" ENV_FILE=.env.example \
+                python scripts/deployment.py compose config --quiet
+            done
+            for role in primary compute; do
+              STACK="$stack" TOPOLOGY=production NODE_ROLE="$role" \
+                NODE_CONFIG=deploy/nodes.example.json ENV_FILE=.env.compute.example \
                 python scripts/deployment.py compose config --quiet
             done
           done

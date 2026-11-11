@@ -2,6 +2,10 @@
 
 import json
 import re
+from array import array
+from bisect import bisect_left, bisect_right
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 
 from presidio_analyzer import EntityRecognizer, RecognizerResult
 
@@ -19,10 +23,121 @@ _STRING = re.compile(r'"(?:[^"\\]|\\.)*"', re.S)
 _KEY_SEPARATOR = re.compile(r"\s*:")
 _MEMBER_SEPARATOR = re.compile(r"\s*:\s*")
 _UNSIGNED_INTEGER = re.compile(r'[0-9]+(?=[ \t\r\n]*[,}\]])')
+_JSON_SCALAR = re.compile(
+    r'"(?:[^"\\]+|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?'
+    r'|true|false|null'
+)
+_JSON_ESCAPE = re.compile(r'\\(?:u[0-9A-Fa-f]{4}|.)')
+_JSON_SURROGATE = re.compile(r'[\ud800-\udfff]')
 
 
 def _reject_json_constant(value):
     raise ValueError(f"Invalid JSON constant: {value}")
+
+
+def _character_offsets(token: str, start: int, check: Callable[[], None]) -> Sequence[int]:
+    """Map decoded characters to whole source escapes, including surrogate pairs."""
+    if "\\" not in token:
+        return range(start + 1, start + len(token))
+    offsets = array("Q", [start + 1])
+    cursor = 1
+    for index, escape in enumerate(_JSON_ESCAPE.finditer(token)):
+        if index % 256 == 0:
+            check()
+        left, right = escape.span()
+        if left < cursor:
+            continue
+        offsets.extend(range(start + cursor + 1, start + left + 1))
+        if token[left + 1] == "u" and token[right:right + 2] == "\\u":
+            if (0xD800 <= int(token[left + 2:right], 16) <= 0xDBFF
+                    and 0xDC00 <= int(token[right + 2:right + 6], 16) <= 0xDFFF):
+                right += 6
+        offsets.append(start + right)
+        cursor = right
+    offsets.extend(range(start + cursor + 1, start + len(token)))
+    return offsets
+
+
+@dataclass(frozen=True)
+class JsonArgumentScalar:
+    decoded: str | None
+    compact_offsets: Sequence[int]
+    source_offsets: Sequence[int]
+    key: str | None = None
+    is_key: bool = False
+    is_number: bool = False
+
+
+@dataclass(frozen=True)
+class JsonArgumentView:
+    """Analysis-only JSON spelling; outgoing JSON is always edited at source offsets."""
+
+    text: str
+    scalars: tuple[JsonArgumentScalar, ...]
+    starts: tuple[int, ...]
+
+    @classmethod
+    def parse(cls, source: str, check: Callable[[], None]) -> "JsonArgumentView | None":
+        if not source.lstrip(" \t\r\n").startswith(("{", "[")):
+            return None
+        check()
+        try:
+            json.loads(source, parse_int=str, parse_float=str, parse_constant=_reject_json_constant)
+        except (ValueError, RecursionError):
+            return None
+        check()
+        parts = []
+        scalars = []
+        cursor = compact_start = member_start = 0
+        key = None
+        for match in _JSON_SCALAR.finditer(source):
+            check()
+            start, end = match.span()
+            token = match.group()
+            parts.append(source[cursor:start])
+            compact_start += start - cursor
+            if token.startswith('"'):
+                decoded = json.loads(token)
+                if _JSON_SURROGATE.search(decoded):
+                    return None  # Unpaired surrogates stay on the legacy path.
+                compact = json.dumps(decoded, ensure_ascii=False)
+                member = _MEMBER_SEPARATOR.match(source, end)
+                scalar = JsonArgumentScalar(
+                    decoded, _character_offsets(compact, compact_start, check),
+                    _character_offsets(token, start, check),
+                    key=key if start == member_start else None, is_key=member is not None,
+                )
+                if member is not None:
+                    key, member_start = decoded, member.end()
+            else:
+                compact = token
+                scalar = JsonArgumentScalar(
+                    None, range(compact_start, compact_start + len(token) + 1),
+                    range(start, end + 1), is_number=token[0] in "-0123456789",
+                )
+            scalars.append(scalar)
+            parts.append(compact)
+            compact_start += len(compact)
+            cursor = end
+        parts.append(source[cursor:])
+        return cls("".join(parts), tuple(scalars), tuple(s.compact_offsets[0] for s in scalars))
+
+    def project(self, start: int, end: int) -> Iterator[tuple[int, int]]:
+        """Keep every touched scalar, never JSON delimiters or half an escape."""
+        index = max(0, bisect_right(self.starts, start) - 1)
+        while index < len(self.scalars) and self.starts[index] < end:
+            scalar = self.scalars[index]
+            offsets = scalar.compact_offsets
+            left, right = max(start, offsets[0]), min(end, offsets[-1])
+            if left < right:
+                if scalar.decoded is None and not scalar.is_number:
+                    raise ValueError("Unsupported JSON literal matched")
+                if scalar.is_number:
+                    yield scalar.source_offsets[0], scalar.source_offsets[-1]
+                else:
+                    yield (scalar.source_offsets[bisect_right(offsets, left) - 1],
+                           scalar.source_offsets[bisect_left(offsets, right)])
+            index += 1
 
 
 def iter_json_string_values(text):
@@ -109,17 +224,34 @@ class JsonStringRecognizer(EntityRecognizer):
             json.loads(text)
         except (ValueError, RecursionError):
             return []
-        results = []
+        return self._analyze_values(self._iter_legacy_values(text), entities)
+
+    @staticmethod
+    def _iter_legacy_values(text):
         key = None
         value_start = None
         for match in _STRING.finditer(text):
-            if text[match.end():].lstrip().startswith(":"):
+            delimiter = _MEMBER_SEPARATOR.match(text, match.end())
+            if delimiter:
                 key = json.loads(match.group())
-                delimiter = re.match(r"\s*:\s*", text[match.end():])
-                value_start = match.end() + delimiter.end()
+                value_start = delimiter.end()
                 continue
             decoded, offsets = decoded_string_offsets(text, match.start(), match.end())
-            if match.start() == value_start and decoded:
+            yield decoded, offsets, key if match.start() == value_start else None
+
+    def analyze_arguments(self, view, entities, check):
+        def values():
+            for scalar in view.scalars:
+                check()
+                if scalar.decoded is not None and not scalar.is_key:
+                    yield scalar.decoded, scalar.compact_offsets, scalar.key
+
+        return self._analyze_values(values(), entities, check)
+
+    def _analyze_values(self, values, entities, check=lambda: None):
+        results = []
+        for decoded, offsets, key in values:
+            if key is not None and decoded:
                 for recognizer in self._fields:
                     accepted = not _is_inert_credential_value(decoded)
                     if isinstance(recognizer, PasswordRecognizer):
@@ -142,6 +274,7 @@ class JsonStringRecognizer(EntityRecognizer):
                             },
                         ))
             for recognizer in self._recognizers:
+                check()
                 requested = set(entities or self.supported_entities) & set(recognizer.supported_entities)
                 if not requested:
                     continue
@@ -149,8 +282,8 @@ class JsonStringRecognizer(EntityRecognizer):
                     # An explicit passport key can confirm its own scalar, not
                     # another member/array item encountered later in the source.
                     if (isinstance(recognizer, RuPassportExtRecognizer)
-                            and finding.score < 0.35 and match.start() == value_start
-                            and recognizer._CONTEXT_RE.search(key or '')):
+                            and finding.score < 0.35 and key is not None
+                            and recognizer._CONTEXT_RE.search(key)):
                         finding.score += 0.35
                     if finding.score < 0.35:
                         continue

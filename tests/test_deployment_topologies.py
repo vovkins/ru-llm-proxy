@@ -23,7 +23,7 @@ spec.loader.exec_module(deployment)
 
 @pytest.fixture(autouse=True)
 def clean_context(monkeypatch):
-    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
+    for key in ["STACK", "TOPOLOGY", "TOPOLOGY_ENV", "NODE_ROLE", "NODE_CONFIG", "PII_GUARDRAIL_MODE", "PII_MODE_ORIGIN", "ENV_FILE", "LITELLM_PORT", "STACK_START_TIMEOUT", "COMPOSE_COMPATIBILITY", "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS", *deployment.REMOVED_SETTINGS, *deployment.RESOURCE_KEYS]:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ENV_FILE", "/nonexistent/issue96-test-env")
 
@@ -270,10 +270,11 @@ def test_unified_compose_carries_only_operational_ner_settings():
     import yaml
 
     triton = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-    analyzer = dict(item.split("=", 1) for item in triton["services"]["presidio-analyzer"]["environment"])
+    ner = yaml.safe_load((ROOT / "docker-compose.ner.yml").read_text())["services"]
+    analyzer = dict(item.split("=", 1) for item in ner["presidio-analyzer"]["environment"])
     assert not deployment.REMOVED_SETTINGS.intersection(analyzer)
     assert analyzer["PRESIDIO_ANALYZER_WORKERS"] == "${PRESIDIO_ANALYZER_WORKERS:-1}"
-    assert triton["services"]["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "2"
+    assert ner["ner-triton"]["environment"]["TRITON_MODEL_INSTANCES"] == "2"
     assert analyzer["PRESIDIO_ANALYZER_CONCURRENCY_LIMIT"] == "${PRESIDIO_ANALYZER_CONCURRENCY_LIMIT:-2}"
     assert analyzer["PRESIDIO_ANALYZER_QUEUE_LIMIT"] == "${PRESIDIO_ANALYZER_QUEUE_LIMIT:-32}"
     assert analyzer["PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS"] == "${PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS:-30}"
@@ -320,8 +321,8 @@ def test_health_checks_each_replica_not_only_load_balancer(monkeypatch):
     context = deployment.Context()
     items = [container(service, f"{service}-{index}") for service, count in context.counts.items() for index in range(count)]
     monkeypatch.setattr(context, "containers", lambda: items)
-    monkeypatch.setattr(context, "ner_ready", lambda _: True)
-    monkeypatch.setattr(context, "triton_ready", lambda _: True)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "ready")
     monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
     monkeypatch.setattr(context, "gateway_ready", lambda _: True)
     context.health()
@@ -334,8 +335,8 @@ def test_health_rejects_broken_frontend_even_when_instances_are_ready(monkeypatc
     context = deployment.Context()
     items = [container(service, service) for service in context.counts]
     monkeypatch.setattr(context, "containers", lambda: items)
-    monkeypatch.setattr(context, "ner_ready", lambda _: True)
-    monkeypatch.setattr(context, "triton_ready", lambda _: True)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "ready")
     monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
     monkeypatch.setattr(context, "gateway_ready", lambda _: False)
     with pytest.raises(deployment.DeploymentError, match="маршрут"):
@@ -362,8 +363,8 @@ def test_health_rejects_missing_replica_and_wrong_mode(monkeypatch):
     context = deployment.Context()
     items = [container(service, service) for service in context.counts]
     monkeypatch.setattr(context, "containers", lambda: items)
-    monkeypatch.setattr(context, "ner_ready", lambda _: True)
-    monkeypatch.setattr(context, "triton_ready", lambda _: True)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "ready")
     monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
     items[3]["Config"]["Env"] = ["PII_GUARDRAIL_MODE=block"]
     with pytest.raises(deployment.DeploymentError, match="работает BLOCK"):
@@ -624,15 +625,15 @@ def test_larger_pool_requires_every_triton_identity_not_just_gateway(tmp_path, m
     context = deployment.Context()
     items = [container(service, f"{service}-{index}") for service, count in context.counts.items() for index in range(count)]
     monkeypatch.setattr(context, "containers", lambda: items)
-    monkeypatch.setattr(context, "ner_ready", lambda _: True)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
     monkeypatch.setattr(context, "triton_route_ready", lambda _: True)
     monkeypatch.setattr(context, "gateway_ready", lambda _: True)
     checked = []
-    monkeypatch.setattr(context, "triton_ready", lambda item: checked.append(item["Id"]) or True)
+    monkeypatch.setattr(context, "triton_readiness", lambda item: checked.append(item["Id"]) or "ready")
     context.health()
     assert checked == [f"ner-triton-{index}" for index in range(4)]
-    monkeypatch.setattr(context, "triton_ready", lambda item: item["Id"] != "ner-triton-3")
-    with pytest.raises(deployment.DeploymentError, match="ner-triton-3: комплект Triton не подтверждён"):
+    monkeypatch.setattr(context, "triton_readiness", lambda item: "identity_mismatch" if item["Id"] == "ner-triton-3" else "ready")
+    with pytest.raises(deployment.DeploymentError, match="ner-triton-3: не готов.*комплект Triton не подтверждён"):
         context.health()
 
 
@@ -671,8 +672,8 @@ def test_each_triton_must_match_independent_target_image_metadata(monkeypatch):
     responses = iter([expected, {**expected, "onnx_sha256": "b" * 64}])
     monkeypatch.setattr(deployment.subprocess, "run", lambda command, **kw:
                         subprocess.CompletedProcess(command, 0, json.dumps(next(responses))))
-    assert context.triton_ready(container("ner-triton", "first"))
-    assert not context.triton_ready(container("ner-triton", "second"))
+    assert context.triton_readiness(container("ner-triton", "first")) == "ready"
+    assert context.triton_readiness(container("ner-triton", "second")) == "identity_mismatch"
     assert len(commands) == 1
     assert commands[0][1:6] == ["run", "--rm", "--network", "none", "--entrypoint"]
     assert "trusted-target-image" in commands[0]
@@ -682,8 +683,8 @@ def test_ready_replicas_do_not_hide_an_unready_internal_nginx_route(monkeypatch)
     context = deployment.Context()
     items = [container(service, service) for service in context.counts]
     monkeypatch.setattr(context, "containers", lambda: items)
-    monkeypatch.setattr(context, "ner_ready", lambda _: True)
-    monkeypatch.setattr(context, "triton_ready", lambda _: True)
+    monkeypatch.setattr(context, "ner_readiness", lambda _: "ready")
+    monkeypatch.setattr(context, "triton_readiness", lambda _: "ready")
     monkeypatch.setattr(context, "gateway_ready", lambda _: True)
     monkeypatch.setattr(context, "triton_route_ready", lambda _: False)
     with pytest.raises(deployment.DeploymentError, match="внутренний маршрут"):
@@ -908,7 +909,7 @@ def test_topology_captures_before_cleanup_without_masking_original_failure(topol
     events = []
     failure = topology_module.HTTPStatusFailure(503, 200, "private-body", "/v1/chat/completions")
     monkeypatch.setitem(sys.modules, "triton_routing_checks", SimpleNamespace(
-        check_no_replay=MagicMock(), check_replica_recovery=MagicMock()))
+        check_no_replay=MagicMock(), check_replica_recovery=MagicMock(), _command_diagnostic=MagicMock()))
     monkeypatch.setattr(topology_module.threading, "Thread", MagicMock())
     monkeypatch.setattr(topology_module, "image_id", lambda image: image)
     monkeypatch.setattr(topology_module, "identities", MagicMock(side_effect=failure))

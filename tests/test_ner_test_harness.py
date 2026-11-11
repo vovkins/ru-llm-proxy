@@ -144,6 +144,153 @@ def test_network_isolation_is_checked_not_assumed(monkeypatch, internal):
             support.check_internal_network("test")
 
 
+@pytest.fixture
+def empty_node_link():
+    return {"Name": "ru-node-routing-0123abcd-link", "Driver": "bridge", "Internal": True,
+            "Containers": {}, "IPAM": {"Config": [{"Subnet": "172.28.0.0/16"}]}}
+
+
+@pytest.mark.parametrize("role", ["routing", "roles"])
+@pytest.mark.parametrize("cidr", ["10.80.0.0/24", "172.28.0.0/16", "172.28.0.0/27"])
+def test_node_link_reuses_docker_cidr_with_explicit_internal_subnet(monkeypatch, empty_node_link, role, cidr):
+    name = "ru-node-" + role + "-0123abcd-link"
+    empty_node_link["Name"] = name
+    empty_node_link["IPAM"]["Config"][0]["Subnet"] = cidr
+    calls = []
+    def docker(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(stdout=json.dumps([empty_node_link]) if args[:2] == ("network", "inspect") else "")
+    monkeypatch.setattr(support, "docker", docker)
+    subnet = support.configure_test_ipv4_subnet(name)
+    assert subnet == ipaddress.IPv4Network(cidr)
+    assert all(subnet.network_address + n in subnet.hosts() for n in (20, 21, 22, 23, 24))
+    assert calls == [("network", "inspect", name), ("network", "rm", name),
+                     ("network", "create", "--internal", "--subnet", cidr, name)]
+
+
+@pytest.mark.parametrize("name", [None, 1, "ru-llm-proxy_ru-llm-proxy", "ru-node-routing-other-link",
+                                "ru-node-roles-0123abcd-local-a"])
+def test_node_link_rejects_unowned_names_without_docker(monkeypatch, name):
+    calls = []
+    monkeypatch.setattr(support, "docker", lambda *a, **k: calls.append(a))
+    with pytest.raises(RuntimeError, match="owned"):
+        support.configure_test_ipv4_subnet(name)
+    assert calls == []
+
+
+@pytest.mark.parametrize("invalid", ["wrong-name", "external", "overlay", "attached", "missing-containers",
+                                   "ipv6", "small", "host-bits", "invalid-cidr", "no-config", "two-subnets",
+                                   "not-json", "not-a-list", "empty-list", "two-networks"])
+def test_node_link_rejects_unsafe_or_invalid_inspect_before_mutation(monkeypatch, empty_node_link, invalid):
+    name = empty_node_link["Name"]
+    if invalid == "wrong-name":
+        empty_node_link["Name"] = "private-other-network"
+    elif invalid == "external":
+        empty_node_link["Internal"] = False
+    elif invalid == "overlay":
+        empty_node_link["Driver"] = "overlay"
+    elif invalid == "attached":
+        empty_node_link["Containers"] = {"private-container": {}}
+    elif invalid == "missing-containers":
+        empty_node_link.pop("Containers")
+    elif invalid in {"ipv6", "small", "host-bits", "invalid-cidr"}:
+        empty_node_link["IPAM"]["Config"][0]["Subnet"] = {
+            "ipv6": "fd00::/64", "small": "172.28.0.0/28", "host-bits": "172.28.0.1/16",
+            "invalid-cidr": "private-cidr"}[invalid]
+    elif invalid == "no-config":
+        empty_node_link["IPAM"]["Config"] = []
+    elif invalid == "two-subnets":
+        empty_node_link["IPAM"]["Config"].append({"Subnet": "fd00::/64"})
+    raw = json.dumps([empty_node_link])
+    raw = {"not-json": "private-invalid-json", "not-a-list": "{}", "empty-list": "[]",
+           "two-networks": json.dumps([empty_node_link, empty_node_link])}.get(invalid, raw)
+    calls = []
+    monkeypatch.setattr(support, "docker", lambda *a, **k: calls.append(a) or SimpleNamespace(stdout=raw))
+    with pytest.raises(RuntimeError, match="empty internal bridge") as captured:
+        support.configure_test_ipv4_subnet(name)
+    assert calls == [("network", "inspect", name)]
+    assert "private" not in str(captured.value)
+
+
+@pytest.mark.parametrize("operation", ["inspect", "rm", "create"])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_node_link_command_failure_is_not_retried_or_replaced(monkeypatch, empty_node_link, operation, interrupted):
+    name = empty_node_link["Name"]
+    exc = KeyboardInterrupt() if interrupted else subprocess.CalledProcessError(125, ["docker", "network", operation])
+    calls = []
+    def docker(*args, **kwargs):
+        calls.append(args)
+        if args[1] == operation:
+            raise exc
+        return SimpleNamespace(stdout=json.dumps([empty_node_link]))
+    monkeypatch.setattr(support, "docker", docker)
+    with pytest.raises(type(exc)) as captured:
+        support.configure_test_ipv4_subnet(name)
+    assert captured.value is exc
+    assert [command[1] for command in calls] == ["inspect", "rm", "create"][:["inspect", "rm", "create"].index(operation) + 1]
+
+
+@pytest.mark.parametrize("module", ["node_routing_checks", "node_role_checks"])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_node_scenarios_clean_up_if_link_configuration_fails(monkeypatch, module, interrupted):
+    import importlib
+    node = importlib.import_module(module)
+    commands, cleanup, configured = [], [], []
+    previous = dict(os.environ)
+    exc = KeyboardInterrupt() if interrupted else subprocess.CalledProcessError(125, ["docker", "network", "create"])
+    def configure(name):
+        configured.append(name)
+        raise exc
+    monkeypatch.setattr(node, "configure_test_ipv4_subnet", configure)
+    monkeypatch.setattr(node, "output", lambda *a: commands.append(a) or "")
+    monkeypatch.setattr(node.subprocess, "run", lambda a, **k:
+                        cleanup.append(a) or SimpleNamespace(stdout=b"", stderr=b"", returncode=0))
+    if module == "node_role_checks":
+        monkeypatch.setattr(node, "image_id", lambda image: image)
+    with pytest.raises(type(exc)) as captured:
+        (node.check_node_responses if module == "node_routing_checks" else node.check_node_roles)()
+    assert captured.value is exc and len(configured) == 1
+    assert all(command[:2] == ("network", "create") for command in commands)
+    assert ["docker", "network", "rm", configured[0]] in cleanup
+    assert dict(os.environ) == previous
+
+
+@pytest.mark.parametrize("pool,attempts", [("A", 1), ("B", 1), ("A", 2)])
+def test_node_client_route_matches_central_and_local_field(pool, attempts):
+    from node_role_checks import route_evidence
+
+    endpoint = "172.25.0.21:5001"
+    target = "127.0.0.1:5002" if pool == "A" else endpoint
+    central = {"upstream": target if attempts == 1 else f"{endpoint}, {target}",
+               "upstream_status": "200" if attempts == 1 else "502, 200",
+               "request_id": "test-id", "field": "0", "status": 200}
+    local = dict(central, upstream="172.26.0.2:5001", upstream_status="200")
+    primary, compute = ([central, local], []) if pool == "A" else ([central], [local])
+    assert route_evidence(primary, compute, endpoint) == {"pool": pool, "attempts": attempts}
+
+
+@pytest.mark.parametrize("fault", ["id", "field", "replay", "extra", "no_post"])
+def test_node_client_route_rejects_uncorrelated_or_ambiguous_evidence(fault):
+    from node_role_checks import route_evidence
+
+    endpoint = "172.25.0.21:5001"
+    central = {"upstream": endpoint, "upstream_status": "200", "request_id": "test-id", "field": "0", "status": 200}
+    local = dict(central, upstream="172.26.0.2:5001")
+    primary, compute = [central], [local]
+    if fault == "id":
+        local["request_id"] = "another-id"
+    elif fault == "field":
+        local["field"] = "1"
+    elif fault == "replay":
+        central.update(upstream=", ".join([endpoint] * 3), upstream_status="502, 502, 200")
+    elif fault == "extra":
+        primary.append(dict(local))
+    else:
+        primary.clear()
+    with pytest.raises((AssertionError, ValueError)):
+        route_evidence(primary, compute, endpoint)
+
+
 def test_diagnostic_report_does_not_copy_container_secrets(monkeypatch):
     data = [{"Name": "/test", "Image": "sha256:test", "RestartCount": 0,
              "Config": {"Env": ["PASSWORD=not-for-report"]}, "State": {
@@ -431,6 +578,8 @@ def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_
     import deployment_topology_gate as topology
     import triton_routing_checks as routing
     import analyzer_routing_checks as analyzer_routing
+    import node_routing_checks as node_routing
+    import node_role_checks as node_roles
     gate = Gate(tmp_path, images=dict(support.IMAGE_TAGS))
     calls = []
     result = {"check": "single_post_no_replay", "status": "passed", "ipv4_subnet": "172.28.0.0/16"}
@@ -447,11 +596,13 @@ def test_topology_run_uses_subnet_only_after_no_replay_cleanup(monkeypatch, tmp_
     monkeypatch.setattr(topology, "identities", lambda images: {})
     monkeypatch.setattr(routing, "check_no_replay", no_replay)
     monkeypatch.setattr(analyzer_routing, "check_analyzer_responses", lambda: {"status": "passed"})
+    monkeypatch.setattr(node_routing, "check_node_responses", lambda **_: {"status": "passed"})
+    monkeypatch.setattr(node_roles, "check_node_roles", lambda *_: {"status": "passed"})
     with pytest.raises(RuntimeError):
         gate.run()
     assert calls == ([] if cleanup_failed else ["172.28.0.0/16"])
     assert gate.ipv4_subnet == (None if cleanup_failed else "172.28.0.0/16")
-    assert gate.result["checks"] == ([] if cleanup_failed else [result, {"status": "passed"}])
+    assert gate.result["checks"] == ([] if cleanup_failed else [result, *[{"status": "passed"}] * 3])
 
 
 def test_all_new_analyzer_tests_run_in_baseline_ci():
@@ -471,6 +622,8 @@ def test_ci_paths_include_every_shared_runtime_test_helper():
         patterns = triggers[event]["paths"]
         for name in ("model_smoke.py", "ner_integration.py", "ner_test_support.py",
                      "triton_routing_checks.py", "deployment_topology_gate.py",
+                     "node_routing_checks.py", "node_timeout_budget_checks.py", "node_role_checks.py",
+                     "mock_node_analyzer.py", "mock_syn_blackhole.py", "syn_capability_check.py",
                      "topology-resources.env", "nginx.ner-proxy.conf", "check_responses_history.py"):
             assert any(fnmatch.fnmatch("tests/e2e/" + name, pattern) for pattern in patterns), (event, name)
     assert workflow["permissions"] == {"contents": "read"}
@@ -553,6 +706,433 @@ def test_unrecognized_recovery_stderr_is_not_disclosed(stderr):
     assert result["stderr_classes"] == []
     assert result["stderr_excerpt"] == "stderr omitted: no allowlisted diagnostic"
     assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("phase", ["network-setup", "fixture-startup", "healthy-head", "connect-timeout"])
+def test_node_routing_phase_uses_fixed_labels(phase, capsys):
+    import node_routing_checks as routing
+    progress = {}
+    routing.routing_phase(progress, phase)
+    assert progress == {"phase": phase, "status": "running"}
+    assert json.loads(capsys.readouterr().out.removeprefix("NER NODE ROUTING ")) == progress
+    with pytest.raises(ValueError, match="Unknown"):
+        routing.routing_phase(progress, "private-token")
+    assert "private" not in json.dumps(progress) + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("exception", [
+    AssertionError(("private request", {"Authorization": "Bearer private-token"})),
+    subprocess.TimeoutExpired(["docker", "exec", "private-token"], 1,
+                              output=b"private stdout", stderr=b"private stderr"),
+    subprocess.CalledProcessError(125, ["docker", "run", "private-token"],
+                                 output="private stdout", stderr="address already in use private-token"),
+    KeyboardInterrupt(), SystemExit(143),
+])
+def test_node_routing_failure_does_not_disclose_exception_values(exception):
+    import node_routing_checks as routing
+    result = routing.routing_failure("fixture-startup", exception)
+    assert result["phase"] == "fixture-startup"
+    assert result["status"] == ("failed" if isinstance(exception, Exception) else "interrupted")
+    assert result["error_type"] == type(exception).__name__
+    if isinstance(exception, subprocess.CalledProcessError):
+        assert result["operation"] == "docker run" and result["returncode"] == 125
+        assert result["stderr_classes"] == ["address_in_use"]
+    else:
+        assert result["operation"] == "check"
+    assert "private" not in json.dumps(result)
+    with pytest.raises(ValueError, match="Unknown"):
+        routing.routing_failure("private-token", exception)
+
+
+@pytest.mark.parametrize("raw", ["private stdout " * 5000, b"private stdout\xff" * 5000])
+@pytest.mark.parametrize("timeout", [False, True])
+def test_node_command_output_is_private_and_bounded(tmp_path, raw, timeout):
+    import node_routing_checks as routing
+    exc = (subprocess.TimeoutExpired(["private command"], 1, output=raw, stderr=raw) if timeout else
+           subprocess.CalledProcessError(125, ["private command"], output=raw, stderr=raw))
+    routing.private_command_output(tmp_path, exc)
+    for field in ("stdout", "stderr"):
+        path = tmp_path / ("command." + field)
+        assert path.stat().st_mode & 0o777 == 0o600
+        assert len(path.read_bytes()) == 16384
+        assert b"private stdout" in path.read_bytes()
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["command.stderr", "command.stdout"]
+
+
+@pytest.mark.parametrize("failure", [None, "bind", "filter", "filter-errno", "listen", "marker", "waiting"])
+def test_syn_fixture_reports_stages_without_changing_socket_or_wait(monkeypatch, capsys, failure):
+    import mock_syn_blackhole as syn
+    operations, filters, closed = [], [], []
+    exc = KeyboardInterrupt() if failure == "waiting" else RuntimeError("private-body")
+    def operation(name, value):
+        operations.append((name, value))
+        if failure == name:
+            raise exc
+    class Listener:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            closed.append(True)
+        def bind(self, address):
+            operation("bind", address)
+        def fileno(self):
+            return 17
+        def listen(self, backlog):
+            operation("listen", backlog)
+    def setsockopt(fd, level, option, pointer, size):
+        program = pointer._obj
+        instruction = program.instructions[0]
+        filters.append((fd, level, option, size, program.length, instruction.code, instruction.k))
+        operation("filter", option)
+        return 1 if failure == "filter-errno" else 0
+    def path(value):
+        assert value == "/tmp/blackhole-ready"
+        return SimpleNamespace(touch=lambda: operation("marker", value))
+    monkeypatch.setattr(syn.socket, "socket", lambda: Listener())
+    monkeypatch.setattr(syn.ctypes, "CDLL", lambda *a, **k: SimpleNamespace(setsockopt=setsockopt))
+    monkeypatch.setattr(syn.ctypes, "get_errno", lambda: 13)
+    monkeypatch.setattr(syn, "Path", path)
+    monkeypatch.setattr(syn.threading, "Event", lambda: SimpleNamespace(wait=lambda seconds: operation("waiting", seconds)))
+    if failure:
+        with pytest.raises(PermissionError if failure == "filter-errno" else type(exc)) as caught:
+            syn.serve()
+        if failure != "filter-errno":
+            assert caught.value is exc
+    else:
+        syn.serve()
+        assert operations == [("bind", ("0.0.0.0", 5001)), ("filter", 26),
+                              ("listen", 8), ("marker", "/tmp/blackhole-ready"), ("waiting", 600)]
+    assert closed == [True]
+    if failure != "bind":
+        assert filters == [(17, syn.socket.SOL_SOCKET, 26, syn.ctypes.sizeof(syn.Program), 1, 0x06, 0)]
+    public = capsys.readouterr().out
+    assert "private-body" not in public
+    events = [json.loads(line.removeprefix(syn.EVENT_PREFIX)) for line in public.splitlines()]
+    if failure:
+        last = events[-1]
+        assert last["phase"] == ("filter" if failure == "filter-errno" else failure)
+        assert last["status"] == ("interrupted" if failure == "waiting" else "failed")
+        assert last["errno"] == (13 if failure == "filter-errno" else None)
+    else:
+        assert events[-2:] == [{"phase": "marker", "status": "passed"}, {"phase": "waiting", "status": "started"}]
+
+
+def test_syn_fixture_event_rejects_untrusted_labels_and_error_values(capsys):
+    import mock_syn_blackhole as syn
+    class PrivateError(RuntimeError):
+        errno = "private-errno"
+    syn.emit("marker", "failed", PrivateError("private-body"))
+    with pytest.raises(ValueError):
+        syn.emit("private-phase", "failed")
+    public = capsys.readouterr().out
+    assert "private" not in public and "PrivateError" not in public
+    assert json.loads(public.removeprefix(syn.EVENT_PREFIX))["error_type"] == "OtherError"
+
+
+@pytest.mark.parametrize("code,stderr,category", [
+    (0, b"", "ready"), (1, b"", "marker_not_confirmed"),
+    (127, b'exec: "test": executable file not found; private-token', "probe_executable_missing"),
+    (1, b"Container private-container is not running", "container_not_running"),
+    (126, b"private-body", "command_failed"),
+])
+def test_syn_readiness_retains_original_command_and_reports_only_safe_values(monkeypatch, code, stderr, category):
+    import node_routing_checks as routing
+    calls, progress = [], {}
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=code, stdout=b"private-stdout", stderr=stderr)
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    assert routing.syn_listener_ready("fixture", progress) is (code == 0)
+    assert progress == {"attempts": 1, "last_probe": {"returncode": code, "category": category}}
+    assert calls == [(["docker", "exec", "fixture", "test", "-f", "/tmp/blackhole-ready"],
+                      {"capture_output": True, "timeout": 10})]
+    assert "private" not in json.dumps(progress)
+
+
+def test_syn_readiness_timeout_is_not_hidden_or_retried(monkeypatch):
+    import node_routing_checks as routing
+    exc = subprocess.TimeoutExpired(["private-command"], 10, stderr=b"private-token")
+    calls, progress = [], {}
+    def run(*args, **kwargs):
+        calls.append(args)
+        raise exc
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        routing.syn_listener_ready("fixture", progress)
+    assert caught.value is exc and len(calls) == 1
+    assert progress["last_probe"] == {"returncode": None, "category": "command_timeout"}
+    assert "private" not in json.dumps(progress)
+
+
+def test_syn_probe_classifies_stdout_without_disclosing_it():
+    import node_routing_checks as routing
+    result = routing.syn_probe_result(SimpleNamespace(returncode=127, stderr=b"", stdout=
+        b'OCI runtime exec failed: exec: "test": executable file not found in $PATH private-token'))
+    assert result == {"returncode": 127, "category": "probe_executable_missing"}
+    assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("admin", [False, True])
+def test_syn_launch_only_grants_explicit_net_admin(admin):
+    import node_routing_checks as routing
+    args = routing.syn_fixture_args("fixture", "none", net_admin=admin)
+    assert args[:6] == ["run", "-d", "--name", "fixture", "--network", "none"]
+    assert args[args.index("--cap-drop") + 1] == "ALL"
+    assert ("--cap-add" in args) is admin
+    if admin:
+        assert args[args.index("--cap-add") + 1] == "NET_ADMIN" and args.count("--cap-add") == 1
+    assert args[args.index("--security-opt") + 1] == "no-new-privileges"
+    assert args[args.index("-v") + 1] == f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro"
+    assert not any(value in args for value in ("--privileged", "--pid", "--env", "-p", "--device"))
+    assert routing.syn_fixture_args("fixture", "none") == routing.syn_fixture_args("fixture", "none", net_admin=False)
+
+
+@pytest.mark.parametrize("invalid", [None, "extra-cap", "privileged", "host-network", "ports", "mounts", "security"])
+def test_syn_security_inspects_actual_flags_without_disclosing_config(monkeypatch, invalid):
+    import node_routing_checks as routing
+    data = {"add": ["CAP_NET_ADMIN"], "drop": ["ALL"], "privileged": False,
+            "security": ["no-new-privileges"], "network": "none", "ports": {},
+            "binds": [f"{ROOT}/tests/e2e/mock_syn_blackhole.py:/fixture.py:ro"], "Env": ["private-token"]}
+    if invalid == "extra-cap":
+        data["add"].append("CAP_SYS_ADMIN")
+    elif invalid == "privileged":
+        data["privileged"] = True
+    elif invalid == "host-network":
+        data["network"] = "host"
+    elif invalid == "ports":
+        data["ports"] = {"5001/tcp": [{"HostPort": "5001"}]}
+    elif invalid == "mounts":
+        data["binds"].append("/var/run/docker.sock:/var/run/docker.sock")
+    elif invalid == "security":
+        data["security"] = ["seccomp=unconfined"]
+    monkeypatch.setattr(routing.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=json.dumps(data)))
+    if invalid:
+        with pytest.raises(AssertionError) as captured:
+            routing.syn_fixture_security("fixture", "none", net_admin=True)
+        assert "private" not in str(captured.value)
+    else:
+        result = routing.syn_fixture_security("fixture", "none", net_admin=True)
+        assert result["net_admin"] is True and result["other_capabilities"] is False
+        assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("control", ["eperm", "ready", "unrelated"])
+@pytest.mark.parametrize("positive_ready", [False, True])
+def test_syn_capability_ab_is_sequential_bounded_and_never_accepts_unrelated_failure(monkeypatch, control, positive_ready):
+    import syn_capability_check as check
+    image = "sha256:" + "a" * 64
+    launches, removed = [], []
+    current = {"admin": False}
+    def output(*args):
+        if args[0] == "run":
+            launches.append(args)
+            current["admin"] = "--cap-add" in args
+            assert args[args.index("--network") + 1] == "none"
+            return "container"
+        return json.dumps(dict.fromkeys(("CapEff", "CapPrm", "CapBnd"), 4096 if current["admin"] else 0))
+    def wait(probe, timeout):
+        assert timeout == 10
+        if not probe():
+            raise TimeoutError
+    def diagnostic(*args):
+        return {"container": {"image_id": image, "exit_code": 1, "oom_killed": control == "unrelated"},
+                "events": [{"phase": "filter", "status": "failed", "errno": 1}]}
+    def run(args, **kwargs):
+        if args[:3] == ["docker", "rm", "-f"]:
+            removed.append(args[-1])
+        return SimpleNamespace(returncode=1 if args[:2] == ["docker", "inspect"] else 0)
+    monkeypatch.setattr(check, "output", output)
+    monkeypatch.setattr(check, "wait_ready", wait)
+    monkeypatch.setattr(check, "syn_listener_ready", lambda *a: positive_ready if current["admin"] else control == "ready")
+    monkeypatch.setattr(check, "syn_fixture_diagnostic", diagnostic)
+    monkeypatch.setattr(check, "syn_fixture_security", lambda *a, **k: {"net_admin": k["net_admin"]})
+    monkeypatch.setattr(check.subprocess, "run", run)
+    report = {}
+    if control == "unrelated" or not positive_ready:
+        with pytest.raises(AssertionError):
+            check.check_capabilities(report)
+        assert report["status"] == "failed"
+    else:
+        check.check_capabilities(report)
+        assert report["status"] == "passed"
+        assert report["cases"][1]["connect_timeout"] == "passed"
+    assert len(launches) == len(removed) == (1 if control == "unrelated" else 2)
+    assert all(row["cleanup_ok"] for row in report["cases"])
+    if len(launches) == 2:
+        assert launches[1][-3] == image
+    assert "--cap-add" not in launches[0]
+
+
+def test_syn_ab_precedes_model_build_and_saves_only_bounded_report():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
+    steps = workflow["jobs"]["real-model-integration"]["steps"]
+    names = [step["name"] for step in steps]
+    assert names.index("Check isolated SYN fixture capability controls") < names.index("Build pinned Analyzer image")
+    step = steps[names.index("Check isolated SYN fixture capability controls")]
+    assert not step.get("continue-on-error")
+    saved = steps[names.index("Save bounded SYN capability report")]
+    assert saved["if"] == "always()" and saved["with"]["path"] == "tmp/syn-capability-ab.json"
+    assert saved["with"]["retention-days"] == 7
+
+
+def test_transport_grants_net_admin_only_at_the_explicit_syn_fixture_call():
+    import ast
+    tree = ast.parse((ROOT / "tests/e2e/node_routing_checks.py").read_text())
+    scenario = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "check_node_responses")
+    launches = [node for node in ast.walk(scenario) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == "syn_fixture_args"]
+    assert len(launches) == 1 and ast.unparse(launches[0].args[0]) == "blackhole"
+    assert next(item.value.value for item in launches[0].keywords if item.arg == "net_admin") is True
+    checks = [node for node in ast.walk(scenario) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Name) and node.func.id == "syn_fixture_security"]
+    assert len(checks) == 1 and ast.unparse(checks[0].args[0]) == "blackhole"
+    assert sum(isinstance(node, ast.Constant) and node.value == "--cap-add" for node in ast.walk(tree)) == 1
+    assert not any(isinstance(node, ast.Constant) and node.value in {"--privileged", "--pid=host"}
+                   for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str))
+
+
+@pytest.mark.parametrize("architecture", ["amd64", "arm64", "private-architecture"])
+def test_syn_snapshot_is_bounded_and_does_not_publish_logs_or_env(monkeypatch, architecture):
+    import node_routing_checks as routing
+    identity = "sha256:" + "a" * 64
+    events = [{"phase": "filter", "status": "failed", "error_type": "PermissionError", "errno": 13,
+               "Authorization": "private-token"}] * 30
+    raw = b"private-log\nSYN_FIXTURE broken private-body\n" + b"\n".join(
+        (routing.EVENT_PREFIX + json.dumps(event)).encode() for event in events)
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[1] == "inspect":
+            value = json.dumps({"running": False, "exit_code": 1, "oom_killed": False,
+                                "image_id": identity, "Env": ["PASSWORD=private-token"]}).encode()
+        elif args[1] == "image":
+            value = json.dumps(architecture).encode()
+        elif args[1] == "exec":
+            value = b"1\n"
+        else:
+            value = raw
+        return SimpleNamespace(returncode=0, stdout=value, stderr=b"private-stderr")
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    report = routing.syn_fixture_diagnostic("fixture", {
+        "attempts": 10, "private-key": "private-token",
+        "last_probe": {"returncode": 127, "category": "probe_executable_missing", "stderr": "private-stderr"}})
+    assert report["container"] == {"running": False, "exit_code": 1, "oom_killed": False, "image_id": identity}
+    assert report["architecture"] == (architecture if architecture in {"amd64", "arm64"} else "unreported")
+    assert report["marker_present"] is True
+    assert report["readiness"]["last_probe"]["returncode"] == 127
+    assert len(report["events"]) == 12 and report["events"][0] == {
+        "phase": "filter", "status": "failed", "error_type": "PermissionError", "errno": 13}
+    assert report["errors"] == [] and len(calls) == 4
+    assert "private" not in json.dumps(report) and len(json.dumps(report)) < 4096
+
+
+def test_syn_snapshot_partial_collection_does_not_raise_or_disclose_error(monkeypatch):
+    import node_routing_checks as routing
+    def run(*args, **kwargs):
+        raise subprocess.TimeoutExpired("private-command", 10, stderr=b"private-token")
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    result = routing.syn_fixture_diagnostic("fixture", {"attempts": "private-value", "last_probe": "private-token"})
+    assert len(result["errors"]) == 3 and result["events"] == []
+    assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("collection_fails", [False, True])
+def test_syn_diagnostics_never_turn_readiness_timeout_into_success(monkeypatch, collection_fails, capsys):
+    import node_routing_checks as routing
+    exc, progress = TimeoutError("private-timeout"), {}
+    def phase(report, _):
+        report.update(phase="connect-timeout", status="running")
+        raise exc
+    def snapshot(*args):
+        if collection_fails:
+            raise RuntimeError("private-collection-error")
+        return {"marker_present": True}
+    monkeypatch.setattr(routing, "routing_phase", phase)
+    monkeypatch.setattr(routing, "syn_fixture_diagnostic", snapshot)
+    monkeypatch.setattr(routing.subprocess, "run", lambda *a, **k:
+                        SimpleNamespace(stdout=b"", stderr=b"", returncode=0))
+    with pytest.raises(TimeoutError) as caught:
+        routing.check_node_responses(diagnostic=progress)
+    assert caught.value is exc and progress["status"] == "failed"
+    assert progress["syn_fixture"] == ({"diagnostic_status": "collection_failed"} if collection_fails else {"marker_present": True})
+    public = json.dumps(progress) + capsys.readouterr().out
+    assert "private-timeout" not in public and "private-collection-error" not in public
+
+
+def test_node_routing_failure_identifies_command_line_without_changing_failure_or_cleanup(monkeypatch, tmp_path, capsys):
+    import node_routing_checks as routing
+    progress, commands, cleanup = {}, [], []
+    exc = subprocess.CalledProcessError(125, ["docker", "run", "private-token"],
+        output=b"private stdout", stderr=b"private-token: invalid endpoint settings: user specified IP address is supported only when connecting to networks with user configured subnets")
+    def output(*args):
+        commands.append(args)
+        if args[0] == "run" and "--ip" in args:
+            raise exc
+        return ""
+    def configure(name):
+        commands.append(("configure-test-network", name))
+        return ipaddress.IPv4Network("172.28.0.0/16")
+    def run(args, **kwargs):
+        cleanup.append(args)
+        return SimpleNamespace(stdout=b"private log", stderr=b"", returncode=0)
+    mkdtemp = routing.tempfile.mkdtemp
+    def private_directory(*args, **kwargs):
+        if kwargs.get("prefix") == "ru-node-routing-diagnostic-":
+            kwargs["dir"] = tmp_path
+        return mkdtemp(*args, **kwargs)
+    monkeypatch.setattr(routing, "output", output)
+    monkeypatch.setattr(routing, "configure_test_ipv4_subnet", configure)
+    monkeypatch.setattr(routing.subprocess, "run", run)
+    monkeypatch.setattr(routing.tempfile, "mkdtemp", private_directory)
+    with pytest.raises(subprocess.CalledProcessError) as captured:
+        routing.check_node_responses(diagnostic=progress)
+    assert captured.value is exc
+    assert progress["phase"] == "fixture-startup" and progress["returncode"] == 125
+    assert progress["operation"] == "docker run"
+    assert progress["stderr_classes"] == ["explicit_ip_requires_configured_subnet", "invalid_endpoint_settings"]
+    origin = progress["origin"]
+    assert origin["file"] == "node_routing_checks.py" and origin["function"] == "check_node_responses"
+    line = (ROOT / "tests/e2e/node_routing_checks.py").read_text().splitlines()[origin["line"] - 1]
+    assert 'output("run", "-d", "--name", client' in line
+    assert [command[:2] for command in commands] == [
+        ("network", "create"), ("network", "create"), ("network", "create"),
+        ("configure-test-network", commands[3][1]), ("run", "-d"), ("run", "-d"), ("run", "-d")]
+    assert sum(command[:3] == ["docker", "rm", "-f"] for command in cleanup) == 1
+    assert sum(command[:3] == ["docker", "network", "rm"] for command in cleanup) == 3
+    public = json.dumps(progress) + capsys.readouterr().out
+    for secret in ("private-token", "private stdout", "private log"):
+        assert secret not in public
+    directory, = tmp_path.iterdir()
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert (directory / "command.stderr").read_bytes() == exc.stderr
+
+
+def test_node_routing_failure_details_survive_in_existing_topology_report(monkeypatch, tmp_path):
+    import deployment_topology_gate as topology
+    import triton_routing_checks as routing
+    import analyzer_routing_checks as analyzer_routing
+    import node_routing_checks as node_routing
+    gate = Gate(tmp_path, images=dict(support.IMAGE_TAGS))
+    exc = subprocess.CalledProcessError(125, ["docker", "run", "private-token"], stderr="private-body")
+    diagnostic = node_routing.routing_failure("fixture-startup", exc)
+    def fail(*, budget_probe, diagnostic):
+        diagnostic.update(node_routing.routing_failure("fixture-startup", exc))
+        raise exc
+    monkeypatch.setattr(gate, "sample_memory", lambda: None)
+    monkeypatch.setattr(gate, "capture_failure", lambda _: None)
+    monkeypatch.setattr(topology, "image_id", lambda value: value)
+    monkeypatch.setattr(topology, "identities", lambda images: {})
+    monkeypatch.setattr(routing, "check_no_replay", lambda: {"ipv4_subnet": "172.28.0.0/16"})
+    monkeypatch.setattr(analyzer_routing, "check_analyzer_responses", lambda: {"status": "passed"})
+    monkeypatch.setattr(node_routing, "check_node_responses", fail)
+    with pytest.raises(subprocess.CalledProcessError) as captured:
+        gate.run()
+    assert captured.value is exc and gate.result["node_routing"] == diagnostic
+    assert gate.result["status"] == "failed" and gate.result["phase"] == "node-routing"
+    report = tmp_path / "topologies.json"
+    support.write_report(report, gate.result)
+    assert json.loads(report.read_text())["node_routing"] == diagnostic
+    assert "private" not in report.read_text()
 
 
 @pytest.mark.parametrize("command", ["private-token", ["private-token"], ["docker", {"private": "token"}]])

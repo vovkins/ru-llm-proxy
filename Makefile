@@ -51,6 +51,7 @@ help:
 	@echo "  NER: обязательный CPU Tiny2/Triton, без выбора модели и устройства"
 	@echo "  TOPOLOGY=functional|production — один экземпляр или CPU-пул 2 LiteLLM / 24 Analyzer / 12 Triton"
 	@echo "  TOPOLOGY_ENV=<файл> — дополнительные количества и ресурсы production"
+	@echo "  NODE_ROLE=primary|compute NODE_CONFIG=<JSON> — локальная роль двухузлового production"
 	@echo "  PII_GUARDRAIL_MODE=MASK|BLOCK — явный выбор сохраняется в ENV_FILE"
 	@echo "  Приоритет режима: параметр make, окружение, ENV_FILE, mask"
 	@echo ""
@@ -100,17 +101,21 @@ require-stack:
 
 # === Setup ===
 require-deployment:
-	@STACK="$(if $(STACK),$(STACK),$(STACK_LITELLM_PRESIDIO))" $(DEPLOY) validate
+	@STACK="$(if $(STACK),$(STACK),$(STACK_LITELLM_PRESIDIO))" $(DEPLOY) validate $(foreach goal,$(MAKECMDGOALS),"$(goal)")
 
 setup: require-stack require-deployment
 	@$(DEPLOY) setup
 
 # === Build ===
 build: require-deployment
+ifdef NODE_ROLE
+	@$(DEPLOY) build
+else
 	@echo "⬇️  Загрузка готовых образов обоих составов"
 	$(BUILD_COMPOSE) pull nginx redis db codex-lb-db
 	@echo "🔨 Сборка прикладных и тестовых образов обоих составов"
 	$(BUILD_COMPOSE) build --no-cache litellm presidio-analyzer ner-triton codex-lb guardrail-tests presidio-analyzer-tests
+endif
 
 # === Up ===
 up: require-stack require-deployment
@@ -152,6 +157,8 @@ test-static: test-routing-diagnostics
 		tests/test_codex_lb_litellm_config.py \
 		tests/test_stack_lifecycle.py \
 		tests/test_deployment_topologies.py \
+		tests/test_node_role_config.py \
+		tests/test_node_bundle.py \
 		tests/test_guardrail_entity_contract.py \
 		tests/test_recognizer_calibration_config.py \
 		tests/test_repository_status_docs.py \
@@ -271,7 +278,7 @@ clean:
 		"$(STACK_LITELLM_PRESIDIO)"|"$(STACK_CODEX_LB)"|all) ;; \
 		*) echo "❌ Укажите STACK=$(STACK_LITELLM_PRESIDIO), STACK=$(STACK_CODEX_LB) или STACK=all"; exit 2 ;; \
 	esac
-	@STACK=$(if $(filter all,$(STACK)),$(STACK_CODEX_LB),$(STACK)) $(DEPLOY) validate
+	@STACK=$(if $(filter all,$(STACK)),$(STACK_CODEX_LB),$(STACK)) $(DEPLOY) validate $(if $(filter all,$(STACK)),clean-all,clean)
 	@if [ "$(STACK)" != "all" ]; then bash scripts/stack_guard.sh mutation "$(STACK)" "$(ENV_FILE)"; fi
 	@echo "⚠️  Это удалит все данные (БД, Redis, Docker-образы)"
 	@read -p "Продолжить? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_bare_inn_checksum_setting_is_exposed_to_analyzer_runtime():
     env_name = "PRESIDIO_ANALYZER_DETECT_BARE_INN_BY_CHECKSUM"
     configuration = (ROOT / "docs" / "configuration.md").read_text()
-    compose = (ROOT / "docker-compose.yml").read_text()
+    compose = (ROOT / "docker-compose.ner.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
     assert f"`{env_name}` | `true`" in configuration
@@ -26,7 +26,7 @@ def test_infrastructure_secret_settings_are_exposed_to_analyzer_runtime():
     domain_env = "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES"
     public_ip_env = "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS"
     configuration = (ROOT / "docs" / "configuration.md").read_text()
-    compose = (ROOT / "docker-compose.yml").read_text()
+    compose = (ROOT / "docker-compose.ner.yml").read_text()
     setup_script = (ROOT / "scripts" / "setup_env.sh").read_text()
 
     domain_default_prefix = "internal,local,lan,corp,corp.local"

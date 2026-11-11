@@ -1,0 +1,8 @@
+{
+  "primary": {
+    "source_cidrs": ["192.0.2.10/32"]
+  },
+  "compute": {
+    "analyzer_url": "http://192.0.2.20:5001"
+  }
+}

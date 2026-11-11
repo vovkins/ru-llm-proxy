@@ -17,6 +17,8 @@ env/
 .env
 .env.local
 .env.production
+deploy/nodes.local.json
+deploy/generated/
 
 # Corporate proxy certificates are local deployment material.
 certs/*.crt

@@ -1,0 +1,19 @@
+services:
+  nginx:
+    labels:
+      ru-llm-proxy.node-role: primary
+  litellm:
+    labels:
+      ru-llm-proxy.node-role: primary
+  presidio-analyzer:
+    labels:
+      ru-llm-proxy.node-role: primary
+  ner-triton:
+    labels:
+      ru-llm-proxy.node-role: primary
+  redis:
+    labels:
+      ru-llm-proxy.node-role: primary
+  db:
+    labels:
+      ru-llm-proxy.node-role: primary

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "observation": "TWO-NODE-LINK-01",
+  "status": "original_diagnostic_preserved_followup_trial_completed",
+  "followup_report": "production-two-node-health-fix.json",
+  "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
+  "single_docker_host": true,
+  "api_request_limit": 3,
+  "api_requests": 3,
+  "automatic_api_retries": false,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "cases": [
+    {
+      "name": "healthy-chat",
+      "api": "chat",
+      "stream": false,
+      "outcome": "success",
+      "http_status": 200,
+      "seconds": 0.7605,
+      "response_bytes": 347,
+      "client_phase": "body_read",
+      "response_sha256": "5ce6f4d5b4fc39efec9eea9f50be075c7c4f908752a37b80773fd14355fdee08"
+    },
+    {
+      "name": "fault-chat",
+      "api": "chat",
+      "stream": false,
+      "outcome": "success",
+      "http_status": 200,
+      "seconds": 0.2781,
+      "response_bytes": 347,
+      "client_phase": "body_read",
+      "response_sha256": "43b8229602428838862e35a6472321b214a4f7a446b0bef5815f09a5b8b33322"
+    },
+    {
+      "name": "fault-responses-sse",
+      "api": "responses",
+      "stream": true,
+      "outcome": "transport_error",
+      "http_status": null,
+      "seconds": 90.0906,
+      "response_bytes": 0,
+      "client_phase": "headers_wait",
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "failing_component_path": [
+    "LiteLLM guardrail readiness GET",
+    "Nginx A",
+    "cached TCP connection to disconnected Nginx B"
+  ],
+  "failing_control_request": {
+    "method": "GET",
+    "path": "/api/v1/health",
+    "headers_received": false,
+    "nginx_wait_seconds": 90.07,
+    "nginx_terminal_status": 499,
+    "analyzer_analysis_request_logged": false,
+    "provider_request_sent": false
+  },
+  "tcp": {
+    "handshake_before_fault": true,
+    "successful_exchange_before_fault": true,
+    "post_fault_sends": 9,
+    "post_fault_reply_packets": 0,
+    "post_fault_payload_bytes": [
+      131
+    ],
+    "max_observed_retransmitted_bytes": 1310,
+    "captured_packets": 27
+  },
+  "client": {
+    "timeout_seconds": 90,
+    "received_http_headers": false,
+    "received_sse_bytes": 0,
+    "timed_out_before_body_parser": true
+  },
+  "timeouts_from_unchanged_code": {
+    "nginx_analysis_read_seconds": 1500,
+    "guardrail_shared_http_seconds": 240,
+    "nginx_connect_seconds": 5,
+    "nginx_idle_keepalive_seconds": 4,
+    "separate_short_health_timeout": false
+  },
+  "provider_capture": {
+    "provider_requests": 2,
+    "provider_saw_raw_phone": false,
+    "provider_saw_phone_placeholder": true
+  },
+  "preservation": {
+    "previous_containers": 44,
+    "all_unchanged": true,
+    "temporary_containers_remaining": 0
+  },
+  "bounded_queue_samples": 149,
+  "queue_sample_max_waiting": 0.0,
+  "harness_tests": 4,
+  "export_tests": 3,
+  "not_proven": [
+    "all earlier timeouts share this cause",
+    "requests after health succeeds or already in inference",
+    "server deadline reached at 240 seconds",
+    "effectiveness of a fix",
+    "two physical hosts"
+  ],
+  "next_action": "health experiment passed focused scenario; review new POST observation TWO-NODE-LINK-02 before further changes"
+}

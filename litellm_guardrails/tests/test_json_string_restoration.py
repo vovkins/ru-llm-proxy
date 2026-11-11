@@ -35,6 +35,16 @@ def mask_source(raw):
     return source, masked, state
 
 
+def tool_history(api, source):
+    function = {'name': 'save', 'arguments': source}
+    if api == 'responses':
+        target = {'type': 'function_call', 'call_id': 'call-s', **function}
+        return {'input': [target]}, target
+    return {'messages': [{'role': 'assistant', 'tool_calls': [
+        {'id': 'call-s', 'type': 'function', 'function': function},
+    ]}]}, function
+
+
 @pytest.mark.parametrize('raw', RAW_VALUES)
 @pytest.mark.parametrize('as_text', [False, True])
 def test_source_json_and_json_carried_as_text_at_every_split(raw, as_text):
@@ -219,14 +229,26 @@ async def test_actual_redis_contract_round_trip_uses_the_same_keys_and_ttl():
 @pytest.mark.parametrize('as_text', [False, True])
 @pytest.mark.asyncio
 async def test_real_hooks_restore_and_clean_typed_string_state(api, stream, as_text):
-    source, masked, state = mask_source(r'Ivan\nPetrov\"')
-    state = decode_mapping(encode_mapping(state))
+    raw = r'\u0418\u0432\u0430\u043d\nPetrov\"\ud83d\ude00'
+    source, expected_mask, _ = mask_source(raw)
     guard = RuPIIGuardrail()
     guard._redis = AsyncMock()
-    guard._redis.get.return_value = encode_mapping(state)
+    guard._redis.get.return_value = None
+    history, request_target = tool_history(api, source)
+    data = {'model': 'mock', 'stream': stream, **history}
+    left = source.index(raw)
+    with patch.object(guard, '_analyze_text', return_value=[
+        {'start': left, 'end': left + len(raw), 'entity_type': 'PERSON'},
+    ]):
+        data = await guard.async_pre_call_hook(
+            MagicMock(), MagicMock(), data, call_type='responses' if api == 'responses' else 'completion',
+        )
+    masked = request_target['arguments']
+    assert masked == expected_mask
+    key, _, serialized = guard._redis.setex.await_args.args
+    guard._redis.get.return_value = serialized
     arguments = json.dumps({'source': masked}) if as_text else masked
     expected = {'source': source} if as_text else json.loads(source)
-    data = {'metadata': {'pii_request_id': 'string-test'}, 'stream': stream}
     if not stream:
         if api == 'responses':
             target = {'type': 'function_call', 'arguments': arguments}
@@ -255,7 +277,7 @@ async def test_real_hooks_restore_and_clean_typed_string_state(api, stream, as_t
                   ''.join(call['function'].get('arguments', '') for event in restored for choice in event['choices']
                           for call in choice['delta'].get('tool_calls', [])))
     assert json.loads(actual) == expected
-    guard._redis.delete.assert_awaited_once_with('pii_mapping:string-test')
+    guard._redis.delete.assert_awaited_once_with(key)
 
 
 def test_atoms_only_assign_json_provenance_to_valid_documents():
@@ -266,8 +288,9 @@ def test_atoms_only_assign_json_provenance_to_valid_documents():
 
 
 @pytest.mark.parametrize('mode', ['mask', 'block'])
+@pytest.mark.parametrize('api', ['chat', 'responses'])
 @pytest.mark.asyncio
-async def test_source_mask_block_and_private_metadata(mode):
+async def test_source_mask_block_and_private_metadata(mode, api):
     source, _, _ = mask_source(r'Ivan\nPetrov\"')
     guard = RuPIIGuardrail()
     guard.pii_mode = mode
@@ -276,19 +299,22 @@ async def test_source_mask_block_and_private_metadata(mode):
     raw = r'Ivan\nPetrov\"'
     start = source.index(raw)
     findings = [{'start': start, 'end': start + len(raw), 'entity_type': 'PERSON'}]
-    data = {'messages': [{'role': 'user', 'content': source}]}
+    data, target = tool_history(api, source)
     with patch.object(guard, '_analyze_text', return_value=findings):
         if mode == 'block':
             with pytest.raises(litellm.UnprocessableEntityError):
-                await guard.async_pre_call_hook(MagicMock(), MagicMock(), data)
+                await guard.async_pre_call_hook(MagicMock(), MagicMock(), data,
+                                                call_type='responses' if api == 'responses' else 'completion')
             guard._redis.setex.assert_not_awaited()
+            assert target['arguments'] == source
         else:
-            masked = await guard.async_pre_call_hook(MagicMock(), MagicMock(), data)
-            assert raw not in masked['messages'][0]['content']
+            masked = await guard.async_pre_call_hook(MagicMock(), MagicMock(), data,
+                                                    call_type='responses' if api == 'responses' else 'completion')
+            assert raw not in target['arguments']
             assert 'json_strings' not in json.dumps(masked)
             state = decode_mapping(guard._redis.setex.await_args.args[2])
             assert state.json_strings == {'<PERSON_1>'}
-            assert json.loads(masked['messages'][0]['content']) == {'value': '<PERSON_1>', 'ticket': 123456}
+            assert json.loads(target['arguments']) == {'value': '<PERSON_1>', 'ticket': 123456}
 
 
 @pytest.mark.parametrize('api', ['chat', 'responses'])

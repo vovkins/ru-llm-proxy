@@ -76,6 +76,16 @@ def test_ner_workflow_tracks_actual_litellm_image_definition(event):
     assert "Dockerfile" not in paths
 
 
+@pytest.mark.parametrize("event", ["pull_request", "push"])
+def test_ner_workflow_tracks_shared_ner_and_node_configuration(event):
+    workflow = yaml.load(_read(WORKFLOW), Loader=yaml.BaseLoader)
+    paths = workflow["on"][event]["paths"]
+    for path in ("docker-compose.ner.yml", ".env.compute.example", "deploy/nodes*.json",
+                 "scripts/node_config.py", "tests/test_node_role_config.py"):
+        assert path in paths
+    assert "docker-compose.production*.yml" in paths
+
+
 def test_proxy_compose_uses_real_analyzer_and_both_pii_modes():
     compose = _read(COMPOSE)
     yaml.safe_load(compose)

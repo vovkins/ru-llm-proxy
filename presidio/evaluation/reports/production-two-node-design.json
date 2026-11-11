@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "source_commit": "7587d02babd4c3030ded06adc08d4e83117b0183",
+  "scope": "two_node_architecture_research_not_production_acceptance",
+  "single_docker_host": true,
+  "two_physical_hosts_validated": false,
+  "platform_changes": false,
+  "production_defaults_changed": false,
+  "external_provider_calls": 0,
+  "host": {
+    "vcpus": 32,
+    "memory_gib": 62.79
+  },
+  "images": {
+    "presidio-analyzer": "sha256:0a28cc722d6665825bdb128fd440572782b912b007f7a0814c968d9207afd94c",
+    "ner-triton": "sha256:9450d2275ed3aca0379f5159e833a3e623544b6d524ffdc57ffc3f8a54a56f2e",
+    "litellm": "sha256:eef834a92246910a9fa6e3bf05c107a6c510151ce1d98c6a70dc62dc1dbd3bd5"
+  },
+  "model": {
+    "model_id": "Katerina-Bir/rubert-tiny2-secret-detection",
+    "revision": "4137142e79d52b0b69370e0e3dceb2d6ad82591d",
+    "onnx_sha256": "0c418bfe69140477c03d783f30fcebd85e86090d2b1964d384c92b07487fe353"
+  },
+  "variants": [
+    {
+      "variant": "common",
+      "status": "passed",
+      "scope": "healthy_only_with_verified_routes_faults_held",
+      "phase": null,
+      "cleanup_verified": true,
+      "node_counts": {
+        "a": {
+          "litellm": 1,
+          "analyzer": 2,
+          "triton": 1
+        },
+        "b": {
+          "analyzer": 2,
+          "triton": 1,
+          "nginx": 0
+        }
+      },
+      "settings": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45",
+        "TRITON_MODEL_INSTANCES": "2",
+        "HTTP_POOL": "20/10",
+        "ANALYZER_BUDGET": "240"
+      },
+      "route_checks": [
+        {
+          "expected_peers": 4,
+          "all_seen": true
+        }
+      ],
+      "isolated_worker_local_analysis": null,
+      "series": [
+        {
+          "phase": "protocol",
+          "requests": 8,
+          "outcomes": {
+            "success": 8
+          },
+          "http_statuses": {
+            "200": 8
+          },
+          "first_text_seconds": {
+            "p50": 1.0487,
+            "p95": 1.0775,
+            "max": 1.0775
+          },
+          "all_success_within_60": 8,
+          "provider_capture": {
+            "provider_requests": 8,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "triton_success_requests": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "strict_success_required": true
+        },
+        {
+          "phase": "burst",
+          "requests": 20,
+          "outcomes": {
+            "success": 20
+          },
+          "http_statuses": {
+            "200": 20
+          },
+          "first_text_seconds": {
+            "p50": 8.8703,
+            "p95": 11.7648,
+            "max": 12.3204
+          },
+          "all_success_within_60": 20,
+          "provider_capture": {
+            "provider_requests": 20,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 10.0,
+            "b": 10.0
+          },
+          "triton_success_requests": {
+            "a": 69.0,
+            "b": 71.0
+          },
+          "strict_success_required": true
+        }
+      ],
+      "queue_observation": {
+        "burst": {
+          "complete_samples": 17,
+          "max_sum_active": 8.0,
+          "max_sum_waiting": 12.0
+        },
+        "protocol": {
+          "complete_samples": 2,
+          "max_sum_active": 4.0,
+          "max_sum_waiting": 0.0
+        }
+      },
+      "model_proxy_observation": {
+        "a": {
+          "successful_inference_hops": 152,
+          "observed_http_bytes": 18622328,
+          "scope": "entire attempt including warmup, not wire bytes or comparative bandwidth"
+        }
+      }
+    },
+    {
+      "variant": "local",
+      "status": "failed",
+      "scope": "partial_fault_matrix",
+      "phase": "interconnect-disconnected",
+      "cleanup_verified": true,
+      "node_counts": {
+        "a": {
+          "litellm": 1,
+          "analyzer": 2,
+          "triton": 1
+        },
+        "b": {
+          "analyzer": 2,
+          "triton": 1,
+          "nginx": 1
+        }
+      },
+      "settings": {
+        "PRESIDIO_ANALYZER_WORKERS": "1",
+        "PRESIDIO_ANALYZER_CONCURRENCY_LIMIT": "2",
+        "PRESIDIO_ANALYZER_NER_BATCH_SIZE": "4",
+        "PRESIDIO_ANALYZER_QUEUE_LIMIT": "32",
+        "PRESIDIO_ANALYZER_QUEUE_TIMEOUT_SECONDS": "45",
+        "TRITON_MODEL_INSTANCES": "2",
+        "HTTP_POOL": "20/10",
+        "ANALYZER_BUDGET": "240"
+      },
+      "route_checks": [
+        {
+          "expected_peers": 2,
+          "all_seen": true
+        },
+        {
+          "expected_peers": 2,
+          "all_seen": true
+        }
+      ],
+      "isolated_worker_local_analysis": true,
+      "series": [
+        {
+          "phase": "protocol",
+          "requests": 8,
+          "outcomes": {
+            "success": 8
+          },
+          "http_statuses": {
+            "200": 8
+          },
+          "first_text_seconds": {
+            "p50": 1.0313,
+            "p95": 1.0709,
+            "max": 1.0709
+          },
+          "all_success_within_60": 8,
+          "provider_capture": {
+            "provider_requests": 8,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "triton_success_requests": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "strict_success_required": true
+        },
+        {
+          "phase": "burst",
+          "requests": 20,
+          "outcomes": {
+            "success": 20
+          },
+          "http_statuses": {
+            "200": 20
+          },
+          "first_text_seconds": {
+            "p50": 9.6955,
+            "p95": 11.9395,
+            "max": 12.0561
+          },
+          "all_success_within_60": 20,
+          "provider_capture": {
+            "provider_requests": 20,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 10.0,
+            "b": 10.0
+          },
+          "triton_success_requests": {
+            "a": 70.0,
+            "b": 70.0
+          },
+          "strict_success_required": true
+        },
+        {
+          "phase": "one-analyzer-stopped",
+          "requests": 8,
+          "outcomes": {
+            "success": 8
+          },
+          "http_statuses": {
+            "200": 8
+          },
+          "first_text_seconds": {
+            "p50": 0.4347,
+            "p95": 0.7923,
+            "max": 0.7923
+          },
+          "all_success_within_60": 8,
+          "provider_capture": {
+            "provider_requests": 8,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "triton_success_requests": {
+            "a": 4.0,
+            "b": 4.0
+          },
+          "strict_success_required": true
+        },
+        {
+          "phase": "one-analyzer-returned",
+          "requests": 4,
+          "outcomes": {
+            "success": 4
+          },
+          "http_statuses": {
+            "200": 4
+          },
+          "first_text_seconds": {
+            "p50": 0.2894,
+            "p95": 0.389,
+            "max": 0.389
+          },
+          "all_success_within_60": 4,
+          "provider_capture": {
+            "provider_requests": 4,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 2.0,
+            "b": 2.0
+          },
+          "triton_success_requests": {
+            "a": 2.0,
+            "b": 2.0
+          },
+          "strict_success_required": true
+        },
+        {
+          "phase": "interconnect-disconnected",
+          "requests": 8,
+          "outcomes": {
+            "transport_error": 2,
+            "success": 4,
+            "error": 2
+          },
+          "http_statuses": {
+            "none": 2,
+            "200": 4,
+            "503": 2
+          },
+          "first_text_seconds": {
+            "p50": 0.4777,
+            "p95": 0.4993,
+            "max": 0.4993
+          },
+          "all_success_within_60": 4,
+          "provider_capture": {
+            "provider_requests": 4,
+            "provider_saw_raw_phone": false,
+            "provider_saw_phone_placeholder": true
+          },
+          "analyzer_success_fields": {
+            "a": 4.0,
+            "b": 0
+          },
+          "triton_success_requests": {
+            "a": 4.0,
+            "b": 0
+          },
+          "strict_success_required": false
+        }
+      ],
+      "queue_observation": {
+        "burst": {
+          "complete_samples": 17,
+          "max_sum_active": 8.0,
+          "max_sum_waiting": 12.0
+        },
+        "interconnect-disconnected": {
+          "complete_samples": 139,
+          "max_sum_active": 4.0,
+          "max_sum_waiting": 0.0
+        },
+        "protocol": {
+          "complete_samples": 2,
+          "max_sum_active": 2.0,
+          "max_sum_waiting": 0.0
+        },
+        "one-analyzer-returned": {
+          "complete_samples": 5,
+          "max_sum_active": 3.0,
+          "max_sum_waiting": 0.0
+        },
+        "one-analyzer-stopped": {
+          "complete_samples": 3,
+          "max_sum_active": 6.0,
+          "max_sum_waiting": 2.0
+        }
+      },
+      "model_proxy_observation": {
+        "a": {
+          "successful_inference_hops": 86,
+          "observed_http_bytes": 10031644,
+          "scope": "entire attempt including warmup, not wire bytes or comparative bandwidth"
+        },
+        "b": {
+          "successful_inference_hops": 84,
+          "observed_http_bytes": 9816488,
+          "scope": "entire attempt including warmup, not wire bytes or comparative bandwidth"
+        }
+      }
+    }
+  ],
+  "earlier_common_fault": {
+    "comparative_performance_eligible": false,
+    "reason": "early regular API calls had not reached remote Analyzer before DNS refresh",
+    "series": {
+      "phase": "interconnect-disconnected",
+      "requests": 8,
+      "outcomes": {
+        "success": 2,
+        "transport_error": 2,
+        "error": 4
+      },
+      "http_statuses": {
+        "200": 2,
+        "none": 2,
+        "503": 4
+      },
+      "first_text_seconds": {
+        "p50": 0.345,
+        "p95": 0.3567,
+        "max": 0.3567
+      },
+      "all_success_within_60": 2,
+      "provider_capture": {
+        "provider_requests": 2,
+        "provider_saw_raw_phone": false,
+        "provider_saw_phone_placeholder": true
+      },
+      "analyzer_success_fields": {
+        "a": 2.0,
+        "b": 0
+      },
+      "triton_success_requests": {
+        "a": 4.0,
+        "b": 0
+      },
+      "strict_success_required": false
+    }
+  },
+  "unresolved_observation": {
+    "code": "TWO-NODE-LINK-01",
+    "status": "bounded_prototype_link_checks_passed_owner_architecture_choice_pending",
+    "summary": "earlier failures preserved; TCP probe followup passed 52 MASK and 4 BLOCK checks including active loss and restoration, without production delivery",
+    "diagnostic_report": "production-two-node-link-diagnostic.json",
+    "followup_report": "production-two-node-health-fix.json",
+    "latest_report": "production-two-node-tcp-probes-paired.json",
+    "tcp_probe_trial_report": "production-two-node-tcp-probes.json",
+    "resolution_report": "production-two-node-tcp-probes-paired.json",
+    "skipped_checks": [
+      "real two host acceptance",
+      "full two node production delivery and capacity measurement"
+    ]
+  },
+  "harness_tests": 8,
+  "static_tests": 820,
+  "source_archive_sha256": "d5f483d82fe285eab0f9b4812c802b2c3370a74382618ae0f03e60121ee80198"
+}

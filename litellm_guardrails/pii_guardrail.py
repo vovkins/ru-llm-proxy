@@ -161,6 +161,7 @@ FINAL_PAYLOAD_LEAK_CHECK_PROVIDER_BOUND_REQUEST_FIELDS = (
 )
 DEFAULT_PII_MAPPING_TTL_SECONDS = 3600
 ANALYSIS_CACHE_SCHEMA_VERSION = 1
+JSON_ARGUMENTS_CACHE_CONTRACT_VERSION = 1
 ANALYSIS_CACHE_KEY_PREFIX = "pii_analysis_cache:v1:"
 ANALYSIS_CACHE_INDEX_KEY = "pii_analysis_cache_index:v1"
 ANALYSIS_CACHE_MAX_ENTRIES = 10_000
@@ -193,7 +194,7 @@ ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYZER_BUDGET_HEADER = "X-Ru-LLM-Analysis-Budget-Seconds"
 _ANALYSIS_DEADLINE: ContextVar[Optional[float]] = ContextVar("pii_analysis_deadline", default=None)
-_ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int]]] = ContextVar(
+_ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int, bool]]] = ContextVar(
     "ru_llm_proxy_analyzer_call_context",
     default=None,
 )
@@ -2406,6 +2407,10 @@ class RuPIIGuardrail(CustomGuardrail):
             "scope": context["scope"],
             "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
         }
+        call_context = _ANALYZER_CALL_CONTEXT.get()
+        if call_context is not None and call_context[2]:
+            contract["input_kind"] = "json_arguments"
+            contract["input_kind_version"] = JSON_ARGUMENTS_CACHE_CONTRACT_VERSION
         serialized_contract = json.dumps(
             contract,
             ensure_ascii=True,
@@ -2734,9 +2739,12 @@ class RuPIIGuardrail(CustomGuardrail):
         try:
             client = _get_shared_analyzer_http_client()
             headers = {}
+            payload = {"text": text, "language": "ru", "score_threshold": 0.35}
             analyzer_call_context = _ANALYZER_CALL_CONTEXT.get()
             if analyzer_call_context is not None:
-                request_id, text_field_index = analyzer_call_context
+                request_id, text_field_index, json_arguments = analyzer_call_context
+                if json_arguments:
+                    payload["input_kind"] = "json_arguments"
                 headers = {
                     ANALYZER_REQUEST_ID_HEADER: request_id,
                     ANALYZER_TEXT_FIELD_INDEX_HEADER: str(text_field_index),
@@ -2750,7 +2758,7 @@ class RuPIIGuardrail(CustomGuardrail):
             headers[ANALYZER_BUDGET_HEADER] = str(min(86_400.0, remaining))
             response = await client.post(
                 f"{PRESIDIO_ANALYZER_URL}/api/v1/analyze",
-                json={"text": text, "language": "ru", "score_threshold": 0.35},
+                json=payload,
                 headers=headers,
             )
             if response.status_code == 503:
@@ -3899,8 +3907,13 @@ class RuPIIGuardrail(CustomGuardrail):
                             entity_counts[entity] = max(entity_counts.get(entity, 0), index)
 
                 analyzer_call_index += 1
+                # The Analyzer validates the whole document before using the hint.
+                json_arguments = (
+                    field == "arguments"
+                    and provider_content.lstrip(" \t\r\n").startswith(("{", "["))
+                )
                 analyzer_context_token = _ANALYZER_CALL_CONTEXT.set(
-                    (request_id, analyzer_call_index)
+                    (request_id, analyzer_call_index, json_arguments)
                 )
                 try:
                     if not analysis_cache_context_prepared:

@@ -558,7 +558,7 @@ class TestAnalyzeText:
         client = AsyncMock()
         client.post.return_value = self._mock_analyzer_response()
         request_id = str(uuid.uuid4())
-        context_token = pii_guardrail._ANALYZER_CALL_CONTEXT.set((request_id, 2))
+        context_token = pii_guardrail._ANALYZER_CALL_CONTEXT.set((request_id, 2, False))
 
         try:
             with patch(
@@ -623,7 +623,56 @@ class TestAnalyzeText:
         assert len(request_ids) == 1
         uuid.UUID(request_ids.pop())
         assert [context[1] for context in observed_contexts] == [1, 2]
+        assert not any(context[2] for context in observed_contexts)
         assert pii_guardrail._ANALYZER_CALL_CONTEXT.get() is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("api", ["chat", "legacy", "responses"])
+    async def test_json_argument_hint_is_scoped_to_arguments(self, guardrail, api):
+        source = r'{"report":"\u0418\u0432\u0430\u043d"}'
+        function = {"name": "lookup", "arguments": source}
+        if api == "responses":
+            payload = {"input": [
+                {"role": "user", "content": source},
+                {"type": "function_call", "call_id": "call_a", **function},
+                {"type": "function_call_output", "call_id": "call_a", "output": source},
+            ]}
+        else:
+            assistant = {"role": "assistant"}
+            if api == "legacy":
+                assistant["function_call"] = function
+            else:
+                assistant["tool_calls"] = [{"type": "function", "function": function}]
+            payload = {"messages": [{"role": "user", "content": source}, assistant]}
+
+        client = AsyncMock()
+        client.post.return_value = self._mock_analyzer_response()
+        with patch.object(pii_guardrail, "_get_shared_analyzer_http_client", return_value=client):
+            await guardrail.async_pre_call_hook(
+                user_api_key_dict=MagicMock(), cache=MagicMock(),
+                data={"model": "mock-chat", **payload},
+                call_type="responses" if api == "responses" else "completion",
+            )
+        bodies = [call.kwargs["json"] for call in client.post.await_args_list]
+        assert [body.get("input_kind") for body in bodies] == (
+            [None, "json_arguments", None] if api == "responses" else [None, "json_arguments"]
+        )
+        assert all(body["text"] == source for body in bodies)
+
+    def test_json_argument_cache_separates_mode_and_original_spelling(self, guardrail):
+        guardrail._analysis_cache_secret = b"test-only"
+        context = {"analyzer_signature": "sig", "model": "mock", "scope": "test"}
+        literal = '{"report":"Иван"}'
+        escaped = json.dumps(json.loads(literal), ensure_ascii=True, separators=(",", ":"))
+        plain = guardrail._analysis_cache_key(escaped, context)
+        token = pii_guardrail._ANALYZER_CALL_CONTEXT.set((str(uuid.uuid4()), 1, True))
+        try:
+            hinted = guardrail._analysis_cache_key(escaped, context)
+            assert hinted != plain
+            assert hinted != guardrail._analysis_cache_key(literal, context)
+            assert hinted == guardrail._analysis_cache_key(escaped, context)
+        finally:
+            pii_guardrail._ANALYZER_CALL_CONTEXT.reset(token)
 
     @pytest.mark.asyncio
     async def test_raises_analyzer_overloaded_for_capacity_503(self, guardrail):
@@ -1222,6 +1271,35 @@ class TestAnalysisCache:
         ]
         assert len(cache_values) == 1
         assert "+79031234567" not in cache_values[0]
+
+    @pytest.mark.asyncio
+    async def test_tool_argument_cache_reuses_only_identical_source_coordinates(self, guardrail):
+        self._enable(guardrail)
+        guardrail._redis = _MemoryRedis()
+        auth = MagicMock(token="hashed-virtual-key")
+        literal = '{"report":"Иван"}'
+        escaped = json.dumps(json.loads(literal), ensure_ascii=True, separators=(",", ":"))
+
+        async def detect(text):
+            assert pii_guardrail._ANALYZER_CALL_CONTEXT.get()[2] is True
+            start = len('{"report":"')
+            return [{"entity_type": "PERSON", "start": start, "end": len(text) - 2, "score": 0.95}]
+
+        with (
+            patch.object(guardrail, "_get_analyzer_signature", return_value=self.SIGNATURE),
+            patch.object(guardrail, "_analyze_text", side_effect=detect) as analyze,
+        ):
+            for source in (literal, literal, escaped, escaped):
+                function = {"name": "read", "arguments": source}
+                data = {"model": "mock-chat", "messages": [{
+                    "role": "assistant", "tool_calls": [{"type": "function", "function": function}],
+                }]}
+                result = await guardrail.async_pre_call_hook(auth, MagicMock(), data, call_type="completion")
+                assert function["arguments"] == '{"report":"<PERSON_1>"}'
+                mapping_key = f"pii_mapping:{result['metadata']['pii_request_id']}"
+                mapping = pii_guardrail.decode_mapping(guardrail._redis.values[mapping_key])
+                assert mapping["<PERSON_1>"] == source[len('{"report":"'):-2]
+        assert [call.args for call in analyze.await_args_list] == [(literal,), (escaped,)]
 
     @pytest.mark.asyncio
     async def test_cache_read_failure_falls_back_to_analyzer(self, guardrail):
