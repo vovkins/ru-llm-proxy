@@ -159,7 +159,31 @@ async def test_repaired_ner_values_round_trip(api, output_kind, stream, case, ll
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("case", NER_BOUNDARY_CASES, ids=lambda c: c["id"])
 async def test_boundary_container_values_round_trip(api, output_kind, stream, case, llm_logging_lifecycle):
-    await _round_trip_through_litellm_parser(api, output_kind, stream, "ner-value", case)
+    await _round_trip_through_litellm_parser(api, output_kind, stream, "ner-value", case,
+                                            check_exact_outgoing=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("case", NER_BOUNDARY_CASES, ids=lambda c: c["id"])
+async def test_boundary_container_is_blocked_before_provider(api, stream, case):
+    source = case["text"]
+    data = {"messages": [{"role": "user", "content": source}]} if api == "chat" else {"input": source}
+    data["stream"] = stream
+    original = deepcopy(data)
+    guardrail = RuPIIGuardrail(pii_mode="block")
+    guardrail._redis = AsyncMock()
+    results = [_entity(source, value, kind) for value, kind in case["expected"]]
+    with patch.object(guardrail, "_analyze_text", return_value=results):
+        with pytest.raises(litellm.UnprocessableEntityError) as error:
+            await guardrail.async_pre_call_hook(MagicMock(), MagicMock(), data)
+    payload = error.value.response.json()["error"]
+    assert payload["code"] == "pii_blocked"
+    assert set(payload["details"]["entities"]) == {kind for _, kind in case["expected"]}
+    assert all(value not in json.dumps(payload, ensure_ascii=False) for value, _ in case["expected"])
+    assert {key: data[key] for key in original} == original
+    guardrail._redis.setex.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -366,6 +390,7 @@ async def test_stock_responses_chat_bridge_history_without_persisted_history(
 async def _round_trip_through_litellm_parser(
     api, output_kind, stream, replacement, entity_type, *, behavior=None,
     require_tool=False, bridge=False, required_tool_choice=False, analyzer=None,
+    check_exact_outgoing=False,
 ):
     provider_api = "chat" if bridge else api
     dictionary = replacement in {"dictionary", "dictionary-overlap"}
@@ -671,6 +696,11 @@ async def _round_trip_through_litellm_parser(
         assert provider_value in sent
         if corpus_case:
             assert all(value not in sent for value in mapping.values())
+            if check_exact_outgoing:
+                expected_sent = prompt
+                for placeholder, value in mapping.items():
+                    expected_sent = expected_sent.replace(value, placeholder, 1)
+                assert sent == expected_sent
         if not stream:
             if provider_api == "chat":
                 message = {"role": "assistant", "content": upstream_output}

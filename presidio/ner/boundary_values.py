@@ -6,6 +6,7 @@ evaluates code, or treats an artificial Analyzer chunk as a document boundary.
 
 from bisect import bisect_right
 from dataclasses import dataclass
+from itertools import chain
 import re
 import unicodedata
 from urllib.parse import urlsplit
@@ -23,6 +24,15 @@ _BLANK_LINE = re.compile(rf"{_LINE_BREAK}[ \t]*{_LINE_BREAK}")
 _FENCE = re.compile(r"(?:\A|(?<=[\r\n\u2028\u2029]))[ ]{0,3}(`{3,}|~{3,})([^\r\n\u2028\u2029]*)")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
+_TICKS = re.compile(r"`+")
+_INLINE_CODE = re.compile(r"(?<![\\`])(`+)(?!`)[^`\r\n\u2028\u2029]+\1(?!`)")
+_PARENTHESES = re.compile(r"[()]")
+_PROSE_INTRO = re.compile(r"(?:[^\W\d_]+[ \t]+[^\W\d_]+|`)[ \t]+\Z")
+_LIST_MARKER = re.compile(r"( {0,3})([-+*]|[0-9]{1,9}[.)])[ \t]+")
+_LINE_NUMBER = re.compile(r"([0-9]{1,9}):[ \t]+")
+_CONTINUATION_LIST = re.compile(rf"{_LINE_BREAK}(?:{_LINE_NUMBER.pattern})?{_LIST_MARKER.pattern}")
+_BOLD_HEADING = re.compile(r"\*\*([^*]+)\*\*[ \t]+")
+_MAX_PROSE_CONTAINER_CHARS = 4096
 
 
 class _Ranges:
@@ -46,6 +56,14 @@ class _Ranges:
     def intersects(self, start, end):
         index = bisect_right(self.starts, end - 1) - 1
         return index >= 0 and self.prefix_ends[index] > start
+
+    def overlapping(self, start, end):
+        first = bisect_right(self.prefix_ends, start)
+        last = bisect_right(self.starts, end - 1)
+        for index in range(first, last):
+            left, right = self.ranges[index]
+            if start < right:
+                yield left, right
 
 
 def _references(text):
@@ -137,6 +155,106 @@ def _plain_fenced_paragraph(text):
                or unicodedata.category(char).startswith("M") for char in text)
 
 
+def _inline_syntax(text, fences, strings):
+    closed = _Ranges(m.span() for m in _INLINE_CODE.finditer(text)
+                     if not fences.intersects(*m.span()) and not strings.intersects(*m.span()))
+    unknown_start = next((m.start() for m in _TICKS.finditer(text)
+                          if not any(index.containing(*m.span()) for index in (fences, strings, closed))),
+                         len(text))
+    # Do not infer new containers after an unmatched or unsupported code delimiter.
+    return closed, unknown_start
+
+
+def _plain_prose(text):
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        elif not (char.isalnum() or char.isspace() or char in ".,:;!?%+-\u2013\u2014\u2026"
+                  or unicodedata.category(char).startswith("M")):
+            return False
+    return depth == 0
+
+
+def _prose_parts(text, start, end, inline, references):
+    if (end - start > _MAX_PROSE_CONTAINER_CHARS or _BLANK_LINE.search(text, start, end)
+            or _CONTINUATION_LIST.search(text, start, end)):
+        return
+    parts = []
+    for left, right in inline.overlapping(start, end):
+        if left < start or right > end:
+            return  # Never split a code span at the edge of a container.
+        parts.append((start, left))
+        start = right
+    parts.append((start, end))
+    bounded = []
+    for left, right in parts:
+        value = text[left:right]
+        trimmed = value.strip()
+        if not _plain_prose(trimmed) or references.intersects(left, right):
+            return
+        if any(char.isalnum() for char in trimmed):
+            left += len(value) - len(value.lstrip())
+            bounded.append((left, left + len(trimmed)))
+    yield from bounded
+
+
+def _parenthetical_values(text, inline, fences, strings, references, unknown_start):
+    depth, opening = 0, 0
+    opaque = (inline, fences, strings, references)
+    for match in _PARENTHESES.finditer(text, 0, unknown_start):
+        position = match.start()
+        if any(index.intersects(*match.span()) for index in opaque):
+            continue
+        if match.group() == "(":
+            if depth == 0:
+                opening = position
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth or not _PROSE_INTRO.search(text, max(0, opening - 64), opening):
+                continue
+            if fences.intersects(opening, position + 1) or strings.intersects(opening, position + 1):
+                continue
+            yield from _prose_parts(text, opening + 1, position, inline, references)
+
+
+def _list_items(text, content_end):
+    def line(start, end):
+        number = _LINE_NUMBER.match(text, start, end)
+        marker = _LIST_MARKER.match(text, number.end() if number else start, end)
+        if marker is None:
+            return None
+        return marker.end(), end, marker[1], marker[2][-1], int(number[1]) if number else None
+
+    def peers(first, second):
+        if first is None or second is None or first[2:4] != second[2:4]:
+            return False
+        return (first[4] is None and second[4] is None or
+                first[4] is not None and second[4] == first[4] + 1)
+
+    def lines():
+        start = 0
+        for separator in _LINE_END.finditer(text):
+            yield line(start, separator.start())
+            start = separator.end()
+        yield line(start, len(text))
+
+    previous = None
+    items = lines()
+    current = next(items)
+    for following in chain(items, (None,)):
+        if current and (peers(current, following) or current[1] >= content_end and peers(previous, current)):
+            # A peer marker or the original document end closes the item. A
+            # mere newline may be a continuation, even in a numbered excerpt.
+            yield current[:2]
+        previous, current = current, following
+
+
 class BoundaryValues:
     """Lazy, request-local index of complete original-source containers."""
 
@@ -146,6 +264,7 @@ class BoundaryValues:
         self.content_start = len(text) - len(text.lstrip())
         self.content_end = len(text.rstrip())
         self._prepared = False
+        self._structured_prose = None
 
     def _prepare(self):
         if self._prepared:
@@ -185,6 +304,23 @@ class BoundaryValues:
             bounds[0] > self.content_start or bounds[1] < self.content_end
         )
 
+    def _resolve_structured_prose(self, start, end):
+        if self._structured_prose is None:
+            inline, unknown_start = _inline_syntax(self.text, self.fences, self.string_owners)
+            ranges = list(_parenthetical_values(self.text, inline, self.fences,
+                                                self.string_owners, self.references, unknown_start))
+            for left, right in _list_items(self.text, self.content_end):
+                if (right > unknown_start or self.fences.intersects(left, right)
+                        or self.string_owners.intersects(left, right)):
+                    continue
+                heading = _BOLD_HEADING.match(self.text, left, right)
+                if heading and _plain_prose(heading[1]):
+                    left = heading.end()
+                ranges.extend(_prose_parts(self.text, left, right, inline, self.references))
+            self._structured_prose = _Ranges(ranges)
+        bounds = self._structured_prose.containing(start, end)
+        return bounds if self._not_document(bounds) else None
+
     def resolve(self, start, end):
         if not 0 <= start < end <= len(self.text):
             return None
@@ -202,12 +338,12 @@ class BoundaryValues:
                 return None
         fallback = (0, len(self.text)) if self.confirmed_value else None
         if not self._not_document(bounds):
-            return fallback
+            return fallback or self._resolve_structured_prose(start, end)
         left, right = bounds
         # A prose paragraph must not swallow syntax or several string values.
         if (self.string_owners.intersects(left, right)
                 or any(c in self.text[left:right] for c in "{}[]")):
-            return fallback
+            return fallback or self._resolve_structured_prose(start, end)
         return bounds
 
 
