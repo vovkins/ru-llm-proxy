@@ -15,6 +15,7 @@ from string_spans import StringSpans
 DETECTION_SOURCE_METADATA_KEY = "ru_llm_detection_source"
 NER_MODEL_METADATA_KEY = "ru_llm_ner_model"
 NER_BOUNDARY_CONTAINER_KEY = "ru_llm_ner_boundary_container"
+NER_PERSON_CONTROL_KEY = "ru_llm_ner_person_control"
 
 SOURCE_NER = "ner"
 SOURCE_NATIVE_CREDENTIAL = "native_credential"
@@ -31,6 +32,15 @@ def is_boundary_container(result):
 
 def boundary_coverage_preserved(candidates, results, *, requested_entities=None,
                                 score_threshold=0.0):
+    return span_coverage_preserved(
+        (result for result in candidates
+         if is_boundary_container(result) and result.score >= score_threshold
+         and (not requested_entities or result.entity_type in requested_entities)),
+        results,
+    )
+
+
+def span_coverage_preserved(candidates, results):
     """Check the exact union, including punctuation and string escape bytes."""
     ranges = []
     for result in sorted(results, key=lambda r: (r.start, r.end)):
@@ -40,9 +50,6 @@ def boundary_coverage_preserved(candidates, results, *, requested_entities=None,
             ranges.append((result.start, result.end))
     starts = [start for start, _ in ranges]
     for result in candidates:
-        if (not is_boundary_container(result) or result.score < score_threshold
-                or (requested_entities and result.entity_type not in requested_entities)):
-            continue
         index = bisect_right(starts, result.start) - 1
         if index < 0 or ranges[index][1] < result.end:
             return False

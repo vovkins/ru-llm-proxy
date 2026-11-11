@@ -29,6 +29,7 @@ NER_PROXY_CANARIES+=",москва,проспект вернадского 30,ф
 NER_PROXY_CANARIES+=",марина.кузнецова@inbox.ru"
 NER_PROXY_CANARIES+=",847291"
 NER_PROXY_CANARIES+=",К. Кратко,Я. Полевой,Полевой"
+NER_PROXY_CANARIES+=",Морозов,Mira Meadow,Meadow"
 export NER_PROXY_MASK_PORT="$MASK_PORT"
 export NER_PROXY_BLOCK_PORT="$BLOCK_PORT"
 export NER_PROXY_ANALYZER_PORT="$ANALYZER_PORT"

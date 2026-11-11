@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -1293,6 +1294,45 @@ async def _runtime_ner_failure_returns_safe_503(monkeypatch, caplog):
 
 def test_request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog):
     asyncio.run(_request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog))
+
+
+@pytest.mark.parametrize("drop", [None, "prior", "confirmed"])
+def test_control_window_requires_both_prior_and_new_mask_coverage(monkeypatch, drop):
+    from result_merging import (
+        DETECTION_SOURCE_METADATA_KEY, NER_BOUNDARY_CONTAINER_KEY, NER_PERSON_CONTROL_KEY, SOURCE_NER,
+    )
+
+    prior = RecognizerResult("EMAIL_ADDRESS", 0, 18, .9)
+    confirmed = RecognizerResult("PERSON", 19, 30, .9, recognition_metadata={
+        DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,
+        NER_BOUNDARY_CONTAINER_KEY: True,
+        NER_PERSON_CONTROL_KEY: True,
+    })
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "require_ready", lambda: None)
+    monkeypatch.setattr(analyzer_server.nlp_engine, "get_supported_languages", lambda: [])
+    monkeypatch.setattr(analyzer_server.analyzer, "analyze", lambda **kwargs: [prior])
+    monkeypatch.setattr(analyzer_server, "_analyze_document_base64", lambda _request: [])
+
+    def analyze_ner(_text, *, boundary_context, **kwargs):
+        boundary_context.person_window.used = True
+        return [confirmed]
+
+    def merge(_text, results, **kwargs):
+        if confirmed in results and drop:
+            results = [confirmed] if drop == "prior" else [prior]
+        return SimpleNamespace(results=results, decisions=[])
+
+    monkeypatch.setattr(analyzer_server.ner_recognizer, "analyze", analyze_ner)
+    monkeypatch.setattr(analyzer_server, "merge_results", merge)
+    request = analyzer_server.AnalyzeRequest(text="check@example.test Mira Meadow")
+    if drop:
+        with pytest.raises(analyzer_server.NERProcessingError) as failure:
+            analyzer_server._analyze_sync(request)
+        assert failure.value.failure_class == "window_boundary_unresolved"
+    else:
+        assert [(r["start"], r["end"]) for r in analyzer_server._analyze_sync(request).entities] == [
+            (0, 18), (19, 30),
+        ]
 
 
 async def _request_scoped_ner_failure_keeps_health_ready(monkeypatch, caplog):
