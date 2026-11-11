@@ -1206,9 +1206,13 @@ class TritonNERRecognizer:
             left = min(p.entity.start for p in cluster.predictions)
             right = max(p.entity.end for p in cluster.predictions)
             start, end = normalized.to_original_span(left, right)
-            bounds = context.values.resolve(context.offset + start, context.offset + end)
+            start, end = context.offset + start, context.offset + end
+            bounds = context.values.resolve(start, end, entity_type=cluster.entity_type)
             _raise_if_cancelled(cancellation_event)
-            if bounds is None:
+            # The final merge checks the emitted masks. Check the original
+            # envelope here, before replacing its initial and shifted evidence.
+            if bounds is None or not (0 <= bounds[0] <= start < end <= bounds[1]
+                                      <= len(context.values.text)):
                 unresolved.append(cluster)
                 continue
             removed.update(cluster.predictions)

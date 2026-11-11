@@ -7,11 +7,13 @@ evaluates code, or treats an artificial Analyzer chunk as a document boundary.
 from bisect import bisect_right
 from dataclasses import dataclass
 from itertools import chain
+import logging
 import re
 import unicodedata
 from urllib.parse import urlsplit
 
 from string_spans import StringSpans
+from .initial_names import initial_person_ranges
 
 
 _REFERENCES = re.compile(
@@ -24,15 +26,24 @@ _BLANK_LINE = re.compile(rf"{_LINE_BREAK}[ \t]*{_LINE_BREAK}")
 _FENCE = re.compile(r"(?:\A|(?<=[\r\n\u2028\u2029]))[ ]{0,3}(`{3,}|~{3,})([^\r\n\u2028\u2029]*)")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
+_NUMBERED_SOURCE_LINE = re.compile(r"[ \t]*([1-9][0-9]{0,8}):(?:[ \t]+(.*))?\Z")
+MAX_NUMBERED_PARAGRAPH_CHARS = 2048
 _TICKS = re.compile(r"`+")
 _INLINE_CODE = re.compile(r"(?<![\\`])(`+)(?!`)[^`\r\n\u2028\u2029]+\1(?!`)")
-_PARENTHESES = re.compile(r"[()]")
+_GROUP_MARKS = re.compile(r"""[(){}\[\]"'\u00ab\u00bb\u201c\u201d\u2018\u2019]""")
+_CONTEXT_PAIRS = {"{": "}", "[": "]", "\u00ab": "\u00bb", "\u201c": "\u201d", "\u2018": "\u2019"}
 _PROSE_INTRO = re.compile(r"(?:[^\W\d_]+[ \t]+[^\W\d_]+|`)[ \t]+\Z")
 _LIST_MARKER = re.compile(r"( {0,3})([-+*]|[0-9]{1,9}[.)])[ \t]+")
 _LINE_NUMBER = re.compile(r"([0-9]{1,9}):[ \t]+")
 _CONTINUATION_LIST = re.compile(rf"{_LINE_BREAK}(?:{_LINE_NUMBER.pattern})?{_LIST_MARKER.pattern}")
 _BOLD_HEADING = re.compile(r"\*\*([^*]+)\*\*[ \t]+")
 _MAX_PROSE_CONTAINER_CHARS = 4096
+_INSERT_MARGIN = 128
+_INSERT_LABEL = re.compile(r"[ \t]*([1-9][0-9]{0,8}):[ \t]+[^\W\d_]+(?:[ \t]+[^\W\d_]+){0,7}")
+_INSERT_SEPARATOR = re.compile(r"(?:[ \t]*:|[ \t]+-)[ \t]+\Z")
+_INSERT_TAIL = re.compile(r"[ \t]*[.!?]?[ \t]*\Z")
+_CODE_CALL = re.compile(r"[\w.)]\(")
+logger = logging.getLogger(__name__)
 
 
 class _Ranges:
@@ -203,24 +214,108 @@ def _prose_parts(text, start, end, inline, references):
     yield from bounded
 
 
-def _parenthetical_values(text, inline, fences, strings, references, unknown_start):
+def _parenthesis_pairs(text, opaque, unknown_start):
     depth, opening = 0, 0
-    opaque = (inline, fences, strings, references)
-    for match in _PARENTHESES.finditer(text, 0, unknown_start):
+    context = []
+    inside_markup = False
+    unknown_string = False
+    for match in _GROUP_MARKS.finditer(text, 0, unknown_start):
         position = match.start()
         if any(index.intersects(*match.span()) for index in opaque):
             continue
-        if match.group() == "(":
+        marker = match[0]
+        if marker in _CONTEXT_PAIRS:
+            context.append(_CONTEXT_PAIRS[marker])
+        elif context and marker == context[-1]:
+            context.pop()
+        elif marker in "\"'":
+            # A quote not covered by the string index may be unclosed. An
+            # apostrophe inside a word is not a string delimiter.
+            unknown_string |= not (marker == "'" and position > 0 and position + 1 < len(text)
+                                   and text[position - 1].isalnum() and text[position + 1].isalnum())
+        elif marker == "(":
             if depth == 0:
                 opening = position
+                inside_markup = bool(context) or unknown_string
             depth += 1
-        elif depth:
+        elif marker == ")" and depth:
             depth -= 1
-            if depth or not _PROSE_INTRO.search(text, max(0, opening - 64), opening):
-                continue
-            if fences.intersects(opening, position + 1) or strings.intersects(opening, position + 1):
-                continue
-            yield from _prose_parts(text, opening + 1, position, inline, references)
+            if depth == 0:
+                yield opening, position, inside_markup
+
+
+def _parenthetical_values(text, pairs, inline, fences, strings, references):
+    for opening, closing, _ in pairs:
+        if not _PROSE_INTRO.search(text, max(0, opening - 64), opening):
+            continue
+        if fences.intersects(opening, closing + 1) or strings.intersects(opening, closing + 1):
+            continue
+        yield from _prose_parts(text, opening + 1, closing, inline, references)
+
+
+def _insert_intro(text, opening, inline):
+    floor = max(0, opening - _INSERT_MARGIN)
+    line_break = max(text.rfind(char, floor, opening) for char in "\r\n\u2028\u2029")
+    if line_break < 0 and floor:
+        return None
+    label = _INSERT_LABEL.match(text, line_break + 1, opening)
+    if label is None:
+        return None
+    separator = _INSERT_SEPARATOR.search(text, label.end(), opening)
+    if separator is None:
+        return None
+    between = text[label.end():separator.start()]
+    if between.strip():
+        left = label.end() + len(between) - len(between.lstrip(" \t"))
+        right = label.end() + len(between.rstrip(" \t"))
+        if left == label.end() or inline.containing(left, right) != (left, right):
+            return None
+    return int(label[1])
+
+
+def _insert_ends_record(text, closing, number):
+    # A newline after ')' alone does not exclude a continuation of the value.
+    tail = closing + 1
+    ceiling = min(len(text), tail + _INSERT_MARGIN)
+    newline = _LINE_END.search(text, tail, ceiling)
+    end = newline.start() if newline else ceiling
+    if not _INSERT_TAIL.fullmatch(text, tail, end):
+        return False
+    if newline is None:
+        return ceiling == len(text)
+    if newline.end() == len(text):
+        return True
+    following = _LINE_END.search(text, newline.end(), min(len(text), newline.end() + _INSERT_MARGIN))
+    if following is None:
+        return False
+    next_record = _NUMBERED_SOURCE_LINE.fullmatch(text, newline.end(), following.start())
+    return (not text[newline.end():following.start()].strip()
+            or next_record is not None and int(next_record[1]) == number + 1
+            and not (next_record[2] or "").strip())
+
+
+def _numbered_parenthetical_inserts(text, pairs, inline, fences, strings, references):
+    """Whole prose inserts anchored to consecutive source records."""
+    for opening, closing, inside_markup in pairs:
+        start = opening + 1
+        if (inside_markup or not 0 < closing - start <= _MAX_PROSE_CONTAINER_CHARS
+                or fences.intersects(opening, closing + 1)
+                or strings.intersects(opening, closing + 1)
+                or _BLANK_LINE.search(text, start, closing)):
+            continue
+        number = _insert_intro(text, opening, inline)
+        if number is None:
+            continue
+        for newline in _LINE_END.finditer(text, start, closing):
+            continuation = _LINE_NUMBER.match(text, newline.end(), closing)
+            if (continuation is None or int(continuation[1]) != number + 1
+                    or _LIST_MARKER.match(text, continuation.end(), closing)):
+                break
+            number += 1
+        else:
+            if (_insert_ends_record(text, closing, number)
+                    and _numbered_prose(text, start, closing, inline, references, reject_calls=True)):
+                yield start, closing
 
 
 def _list_items(text, content_end):
@@ -255,6 +350,75 @@ def _list_items(text, content_end):
         previous, current = current, following
 
 
+def _numbered_prose(text, start, end, inline, references, *, reject_calls=False):
+    # Whole closed inline-code spans may stay inside a masked paragraph. They
+    # cannot determine its ends or lend their punctuation to the prose grammar.
+    stack = []
+    cursor = start
+    pairs = {"(": ")", "\u00ab": "\u00bb"}
+    for left, right in chain(inline.overlapping(start, end), ((end, end),)):
+        if (left < cursor or right > end or (cursor < left and references.intersects(cursor, left))
+                or reject_calls and _CODE_CALL.search(text, cursor, left)):
+            return False
+        for char in text[cursor:left]:
+            if char in pairs:
+                stack.append(pairs[char])
+            elif char in pairs.values():
+                if not stack or stack.pop() != char:
+                    return False
+            elif not (char.isalnum() or char.isspace() or char in "_.:,;!?%+-\u2013\u2014\u2026"
+                      or unicodedata.category(char).startswith("M")):
+                return False
+        cursor = right
+    return not stack
+
+
+def _numbered_source_paragraphs(text, inline, fences, strings, references, unknown_start):
+    """Consecutive plain source runs from line 1, bounded by numbered blank records."""
+    previous = None
+    preceding_blank = False
+    usable = False
+    left = right = None
+    start = 0
+    for separator in chain(_LINE_END.finditer(text), (None,)):
+        end = separator.start() if separator is not None else len(text)
+        if end > unknown_start:
+            break
+        match = _NUMBERED_SOURCE_LINE.fullmatch(text, start, end)
+        if match is None:
+            previous = None
+        else:
+            number = int(match[1])
+            if previous is None or number != previous + 1:
+                usable = number == 1
+                preceding_blank = False
+                left = right = None
+            previous = number
+            if usable and not (match[2] or "").strip():
+                if left is not None:
+                    usable = (
+                        right - left <= MAX_NUMBERED_PARAGRAPH_CHARS
+                        and not fences.intersects(left, right)
+                        and not strings.intersects(left, right)
+                        and _numbered_prose(text, left, right, inline, references)
+                    )
+                    if usable and preceding_blank and separator is not None:
+                        yield left, right
+                preceding_blank = True
+                left = right = None
+            elif usable:
+                body_start = match.start(2)
+                if _LIST_MARKER.match(text, body_start, end):
+                    usable = False  # Do not combine distinct list values.
+                else:
+                    left = body_start if left is None else left
+                    right = end
+                    if right - left > MAX_NUMBERED_PARAGRAPH_CHARS:
+                        usable = False
+        if separator is not None:
+            start = separator.end()
+
+
 class BoundaryValues:
     """Lazy, request-local index of complete original-source containers."""
 
@@ -264,7 +428,12 @@ class BoundaryValues:
         self.content_start = len(text) - len(text.lstrip())
         self.content_end = len(text.rstrip())
         self._prepared = False
+        self._inline = None
+        self._pairs = None
         self._structured_prose = None
+        self._numbered_paragraphs = None
+        self._initial_persons = None
+        self._parenthetical_inserts = None
 
     def _prepare(self):
         if self._prepared:
@@ -304,11 +473,23 @@ class BoundaryValues:
             bounds[0] > self.content_start or bounds[1] < self.content_end
         )
 
+    def _markup(self):
+        if self._inline is None:
+            self._inline = _inline_syntax(self.text, self.fences, self.string_owners)
+        return self._inline
+
+    def _parentheses(self):
+        if self._pairs is None:
+            inline, unknown_start = self._markup()
+            opaque = inline, self.fences, self.string_owners, self.references
+            self._pairs = tuple(_parenthesis_pairs(self.text, opaque, unknown_start))
+        return self._pairs
+
     def _resolve_structured_prose(self, start, end):
         if self._structured_prose is None:
-            inline, unknown_start = _inline_syntax(self.text, self.fences, self.string_owners)
-            ranges = list(_parenthetical_values(self.text, inline, self.fences,
-                                                self.string_owners, self.references, unknown_start))
+            inline, unknown_start = self._markup()
+            ranges = list(_parenthetical_values(self.text, self._parentheses(), inline, self.fences,
+                                                self.string_owners, self.references))
             for left, right in _list_items(self.text, self.content_end):
                 if (right > unknown_start or self.fences.intersects(left, right)
                         or self.string_owners.intersects(left, right)):
@@ -321,7 +502,46 @@ class BoundaryValues:
         bounds = self._structured_prose.containing(start, end)
         return bounds if self._not_document(bounds) else None
 
-    def resolve(self, start, end):
+    def resolve(self, start, end, *, entity_type=None):
+        bounds = self._resolve_existing(start, end)
+        if bounds is not None or not 0 <= start < end <= len(self.text):
+            return bounds
+
+        inline, unknown_start = self._markup()
+        if entity_type == "PERSON":
+            if self._initial_persons is None:
+                self._initial_persons = _Ranges(
+                    (left, right) for left, right in initial_person_ranges(self.text)
+                    if right <= unknown_start and not any(index.intersects(left, right) for index in (
+                        self.string_owners, self.fences, inline, self.references,
+                    ))
+                )
+            person = self._initial_persons.containing(start, end)
+            if self._not_document(person):
+                logger.debug("presidio_ner_boundary_resolved kind=initials")
+                return person
+
+        if self._numbered_paragraphs is None:
+            self._numbered_paragraphs = _Ranges(
+                _numbered_source_paragraphs(self.text, inline, self.fences, self.string_owners,
+                                            self.references, unknown_start)
+            )
+        paragraph = self._numbered_paragraphs.containing(start, end)
+        if self._not_document(paragraph):
+            logger.debug("presidio_ner_boundary_resolved kind=numbered_paragraph")
+            return paragraph
+        if self._parenthetical_inserts is None:
+            self._parenthetical_inserts = _Ranges(
+                _numbered_parenthetical_inserts(self.text, self._parentheses(), inline, self.fences,
+                                                self.string_owners, self.references)
+            )
+        insert = self._parenthetical_inserts.containing(start, end)
+        if self._not_document(insert):
+            logger.debug("presidio_ner_boundary_resolved kind=numbered_parenthetical")
+            return insert
+        return None
+
+    def _resolve_existing(self, start, end):
         if not 0 <= start < end <= len(self.text):
             return None
         self._prepare()

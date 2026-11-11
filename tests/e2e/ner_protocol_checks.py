@@ -20,8 +20,16 @@ BOUNDARY_TEXT = "Абонент Максим Лебедев, Новосибир�
 CONTEXT_TEXT = "Адрес: москва, проспект вернадского 30"
 EMAIL_TEXT = "марина.кузнецова@inbox.ru"
 PASSPORT_FRAGMENT_TEXT = "Номер паспорта: 847291"
-# Generated examples, not production excerpts. Each has 385 Tiny2 content tokens
-# and a boundary PERSON prediction that survives neither ordinary nor shifted merging.
+# The missing ')' leaves the candidate open. Keep the token count at 385
+# so the negative case still reaches the unresolved Tiny2 boundary.
+WINDOW_NUMBERED_INSERT = ("сведения " * 279 + "Сводка [12] о задании. "
+                          + ("пример " * 54).rstrip() + ".\n"
+                          "1: Начало.\n2:\n"
+                          "3: Уточнение через `demo/tool`: (раздел Я. Полевой\n"
+                          "4: Примеры: `demo.md`, `report.txt`)")
+WINDOW_NUMBERED_UNCLOSED = "сведения " + WINDOW_NUMBERED_INSERT.removesuffix(")")
+# Generated examples have 385–387 Tiny2 content tokens and require source
+# bounds after ordinary and shifted prediction merging.
 WINDOW_PROSE_CASES = (
     ("window_parenthetical", "сведения " * 309
      + "Сводка [12] по делу (К. Кратко, запись 407); "
@@ -33,6 +41,8 @@ WINDOW_PROSE_CASES = (
     ("window_list", "сведения " * 289 + "Сводка по задаче.\n"
      "8: - **Начало.** Проверить инструкцию.\n"
      "9: - **Итог.** К. Кратко: " + ("пример " * 58).rstrip() + ". Проверка завершена."),
+    ("window_numbered_paragraph", WINDOW_NUMBERED_INSERT + "\n5:\n"),
+    ("window_numbered_parenthetical", WINDOW_NUMBERED_INSERT),
 )
 
 
@@ -286,6 +296,20 @@ def check(proxy, blocked, provider):
                     raise AssertionError((case, "Sensitive values were not blocked"))
                 assert capture(provider)["provider_requests"] == 0
                 counts[case + "_block"] += 1
+
+    counts["window_numbered_unclosed_no_egress"] = 0
+    for api in ("chat/completions", "responses"):
+        for stream in (False, True):
+            payload = payload_for(WINDOW_NUMBERED_UNCLOSED, api, stream, False)
+            reset(provider)
+            try:
+                _request(proxy, "/v1/" + api, payload, stream=stream)
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 503, (api, stream, exc.code)
+            else:
+                raise AssertionError((api, stream, "Unconfirmed boundary reached the provider"))
+            assert capture(provider)["provider_requests"] == 0
+            counts["window_numbered_unclosed_no_egress"] += 1
 
     for api in ("chat/completions", "responses"):
         for stream in (False, True):

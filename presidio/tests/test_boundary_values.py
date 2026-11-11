@@ -110,6 +110,28 @@ def test_shorter_complete_prediction_cannot_discard_cut_evidence():
         merge_window_predictions([initial, shorter])
 
 
+def test_boundary_resolver_cannot_shrink_initial_or_shifted_evidence(monkeypatch):
+    source = 'Header {meta}\n1: Source preview\n2:\n3: Profile ivanova petrova\n4:\nTail [meta]'
+    start = source.index('ivanova')
+    end = start + len('ivanova petrova')
+    initial = prediction('PERSON', start + 3, end, right=True)
+    shifted = prediction('PERSON', start, end - 2, 2)
+    instance, _, _ = recognizer(monkeypatch, [initial], [shifted])
+    monkeypatch.setattr(BoundaryValues, 'resolve', lambda *_a, **_kw: (start, end - 2))
+    with pytest.raises(NERProcessingError) as error:
+        instance.analyze(source)
+    assert error.value.failure_class == 'window_boundary_unresolved'
+
+
+def test_absent_shifted_prediction_is_not_a_proof_of_the_name_boundary(monkeypatch):
+    source = 'Only one unstructured paragraph with ivanova petrova and more text'
+    start = source.index('nova')
+    instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', start, start + 4, right=True)], [])
+    with pytest.raises(NERProcessingError) as error:
+        instance.analyze(source)
+    assert error.value.failure_class == 'window_boundary_unresolved'
+
+
 def test_overlapping_complete_predictions_keep_union():
     results = merge_window_predictions([
         prediction('PERSON', 10, 20, score=.9),
@@ -490,8 +512,8 @@ def test_cancellation_during_container_lookup_does_not_return_partial_masks(monk
     cancellation = threading.Event()
     values = BoundaryValues(source)
     original = values.resolve
-    def resolve(left, right):
-        result = original(left, right)
+    def resolve(left, right, **scope):
+        result = original(left, right, **scope)
         cancellation.set()
         return result
     monkeypatch.setattr(values, 'resolve', resolve)
