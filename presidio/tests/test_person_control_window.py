@@ -7,8 +7,9 @@ import pytest
 
 from presidio.ner import triton_recognizer as ner
 from presidio.ner.boundary_values import BoundaryContext, BoundaryValues, PersonWindowBudget
-from presidio.ner.text_processing import TokenWindow, normalize_for_ner
+from presidio.ner.text_processing import TokenWindow, complete_word_edges, normalize_for_ner
 from presidio.ner.work_budget import work_scope
+from presidio.result_merging import merge_results
 from presidio.tests.test_ner_window_value_repair import prediction, recognizer
 
 
@@ -16,12 +17,19 @@ VALUE = "Mira Meadow"
 SOURCE = "x" * 300 + "[log]\nDispatch (label " + VALUE + "\n[tail] " + "y" * 260
 
 
-def setup(monkeypatch, vote="positive", *, kind="PERSON", another=False):
-    normalized = normalize_for_ner(SOURCE).text
-    at = normalized.index(VALUE)
+def setup(monkeypatch, vote="positive", *, kind="PERSON", another=False,
+          source=SOURCE, value=VALUE, fragment=None):
+    normalized = normalize_for_ner(source).text
+    name = normalize_for_ner(value).text
+    at = normalized.index(name)
+    start, end = at + 5, at + len(name)
+    if fragment is not None:
+        start = at + name.index(fragment)
+        end = start + len(fragment)
     tail = normalized.index("y" * 10)
     prior = prediction("ORGANIZATION", tail, tail + 10, 1)
-    edge = prediction(kind, at + 5, at + len(VALUE), left=True)
+    right_cut = end < at + len(name)
+    edge = prediction(kind, start, end, left=start > at or not right_cut, right=right_cut)
     initial = [edge, prior]
     if another:
         initial.append(prediction("PERSON", tail + 12, tail + 18, 1, right=True))
@@ -41,11 +49,14 @@ def setup(monkeypatch, vote="positive", *, kind="PERSON", another=False):
             vote.set()
         raw = []
         begin = at + 7 if vote == "partial" else at
+        stop = at + len(name)
+        if fragment is not None:
+            begin, stop = start, end
         if vote == "edge":
             begin = spans[0][0][0]
         for a, b in spans[0]:
             label = "O"
-            if vote in ("positive", "partial", "edge", "weak", "other") and begin <= a < at + len(VALUE):
+            if vote in ("positive", "partial", "edge", "weak", "other") and begin <= a < stop:
                 prefix = "B" if a == begin else "I"
                 label = prefix + ("-LOGIN" if vote == "other" else "-PERSON")
             raw.append(ner.TokenPrediction(label, a, b, .2 if vote == "weak" else .9))
@@ -53,7 +64,7 @@ def setup(monkeypatch, vote="positive", *, kind="PERSON", another=False):
 
     monkeypatch.setattr(instance, "_infer_window_batch", infer)
     budget = PersonWindowBudget()
-    return instance, BoundaryContext(BoundaryValues(SOURCE), person_window=budget), calls, shifted
+    return instance, BoundaryContext(BoundaryValues(source), person_window=budget), calls, shifted
 
 
 def test_complete_window_preserves_other_findings_and_counts_work(monkeypatch):
@@ -71,6 +82,67 @@ def test_complete_window_preserves_other_findings_and_counts_work(monkeypatch):
         instance.analyze(SOURCE, boundary_context=context)
     assert failure.value.failure_class == "window_boundary_unresolved"
     assert failure.value.windows_processed == 3 and len(calls) == 1
+
+
+@pytest.mark.parametrize("fragment", ["\u0438\u0447", "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432"])
+def test_control_masks_the_whole_split_word(monkeypatch, fragment):
+    surname = "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432\u0438\u0447"
+    source = SOURCE.replace(VALUE, surname)
+    instance, context, calls, _ = setup(monkeypatch, source=source, value=surname, fragment=fragment)
+    with pytest.raises(ner.NERProcessingError) as failure:
+        instance.analyze(source, boundary_context=BoundaryContext(context.values))
+    assert failure.value.failure_class == "window_boundary_unresolved"
+    findings = instance.analyze(source, boundary_context=context)
+    merged = merge_results(source, findings, score_threshold=.35).results
+    assert [source[r.start:r.end] for r in merged if r.entity_type == "PERSON"] == [surname]
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("value,fragment,expected", [
+    ("Q. Meadow", "Mead", "Meadow"),
+    ("O'Connor", "Connor", "O'Connor"),
+    ("Q. O\u2019Connor", "Q. O\u2019Con", "Q. O\u2019Connor"),
+    ("Anna\u2011Petrova", "Pet", "Anna\u2011Petrova"),
+    ("Se\u0301verin", "ver", "Se\u0301verin"),
+])
+def test_control_closes_source_words_without_masking_neighbours(monkeypatch, value, fragment, expected):
+    source = SOURCE.replace(VALUE, "before " + value + ", after")
+    instance, context, calls, _ = setup(monkeypatch, source=source, value=value, fragment=fragment)
+    findings = instance.analyze(source, boundary_context=context)
+    merged = merge_results(source, findings, score_threshold=.35).results
+    person, = [r for r in merged if r.entity_type == "PERSON"]
+    assert source[person.start:person.end] == expected
+    assert source[person.end:person.end + 7] == ", after"
+    assert "before " in source[:person.start]
+    if value.startswith("Q. ") and not expected.startswith("Q. "):
+        assert source[person.start - 3:person.start] == "Q. "
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("value,fragment", [
+    ("user_Meadow", "Meadow"),
+    ("Meadow42", "Meadow"),
+    ("Mid\u200dnight", "night"),
+])
+def test_ambiguous_word_edge_keeps_503(monkeypatch, value, fragment):
+    source = SOURCE.replace(VALUE, value)
+    instance, context, calls, _ = setup(monkeypatch, source=source, value=value, fragment=fragment)
+    with pytest.raises(ner.NERProcessingError) as failure:
+        instance.analyze(source, boundary_context=context)
+    assert failure.value.failure_class == "window_boundary_unresolved"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("fragment,first,last", [
+    ("Connor", 8, 22),     # The left side of O'Connor is outside the window.
+    ("O", 0, 9),           # The joiner continues to a letter beyond the window.
+    ("Con", 0, 14),        # The word is cut by the right edge.
+    ("Con", 0, 15),        # The word would end on the window edge.
+])
+def test_word_completion_does_not_reach_the_window_edge(fragment, first, last):
+    source = "prefix O'Connor suffix"
+    start = source.index(fragment)
+    assert complete_word_edges(source, start, start + len(fragment), first, last) is None
 
 
 @pytest.mark.parametrize("vote", ["o", "partial", "edge", "weak", "other", "malformed", "timeout"])

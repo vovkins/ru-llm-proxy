@@ -37,7 +37,7 @@ from .boundary_recheck import (
 )
 from .backend_settings import resolve_backend
 from .work_budget import check_work, remaining_seconds, work_scope
-from .text_processing import TokenWindow, normalize_for_ner, plan_token_windows
+from .text_processing import TokenWindow, complete_word_edges, normalize_for_ner, plan_token_windows
 from .boundary_values import BoundaryContext, BoundaryValues
 
 try:
@@ -1316,6 +1316,13 @@ class TritonNERRecognizer:
                 or not view[0][0] < entity.start <= start < end <= entity.end < view[-1][1]):
             return None, 1
         left, right = normalized.to_original_span(entity.start, entity.end)
+        complete = complete_word_edges(
+            normalized.original, left, right,
+            *normalized.to_original_span(view[0][0], view[-1][1]),
+        )
+        if complete is None:
+            return None, 1
+        left, right = complete
         if not context.values.is_plain_text_span(context.offset + left, context.offset + right):
             return None, 1
         return RecognizerResult(

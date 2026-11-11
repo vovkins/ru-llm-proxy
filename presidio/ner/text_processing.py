@@ -10,6 +10,8 @@ import regex
 
 GRAPHEME_PATTERN = regex.compile(r"\X")
 SENTENCE_ENDINGS = frozenset(".!?…")
+_WORD_JOINERS = "-'\u2010\u2011\u2019"
+_LETTER_WORD = regex.compile(rf"\p{{L}}[\p{{L}}\p{{M}}]*(?:[{_WORD_JOINERS}]\p{{L}}[\p{{L}}\p{{M}}]*)*")
 
 
 class TextMappingError(RuntimeError):
@@ -65,6 +67,43 @@ def normalize_for_ner(text: str) -> NormalizedText:
         text=normalized,
         source_spans=tuple(source_spans),
     )
+
+
+def _word_continuation(char: str) -> bool:
+    category = unicodedata.category(char)
+    return char.isalnum() or category.startswith("M") or category in {"Pc", "Cf"}
+
+
+def _confirmed_word_edge(text: str, edge: int) -> bool:
+    left, right = text[edge - 1], text[edge]
+    if _word_continuation(left) and _word_continuation(right):
+        return False
+    # A joiner can link to a word just outside the scanned window.
+    if right in _WORD_JOINERS and edge + 1 < len(text):
+        return not (_word_continuation(left) and _word_continuation(text[edge + 1]))
+    if left in _WORD_JOINERS and edge > 1:
+        return not (_word_continuation(text[edge - 2]) and _word_continuation(right))
+    return True
+
+
+def complete_word_edges(
+    text: str, start: int, end: int, window_start: int, window_end: int,
+) -> tuple[int, int] | None:
+    """Close only words cut by the two mask edges, in original source coordinates."""
+    if not 0 <= window_start < start < end < window_end <= len(text):
+        return None
+    for word in _LETTER_WORD.finditer(text, window_start, window_end):
+        left, right = word.span()
+        if left >= end:
+            break
+        if left < start < right:
+            start = left
+        if left < end < right:
+            end = right
+    if (start <= window_start or end >= window_end
+            or not _confirmed_word_edge(text, start) or not _confirmed_word_edge(text, end)):
+        return None
+    return start, end
 
 
 def _validate_token_offsets(
