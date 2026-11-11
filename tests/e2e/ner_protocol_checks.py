@@ -20,6 +20,20 @@ BOUNDARY_TEXT = "Абонент Максим Лебедев, Новосибир�
 CONTEXT_TEXT = "Адрес: москва, проспект вернадского 30"
 EMAIL_TEXT = "марина.кузнецова@inbox.ru"
 PASSPORT_FRAGMENT_TEXT = "Номер паспорта: 847291"
+# Generated examples, not production excerpts. Each has 385 Tiny2 content tokens
+# and a boundary PERSON prediction that survives neither ordinary nor shifted merging.
+WINDOW_PROSE_CASES = (
+    ("window_parenthetical", "сведения " * 309
+     + "Сводка [12] по делу (К. Кратко, запись 407); "
+     + ("пример " * 54).rstrip() + ". Проверка завершена."),
+    ("window_wrapped", "сведения " * 285 + "Сводка [12] о задании. "
+     + ("пример " * 54).rstrip() + ".\n"
+     "8: Уточнение через `demo/tool` (раздел Я. Полевой\n"
+     "9: Примеры: `demo.md`, `report.txt`)."),
+    ("window_list", "сведения " * 289 + "Сводка по задаче.\n"
+     "8: - **Начало.** Проверить инструкцию.\n"
+     "9: - **Итог.** К. Кратко: " + ("пример " * 58).rstrip() + ". Проверка завершена."),
+)
 
 
 def response_snapshot(body, stream):
@@ -243,15 +257,13 @@ def check_native_json_numbers(proxy, blocked, provider):
 
 
 def check(proxy, blocked, provider):
-    counts = {"matrix": 0, "blocked": 0, "history": 0, "encrypted": 0,
-              "overlap_mask": 0, "overlap_block": 0, "entrance_mask": 0, "entrance_block": 0,
-              "postfix_mask": 0, "postfix_block": 0, "boundary_mask": 0, "boundary_block": 0,
-              "context_mask": 0, "context_block": 0, "email_mask": 0, "email_block": 0,
-              "passport_mask": 0, "passport_block": 0}
-    for case, text in (("overlap", OVERLAP_TEXT), ("entrance", ENTRANCE_TEXT),
-                       ("postfix", POSTFIX_TEXT), ("boundary", BOUNDARY_TEXT),
-                       ("context", CONTEXT_TEXT), ("email", EMAIL_TEXT),
-                       ("passport", PASSPORT_FRAGMENT_TEXT)):
+    counts = {"matrix": 0, "blocked": 0, "history": 0, "encrypted": 0}
+    text_cases = (("overlap", OVERLAP_TEXT), ("entrance", ENTRANCE_TEXT),
+                  ("postfix", POSTFIX_TEXT), ("boundary", BOUNDARY_TEXT),
+                  ("context", CONTEXT_TEXT), ("email", EMAIL_TEXT),
+                  ("passport", PASSPORT_FRAGMENT_TEXT))
+    for case, text in text_cases + WINDOW_PROSE_CASES:
+        counts[case + "_mask"] = counts[case + "_block"] = 0
         for api in ("chat/completions", "responses"):
             for stream in (False, True):
                 payload = {"model": "mock-chat" if api == "chat/completions" else "mock-responses",

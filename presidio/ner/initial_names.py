@@ -4,20 +4,22 @@ Used only for an unresolved positive PERSON cluster after stock bounds fail.
 No negative veto, model inference, text rewriting or credential interpretation.
 """
 import ast
+from bisect import bisect_left, bisect_right
+from itertools import chain
 import re
-from bisect import bisect_right, bisect_left
 
 _MARK = r"[\u0300-\u036f]*"
 _CAP = rf"[А-ЯЁ]{_MARK}"
 _LOWER = rf"[а-яё]{_MARK}"
-_WORD = rf"{_CAP}(?:{_LOWER})+"
-_SURNAME = rf"{_WORD}(?:[-\u2010\u2011]{_WORD})*"
-_WS = r"[ \t\r\n\u00a0\u2009\u2028\u2029]*"
+_WORD = rf"{_CAP}(?:{_LOWER}){{1,63}}"
+_SURNAME = rf"{_WORD}(?:[-\u2010\u2011]{_WORD}){{0,2}}"
+_SPACE = r"[ \t\u00a0\u2009]{0,16}"
+_WS = rf"{_SPACE}(?:(?:\r\n|[\r\n\u2028\u2029]){_SPACE})?"
 _INITIAL = rf"{_CAP}\."
 _INITIALS = rf"{_INITIAL}(?:{_WS}{_INITIAL})?"
 _NAME = re.compile(
     rf"(?<![\w\u0300-\u036f\-\u2010\u2011])"
-    rf"(?:{_INITIALS}{_WS}{_SURNAME}|{_SURNAME}[ \t\u00a0]+{_INITIALS})"
+    rf"(?:{_INITIALS}{_WS}{_SURNAME}|{_SURNAME}[ \t\u00a0]{{1,16}}{_INITIALS})"
     rf"(?![\w\u0300-\u036f\-\u2010\u2011])"
 )
 _ORG = re.compile(r"(?<!\w)(?:ООО|ПАО|ОАО|ЗАО|АО|ИП)(?!\w)")
@@ -28,12 +30,13 @@ _CREDENTIAL = re.compile(
 _PREVIOUS_INITIAL = re.compile(rf"{_INITIAL}{_WS}$")
 _CODE_START = re.compile(r"(?:const|let|var|function|return|def|class|import|from|await|yield)\b")
 _LINE_END = re.compile(r"\r\n|\r|\n|\u2028|\u2029")
+_SOURCE_SYNTAX = re.compile(r"""[{}\[\]"'\\=<>]""")
 
 
 def _inline_ranges(text):
     """Linear scan; an unclosed inline span stays unavailable for recovery."""
     start = 0
-    for separator in [*_LINE_END.finditer(text), None]:
+    for separator in chain(_LINE_END.finditer(text), (None,)):
         end = separator.start() if separator is not None else len(text)
         opening = None
         for marker in re.finditer(r"`+", text[start:end]):
@@ -59,9 +62,10 @@ def _python(text):
 
 def initial_person_ranges(text):
     """Yield bounded canonical units; ambiguous neighbours keep the refusal."""
-    if "\x00" in text or _python(text):
+    if "\x00" in text:
         return
     inline = list(_inline_ranges(text))
+    inline_starts = [left for left, _ in inline]
     endings = list(_LINE_END.finditer(text))
     line_starts = [0] + [m.end() for m in endings]
     line_ends = [m.start() for m in endings] + [len(text)]
@@ -69,7 +73,8 @@ def initial_person_ranges(text):
         if ordinal >= 256:
             return
         a, b = match.span()
-        if b - a > 128 or any(x <= a < b <= y for x, y in inline):
+        code_index = bisect_left(inline_starts, b) - 1
+        if b - a > 128 or (code_index >= 0 and inline[code_index][1] > a):
             continue
         prefix, suffix = text[max(0, a - 128):a], text[b:b + 128]
         before = prefix.rstrip()
@@ -94,9 +99,12 @@ def initial_person_ranges(text):
         # Comma may precede another part of an inverted name. Abstain on ambiguity.
         if after.startswith(",") and re.match(rf"\s*{_CAP}(?:\.|{_LOWER})", after[1:]):
             continue
-        line_start = line_starts[bisect_right(line_starts, a) - 1]
-        line_end = line_ends[bisect_left(line_ends, b)]
+        first_line = bisect_right(line_starts, a) - 1
+        last_line = bisect_left(line_ends, b)
+        line_start, line_end = line_starts[first_line], line_ends[last_line]
+        if last_line - first_line > 1 or line_end - line_start > 1024:
+            continue
         line = re.sub(r"^\s*[0-9]+:\s*", "", text[line_start:line_end]).strip()
-        if _CODE_START.match(line) or _python(line):
+        if _SOURCE_SYNTAX.search(line) or _CODE_START.match(line) or _python(line):
             continue
         yield a, b

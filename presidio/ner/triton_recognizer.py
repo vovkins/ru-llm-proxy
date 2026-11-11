@@ -8,7 +8,6 @@ import os
 import re
 import threading
 import time
-import unicodedata
 
 import numpy as np
 from dataclasses import dataclass
@@ -76,8 +75,6 @@ MODEL_REVISION = ACTIVE_PROFILE.revision
 MODEL_ARCHITECTURE = "BertForTokenClassification"
 O_LABEL_ID = 0
 MAX_CONTENT_TOKENS = 384
-SUBWORD_ARTIFACT_CONTEXT_TOKENS = 32
-SUBWORD_ARTIFACT_CONTINUATION_WORDS = 3
 WINDOW_OVERLAP_TOKENS = 64
 WINDOW_BOUNDARY_SEARCH_TOKENS = 64
 DEFAULT_INFERENCE_BATCH_SIZE = 4
@@ -106,94 +103,6 @@ EXPECTED_ID2LABEL = {
 
 class NERConfigurationError(RuntimeError):
     """Raised when the local model does not match the fixed NER contract."""
-
-
-def _recovery_ranges(original_windows, token_count, predictions):
-    """Token ranges of shifted recovery windows centred on cut window edges."""
-    boundary_tokens: set[int] = set()
-    for prediction in predictions:
-        if not 0 <= prediction.window_index < len(original_windows):
-            continue
-        window = original_windows[prediction.window_index]
-        if prediction.touches_left_boundary and window.start_token > 0:
-            boundary_tokens.add(window.start_token)
-        if prediction.touches_right_boundary and window.end_token < token_count:
-            boundary_tokens.add(window.end_token)
-    original_ranges = {
-        (window.start_token, window.end_token) for window in original_windows
-    }
-    recovery_ranges: set[tuple[int, int]] = set()
-    window_size = min(MAX_CONTENT_TOKENS, token_count)
-    latest_start = token_count - window_size
-    for boundary_token in sorted(boundary_tokens):
-        start_token = min(max(0, boundary_token - (window_size // 2)), latest_start)
-        recovery_range = (start_token, start_token + window_size)
-        if recovery_range not in original_ranges:
-            recovery_ranges.add(recovery_range)
-    return recovery_ranges
-
-
-def _is_letter(char):
-    return char.isalpha() or unicodedata.category(char).startswith("M")
-
-
-_WORD = re.compile(r"\w+")
-
-
-def _subword_artifact_word(text, cluster, recovered, combined, covered_spans):
-    """Enclosing lowercase word of a mid-word PERSON fragment cut at its word end.
-
-    Returns ``(start, end)`` in ``text`` coordinates, or ``None``. The fragment is
-    not discarded: its whole word is masked. Every condition is required:
-
-    * PERSON only; all cluster evidence comes from the initial pass;
-    * the fragment lies inside one letter-only word and starts (or ends) strictly
-      inside it on the side the initial window saw with full context, while the
-      other, window-cut side ends exactly at the word edge;
-    * the word starts with a lowercase letter;
-    * a shifted recovery window saw the word and the next words on the cut side
-      with ``SUBWORD_ARTIFACT_CONTEXT_TOKENS`` of context, and no PERSON
-      prediction from any window overlaps that continuation.
-    """
-    if cluster.entity_type != "PERSON":
-        return None
-    if any(p in recovered for p in cluster.predictions):
-        return None
-    left = min(p.entity.start for p in cluster.predictions)
-    right = max(p.entity.end for p in cluster.predictions)
-    if not (0 <= left < right <= len(text)) or not all(_is_letter(c) for c in text[left:right]):
-        return None
-    word_start, word_end = left, right
-    while word_start > 0 and _is_letter(text[word_start - 1]):
-        word_start -= 1
-    while word_end < len(text) and _is_letter(text[word_end]):
-        word_end += 1
-    left_open = not any(p.entity.start == left and not p.touches_left_boundary
-                        for p in cluster.predictions)
-    right_open = not any(p.entity.end == right and not p.touches_right_boundary
-                         for p in cluster.predictions)
-    if right_open and not left_open:
-        if not (left > word_start and right == word_end):
-            return None
-        following = [m.end() for m in _WORD.finditer(text, word_end)][:SUBWORD_ARTIFACT_CONTINUATION_WORDS]
-        scope = word_start, (following[-1] if following else word_end)
-    elif left_open and not right_open:
-        if not (right < word_end and left == word_start):
-            return None
-        preceding = [m.start() for m in _WORD.finditer(text, 0, word_start)][-SUBWORD_ARTIFACT_CONTINUATION_WORDS:]
-        scope = (preceding[0] if preceding else word_start), word_end
-    else:
-        return None
-    if not text[word_start].islower():
-        return None
-    # Tokenize again only for a cluster that passed every lexical condition.
-    if not any(a <= scope[0] and scope[1] <= b for a, b in covered_spans()):
-        return None
-    own = set(cluster.predictions)
-    if any(p not in own and p.entity.entity_type == "PERSON"
-           and p.entity.start < scope[1] and scope[0] < p.entity.end for p in combined):
-        return None
-    return word_start, word_end
 
 
 class NERWindowBoundaryError(RuntimeError):
@@ -1292,50 +1201,18 @@ class TritonNERRecognizer:
         if context.values.text[context.offset:context.offset + len(original)] != original:
             raise NERProcessingError(phase="offset_mapping", failure_class="offset_mapping_failed")
         removed, results, unresolved = set(), [], []
-        recovered = set(recovery)
-        covered_cache = []
-
-        def covered_spans():
-            if not covered_cache:
-                covered_cache.append(self._recovery_covered_spans(normalized.text, clusters))
-            return covered_cache[0]
         for cluster in clusters:
             _raise_if_cancelled(cancellation_event)
             left = min(p.entity.start for p in cluster.predictions)
             right = max(p.entity.end for p in cluster.predictions)
-            # A side is closed only by an initial-pass prediction that reaches
-            # the cluster extreme without touching an artificial window edge.
-            # Recovery/shifted windows may widen the cluster but never close a side.
-            initial = [p for p in cluster.predictions if p not in recovered]
-            left_open = not any(p.entity.start == left and not p.touches_left_boundary
-                                for p in initial)
-            right_open = not any(p.entity.end == right and not p.touches_right_boundary
-                                 for p in initial)
-            # Source punctuation cannot independently close an arbitrary secret,
-            # organization or location; preserve their whole fallback container.
-            if cluster.entity_type != "PERSON":
-                left_open = right_open = True
             start, end = normalized.to_original_span(left, right)
-            bounds = context.values.resolve(context.offset + start, context.offset + end)
-            if not context.values.is_original_container(context.offset + start,
-                                                        context.offset + end):
-                # Earlier resolver decisions stay unchanged; only its refusals and
-                # numbered-paragraph containers may be replaced or narrowed.
-                word = _subword_artifact_word(normalized.text, cluster, recovered,
-                                              combined, covered_spans)
-                if word is not None and not context.values.allows_subword_narrowing(
-                        bounds, context.offset + start, context.offset + end):
-                    word = None
-                if word is not None:
-                    word_start, word_end = normalized.to_original_span(*word)
-                    bounds = context.offset + word_start, context.offset + word_end
-                else:
-                    bounds = context.values.narrow(
-                        bounds, context.offset + start, context.offset + end,
-                        left_open=left_open, right_open=right_open,
-                        entity_type=cluster.entity_type)
+            start, end = context.offset + start, context.offset + end
+            bounds = context.values.resolve(start, end, entity_type=cluster.entity_type)
             _raise_if_cancelled(cancellation_event)
-            if bounds is None:
+            # The final merge checks the emitted masks. Check the original
+            # envelope here, before replacing its initial and shifted evidence.
+            if bounds is None or not (0 <= bounds[0] <= start < end <= bounds[1]
+                                      <= len(context.values.text)):
                 unresolved.append(cluster)
                 continue
             removed.update(cluster.predictions)
@@ -1399,27 +1276,6 @@ class TritonNERRecognizer:
             windows_processed=windows_processed,
             input_tokens=len(input_ids),
         )
-
-    def _recovery_covered_spans(self, normalized_text, clusters):
-        """Character spans seen with full context by shifted recovery windows.
-
-        Recomputes the same geometry as ``_recover_window_boundaries``; each span
-        excludes ``SUBWORD_ARTIFACT_CONTEXT_TOKENS`` at internal window edges.
-        """
-        input_ids, offsets, original_windows = self._prepare_window_input(normalized_text)
-        token_count = len(input_ids)
-        if token_count <= MAX_CONTENT_TOKENS:
-            return []
-        margin = SUBWORD_ARTIFACT_CONTEXT_TOKENS
-        spans = []
-        for start_token, end_token in _recovery_ranges(
-                original_windows, token_count,
-                [p for cluster in clusters for p in cluster.predictions]):
-            first = start_token + (margin if start_token > 0 else 0)
-            last = end_token - (margin if end_token < token_count else 0)
-            if first < last:
-                spans.append((offsets[first][0], offsets[last - 1][1]))
-        return spans
 
     def _prepare_window_input(
         self,
@@ -1532,10 +1388,34 @@ class TritonNERRecognizer:
         if token_count <= MAX_CONTENT_TOKENS:
             return [], 0
 
-        recovery_ranges = _recovery_ranges(
-            original_windows, token_count,
-            [p for cluster in unresolved_clusters for p in cluster.predictions],
-        )
+        boundary_tokens: set[int] = set()
+        for cluster in unresolved_clusters:
+            for prediction in cluster.predictions:
+                if not 0 <= prediction.window_index < len(original_windows):
+                    continue
+                window = original_windows[prediction.window_index]
+                if prediction.touches_left_boundary and window.start_token > 0:
+                    boundary_tokens.add(window.start_token)
+                if (
+                    prediction.touches_right_boundary
+                    and window.end_token < token_count
+                ):
+                    boundary_tokens.add(window.end_token)
+
+        original_ranges = {
+            (window.start_token, window.end_token) for window in original_windows
+        }
+        recovery_ranges: set[tuple[int, int]] = set()
+        window_size = min(MAX_CONTENT_TOKENS, token_count)
+        latest_start = token_count - window_size
+        for boundary_token in sorted(boundary_tokens):
+            start_token = min(
+                max(0, boundary_token - (window_size // 2)),
+                latest_start,
+            )
+            recovery_range = (start_token, start_token + window_size)
+            if recovery_range not in original_ranges:
+                recovery_ranges.add(recovery_range)
 
         recovery_windows = tuple(
             TokenWindow(

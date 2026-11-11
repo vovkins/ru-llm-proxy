@@ -7,13 +7,13 @@ evaluates code, or treats an artificial Analyzer chunk as a document boundary.
 from bisect import bisect_right
 from dataclasses import dataclass
 from itertools import chain
+import logging
 import re
 import unicodedata
 from urllib.parse import urlsplit
 
 from string_spans import StringSpans
 from .initial_names import initial_person_ranges
-from .reference_records import subword_reference_scope_allowed
 
 
 _REFERENCES = re.compile(
@@ -26,8 +26,18 @@ _BLANK_LINE = re.compile(rf"{_LINE_BREAK}[ \t]*{_LINE_BREAK}")
 _FENCE = re.compile(r"(?:\A|(?<=[\r\n\u2028\u2029]))[ ]{0,3}(`{3,}|~{3,})([^\r\n\u2028\u2029]*)")
 _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
-_NUMBERED_SOURCE_LINE = re.compile(r"[ \t]*([1-9][0-9]{0,8}):(?:[ \t](.*)|())\Z")
+_NUMBERED_SOURCE_LINE = re.compile(r"[ \t]*([1-9][0-9]{0,8}):(?:[ \t]+(.*))?\Z")
 MAX_NUMBERED_PARAGRAPH_CHARS = 2048
+_TICKS = re.compile(r"`+")
+_INLINE_CODE = re.compile(r"(?<![\\`])(`+)(?!`)[^`\r\n\u2028\u2029]+\1(?!`)")
+_PARENTHESES = re.compile(r"[()]")
+_PROSE_INTRO = re.compile(r"(?:[^\W\d_]+[ \t]+[^\W\d_]+|`)[ \t]+\Z")
+_LIST_MARKER = re.compile(r"( {0,3})([-+*]|[0-9]{1,9}[.)])[ \t]+")
+_LINE_NUMBER = re.compile(r"([0-9]{1,9}):[ \t]+")
+_CONTINUATION_LIST = re.compile(rf"{_LINE_BREAK}(?:{_LINE_NUMBER.pattern})?{_LIST_MARKER.pattern}")
+_BOLD_HEADING = re.compile(r"\*\*([^*]+)\*\*[ \t]+")
+_MAX_PROSE_CONTAINER_CHARS = 4096
+logger = logging.getLogger(__name__)
 
 
 class _Ranges:
@@ -51,6 +61,14 @@ class _Ranges:
     def intersects(self, start, end):
         index = bisect_right(self.starts, end - 1) - 1
         return index >= 0 and self.prefix_ends[index] > start
+
+    def overlapping(self, start, end):
+        first = bisect_right(self.prefix_ends, start)
+        last = bisect_right(self.starts, end - 1)
+        for index in range(first, last):
+            left, right = self.ranges[index]
+            if start < right:
+                yield left, right
 
 
 def _references(text):
@@ -142,76 +160,172 @@ def _plain_fenced_paragraph(text):
                or unicodedata.category(char).startswith("M") for char in text)
 
 
-def _numbered_source_paragraphs(text):
-    """Paragraphs bracketed by numbered blank lines in a consecutive source run.
+def _inline_syntax(text, fences, strings):
+    closed = _Ranges(m.span() for m in _INLINE_CODE.finditer(text)
+                     if not fences.intersects(*m.span()) and not strings.intersects(*m.span()))
+    unknown_start = next((m.start() for m in _TICKS.finditer(text)
+                          if not any(index.containing(*m.span()) for index in (fences, strings, closed))),
+                         len(text))
+    # Do not infer new containers after an unmatched or unsupported code delimiter.
+    return closed, unknown_start
 
-    Physical line boundaries, EOF and token/chunk boundaries are not sufficient.
-    Both source blank records must exist in the complete original field.
-    """
-    records = []
-    previous_number = None
-    preceding_blank = None
-    plain_prefix = False
+
+def _plain_prose(text):
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        elif not (char.isalnum() or char.isspace() or char in ".,:;!?%+-\u2013\u2014\u2026"
+                  or unicodedata.category(char).startswith("M")):
+            return False
+    return depth == 0
+
+
+def _prose_parts(text, start, end, inline, references):
+    if (end - start > _MAX_PROSE_CONTAINER_CHARS or _BLANK_LINE.search(text, start, end)
+            or _CONTINUATION_LIST.search(text, start, end)):
+        return
+    parts = []
+    for left, right in inline.overlapping(start, end):
+        if left < start or right > end:
+            return  # Never split a code span at the edge of a container.
+        parts.append((start, left))
+        start = right
+    parts.append((start, end))
+    bounded = []
+    for left, right in parts:
+        value = text[left:right]
+        trimmed = value.strip()
+        if not _plain_prose(trimmed) or references.intersects(left, right):
+            return
+        if any(char.isalnum() for char in trimmed):
+            left += len(value) - len(value.lstrip())
+            bounded.append((left, left + len(trimmed)))
+    yield from bounded
+
+
+def _parenthetical_values(text, inline, fences, strings, references, unknown_start):
+    depth, opening = 0, 0
+    opaque = (inline, fences, strings, references)
+    for match in _PARENTHESES.finditer(text, 0, unknown_start):
+        position = match.start()
+        if any(index.intersects(*match.span()) for index in opaque):
+            continue
+        if match.group() == "(":
+            if depth == 0:
+                opening = position
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth or not _PROSE_INTRO.search(text, max(0, opening - 64), opening):
+                continue
+            if fences.intersects(opening, position + 1) or strings.intersects(opening, position + 1):
+                continue
+            yield from _prose_parts(text, opening + 1, position, inline, references)
+
+
+def _list_items(text, content_end):
+    def line(start, end):
+        number = _LINE_NUMBER.match(text, start, end)
+        marker = _LIST_MARKER.match(text, number.end() if number else start, end)
+        if marker is None:
+            return None
+        return marker.end(), end, marker[1], marker[2][-1], int(number[1]) if number else None
+
+    def peers(first, second):
+        if first is None or second is None or first[2:4] != second[2:4]:
+            return False
+        return (first[4] is None and second[4] is None or
+                first[4] is not None and second[4] == first[4] + 1)
+
+    def lines():
+        start = 0
+        for separator in _LINE_END.finditer(text):
+            yield line(start, separator.start())
+            start = separator.end()
+        yield line(start, len(text))
+
+    previous = None
+    items = lines()
+    current = next(items)
+    for following in chain(items, (None,)):
+        if current and (peers(current, following) or current[1] >= content_end and peers(previous, current)):
+            # A peer marker or the original document end closes the item. A
+            # mere newline may be a continuation, even in a numbered excerpt.
+            yield current[:2]
+        previous, current = current, following
+
+
+def _numbered_prose(text, start, end, inline, references):
+    # Whole closed inline-code spans may stay inside a masked paragraph. They
+    # cannot determine its ends or lend their punctuation to the prose grammar.
+    stack = []
+    cursor = start
+    pairs = {"(": ")", "\u00ab": "\u00bb"}
+    for left, right in chain(inline.overlapping(start, end), ((end, end),)):
+        if left < cursor or right > end or (cursor < left and references.intersects(cursor, left)):
+            return False
+        for char in text[cursor:left]:
+            if char in pairs:
+                stack.append(pairs[char])
+            elif char in pairs.values():
+                if not stack or stack.pop() != char:
+                    return False
+            elif not (char.isalnum() or char.isspace() or char in "_.:,;!?%+-\u2013\u2014\u2026"
+                      or unicodedata.category(char).startswith("M")):
+                return False
+        cursor = right
+    return not stack
+
+
+def _numbered_source_paragraphs(text, inline, fences, strings, references, unknown_start):
+    """Consecutive plain source runs from line 1, bounded by numbered blank records."""
+    previous = None
+    preceding_blank = False
+    usable = False
+    left = right = None
     start = 0
     for separator in chain(_LINE_END.finditer(text), (None,)):
         end = separator.start() if separator is not None else len(text)
-        match = _NUMBERED_SOURCE_LINE.fullmatch(text[start:end])
+        if end > unknown_start:
+            break
+        match = _NUMBERED_SOURCE_LINE.fullmatch(text, start, end)
         if match is None:
-            records = []
-            previous_number = None
-            preceding_blank = None
-            plain_prefix = False
+            previous = None
         else:
-            number = int(match.group(1))
-            if previous_number is None or number != previous_number + 1:
-                records = []
-                preceding_blank = None
-                # An excerpt beginning in the middle of a file could inherit
-                # an unclosed string, bracket or fence from omitted lines.
-                plain_prefix = number == 1
-            body = match.group(2) or ""
-            if any(c in body for c in "{}[]\"'\\=<>\x00") or "```" in body or "~~~" in body:
-                plain_prefix = False
-            if not body.strip():
-                if (plain_prefix and preceding_blank is not None and records
-                        and separator is not None):
-                    left, right = records[0][0], records[-1][1]
-                    # The numbered paragraph is plain prose. Do not swallow code,
-                    # JSON, a quote, a backslash or an unclosed Markdown fence.
-                    content = "\n".join(value for _, _, value in records)
-                    if (right - left <= MAX_NUMBERED_PARAGRAPH_CHARS
-                            and not any(c in content for c in "{}[]\"'\\=<>\x00")
-                            and "```" not in content and "~~~" not in content):
+            number = int(match[1])
+            if previous is None or number != previous + 1:
+                usable = number == 1
+                preceding_blank = False
+                left = right = None
+            previous = number
+            if usable and not (match[2] or "").strip():
+                if left is not None:
+                    usable = (
+                        right - left <= MAX_NUMBERED_PARAGRAPH_CHARS
+                        and not fences.intersects(left, right)
+                        and not strings.intersects(left, right)
+                        and _numbered_prose(text, left, right, inline, references)
+                    )
+                    if usable and preceding_blank and separator is not None:
                         yield left, right
-                preceding_blank = (start, end)
-                records = []
-            elif preceding_blank is not None:
-                body_start = start + match.start(2)
-                records.append((body_start, end, body))
-            previous_number = number
+                preceding_blank = True
+                left = right = None
+            elif usable:
+                body_start = match.start(2)
+                if _LIST_MARKER.match(text, body_start, end):
+                    usable = False  # Do not combine distinct list values.
+                else:
+                    left = body_start if left is None else left
+                    right = end
+                    if right - left > MAX_NUMBERED_PARAGRAPH_CHARS:
+                        usable = False
         if separator is not None:
             start = separator.end()
-
-
-# Phrase delimiters that a PERSON/ORGANIZATION/secret value does not cross.
-# Deliberately excluded: "." (initials), "," (inverted names), quotes and
-# guillemets (ООО «...»), "-" (double surnames), ":" (numbered prefixes).
-_OPENING_STOPS = frozenset("(;\u2014\u2013")
-_CLOSING_STOPS = frozenset(");\u2014\u2013")
-
-
-
-def _phrase_start(text, index, floor):
-    """Widen a model-decided left edge to the enclosing phrase, not just the word."""
-    while index > floor and text[index - 1] not in _OPENING_STOPS:
-        index -= 1
-    return index
-
-
-def _phrase_end(text, index, ceiling):
-    while index < ceiling and text[index] not in _CLOSING_STOPS:
-        index += 1
-    return index
 
 
 class BoundaryValues:
@@ -223,8 +337,10 @@ class BoundaryValues:
         self.content_start = len(text) - len(text.lstrip())
         self.content_end = len(text.rstrip())
         self._prepared = False
-        self.numbered_paragraphs = None
-        self.initial_persons = None
+        self._inline = None
+        self._structured_prose = None
+        self._numbered_paragraphs = None
+        self._initial_persons = None
 
     def _prepare(self):
         if self._prepared:
@@ -264,67 +380,57 @@ class BoundaryValues:
             bounds[0] > self.content_start or bounds[1] < self.content_end
         )
 
-    def resolve(self, start, end, **scope):
+    def _markup(self):
+        if self._inline is None:
+            self._inline = _inline_syntax(self.text, self.fences, self.string_owners)
+        return self._inline
+
+    def _resolve_structured_prose(self, start, end):
+        if self._structured_prose is None:
+            inline, unknown_start = self._markup()
+            ranges = list(_parenthetical_values(self.text, inline, self.fences,
+                                                self.string_owners, self.references, unknown_start))
+            for left, right in _list_items(self.text, self.content_end):
+                if (right > unknown_start or self.fences.intersects(left, right)
+                        or self.string_owners.intersects(left, right)):
+                    continue
+                heading = _BOLD_HEADING.match(self.text, left, right)
+                if heading and _plain_prose(heading[1]):
+                    left = heading.end()
+                ranges.extend(_prose_parts(self.text, left, right, inline, self.references))
+            self._structured_prose = _Ranges(ranges)
+        bounds = self._structured_prose.containing(start, end)
+        return bounds if self._not_document(bounds) else None
+
+    def resolve(self, start, end, *, entity_type=None):
         bounds = self._resolve_existing(start, end)
-        if bounds is not None:
+        if bounds is not None or not 0 <= start < end <= len(self.text):
             return bounds
-        if not 0 <= start < end <= len(self.text):
-            return None
-        numbered = self._numbered_container(start, end)
-        return self.narrow(numbered, start, end, **scope) if scope else numbered
 
-    def is_original_container(self, start, end):
-        """Whether the pre-numbered resolver already confirms ``[start, end)``."""
-        return 0 <= start < end <= len(self.text) and self._resolve_existing(start, end) is not None
-
-    def _numbered_container(self, start, end):
-        self._prepare()
-        if self.numbered_paragraphs is None:
-            self.numbered_paragraphs = _Ranges(_numbered_source_paragraphs(self.text))
-        numbered = self.numbered_paragraphs.containing(start, end)
-        if (self._not_document(numbered)
-                and not self.string_owners.intersects(*numbered)
-                and not self.fences.intersects(*numbered)):
-            return numbered
-        return None
-
-    def allows_subword_narrowing(self, bounds, start, end):
-        """Keep the conservative container for unknown inline reference values.
-
-        This guard never exempts paths from native/NER detection. It restricts
-        how a previously confirmed numbered container may be shortened.
-        """
-        if bounds is None or bounds != self._numbered_container(start, end):
-            return True
-        return subword_reference_scope_allowed(self.text, start, end, bounds)
-
-    def narrow(self, bounds, start, end, *, left_open=True, right_open=True, entity_type=None):
-        """Complete initial/surname units, then conservative numbered phrases.
-
-        Original literal/path/JSON-scalar decisions stay unchanged. No generic
-        name-colon boundary is inferred. Non-PERSON inference calls keep both
-        sides open in the recognizer; confirmed primary PERSON sides may narrow.
-        """
-        if not 0 <= start < end <= len(self.text):
-            return bounds
-        if self._resolve_existing(start, end) is not None:
-            return bounds
+        inline, unknown_start = self._markup()
         if entity_type == "PERSON":
-            if self.initial_persons is None:
-                self.initial_persons = _Ranges(initial_person_ranges(self.text))
-            person = self.initial_persons.containing(start, end)
-            if (self._not_document(person)
-                    and not self.string_owners.intersects(*person)
-                    and not self.fences.intersects(*person)):
+            if self._initial_persons is None:
+                self._initial_persons = _Ranges(
+                    (left, right) for left, right in initial_person_ranges(self.text)
+                    if right <= unknown_start and not any(index.intersects(left, right) for index in (
+                        self.string_owners, self.fences, inline, self.references,
+                    ))
+                )
+            person = self._initial_persons.containing(start, end)
+            if self._not_document(person):
+                logger.debug("presidio_ner_boundary_resolved kind=initials")
                 return person
-        if bounds is None or bounds != self._numbered_container(start, end):
-            return bounds
-        left, right = bounds
-        if not left_open:
-            left = _phrase_start(self.text, start, left)
-        if not right_open:
-            right = _phrase_end(self.text, end, right)
-        return left, right
+
+        if self._numbered_paragraphs is None:
+            self._numbered_paragraphs = _Ranges(
+                _numbered_source_paragraphs(self.text, inline, self.fences, self.string_owners,
+                                            self.references, unknown_start)
+            )
+        paragraph = self._numbered_paragraphs.containing(start, end)
+        if self._not_document(paragraph):
+            logger.debug("presidio_ner_boundary_resolved kind=numbered_paragraph")
+            return paragraph
+        return None
 
     def _resolve_existing(self, start, end):
         if not 0 <= start < end <= len(self.text):
@@ -343,12 +449,12 @@ class BoundaryValues:
                 return None
         fallback = (0, len(self.text)) if self.confirmed_value else None
         if not self._not_document(bounds):
-            return fallback
+            return fallback or self._resolve_structured_prose(start, end)
         left, right = bounds
         # A prose paragraph must not swallow syntax or several string values.
         if (self.string_owners.intersects(left, right)
                 or any(c in self.text[left:right] for c in "{}[]")):
-            return fallback
+            return fallback or self._resolve_structured_prose(start, end)
         return bounds
 
 
