@@ -12,5 +12,6 @@
   {"id":"numbered-list-item","text":"Read the following notes.\n31: - **Start.** Review the instructions.\n32: - **Close.** A. Fable: store the result (if needed).","pieces":[["A. Fable","PERSON","left"]],"expected":[["A. Fable: store the result (if needed).","PERSON"]]},
   {"id":"numbered-lowercase-person","text":"Header {meta}\n1: Source preview\n2:\n3: Profile ivanova petrova\n4:\nTail [meta]","pieces":[["nova","PERSON","right"]],"expected":[["Profile ivanova petrova","PERSON"]]},
   {"id":"numbered-organization-continuation","text":"Header {meta}\n1: Source preview\n2:\n3: ООО «Янтарный\n4: Перевал»\n5:\nTail [meta]","pieces":[["Янтарный","ORGANIZATION","right"]],"shifted":[["Янт","ORGANIZATION"]],"expected":[["ООО «Янтарный\n4: Перевал»","ORGANIZATION"]]},
-  {"id":"complete-initials-and-surname","text":"Header {meta}\nУточнить: (К. Миронова, ref-72).","pieces":[["Миронова","PERSON","left"]],"expected":[["К. Миронова","PERSON"]]}
+  {"id":"complete-initials-and-surname","text":"Header {meta}\nУточнить: (К. Миронова, ref-72).","pieces":[["Миронова","PERSON","left"]],"expected":[["К. Миронова","PERSON"]]},
+  {"id":"numbered-parenthetical-after-inline-label","text":"Header {meta}\n8: See `demo/tool`: (coordinator Mira\n9: examples: `demo.md`, `report.txt`)","pieces":[["Mira","PERSON","right"]],"expected":[["coordinator Mira\n9: examples: `demo.md`, `report.txt`","PERSON"]]}
 ]
