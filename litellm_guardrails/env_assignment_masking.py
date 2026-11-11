@@ -1,20 +1,17 @@
-"""Opt-in guardrail: reversible scalar masking for 54 reviewed env names.
-
-The regular RuPIIGuardrail and service configuration are unchanged. Select this
-class explicitly for local validation. Unsupported assignments keep the existing
-pre-egress rejection. Values are never declared harmless because they look like
-paths. No prompt values are written to logs.
-"""
+"""Opt-in reversible masking of complete scalar values for reviewed ENV names."""
 
 import copy
 import json
 import logging
 import re
+import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 from litellm_guardrails import pii_guardrail as base
 from litellm_guardrails.dictionary_policy import DictionarySubstitutionResult
+from litellm_guardrails.restoration_mapping import RestorationMapping, json_atom_spans
 
 
 MASKED_ENV_NAMES = frozenset({
@@ -31,254 +28,386 @@ MASKED_ENV_NAMES = frozenset({
     "PUBLIC_API_KEY", "NOT_A_SECRET", "TOKEN_1", "TOKEN_22", "APP_TOKEN",
     "APP_TOKEN_2", "DB_PASS_1",
 })
+MAX_ENV_ASSIGNMENTS = 256
+MAX_ENV_VALUE_BYTES = 64 * 1024
 
-# Preserve lexical values, including JSON escapes, rather than reserializing the
-# input. Only complete JSON documents and complete simple assignment lines are
-# accepted. Expressions and compound shell commands are not evaluated.
-_JSON_STRING = re.compile(
-    r'"(?P<key>[A-Z][A-Z0-9_]*)"\s*:\s*'
-    r'"(?P<value>(?:[^"\\\r\n]|\\[^\r\n])*)"'
-)
 _LINE = re.compile(
-    r'''(?mx)^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?
-    (?P<key>[A-Z][A-Z0-9_]*)[ \t]*[=:][ \t]*
+    r'''(?mx)^[ \t]*(?P<list>-[ \t]+)?(?P<export>export[ \t]+)?
+    (?P<key>[A-Z][A-Z0-9_]*)[ \t]*(?P<op>[=:])[ \t]*
     (?:"(?P<double>(?:[^"\\\r\n]|\\[^\r\n])*)"
       |'(?P<single>[^'\r\n]*)'
       |(?P<bare>[^\s'";&|<>\[\]{}()]+))
-    (?:[ \t]+\#.*)?[ \t]*$
+    (?:[ \t]+\#.*)?[ \t]*\r?$
     '''
 )
+_JSON_MEMBER = re.compile(r"[ \t\r\n]*:[ \t\r\n]*")
+_YAML_IGNORABLE_LINE = re.compile(r"[ \t]*(?:#[^\r\n]*)?\r?\n")
+_ENV_ALIAS_BODY = r"ENV_MASK_V1_[1-9][0-9]*"
+_ENV_ALIAS = re.compile(r"(?<!\w)(?:<" + _ENV_ALIAS_BODY + r">|" + _ENV_ALIAS_BODY + r")(?!\w)")
 _INBOUND_ALIAS = re.compile(r"<[A-Z][A-Z0-9_]*_[0-9]+>|\bENV_MASK_V1_[0-9]+\b")
+
+
+@dataclass(frozen=True)
+class _Assignment:
+    name: str
+    key_start: int
+    key_end: int
+    start: int
+    end: int
+    syntax: str
 
 
 @dataclass
 class _MaskState:
-    mapping: dict[str, str]
-    trusted: set[str] = field(default_factory=set)
-    names: set[str] = field(default_factory=set)
-    values_for_scan: set[str] = field(default_factory=set)
-    json_shapes: dict[int, object] = field(default_factory=dict)
+    plan: list
+    count: int
+    size: int
+    mapping: RestorationMapping = field(default_factory=RestorationMapping)
+    fields: dict[tuple[int, str], dict[str, str]] = field(default_factory=dict)
+    json_shapes: dict[tuple[int, str], object] = field(default_factory=dict)
+    views: dict[str, str] = field(default_factory=dict)
+    known: re.Pattern | None = None
+    saved: bool = False
 
 
 _STATE: ContextVar[_MaskState | None] = ContextVar("env_assignment_masks_v1", default=None)
 
 
-def assignment_spans(text: str) -> list[tuple[int, int, str]]:
-    """Return complete supported scalar values; never guess a secret's type."""
-    stripped = text.lstrip()
-    if stripped.startswith(("{", "[")):
-        try:
-            json.loads(text)
-        except (ValueError, TypeError):
-            return []
-        expressions = (_JSON_STRING,)
-    else:
-        expressions = (_LINE,)
-    spans = []
-    for expression in expressions:
-        for match in expression.finditer(text):
-            name = match.group("key")
-            if name not in MASKED_ENV_NAMES:
+def _check_budget():
+    deadline = base._ANALYSIS_DEADLINE.get()
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError
+
+
+def _check_limit(count, size):
+    if count > MAX_ENV_ASSIGNMENTS or size > MAX_ENV_VALUE_BYTES:
+        raise base.HTTPException(status_code=413, detail={"code": "env_mask_limit_exceeded"})
+
+
+def _byte_length(text):
+    return len(text.encode("utf-8", errors="surrogatepass"))
+
+
+def _is_json_container(text):
+    return text.lstrip().startswith(("{", "["))
+
+
+def _following_indentation(text, line_end):
+    """Indent of the next content line; a deeper line may continue YAML."""
+    pos = line_end + 1
+    while line := _YAML_IGNORABLE_LINE.match(text, pos):
+        pos = line.end()
+    end = pos
+    while end < len(text) and text[end] in " \t":
+        end += 1
+    return end - pos if end < len(text) else 0
+
+
+def _previous_shell_continuation(text, start):
+    if not start:
+        return False
+    before = text.rfind("\n", 0, start - 1) + 1
+    return text[before:start - 1].rstrip("\r").endswith("\\")
+
+
+def _assignments(text):
+    """Yield only complete, supported scalar spans in source coordinates."""
+    if _is_json_container(text):
+        _, strings = json_atom_spans(text)
+        for (left, right), (start, end) in pairwise(strings):
+            member = _JSON_MEMBER.match(text, right + 1)
+            if not member or member.end() != start - 1 or start == end:
                 continue
-            group = "value" if expression is _JSON_STRING else next(
-                key for key in ("double", "single", "bare")
-                if match.group(key) is not None
-            )
-            start, end = match.span(group)
-            value = text[start:end]
-            if not value or "$" in value or "`" in value or value in {"|", "|-", "|+", ">", ">-", ">+"}:
+            name = json.loads(text[left - 1:right + 1])
+            if name in MASKED_ENV_NAMES:
+                yield _Assignment(name, left, right, start, end, "json")
+        return
+
+    for match in _LINE.finditer(text):
+        name = match.group("key")
+        if name not in MASKED_ENV_NAMES or _previous_shell_continuation(text, match.start()):
+            continue
+        syntax = next(key for key in ("double", "single", "bare") if match.group(key) is not None)
+        value = match.group(syntax)
+        if not value or "$" in value or "`" in value:
+            continue
+        if syntax == "bare" and value.endswith("\\"):
+            continue
+        yaml_mapping = match.group("op") == ":"
+        yaml_list = match.group("list") is not None
+        if yaml_mapping and match.group("export"):
+            continue
+        if yaml_mapping and syntax == "bare" and value.startswith(("*", "!", "@")):
+            continue
+        if (yaml_mapping and syntax == "bare") or (yaml_list and not yaml_mapping):
+            column = match.start("key" if yaml_mapping else "list") - match.start()
+            if _following_indentation(text, match.end()) > column:
                 continue
-            spans.append((start, end, name))
-    return spans
+        start, end = match.span(syntax)
+        yield _Assignment(name, *match.span("key"), start, end, syntax)
 
 
-def _json_shape(value):
-    if isinstance(value, dict):
-        return {key: _json_shape(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_json_shape(child) for child in value]
-    if isinstance(value, str):
-        return ("string",)
-    return (type(value).__name__, value)
+def assignment_spans(text):
+    return [(item.start, item.end, item.name) for item in _assignments(text)]
 
 
-def _scan_assignments(text: str) -> str:
-    """Exclude only request-generated aliases from assignment leak detection.
+def _json_shape(text):
+    def shape(value):
+        if isinstance(value, tuple):
+            return ("object", tuple((key, shape(child)) for key, child in value))
+        if isinstance(value, list):
+            return ("array", tuple(map(shape, value)))
+        if isinstance(value, str):
+            return ("string",)
+        return (type(value).__name__, value)
 
-    This view is never sent to the provider. Other detectors see the original
-    provider-bound text. Incoming aliases are rejected before this scope exists.
-    """
+    # The default dict decoder would discard repeated member names.
+    return shape(json.loads(text, object_pairs_hook=tuple))
+
+
+def _replace_spans(text, replacements):
+    parts = []
+    cursor = 0
+    for start, end, replacement in replacements:
+        parts.extend((text[cursor:start], replacement))
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def _decoded_json_strings(text):
+    if "\\" in text and text.lstrip().startswith(("{", "[", '"')):
+        _, strings = json_atom_spans(text)
+        for start, end in strings:
+            yield json.loads(text[start - 1:end + 1])
+
+
+def _verified_views(targets, state):
+    """Grant a scan exemption only to a complete alias in its recorded field."""
+    views = {}
+    for target, field in targets:
+        key = (id(target), field)
+        aliases = state.fields.get(key)
+        if not aliases and key not in state.json_shapes:
+            continue
+        _check_budget()
+        text = target[field]
+        if key in state.json_shapes:
+            try:
+                shape = _json_shape(text)
+            except (ValueError, RecursionError):
+                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"}) from None
+            if shape != state.json_shapes[key]:
+                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
+        if not aliases:
+            continue
+        expected = set(aliases)
+        replacements = []
+        for item in _assignments(text):
+            alias = text[item.start:item.end]
+            if alias not in expected or aliases[alias] != item.name:
+                continue
+            expected.remove(alias)
+            # Neutralize the key only, leaving comments and all other content visible.
+            replacements.append((item.key_start, item.key_end, "RU_MASKED_VALUE"))
+        if expected:
+            raise base.HTTPException(status_code=422, detail={"code": "env_mask_assignment_structure"})
+        views[text] = _replace_spans(text, replacements)
+    return views
+
+
+def _scan_env_rule(text, classify):
+    original = classify(text)
     state = _STATE.get()
-    if state is None:
-        return text
-    for token in sorted(state.trusted, key=len, reverse=True):
-        literal = re.escape(token)
-        expression = re.compile(
-            r'(?<![\w])(?:"[A-Z][A-Z0-9_]*"|[A-Z][A-Z0-9_]*)'
-            r"[ \t]*[=:][ \t]*(?:\"" + literal + r"\"|'" + literal
-            + r"'|" + literal + r")(?=$|[\s,;}\]])"
-        )
-        text = expression.sub("", text)
-    return text
+    view = state.views.get(text) if state is not None else None
+    if view is None or not any(f["rule_id"] == "env_secret_assignment" for f in original):
+        return original
+    if any(f["rule_id"] == "env_secret_assignment" for f in classify(view)):
+        return original
+    return [f for f in original if f["rule_id"] != "env_secret_assignment"]
+
+
+def _known_value_visible(text, state):
+    cursor = 0
+    for match in _ENV_ALIAS.finditer(text):
+        if match.group() not in state.mapping:
+            continue
+        if state.known.search(text, cursor, match.start()):
+            return True
+        cursor = match.end()
+    return state.known.search(text, cursor) is not None
 
 
 class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
-    """Local opt-in alternative; retains the standard post/streaming hooks."""
+    """Opt-in alternative retaining the ordinary post-call and streaming hooks."""
 
     @classmethod
     def _classify_pre_egress_policy_text(cls, text):
-        original = base.RuPIIGuardrail._classify_pre_egress_policy_text(text)
-        scanned = base.RuPIIGuardrail._classify_pre_egress_policy_text(
-            _scan_assignments(text)
-        )
-        env_remains = any(f["rule_id"] == "env_secret_assignment" for f in scanned)
-        return [f for f in original if f["rule_id"] != "env_secret_assignment" or env_remains]
+        return _scan_env_rule(text, super()._classify_pre_egress_policy_text)
 
     def _classify_final_payload_leak_check_text(self, text):
-        original = super()._classify_final_payload_leak_check_text(text)
-        scanned = super()._classify_final_payload_leak_check_text(_scan_assignments(text))
-        env_remains = any(f["rule_id"] == "env_secret_assignment" for f in scanned)
-        return [f for f in original if f["rule_id"] != "env_secret_assignment" or env_remains]
+        return _scan_env_rule(text, super()._classify_final_payload_leak_check_text)
 
-    def _run_final_payload_leak_check(self, data, *args, **kwargs):
-        super()._run_final_payload_leak_check(data, *args, **kwargs)
+    def _run_final_payload_leak_check(self, data, request_targets, *args, **kwargs):
         state = _STATE.get()
-        if state is None:
+        if state is not None and state.fields:
+            state.views = _verified_views(request_targets, state)
+        super()._run_final_payload_leak_check(data, request_targets, *args, **kwargs)
+        if state is None or state.known is None:
             return
-        targets = self._iter_request_text_targets(data)
-        for index, expected in state.json_shapes.items():
-            try:
-                shape = _json_shape(json.loads(targets[index][0][targets[index][1]]))
-            except (ValueError, TypeError, IndexError):
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
-            if shape != expected:
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
-        # A known value repeated in a comment, another field or tool schema must
-        # not escape solely because the first assignment was successfully masked.
         for text in self._iter_provider_bound_final_payload_texts(data):
-            for alias in sorted(state.trusted, key=len, reverse=True):
-                text = re.sub(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", "", text)
-            if any(value and value in text for value in state.values_for_scan):
-                raise base.HTTPException(
-                    status_code=422, detail={"code": "env_mask_uncovered_value"}
-                )
-
-    def _mask_text(self, *args, **kwargs):
-        state = _STATE.get()
-        if state is not None and len(args) >= 2:
-            source, entities = args[:2]
-            protected = [
-                (match.start(), match.end())
-                for token in state.mapping
-                for match in re.finditer(re.escape(token), source)
-            ]
-            # A finding wholly within an already protected generated alias has
-            # no raw value to hide. Cross-boundary evidence is preserved.
-            entities = [entity for entity in entities if not any(
-                start <= int(entity.get("start", -1))
-                < int(entity.get("end", -1)) <= end
-                for start, end in protected
-            )]
-            args = (source, entities, *args[2:])
-        text, mapping = super()._mask_text(*args, **kwargs)
-        if state is not None:
-            state.trusted.update(mapping)
-        return text, mapping
+            _check_budget()
+            if (_known_value_visible(text, state) or any(
+                _known_value_visible(value, state) for value in _decoded_json_strings(text)
+            )):
+                raise base.HTTPException(status_code=422, detail={"code": "env_mask_uncovered_value"})
 
     def _apply_dictionary_substitutions(self, text, existing_mapping=None):
         result = super()._apply_dictionary_substitutions(text, existing_mapping)
         state = _STATE.get()
-        if state is None:
+        if state is None or not state.mapping:
             return result
-        local = {key: value for key, value in state.mapping.items() if key in result.text}
+        before = [match.group() for match in _ENV_ALIAS.finditer(text)]
+        after = list(_ENV_ALIAS.finditer(result.text))
+        if before != [match.group() for match in after]:
+            raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+        combined = RestorationMapping(result.mapping)
         ranges = list(result.replacement_spans)
-        for token in local:
-            ranges.extend((m.start(), m.end()) for m in re.finditer(re.escape(token), result.text))
-        # Reuse atomic alias expansion and request-scoped Redis restoration.
+        substitutions = iter(result.replacement_spans)
+        current = next(substitutions, None)
+        for match in after:
+            alias = match.group()
+            if alias in state.mapping:
+                while current is not None and current[1] <= match.start():
+                    current = next(substitutions, None)
+                if alias in combined or (current is not None and current[0] < match.end()):
+                    raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+                if alias in state.mapping.json_strings:
+                    combined.add_string(alias, state.mapping[alias])
+                else:
+                    combined[alias] = state.mapping[alias]
+                ranges.append(match.span())
         return DictionarySubstitutionResult(
-            result.text, {**result.mapping, **local}, tuple(sorted(ranges)), result.rule_counts
+            result.text, combined, tuple(sorted(ranges)), result.rule_counts,
         )
+
+    async def _save_mapping(self, request_id, mapping):
+        state = _STATE.get()
+        if state is not None and state.mapping:
+            if (any(mapping.get(key) != value for key, value in state.mapping.items())
+                    or not state.mapping.json_strings <= getattr(mapping, "json_strings", set())):
+                raise base.HTTPException(status_code=503, detail={"code": "env_mask_mapping_required"})
+        await super()._save_mapping(request_id, mapping)
+        if state is not None:
+            state.saved = True
 
     async def _prepare_responses_state(self, data, auth, call_type):
         inherited = await super()._prepare_responses_state(data, auth, call_type)
         state = _STATE.get()
-        if state is None or not inherited:
+        if state is None:
             return inherited
-        # Continuations inherit immutable mappings. Allocate a new namespace
-        # range rather than overwriting ENV_MASK_V1_1 from a previous turn.
-        state.values_for_scan.update(value for key, value in inherited.items()
-            if re.fullmatch(r"ENV_MASK_V1_[0-9]+", key))
-        largest = max((int(match.group(1)) for key in inherited
-            if (match := re.fullmatch(r"ENV_MASK_V1_([0-9]+)", key))), default=0)
-        if largest:
-            renamed = {old: f"ENV_MASK_V1_{largest + index}" for index, old
-                in enumerate(state.mapping, 1)}
-            pattern = re.compile(r"\b(?:" + "|".join(map(re.escape, renamed)) + r")\b")
-            for target, field in self._iter_request_text_targets(data):
-                target[field] = pattern.sub(lambda match: renamed[match.group()], target[field])
-            state.mapping = {renamed[key]: value for key, value in state.mapping.items()}
-            state.trusted = set(state.mapping)
+        previous = {key: value for key, value in inherited.items() if _ENV_ALIAS.fullmatch(key)}
+        if not state.count and not previous:
+            return inherited
+        _check_limit(state.count + len(previous), state.size + sum(map(_byte_length, previous.values())))
+        collision = _INBOUND_ALIAS if state.count else _ENV_ALIAS
+        for text in self._iter_provider_bound_final_payload_texts(data):
+            _check_budget()
+            if collision.search(text) or any(collision.search(value) for value in _decoded_json_strings(text)):
+                raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+        known = set(previous.values())
+        typed = getattr(inherited, "json_strings", ())
+        for alias, value in previous.items():
+            if alias in typed:
+                known.add(json.loads('"' + value + '"'))
+            else:
+                # Bare mappings keep the source spelling, not the original quote style.
+                known.add(re.sub(r"\\(.)", r"\1", value))
+        index = max((int(key.rstrip(">").rsplit("_", 1)[1]) for key in previous), default=0)
+        targets = self._iter_request_text_targets(data)
+        if state.plan:
+            for target, field in targets:
+                _check_budget()
+                if _is_json_container(target[field]):
+                    try:
+                        state.json_shapes[id(target), field] = _json_shape(target[field])
+                    except (ValueError, RecursionError):
+                        pass
+        for target, field, assignments in state.plan:
+            _check_budget()
+            text = target[field]
+            field_key = (id(target), field)
+            aliases = state.fields.setdefault(field_key, {})
+            if _is_json_container(text) and field_key not in state.json_shapes:
+                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
+            replacements = []
+            for item in assignments:
+                index += 1
+                value = text[item.start:item.end]
+                alias = f"ENV_MASK_V1_{index}"
+                known.add(value)
+                if item.syntax == "json":
+                    alias = f"<{alias}>"
+                    state.mapping.add_string(alias, value)
+                    known.add(json.loads('"' + value + '"'))
+                else:
+                    state.mapping[alias] = value
+                    if item.syntax == "double":
+                        known.add(re.sub(r'\\(["\\])', r'\1', value))
+                    elif item.syntax == "bare":
+                        known.add(re.sub(r"\\(.)", r"\1", value))
+                aliases[alias] = item.name
+                replacements.append((item.start, item.end, alias))
+            target[field] = _replace_spans(text, replacements)
+        known.discard("")
+        if known:
+            state.known = re.compile("|".join(re.escape(value) for value in sorted(known)))
+        if state.fields:
+            state.views = _verified_views(targets, state)
         return inherited
 
-    async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type=None):
-        targets = self._iter_request_text_targets(data)
-        original_findings = base.RuPIIGuardrail._classify_pre_egress_policy_targets(targets)
-        # Inspect original content before hiding values: operational/topic rules
-        # must not lose evidence located within a proposed secret span.
-        other_blocks = any(f["rule_id"] != "env_secret_assignment" for f in original_findings)
-        topic_blocks = self.regulated_topic_policy_mode == "block" and bool(
-            self._classify_regulated_topic_policy_targets(targets)
-        )
-        planned = [assignment_spans(target[field]) for target, field in targets]
-        if other_blocks or topic_blocks or self.pii_mode != "mask" or not any(planned):
-            return await super().async_pre_call_hook(user_api_key_dict, cache, data, call_type)
-
-        if self.pre_egress_policy_mode != "block" or self.final_payload_leak_check_mode != "block":
-            raise base.HTTPException(status_code=503, detail={"code": "env_mask_requires_checks"})
-        texts = self._iter_provider_bound_final_payload_texts(data)
-        if any(_INBOUND_ALIAS.search(text) for text in texts):
-            raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
-
-        staged = copy.deepcopy(data)
-        state = _MaskState(mapping={})
-        for index, (target, field) in enumerate(targets):
-            if target[field].lstrip().startswith(("{", "[")):
-                try:
-                    state.json_shapes[index] = _json_shape(json.loads(target[field]))
-                except (ValueError, TypeError):
-                    pass
-        for (target, field), spans in zip(self._iter_request_text_targets(staged), planned):
-            text = target[field]
-            for start, end, name in reversed(spans):
-                alias = f"ENV_MASK_V1_{len(state.mapping) + 1}"
-                value = text[start:end]
-                state.mapping[alias] = value
-                state.values_for_scan.add(value)
-                if text.lstrip().startswith(("{", "[")):
-                    state.values_for_scan.add(json.loads('"' + value + '"'))
-                else:
-                    # JSON-style decoding is inappropriate for Windows paths;
-                    # shell double quotes only unescape quote/backslash here.
-                    state.values_for_scan.add(re.sub(r'\\(["\\])', r'\1', value))
-                state.names.add(name)
-                text = text[:start] + alias + text[end:]
-            target[field] = text
-        state.trusted.update(state.mapping)
-        context_token = _STATE.set(state)
+    async def _pre_call_with_budget(
+        self, user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets,
+    ):
+        run_base = super()._pre_call_with_budget
+        planned = []
+        count = size = 0
+        if self.pii_mode == "mask":
+            for index, (target, field) in enumerate(request_targets):
+                _check_budget()
+                assignments = []
+                text = target[field]
+                for item in _assignments(text):
+                    count += 1
+                    size += _byte_length(text[item.start:item.end])
+                    _check_limit(count, size)
+                    assignments.append(item)
+                if assignments:
+                    planned.append((index, assignments))
+        if not planned and not data.get("previous_response_id"):
+            return await run_base(user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets)
+        if planned:
+            original = base.RuPIIGuardrail._classify_pre_egress_policy_targets(request_targets)
+            other_blocks = any(f["rule_id"] != "env_secret_assignment" for f in original)
+            topic_blocks = self.regulated_topic_policy_mode == "block" and bool(
+                self._classify_regulated_topic_policy_targets(request_targets)
+            )
+            if other_blocks or topic_blocks:
+                return await run_base(user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets)
+            if self.pre_egress_policy_mode != "block" or self.final_payload_leak_check_mode != "block":
+                raise base.HTTPException(status_code=503, detail={"code": "env_mask_requires_checks"})
+            data = copy.deepcopy(data)
+            request_targets = self._iter_request_text_targets(data)
+        state = _MaskState([(*request_targets[index], spans) for index, spans in planned], count, size)
+        token = _STATE.set(state)
         try:
-            processed = await super().async_pre_call_hook(
-                user_api_key_dict, cache, staged, call_type
-            )
-            if not isinstance(processed, dict) or not self._get_response_request_id(processed):
-                # fail_open in the underlying guardrail cannot discard an ENV
-                # mapping after a dependency failure. Do not return such a body.
-                raise base.HTTPException(status_code=503, detail={"code": "env_mask_mapping_required"})
-            base._safe_log(
-                logging.INFO, "env_assignment_masked",
-                request_id=self._get_response_request_id(processed),
-                name_count=len(state.names), value_count=len(state.mapping),
-                policy_version="env54-v1",
-            )
-            return processed
+            result = await run_base(user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets)
+            if planned:
+                if not state.saved or not isinstance(result, dict) or not self._get_response_request_id(result):
+                    raise base.HTTPException(status_code=503, detail={"code": "env_mask_mapping_required"})
+                base._safe_log(logging.INFO, "env_assignment_masked", request_id=request_id,
+                               name_count=len({name for aliases in state.fields.values() for name in aliases.values()}),
+                               value_count=len(state.mapping), policy_version="env54-v1")
+            return result
         finally:
-            _STATE.reset(context_token)
+            _STATE.reset(token)

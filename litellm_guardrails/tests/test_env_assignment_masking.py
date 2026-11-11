@@ -86,6 +86,12 @@ async def test_paths_short_passwords_and_escaping(text):
     "config = {'PWD': 'literal-secret'}", 'PASSWORD: |\n  raw-secret',
     'PASSWORD: >-\n  raw-secret', 'PASSWORD: &anchor',
     'APP_TOKEN_999=literal-secret', 'SERVICE_ENDPOINT=https://user:pass@example.org',
+    'JIRA_TOKEN=tangerine\\\nreadable',
+    'PASSWORD: *memo\nreference: &memo readable',
+    'PASSWORD: tangerine\n  readable',
+    'environment:\n  - PWD=tangerine\n    readable',
+    'OTHER=prefix\\\nJIRA_TOKEN=literal-secret',
+    'PWD=simple-value\nJIRA_TOKEN=tangerine\\\nreadable',
     'Traceback (most recent call last):\nPWD=/tmp/project',
     'server {\nlisten 80;\nserver_name local.example;\n}',
 ])
@@ -284,6 +290,10 @@ async def test_ordinary_fields_not_in_fixed_list_are_unchanged(text):
     {'model': 'local', 'messages': [{'role': 'user', 'content': 'JIRA_TOKEN=literal-secret'}, {'role': 'tool', 'content': 'literal-secret'}]},
     {'model': 'local', 'messages': [{'role': 'user', 'content': 'JIRA_TOKEN=literal-secret'}], 'extra_body': {'echo': 'literal-secret'}},
     {'model': 'local', 'messages': [{'role': 'user', 'content': '{"PWD":"p\\u0061ssword777"}'}, {'role': 'tool', 'content': 'password777'}]},
+    {'model': 'local', 'messages': [{'role': 'user', 'content': 'PASSWORD=quietpine'},
+        {'role': 'tool', 'content': r'{"memo":"quietp\u0069ne"}'}]},
+    {'model': 'local', 'messages': [{'role': 'user', 'content': r'PASSWORD=quiet\pine'},
+        {'role': 'tool', 'content': 'quietpine'}]},
 ])
 async def test_known_values_cannot_escape_in_other_locations(body):
     g = guard()
@@ -301,6 +311,27 @@ async def test_backend_cannot_make_json_invalid_or_change_keys():
     g._analyze_text = backend
     with pytest.raises(Exception) as caught: await process(g, '{"PWD":"secret-json-value"}')
     assert getattr(caught.value, 'status_code', None) == 422
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
+async def test_env_mask_preserves_structure_of_other_json_targets():
+    g = guard()
+
+    async def backend(text):
+        if text.startswith("{"):
+            start = text.index("memo")
+            return [{"start": start, "end": start + 4, "entity_type": "PERSON", "score": .99}]
+        return []
+
+    g._analyze_text = backend
+    body = {"model": "local", "messages": [
+        {"role": "user", "content": "PWD=/tmp/project"},
+        {"role": "user", "content": '{"memo":"unrelated"}'},
+    ]}
+    with pytest.raises(base.HTTPException) as caught:
+        await process(g, body=body)
+    assert caught.value.detail == {"code": "env_mask_json_structure"}
     assert not g._redis.values
 
 
@@ -343,3 +374,111 @@ async def test_responses_continuation_never_overwrites_prior_env_values(monkeypa
     with pytest.raises(Exception) as caught:
         await g.async_pre_call_hook(auth, None, third, 'aresponses')
     assert getattr(caught.value, 'status_code', None) == 422
+    third['input'] = 'Use first-env-secret from the previous turn'
+    with pytest.raises(Exception) as caught:
+        await g.async_pre_call_hook(auth, None, third, 'aresponses')
+    assert getattr(caught.value, 'status_code', None) == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api", ["chat", "responses"])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_native_json_arguments_restore_semantic_value(api, stream):
+    from litellm_guardrails.tests.test_json_string_restoration import tool_history
+
+    g = guard()
+    original = {"PASSWORD": 'synthetic-quietpine\nLineTwo"quoted'}
+    history, _ = tool_history(api, json.dumps(original))
+    auth = SimpleNamespace()
+    data = await g.async_pre_call_hook(
+        auth, None, {"model": "local", "stream": stream, **history},
+        "aresponses" if api == "responses" else "acompletion",
+    )
+    arguments, = [target[field] for target, field in g._iter_request_text_targets(data) if field == "arguments"]
+    assert json.loads(arguments) == {"PASSWORD": "<ENV_MASK_V1_1>"}
+    if stream:
+        async def events():
+            for char in arguments:
+                if api == "responses":
+                    yield {"type": "response.function_call_arguments.delta", "output_index": 0, "delta": char}
+                else:
+                    yield {"choices": [{"index": 0, "delta": {"tool_calls": [
+                        {"index": 0, "function": {"arguments": char}},
+                    ]}}]}
+            if api == "responses":
+                yield {"type": "response.function_call_arguments.done", "output_index": 0, "arguments": arguments}
+            else:
+                yield {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+        chunks = [item async for item in g.async_post_call_streaming_iterator_hook(auth, events(), data)]
+        actual = ("".join(item.get("delta", "") for item in chunks) if api == "responses" else
+                  "".join(call["function"].get("arguments", "") for item in chunks for choice in item["choices"]
+                          for call in choice["delta"].get("tool_calls", [])))
+    elif api == "responses":
+        target = {"type": "function_call", "arguments": arguments}
+        await g.async_post_call_success_hook(data, auth, {"object": "response", "output": [target]})
+        actual = target["arguments"]
+    else:
+        result = litellm.ModelResponse(choices=[litellm.Choices(message=litellm.Message(
+            role="assistant", tool_calls=[{"id": "test", "type": "function",
+                                           "function": {"name": "inspect", "arguments": arguments}}],
+        ))])
+        await g.async_post_call_success_hook(data, auth, result)
+        actual = result.choices[0].message.tool_calls[0].function.arguments
+    assert json.loads(actual) == original
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", [
+    "\n".join(f"PWD=synthetic-value-{index:04d}-end" for index in range(257)),
+    "PWD=" + "x" * (64 * 1024 + 1),
+])
+async def test_env_limits_fail_before_analyzer(text):
+    g = guard()
+    with pytest.raises(Exception) as caught:
+        await process(g, text)
+    assert getattr(caught.value, "status_code", None) == 413
+    g._analyze_text.assert_not_awaited()
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
+async def test_dictionary_cannot_clone_generated_alias():
+    g = RuEnvAssignmentGuardrail(dictionary_substitutions_enabled=True,
+        dictionary_substitutions_json=json.dumps({"substitutions": [
+            {"id": "local", "source": "ExampleCorp", "replacement": "ENV_MASK_V1_1", "restore": False},
+        ]}))
+    g._redis = _MemoryRedis()
+    g._analysis_cache_secret = None
+    g._analyze_text = AsyncMock(return_value=[])
+    with pytest.raises(RuntimeError) as caught:
+        await process(g, "PWD=literal-secret\nExampleCorp")
+    assert caught.value.__cause__.detail == {"code": "env_mask_alias_collision"}
+    g._analyze_text.assert_not_awaited()
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source,typed", [(r'{"PASSWORD":"quietp\u0069ne"}', True),
+                                          (r'PASSWORD=quiet\pine', False)])
+async def test_responses_history_checks_decoded_env_value(monkeypatch, source, typed):
+    from litellm_guardrails.tests.test_responses_history import MemoryStore, response
+
+    monkeypatch.setattr(base, "LITELLM_SALT_KEY", "local-state-test-salt")
+    g = guard()
+    store = MemoryStore()
+    g._responses_state_store = AsyncMock(return_value=store)
+    auth = SimpleNamespace(token="local-trusted-scope")
+    first = await g.async_pre_call_hook(auth, None, {"model": "local", "input": source}, "aresponses")
+    assert "quietp" not in first["input"]
+    answer = response("resp-typed-env", first["input"])
+    await g.async_post_call_success_hook(first, auth, answer)
+    assert answer["output"][0]["content"][0]["text"] == source
+    previous = await store.load(store.owner(auth.token), "local", "resp-typed-env")
+    assert previous.json_strings == ({"<ENV_MASK_V1_1>"} if typed else set())
+    with pytest.raises(Exception) as caught:
+        await g.async_pre_call_hook(auth, None, {
+            "model": "local", "input": "Reuse quietpine", "previous_response_id": "resp-typed-env",
+        }, "aresponses")
+    assert getattr(caught.value, "status_code", None) == 422
