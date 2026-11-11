@@ -28,6 +28,7 @@ NER_PROXY_CANARIES+=",Максим Лебедев,Новосибирск ул. �
 NER_PROXY_CANARIES+=",москва,проспект вернадского 30,фрунзенская набережная 24"
 NER_PROXY_CANARIES+=",марина.кузнецова@inbox.ru"
 NER_PROXY_CANARIES+=",847291"
+NER_PROXY_CANARIES+=",К. Кратко,Я. Полевой"
 export NER_PROXY_MASK_PORT="$MASK_PORT"
 export NER_PROXY_BLOCK_PORT="$BLOCK_PORT"
 export NER_PROXY_ANALYZER_PORT="$ANALYZER_PORT"

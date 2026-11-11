@@ -22,14 +22,28 @@ CASES = json.loads((Path(__file__).resolve().parents[2] / 'tests/fixtures/ner-bo
 @pytest.mark.parametrize('case', CASES, ids=lambda case: case['id'])
 def test_shared_wire_cases_are_verified_against_actual_boundary_and_merge_code(monkeypatch, case):
     source = case['text']
-    normalized = normalize_for_ner(source).text
-    initial = [prediction(kind, normalized.index(value), normalized.index(value) + len(value),
-                          right=True) for value, kind in case['pieces']]
-    instance, _, _ = recognizer(monkeypatch, initial, [])
+    mapped = normalize_for_ner(source)
+    normalized = mapped.text
+
+    def window(pieces, default_edge, window_id):
+        for value, kind, *side in pieces:
+            edge = side[0] if side else default_edge
+            start = normalized.index(value)
+            yield prediction(kind, start, start + len(value), window_id,
+                             left=edge == 'left', right=edge == 'right')
+
+    initial = list(window(case['pieces'], 'right', 0))
+    shifted = list(window(case.get('shifted', []), None, 2))
+    instance, _, calls = recognizer(monkeypatch, initial, shifted)
     candidates = instance.analyze(source)
     results = merge_results(source, candidates, score_threshold=.35).results
     assert [[source[r.start:r.end], r.entity_type] for r in results] == case['expected']
     assert boundary_coverage_preserved(candidates, results)
+    assert calls == [True]
+    covered = {index for item in results for index in range(item.start, item.end)}
+    for evidence in initial + shifted:
+        left, right = mapped.to_original_span(evidence.entity.start, evidence.entity.end)
+        assert set(range(left, right)) <= covered
 
 
 @pytest.mark.parametrize("source,value,fragment", [
@@ -224,6 +238,70 @@ def test_paragraph_boundaries_preserve_original_line_endings(separator):
 def test_a_single_crlf_is_not_a_blank_line_or_a_value_boundary():
     source = 'Ivan\r\nPetrov'
     assert BoundaryValues(source).resolve(0, 4) is None
+
+
+@pytest.mark.parametrize('separator', ['\n', '\r\n', '\r', '\u2028', '\u2029'])
+def test_prose_bounds_do_not_use_a_soft_wrap_as_the_end(separator):
+    source = f'Note [1] from a review (Mira{separator}Fable, see `demo(2).txt`).'
+    left = source.index('Mira')
+    bounds = BoundaryValues(source).resolve(left, left + len('Mira'))
+    assert source[slice(*bounds)] == f'Mira{separator}Fable, see'
+
+
+def test_list_peer_closes_plain_item_and_keeps_markup():
+    source = 'Overview\n- **Review.** A. Fable\n- **Retain.** The summary'
+    start = source.index('Fable')
+    bounds = BoundaryValues(source).resolve(start, start + 3)
+    assert source[slice(*bounds)] == 'A. Fable'
+
+
+def test_prose_fallback_does_not_narrow_an_already_confirmed_json_scalar():
+    source = 'Notes [1] from a review (Alice Fable).'
+    start = source.index('Fable')
+    end = start + len('Fable')
+    plain = BoundaryValues(source).resolve(start, end)
+    assert source[slice(*plain)] == 'Alice Fable'
+    assert BoundaryValues(source, confirmed_value=True).resolve(start, end) == (0, len(source))
+
+
+@pytest.mark.parametrize('source,fragment', [
+    ('Notes [1] from a review (Alice', 'Alice'),
+    ('Notes [1] from a review (Alice `unfinished)', 'Alice'),
+    ('Notes [1] from a review (Alice\n\nNext paragraph)', 'Alice'),
+    ('Notes [1] from a review (Alice\n5: - Next item)', 'Alice'),
+    ('Notes [1] from a review (Alice `demo` Fable)', 'Alice `demo` Fable'),
+    ('Notes [1] from a review (text `Alice` afterwards)', 'Alice'),
+    ('Notes [1] from a review ({unclosed `demo` Alice)', 'Alice'),
+    ('Notes [1] from a review (`demo` [Alice])', 'Alice'),
+    ('Notes [1] from a review (a=b Alice)', 'Alice'),
+    ('Code [1] return (Alice);', 'Alice'),
+    ('Notes [1] from a review (`code across\nlines` Alice)', 'Alice'),
+    ('Notes [1] from a review (Alice ' + 'x' * 4096 + ')', 'Alice'),
+    ('Overview\n8: - Alice', 'Alice'),
+    ('Overview\n8: - Other\n10: - Alice', 'Alice'),
+    ('Overview\n- Alice\ncontinuation\n- Other', 'Alice'),
+    ('Overview\n- Other\n- Alice\n  continuation', 'Alice'),
+    ('Overview\n- Other\n  - Alice', 'Alice'),
+    ('Overview\n- Other\n- **Unclosed Alice', 'Alice'),
+    ('Overview\n- Alice\n- Other', 'Alice\n- Other'),
+    ('```text\nNote [1] from a review (Alice)\n```', 'Alice'),
+])
+def test_prose_resolution_refuses_ambiguous_or_structural_boundaries(source, fragment):
+    left = source.index(fragment)
+    assert BoundaryValues(source).resolve(left, left + len(fragment)) is None
+
+
+def test_wrapped_prose_uses_the_original_parenthesis_across_analyzer_chunks(monkeypatch):
+    source = 'Notes [1] from a review (Alice\nFable, see `demo.txt`).'
+    left = source.index('Alice')
+    local = source[:left + len('Alice')]
+    instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', left, len(local), right=True)], [])
+    result, = instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(source)))
+    assert source[result.start:result.end] == 'Alice\nFable, see'
+    assert result.end > len(local)
+    with pytest.raises(NERProcessingError) as error:
+        instance.analyze(local)
+    assert error.value.failure_class == 'window_boundary_unresolved'
 
 
 @pytest.mark.parametrize('separator', ['\n', '\r\n', '\r', '\u2028', '\u2029'])
