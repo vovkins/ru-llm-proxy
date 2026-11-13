@@ -124,6 +124,38 @@ async def test_same_request_local_placeholder_is_reversible(word):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('canary_in_name', [False, True])
+async def test_tool_history_input_is_analyzed_before_final_leak_block(canary_in_name, caplog):
+    canary = 'RU_PROXY_NATIVE_HISTORY_CANARY'
+    g = RuPIIGuardrail(
+        dictionary_substitutions_enabled=False,
+        final_payload_leak_check_canaries=(canary,),
+    )
+    g._redis = _MemoryRedis()
+    g._analysis_cache_secret = None
+    g._analyze_text = AsyncMock(return_value=[])
+    arguments = {'query': 'clean' if canary_in_name else canary}
+    request = {'model': 'mock', 'messages': [{'role': 'assistant', 'content': [{
+        'type': 'tool_use', 'id': 'tool_history',
+        'name': canary if canary_in_name else 'lookup_account',
+        'input': copy.deepcopy(arguments),
+    }]}]}
+
+    with pytest.raises(litellm.UnprocessableEntityError) as error:
+        await g.async_pre_call_hook(AUTH, None, request, 'anthropic_messages')
+
+    g._analyze_text.assert_awaited_once()
+    analyzed = g._analyze_text.await_args.args[0]
+    assert json.loads(analyzed) == arguments
+    assert (canary in analyzed) is not canary_in_name
+    body = error.value.response.json()
+    assert body['error']['code'] == 'final_payload_leak_check_blocked'
+    assert canary not in json.dumps(body)
+    assert canary not in caplog.text
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
 async def test_false_positive_partial_identifier_restores_and_signed_blocks_are_unchanged():
     g = guard({'<ORGANIZATION_1>': 'track'})
     reply = message('<ORGANIZATION_1>PWA', {'content': '<ORGANIZATION_1>PWA'})
