@@ -8,12 +8,17 @@ JSON_NUMBER = re.compile(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\
 _PLACEHOLDER = re.compile(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>\Z')
 _JSON_ATOM_START = re.compile(r'["0-9-]')
 _JSON_ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])')
+_JSON_KEY_SUFFIX = re.compile(r'[ \t\r\n]*:')
+
+
+class RestorationKeyCollision(ValueError):
+    """Restoring a data key would silently overwrite another JSON member."""
 
 
 class RestorationMapping(dict[str, str]):
     """Keep the existing dictionary API; copies/updates also retain provenance."""
 
-    def __init__(self, values=(), *, json_numbers=None, json_strings=None):
+    def __init__(self, values=(), *, json_numbers=None, json_strings=None, json_keys=None):
         super().__init__(values)
         self.json_numbers = set(
             getattr(values, 'json_numbers', ()) if json_numbers is None else json_numbers
@@ -21,21 +26,26 @@ class RestorationMapping(dict[str, str]):
         self.json_strings = set(
             getattr(values, 'json_strings', ()) if json_strings is None else json_strings
         )
+        self.json_keys = set(getattr(values, 'json_keys', ()) if json_keys is None else json_keys)
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         self.json_numbers.discard(key)
         self.json_strings.discard(key)
+        self.json_keys.discard(key)
 
     def update(self, values=(), **kwargs):
         incoming = dict(values, **kwargs)
         numbers = set(getattr(values, 'json_numbers', ())) - kwargs.keys()
         strings = set(getattr(values, 'json_strings', ())) - kwargs.keys()
+        keys = set(getattr(values, 'json_keys', ())) - kwargs.keys()
         super().update(incoming)
         self.json_numbers.difference_update(incoming)
         self.json_numbers.update(numbers)
         self.json_strings.difference_update(incoming)
         self.json_strings.update(strings)
+        self.json_keys.difference_update(incoming)
+        self.json_keys.update(keys)
 
     def copy(self):
         return RestorationMapping(self)
@@ -80,6 +90,14 @@ def encode_mapping(mapping: dict[str, str]) -> str:
     if strings:
         body = {'version': 3, 'values': dict(mapping),
                 'json_numbers': sorted(numbers), 'json_strings': sorted(strings)}
+    keys = getattr(mapping, 'json_keys', set())
+    if not isinstance(keys, (set, frozenset)) or any(
+        not isinstance(key, str) or key not in mapping for key in keys
+    ) or numbers & keys:
+        raise ValueError('Invalid JSON-key provenance')
+    if keys:
+        body = {'version': 4, 'values': dict(mapping), 'json_numbers': sorted(numbers),
+                'json_strings': sorted(strings), 'json_keys': sorted(keys)}
     return json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
 
 
@@ -91,17 +109,23 @@ def decode_mapping(body: str) -> RestorationMapping:
         numbers = value.get('json_numbers')
         version = value['version']
         fields = {'version', 'values', 'json_numbers'}
-        if version == 3:
+        if version in (3, 4):
             fields.add('json_strings')
+        if version == 4:
+            fields.add('json_keys')
         strings = value.get('json_strings', [])
-        if (version not in (2, 3) or set(value) != fields
+        keys = value.get('json_keys', [])
+        if (version not in (2, 3, 4) or set(value) != fields
                 or not isinstance(value['values'], dict) or not isinstance(numbers, list)
                 or any(not isinstance(key, str) for key in numbers)
                 or len(numbers) != len(set(numbers))
                 or not isinstance(strings, list) or any(not isinstance(key, str) for key in strings)
-                or len(strings) != len(set(strings))):
+                or len(strings) != len(set(strings))
+                or not isinstance(keys, list) or any(not isinstance(key, str) for key in keys)
+                or len(keys) != len(set(keys))):
             raise ValueError('Invalid versioned restoration mapping')
-        mapping = RestorationMapping(value['values'], json_numbers=numbers, json_strings=strings)
+        mapping = RestorationMapping(value['values'], json_numbers=numbers, json_strings=strings,
+                                     json_keys=keys)
     else:
         mapping = RestorationMapping(value)
     encode_mapping(mapping)
@@ -136,6 +160,12 @@ def json_atom_spans(text: str) -> tuple[list[tuple[int, int]], list[tuple[int, i
 
 def json_number_spans(text: str) -> list[tuple[int, int]]:
     return json_atom_spans(text)[0]
+
+
+def json_key_spans(text: str) -> list[tuple[int, int]]:
+    """Only keys of a validated JSON document, in original source offsets."""
+    return [(start, end) for start, end in json_atom_spans(text)[1]
+            if _JSON_KEY_SUFFIX.match(text, end + 1)]
 
 
 def json_escape_spans(text: str, start: int, end: int) -> list[tuple[int, int]]:

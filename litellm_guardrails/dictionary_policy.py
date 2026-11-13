@@ -164,8 +164,27 @@ class DictionarySubstitutionPolicy:
             ) from exc
         return cls.from_json_text(raw_config)
 
+    def validate_request(self, texts, existing_mapping=None, *, reference_texts=None) -> None:
+        """Check ambiguity across fields before any request mutation."""
+        texts = tuple(texts)
+        reference_texts = texts if reference_texts is None else tuple(reference_texts)
+        matched_rules = {match.rule.rule_id for text in texts for match in self._select_matches(text)}
+        for rule in self.rules:
+            if (rule.restore and rule.replacement not in (existing_mapping or {})
+                    and any(rule.replacement in text for text in reference_texts)
+                    and rule.rule_id in matched_rules):
+                raise DictionaryPolicyAmbiguousRequestError(
+                    f"replacement already present for rule {rule.rule_id}"
+                )
+
+    def plan_request(self, texts, existing_mapping=None, *, reference_texts=None):
+        """Allocate unambiguous aliases without interpreting pre-existing literals."""
+        from .dictionary_request_plan import build_request_plan
+        return build_request_plan(self, texts, existing_mapping, reference_texts=reference_texts)
+
     def apply(
         self, text: str, existing_mapping: dict[str, str] | None = None,
+        reserved_placeholders=(), *, request_plan=None,
     ) -> DictionarySubstitutionResult:
         """Return substituted text, restore mapping, and replacement spans."""
         if not text or not self.rules:
@@ -175,7 +194,10 @@ class DictionarySubstitutionPolicy:
         if not matches:
             return DictionarySubstitutionResult(text, {}, (), {})
 
-        self._raise_if_ambiguous_original_replacement(text, matches, existing_mapping)
+        if request_plan is None:
+            self._raise_if_ambiguous_original_replacement(text, matches, existing_mapping)
+        elif request_plan.policy is not self:
+            raise DictionaryPolicyAmbiguousRequestError('Dictionary plan belongs to another policy')
 
         parts: list[str] = []
         mapping: dict[str, str] = {}
@@ -191,12 +213,17 @@ class DictionarySubstitutionPolicy:
             output_length += len(unchanged)
             replacement_start = output_length
             replacement = match.rule.replacement
-            if match.rule.restore and existing_mapping is not None:
+            if match.rule.restore and request_plan is not None:
+                replacement = request_plan.replacement(match.rule, match.original)
                 if replacement in occupied and occupied[replacement] != match.original:
+                    raise DictionaryPolicyAmbiguousRequestError('Dictionary planned binding conflict')
+            if match.rule.restore:
+                if request_plan is None and replacement in occupied and occupied[replacement] != match.original:
                     rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
                     index = 1
                     replacement = f"<DICT_{rule_name}_{index}>"
-                    while replacement in occupied or replacement in text:
+                    while (replacement in occupied or replacement in text
+                           or replacement in reserved_placeholders):
                         index += 1
                         replacement = f"<DICT_{rule_name}_{index}>"
                 occupied[replacement] = match.original

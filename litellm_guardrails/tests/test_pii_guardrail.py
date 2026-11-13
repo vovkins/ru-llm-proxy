@@ -2256,10 +2256,7 @@ class TestPreCallHook:
         guardrail._redis = _mock_redis()
 
         with patch.object(guardrail, "_analyze_text", AsyncMock()) as analyze:
-            with pytest.raises(
-                RuntimeError,
-                match="Dictionary substitution ambiguous request failed",
-            ):
+            with pytest.raises(ProxyException) as caught:
                 await guardrail.async_pre_call_hook(
                     user_api_key_dict=MagicMock(),
                     cache=MagicMock(),
@@ -2273,6 +2270,8 @@ class TestPreCallHook:
                     },
                 )
 
+        assert caught.value.status_code == 422
+        assert caught.value.type == "dictionary_substitution_ambiguous"
         analyze.assert_not_called()
 
     @pytest.mark.asyncio
@@ -4900,7 +4899,7 @@ class TestPreCallHook:
                     ],
                 },
                 "anthropic_messages",
-                [],
+                ['{"query": "clean"}'],
             ),
             (
                 {
@@ -4920,7 +4919,7 @@ class TestPreCallHook:
                     ],
                 },
                 "anthropic_messages",
-                [],
+                ['{"query": "clean"}'],
             ),
         ],
         ids=[

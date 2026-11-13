@@ -28,6 +28,10 @@ _BAD_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _KEY_SEPARATOR = re.compile(r"\s*:")
 _NUMBERED_SOURCE_LINE = re.compile(r"[ \t]*([1-9][0-9]{0,8}):(?:[ \t]+(.*))?\Z")
 MAX_NUMBERED_PARAGRAPH_CHARS = 2048
+MAX_INLINE_VALUE_CHARS = 2048
+_INLINE_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,127}[ \t]*=(?!=)[ \t]*(?=\S)")
+_LEGAL_ROLE_FIELD = re.compile(r'(?i)(?<![\w.-])(?:исполнитель|поставщик|заказчик|компания|организация|company|organization)[ \t\u00a0]{0,16}[:=][ \t\u00a0]{0,16}\Z')
+_LEGAL_ROLE_END = re.compile(r'[ \t\u00a0]{0,16}(?:\.[ \t\u00a0]{0,16})?(?=\r|\n|\u2028|\u2029|\Z)')
 _TICKS = re.compile(r"`+")
 _INLINE_CODE = re.compile(r"(?<![\\`])(`+)(?!`)[^`\r\n\u2028\u2029]+\1(?!`)")
 _GROUP_MARKS = re.compile(r"""[(){}\[\]"'\u00ab\u00bb\u201c\u201d\u2018\u2019]""")
@@ -75,6 +79,14 @@ class _Ranges:
             left, right = self.ranges[index]
             if start < right:
                 yield left, right
+
+
+class OrganizationValueBounds(tuple):
+    """A tuple-compatible bound whose native field grammar proves its type."""
+    entity_type = "ORGANIZATION"
+
+    def __new__(cls, left, right):
+        return super().__new__(cls, (left, right))
 
 
 def _references(text):
@@ -167,8 +179,13 @@ def _plain_fenced_paragraph(text):
 
 
 def _inline_syntax(text, fences, strings):
+    # A quoted argument wholly inside a closed Markdown code span belongs to
+    # that span. Only enclosing/crossing literals can own its delimiters.
+    # Keep those cases opaque instead of reinterpreting code inside string data.
     closed = _Ranges(m.span() for m in _INLINE_CODE.finditer(text)
-                     if not fences.intersects(*m.span()) and not strings.intersects(*m.span()))
+                     if not fences.intersects(*m.span())
+                     and all(m.start() <= left < right <= m.end()
+                             for left,right in strings.overlapping(*m.span())))
     unknown_start = next((m.start() for m in _TICKS.finditer(text)
                           if not any(index.containing(*m.span()) for index in (fences, strings, closed))),
                          len(text))
@@ -434,6 +451,9 @@ class BoundaryValues:
         self._numbered_paragraphs = None
         self._initial_persons = None
         self._parenthetical_inserts = None
+        self._inline_values = None
+        self._legal_organization_values = None
+        self._organization_field_names = None
 
     def _prepare(self):
         if self._prepared:
@@ -511,7 +531,7 @@ class BoundaryValues:
         bounds = self._structured_prose.containing(start, end)
         return bounds if self._not_document(bounds) else None
 
-    def resolve(self, start, end, *, entity_type=None):
+    def resolve(self, start, end, *, entity_type=None, allow_typed_fields=False):
         bounds = self._resolve_existing(start, end)
         if bounds is not None or not 0 <= start < end <= len(self.text):
             return bounds
@@ -548,6 +568,69 @@ class BoundaryValues:
         if self._not_document(insert):
             logger.debug("presidio_ner_boundary_resolved kind=numbered_parenthetical")
             return insert
+        # Last resort only: keep every previously successful resolver unchanged.
+        # A complete, bounded code value is safer than guessing a word edge in
+        # code. The enclosing backticks remain in the original source.
+        if self._inline_values is None:
+            closed, unknown_start = self._markup()
+            candidates = []
+            for left, right in closed.ranges:
+                if right > unknown_start:
+                    continue  # Earlier unsupported markup can still own this text.
+                width = len(re.match(r'`+', self.text[left:right]).group())
+                start_value, end_value = left + width, right - width
+                if not 0 < end_value - start_value <= MAX_INLINE_VALUE_CHARS:
+                    continue
+                body = self.text[start_value:end_value]
+                # Do not reinterpret JavaScript escapes/interpolation as plain
+                # Markdown; those need their own complete source grammar.
+                assignment = _INLINE_ASSIGNMENT.match(body)
+                if ('\\' in body or '${' in body or assignment is None):
+                    continue
+                start_value += assignment.end()
+                while end_value > start_value and self.text[end_value - 1] in ' \t':
+                    end_value -= 1
+                if start_value < end_value and self.text[start_value] != '=':
+                    candidates.append((start_value, end_value))
+            self._inline_values = _Ranges(candidates)
+        inline_value = self._inline_values.containing(start, end)
+        if self._not_document(inline_value):
+            logger.debug("presidio_ner_boundary_resolved kind=closed_inline_value")
+            return inline_value
+        if entity_type == "ORGANIZATION":
+            # Resolve an observed exact legal prefix only when an explicit
+            # company-role field owns a complete, closed name on the same line.
+            # This adds coverage; it never drops or shortens window evidence.
+            if self._legal_organization_values is None:
+                from result_merging import name_context_evidence
+                ranges={}
+                for c in name_context_evidence(self.text):
+                    if c.entity_type != "ORGANIZATION" or c.legal_form_end is None:
+                        continue
+                    prefix=self.text[max(0,c.start-96):c.start]
+                    if not _LEGAL_ROLE_FIELD.search(prefix):
+                        continue
+                    if not _LEGAL_ROLE_END.match(self.text,c.end):
+                        continue
+                    if c.end > unknown_start or any(index.intersects(c.start,c.end) for index in (self.string_owners,self.fences,inline,self.references)):
+                        continue
+                    ranges[c.start,c.legal_form_end]=(c.start,c.end)
+                self._legal_organization_values=ranges
+            legal_value=self._legal_organization_values.get((start,end))
+            if self._not_document(legal_value):
+                logger.debug("presidio_ner_boundary_resolved kind=legal_organization_field")
+                return legal_value
+        if allow_typed_fields and entity_type in {"PERSON", "ORGANIZATION"} and end <= unknown_start:
+            if self._organization_field_names is None:
+                from recognizers.organization_fields import organization_field_spans
+                self._organization_field_names = _Ranges(
+                    (left,right) for left,right in organization_field_spans(self.text)
+                    if right <= unknown_start and not any(index.intersects(left,right) for index in (self.fences,inline,self.references))
+                )
+            company_name = self._organization_field_names.containing(start,end)
+            if self._not_document(company_name):
+                logger.debug("presidio_ner_boundary_resolved kind=typed_company_name_field")
+                return OrganizationValueBounds(*company_name)
         return None
 
     def _resolve_existing(self, start, end):
