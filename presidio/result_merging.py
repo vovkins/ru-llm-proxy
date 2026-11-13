@@ -16,6 +16,7 @@ DETECTION_SOURCE_METADATA_KEY = "ru_llm_detection_source"
 NER_MODEL_METADATA_KEY = "ru_llm_ner_model"
 NER_BOUNDARY_CONTAINER_KEY = "ru_llm_ner_boundary_container"
 NER_PERSON_CONTROL_KEY = "ru_llm_ner_person_control"
+NER_LEGAL_ORGANIZATION_COMPLETION_KEY = "ru_llm_ner_legal_organization_completion"
 
 SOURCE_NER = "ner"
 SOURCE_NATIVE_CREDENTIAL = "native_credential"
@@ -162,12 +163,12 @@ _IDENTIFIER_CHARACTERS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 )
 # camelCase, ACRONYMWord, snake_case or letters mixed with digits.
-_IDENTIFIER_SHAPE_RE = re.compile(r"[a-z][A-Z]|[A-Z]{2}[a-z]|_|[A-Za-z][0-9]|[0-9][A-Za-z]")
 # Generic model predictions that never correct another detection's boundaries.
 _STATISTICAL_RECOGNIZERS = frozenset({"SpacyRecognizer"})
 # Rules that only add coverage; their open parts survive any overlap.
 _ADDITIVE_RECOGNIZERS = frozenset({"RuAddressChainRecognizer", "RuPassportExtRecognizer"})
 _LEGAL_FORM_RE = re.compile(r"(?:ООО|АО|ПАО|ОАО|ЗАО)", re.IGNORECASE)
+_LEGAL_VALUE_LINE_END = re.compile(r"[ \t\u00a0]{0,16}(?:\.[ \t\u00a0]{0,16})?(?=\r|\n|\u2028|\u2029|\Z)")
 _NAME_WORDS_RE = re.compile(r"[А-Яа-яЁё]+(?:[- \t\u00a0][А-Яа-яЁё]+){1,2}")
 _PERSON_FIELD_RE = re.compile(r"(?i)(?<!\w)(?:фио|ф\.и\.о\.)\s*[:=]\s*$")
 _PERSON_LABEL_RE = re.compile(
@@ -538,6 +539,8 @@ def merge_results(
         reference_spans = credential_reference_spans(text)
 
     code_identifiers = None
+    module_references = None
+    code_path_suffixes = None
     for result in results:
         source = detection_source(result)
         if not _valid_span(result, len(text)):
@@ -599,6 +602,43 @@ def merge_results(
                 )
             )
             continue
+        if source == SOURCE_NER and result.entity_type in {"AUTH_TOKEN", "LOGIN"} and text[result.start:result.end].startswith("@"):
+            if module_references is None:
+                from ner.code_symbols import javascript_module_spans
+                module_references = javascript_module_spans(text, strings)
+            if (result.start,result.end) in module_references:
+                value=text[result.start:result.end]
+                credential_spans=_quoted_login_value_spans(text,value,strings)
+                for left,right in credential_spans:
+                    valid_results.append(_copy_name(result,entity_type="LOGIN",start=left,end=right))
+                if credential_spans:
+                    decisions.append(MergeDecision("ner_credential_quoted_login_context_covered",SOURCE_NER,SOURCE_NER))
+                exclusive='\\' not in text
+                offset=text.find(value)
+                while exclusive and offset>=0:
+                    exclusive=(offset,offset+len(value)) in module_references
+                    offset=text.find(value,offset+len(value))
+                conflict=any(
+                    _spans_overlap(other.start,other.end,result.start,result.end) for other in results
+                    if other.entity_type != result.entity_type or detection_source(other) != SOURCE_NER
+                )
+                if exclusive and not conflict:
+                    decisions.append(MergeDecision("ner_module_reference_"+result.entity_type.lower()+"_suppressed",SOURCE_NONE,SOURCE_NER))
+                    continue
+        if source == SOURCE_NER and result.entity_type == "ORGANIZATION" and text.lstrip().startswith('{'):
+            if code_path_suffixes is None:
+                from ner.code_paths import json_code_path_suffixes
+                code_path_suffixes = json_code_path_suffixes(text)
+            owned = next(((a,b,c) for a,b,c in code_path_suffixes if a <= result.start < result.end <= c),None)
+            if owned is not None and not any(
+                _spans_overlap(other.start,other.end,owned[0],owned[2]) for other in results
+                if other.entity_type != "ORGANIZATION" or detection_source(other) != SOURCE_NER
+            ) and result.end > owned[1]:
+                if result.start >= owned[1]:
+                    decisions.append(MergeDecision("ner_code_path_suffix_suppressed",SOURCE_NONE,SOURCE_NER))
+                    continue
+                result=_copy_name(result,end=owned[1])
+                decisions.append(MergeDecision("ner_code_path_suffix_preserved",SOURCE_NER,SOURCE_NER))
         identifier = (
             _cut_code_identifier(text, result.start, result.end)
             if source == SOURCE_NER and result.entity_type == "ORGANIZATION"
@@ -675,7 +715,8 @@ def merge_results(
             )
 
     valid_results, name_decisions = _refine_names(
-        text, valid_results, frozenset(sentence_starts), score_threshold
+        text, valid_results, frozenset(sentence_starts), score_threshold, _strings=strings,
+        allow_legal_completion=not requested_entities or "ORGANIZATION" in requested_entities,
     )
     decisions.extend(name_decisions)
     # Declared containers keep their span from the cascade even when the request
@@ -879,30 +920,48 @@ def _balance_name_quotes(text: str, start: int, end: int) -> tuple[int, int]:
     return start, end
 
 
+def _quoted_login_value_spans(text, value, strings):
+    """Confirm the already observed NER value in exact, owned login literals.
+
+    This does not change native login formats or treat arbitrary path-like
+    strings as credentials. The same value must already have NER evidence.
+    """
+    from recognizers.credential_rules import LoginRecognizer
+    spans=[]
+    for match in LoginRecognizer.RULES[0].regex.finditer(text):
+        raw=match.group('value')
+        if raw[:1] not in {"'",'"'} or raw[-1:]!=raw[:1] or raw[1:-1]!=value:
+            continue
+        left,right=match.start('value')+1,match.end('value')-1
+        literal=strings.at(left)
+        if literal is not None and (literal.content_start,literal.content_end)==(left,right):
+            spans.append((left,right))
+    return tuple(spans)
+
+
 def _cut_code_identifier(text: str, start: int, end: int) -> tuple[int, int] | None:
     """Return a containing Latin identifier, without asserting that it is code.
 
-    Shape only identifies a possible cut. The caller separately requires a
+    The range only identifies a possible cut. The caller separately requires a
     proven code-symbol span and keeps any run touched by another detection.
     Whole words and Cyrillic text are never suppressed by this rule.
     """
-    for inside, outside in ((start, start - 1), (end - 1, end)):
-        if not 0 <= outside < len(text) or not start <= inside < end:
-            continue
-        if text[inside] not in _IDENTIFIER_CHARACTERS or text[outside] not in _IDENTIFIER_CHARACTERS:
-            continue
-        run_start, run_end = min(inside, outside), max(inside, outside) + 1
-        while run_start > 0 and text[run_start - 1] in _IDENTIFIER_CHARACTERS:
-            run_start -= 1
-        while run_end < len(text) and text[run_end] in _IDENTIFIER_CHARACTERS:
-            run_end += 1
-        if _IDENTIFIER_SHAPE_RE.search(text[run_start:run_end]):
-            return run_start, run_end
+    if not 0 <= start < end <= len(text):
+        return None
+    if any(ch not in _IDENTIFIER_CHARACTERS for ch in text[start:end]):
+        return None
+    run_start, run_end = start, end
+    while run_start > 0 and text[run_start - 1] in _IDENTIFIER_CHARACTERS:
+        run_start -= 1
+    while run_end < len(text) and text[run_end] in _IDENTIFIER_CHARACTERS:
+        run_end += 1
+    if (run_start, run_end) != (start, end) and text[run_start:run_end].isidentifier():
+        return run_start, run_end
     return None
 
 
 def _code_identifier_spans(text: str, strings: StringSpans) -> set[tuple[int, int]]:
-    """Prove local symbol roles in valid Python and explicit Python fences.
+    """Prove local symbol roles in valid Python/JS/TS and explicit code fences.
 
     A string value/comment, bare word, or an unrelated code block is not proof.
     Parsing never evaluates source; invalid/unknown syntax conservatively keeps
@@ -1017,6 +1076,8 @@ def _code_identifier_spans(text: str, strings: StringSpans) -> set[tuple[int, in
             # ast.parse already validated syntax; keep any uncertain names.
             continue
         spans.update(proved)
+    from ner.code_symbols import javascript_symbol_spans
+    spans.update(javascript_symbol_spans(text, strings))
     return spans
 
 
@@ -1184,6 +1245,7 @@ def _refine_names(
     results: list[RecognizerResult],
     sentence_starts: frozenset[int],
     score_threshold: float,
+    *, _strings: StringSpans | None = None, allow_legal_completion: bool = True,
 ) -> tuple[list[RecognizerResult], list[MergeDecision]]:
     decisions = []
     boundaries = sorted(sentence_starts)
@@ -1206,7 +1268,8 @@ def _refine_names(
             unique_names[key] = result
     results = [*retained, *unique_names.values()]
     results, context_decisions = _refine_explicit_name_values(
-        text, results, score_threshold
+        text, results, score_threshold, _strings=_strings,
+        allow_legal_completion=allow_legal_completion,
     )
     decisions.extend(context_decisions)
     refined = []
@@ -1325,7 +1388,8 @@ def _refine_names(
 
 
 def _refine_explicit_name_values(
-    text: str, results: list[RecognizerResult], score_threshold: float
+    text: str, results: list[RecognizerResult], score_threshold: float,
+    *, _strings: StringSpans | None = None, allow_legal_completion: bool = True,
 ) -> tuple[list[RecognizerResult], list[MergeDecision]]:
     decisions = []
     if not any(
@@ -1392,24 +1456,41 @@ def _refine_explicit_name_values(
         consumed = {id(r) for r in [*fragments, *removable_location]}
         if any(id(r) not in consumed for r in overlapping):
             continue
-        # All letters must already be accepted NER evidence. Only whitespace
-        # may be bridged, and a competing native credential always vetoes this.
+        # Generic name refinement only bridges whitespace. A legal company
+        # value has a separate bounded completion contract below; native
+        # credential conflicts have already vetoed both paths above.
         covered = bytearray(context.end - context.start)
         for fragment in fragments:
             covered[fragment.start - context.start : fragment.end - context.start] = (
                 b"\x01" * (fragment.end - fragment.start)
             )
-        if any(
+        incomplete = any(
             not covered[index] and not character.isspace()
             for index, character in enumerate(text[context.start : context.end])
-        ):
-            continue
+        )
+        legal_completion = False
+        if incomplete:
+            if not allow_legal_completion:
+                continue
+            if _strings is None:
+                _strings = StringSpans(text)
+            legal_completion = _can_complete_legal_organization(
+                text, context, fragments, covered, _strings,
+                ordered[bisect_right(starts, context.end):bisect_right(starts, context.end + 3)],
+            )
+            if not legal_completion:
+                continue
         anchor = min(legal_prefix or fragments, key=_priority_key)
         merged = _copy_name(
             anchor, entity_type=context.entity_type,
-            start=context.start, end=context.end,
+            start=min(r.start for r in fragments) if legal_completion else context.start, end=context.end,
             score=min(r.score for r in fragments),
         )
+        if legal_completion:
+            # This source value is now closed. Later generic name joining must
+            # not swallow an independent field or trim the confirmed company.
+            merged.recognition_metadata[NER_BOUNDARY_CONTAINER_KEY] = True
+            merged.recognition_metadata[NER_LEGAL_ORGANIZATION_COMPLETION_KEY] = True
         if any(is_boundary_container(r) for r in fragments):
             merged.recognition_metadata[NER_BOUNDARY_CONTAINER_KEY] = True
         removed.update(consumed)
@@ -1419,7 +1500,45 @@ def _refine_explicit_name_values(
                 MergeDecision("name_legal_prefix", SOURCE_NER, SOURCE_STRUCTURAL)
             )
         decisions.append(MergeDecision("name_explicit_value", SOURCE_NER, SOURCE_NER))
+        if legal_completion:
+            decisions.append(MergeDecision("organization_legal_value_completed", SOURCE_NER, SOURCE_NER))
     return [r for r in retained if id(r) not in removed] + replacements, decisions
+
+
+def _can_complete_legal_organization(text, context, fragments, covered, strings, following=()):
+    """Complete an existing bounded company value, never infer one from a header."""
+    legal_end = context.legal_form_end
+    if (context.entity_type != "ORGANIZATION" or legal_end is None
+            or any(is_boundary_container(r) for r in fragments)
+            or any(_LEGAL_FORM_RE.fullmatch(word) for word in text[legal_end:context.end].split())):
+        return False
+    literal = strings.at(context.start)
+    if not (_LEGAL_VALUE_LINE_END.match(text, context.end)
+            or literal is not None and context.end == literal.content_end):
+        return False
+    name_evidence = [r for r in fragments if r.entity_type in _NAME_TYPES and r.end > legal_end]
+    if not name_evidence:
+        return False
+    # Preserve legacy joins which already protect an adjacent span. This
+    # completion is not permission to unmask their existing separator.
+    if any(
+        left.end == context.end and left.entity_type in _JOINED_NAME_TYPES
+        and right.entity_type == left.entity_type and _is_statistical(right)
+        and not is_boundary_container(right)
+        and strings.same_value(left.start, right.start)
+        and _NAME_JOIN_GAP_RE.fullmatch(text[context.end:right.start])
+        for left in fragments for right in following
+    ):
+        return False
+    prefix_observed = all(covered[i] for i in range(legal_end - context.start)) and any(
+        r.entity_type == "ORGANIZATION" and r.start == context.start and r.end >= legal_end
+        for r in fragments
+    )
+    full_name_observed = all(
+        covered[i] or char.isspace()
+        for i, char in enumerate(text[context.start:context.end]) if context.start + i >= legal_end
+    )
+    return prefix_observed or full_name_observed
 
 
 def _valid_span(result: RecognizerResult, text_length: int) -> bool:

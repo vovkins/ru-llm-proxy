@@ -164,8 +164,22 @@ class DictionarySubstitutionPolicy:
             ) from exc
         return cls.from_json_text(raw_config)
 
+    def validate_request(self, texts, existing_mapping=None, *, reference_texts=None) -> None:
+        """Check ambiguity across fields before any request mutation."""
+        texts = tuple(texts)
+        reference_texts = texts if reference_texts is None else tuple(reference_texts)
+        matched_rules = {match.rule.rule_id for text in texts for match in self._select_matches(text)}
+        for rule in self.rules:
+            if (rule.restore and rule.replacement not in (existing_mapping or {})
+                    and any(rule.replacement in text for text in reference_texts)
+                    and rule.rule_id in matched_rules):
+                raise DictionaryPolicyAmbiguousRequestError(
+                    f"replacement already present for rule {rule.rule_id}"
+                )
+
     def apply(
         self, text: str, existing_mapping: dict[str, str] | None = None,
+        reserved_placeholders=(),
     ) -> DictionarySubstitutionResult:
         """Return substituted text, restore mapping, and replacement spans."""
         if not text or not self.rules:
@@ -191,12 +205,13 @@ class DictionarySubstitutionPolicy:
             output_length += len(unchanged)
             replacement_start = output_length
             replacement = match.rule.replacement
-            if match.rule.restore and existing_mapping is not None:
+            if match.rule.restore:
                 if replacement in occupied and occupied[replacement] != match.original:
                     rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
                     index = 1
                     replacement = f"<DICT_{rule_name}_{index}>"
-                    while replacement in occupied or replacement in text:
+                    while (replacement in occupied or replacement in text
+                           or replacement in reserved_placeholders):
                         index += 1
                         replacement = f"<DICT_{rule_name}_{index}>"
                 occupied[replacement] = match.original

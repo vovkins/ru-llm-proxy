@@ -30,9 +30,15 @@ from litellm_guardrails.dictionary_policy import (
     DictionarySubstitutionPolicy,
     DictionarySubstitutionResult,
 )
-from litellm_guardrails.restoration_mapping import (
-    RestorationMapping, decode_mapping, encode_mapping, json_atom_spans, json_escape_spans,
+from litellm_guardrails.anthropic_restoration import (
+    AnthropicStreamRestorer, AnthropicToolInputTarget, SSEEventRestorer, is_anthropic_message,
+    message_targets as anthropic_message_targets, restore_tool_input, normalize_messages_bridge_output,
 )
+from litellm_guardrails.restoration_mapping import (
+    RestorationMapping, decode_mapping, encode_mapping, json_atom_spans, json_escape_spans, json_key_spans,
+    RestorationKeyCollision,
+)
+
 from litellm_guardrails.streaming_restoration import (
     ResponsesStreamNormalizer,
     StreamingResponseRestorer,
@@ -40,7 +46,9 @@ from litellm_guardrails.streaming_restoration import (
     restore_text,
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
-from litellm_guardrails.request_cancellation import ClientDisconnected, until_client_disconnect
+from litellm_guardrails.request_cancellation import (
+    ClientDisconnected, until_client_disconnect, register_request_cleanup, unregister_request_cleanup,
+)
 from litellm_guardrails.responses_state import (
     STATE_METADATA_KEY,
     ResponsesStateError,
@@ -194,6 +202,7 @@ ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYZER_BUDGET_HEADER = "X-Ru-LLM-Analysis-Budget-Seconds"
 _ANALYSIS_DEADLINE: ContextVar[Optional[float]] = ContextVar("pii_analysis_deadline", default=None)
+_DICTIONARY_RESERVED_PLACEHOLDERS = ContextVar('dictionary_reserved_placeholders', default=frozenset())
 _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int, bool]]] = ContextVar(
     "ru_llm_proxy_analyzer_call_context",
     default=None,
@@ -1258,6 +1267,20 @@ class RuPIIGuardrail(CustomGuardrail):
             error_type=type(error).__name__,
         )
         if self.dictionary_substitutions_failure_mode == "fail_closed":
+            if operation == "ambiguous request":
+                error = {
+                    "message": "Request contains conflicting original terms and dictionary aliases. Start a clean history or remove the ambiguous alias text.",
+                    "type": "dictionary_substitution_ambiguous",
+                    "code": "dictionary_substitution_ambiguous",
+                    "details": {"retryable": False},
+                }
+                exc = ProxyException(
+                    message=error["message"], type=error["type"], code=422,
+                    param={"dictionary_substitution": {"code": error["code"], "details": error["details"]}},
+                    provider_specific_fields={"error": error},
+                )
+                exc.status_code = 422
+                raise exc from None
             if operation in {"mapping save", "mapping load", "stream mapping load"}:
                 self._raise_dependency_unavailable(operation, error)
             raise RuntimeError(
@@ -1473,6 +1496,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 str,
             ):
                 targets.append((block, "text"))
+            elif (block_type in {"tool_use", "server_tool_use"}
+                  and isinstance(block.get("input"), dict) and block["input"]):
+                targets.append((AnthropicToolInputTarget(block), "arguments"))
             elif block_type == "tool_result":
                 content = block.get("content")
                 if isinstance(content, str):
@@ -2832,6 +2858,7 @@ class RuPIIGuardrail(CustomGuardrail):
         entities: list[dict],
         entity_counts: Optional[dict[str, int]] = None,
         exclusion_spans: Optional[tuple[tuple[int, int], ...]] = None,
+        reserved_placeholders=None,
     ) -> tuple[str, dict[str, str]]:
         """Mask text with unique placeholders and return placeholder mapping."""
         if not entities:
@@ -2839,6 +2866,9 @@ class RuPIIGuardrail(CustomGuardrail):
 
         if entity_counts is None:
             entity_counts = {}
+        reserved_placeholders = set(reserved_placeholders or ()) | set(
+            re.findall(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', text)
+        )
 
         normalized_entities = self._normalize_entities(
             text,
@@ -2887,6 +2917,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 # Separate findings inside one numeric literal share one mask.
                 continue
             placeholder = self._next_placeholder(entity_type, entity_counts)
+            while placeholder in reserved_placeholders:
+                placeholder = self._next_placeholder(entity_type, entity_counts)
             parts.append(text[last_end:start])
             parts.append(json.dumps(placeholder) if is_number else placeholder)
             if is_number:
@@ -2897,6 +2929,9 @@ class RuPIIGuardrail(CustomGuardrail):
                     mapping.add_string(placeholder, text[start:end])
                 else:
                     mapping[placeholder] = text[start:end]
+                if (index >= 0 and end <= strings[index][1]
+                        and re.compile(r'[ \t\r\n]*:').match(text, strings[index][1] + 1)):
+                    mapping.json_keys.add(placeholder)
             last_end = end
 
         parts.append(text[last_end:])
@@ -3103,7 +3138,9 @@ class RuPIIGuardrail(CustomGuardrail):
             or not self.dictionary_substitution_policy.rules
         ):
             return DictionarySubstitutionResult(text, {}, (), {})
-        return self.dictionary_substitution_policy.apply(text, existing_mapping)
+        return self.dictionary_substitution_policy.apply(
+            text, existing_mapping, _DICTIONARY_RESERVED_PLACEHOLDERS.get(),
+        )
 
     @staticmethod
     def _merge_dictionary_rule_counts(
@@ -3174,6 +3211,7 @@ class RuPIIGuardrail(CustomGuardrail):
         """Save PII mapping to Redis with TTL."""
         if not mapping:
             return
+        register_request_cleanup("mapping:" + request_id, lambda: self._delete_mapping(request_id))
         r = await self._get_redis()
         started_at = time.perf_counter()
         try:
@@ -3207,6 +3245,7 @@ class RuPIIGuardrail(CustomGuardrail):
         started_at = time.perf_counter()
         try:
             await r.delete(f"pii_mapping:{request_id}")
+            unregister_request_cleanup("mapping:" + request_id)
         finally:
             PII_REDIS_LATENCY.labels(operation="delete").observe(
                 time.perf_counter() - started_at
@@ -3816,6 +3855,10 @@ class RuPIIGuardrail(CustomGuardrail):
             if not isinstance(data.get("litellm_metadata"), dict):
                 data["litellm_metadata"] = {}
             data["litellm_metadata"][TRANSPORT_ID] = request_id
+            register_request_cleanup(
+                "stream:" + request_id,
+                lambda: close_request_streams({"litellm_metadata": {TRANSPORT_ID: request_id}}),
+            )
         self._log_gateway_request_shape(
             request_id=request_id,
             data=data,
@@ -3879,6 +3922,14 @@ class RuPIIGuardrail(CustomGuardrail):
         dictionary_mapping = RestorationMapping()
         dictionary_rule_counts: dict[str, int] = {}
         entity_counts: dict[str, int] = placeholder_counters(inherited_mapping)
+        # Reserve literal masks in every field, without parsing attacker-sized
+        # integer suffixes. Inherited masks still keep their saved meaning.
+        provider_texts = self._iter_provider_bound_final_payload_texts(data)
+        reserved_placeholders = {
+            match.group() for text in provider_texts
+            for match in re.finditer(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', text)
+        }
+        dictionary_preflight_done = False
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
@@ -3892,11 +3943,21 @@ class RuPIIGuardrail(CustomGuardrail):
                 continue
 
             try:
-                dictionary_result = self._apply_dictionary_substitutions(
-                    content,
-                    {**full_mapping, **dictionary_mapping, **pii_mapping}
-                    if stateful else None,
-                )
+                if not dictionary_preflight_done:
+                    if self.dictionary_substitutions_enabled:
+                        self.dictionary_substitution_policy.validate_request(
+                            (target[field] for target, field in request_targets),
+                            inherited_mapping,
+                            reference_texts=provider_texts,
+                        )
+                    dictionary_preflight_done = True
+                reserved_token = _DICTIONARY_RESERVED_PLACEHOLDERS.set(reserved_placeholders)
+                try:
+                    dictionary_result = self._apply_dictionary_substitutions(
+                        content, {**full_mapping, **dictionary_mapping, **pii_mapping},
+                    )
+                finally:
+                    _DICTIONARY_RESERVED_PLACEHOLDERS.reset(reserved_token)
                 provider_content = dictionary_result.text
                 if dictionary_result.rule_counts:
                     self._merge_dictionary_rule_counts(
@@ -3904,7 +3965,18 @@ class RuPIIGuardrail(CustomGuardrail):
                         dictionary_result.rule_counts,
                     )
                 if dictionary_result.mapping:
-                    dictionary_mapping.update(dictionary_result.mapping)
+                    current_dictionary_mapping = RestorationMapping(dictionary_result.mapping)
+                    key_spans = json_key_spans(provider_content)
+                    key_starts = [start for start, _end in key_spans]
+                    for left, right in dictionary_result.replacement_spans:
+                        key_index = bisect_right(key_starts, left) - 1
+                        if key_index >= 0 and right <= key_spans[key_index][1]:
+                            current_dictionary_mapping.json_keys.add(provider_content[left:right])
+                    current_dictionary_mapping.json_keys.update(
+                        (dictionary_mapping.json_keys | full_mapping.json_keys)
+                        & current_dictionary_mapping.keys()
+                    )
+                    dictionary_mapping.update(current_dictionary_mapping)
                     if stateful:
                         for entity, index in placeholder_counters(dictionary_mapping).items():
                             entity_counts[entity] = max(entity_counts.get(entity, 0), index)
@@ -3977,6 +4049,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     entities,
                     entity_counts,
                     exclusion_spans=dictionary_result.replacement_spans,
+                    reserved_placeholders=(reserved_placeholders
+                                           | dictionary_mapping.keys() | full_mapping.keys()),
                 )
                 if mapping:
                     pii_mapping.update(mapping)
@@ -4258,6 +4332,13 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return data
 
+    async def async_post_call_success_deployment_hook(self, request_data, response, call_type):
+        """Normalize native SDK output before the Messages bridge consumes it."""
+        if self.event_hook in (None, "post_call"):
+            normalize_messages_bridge_output(request_data, response, call_type)
+        # In-place normalization keeps all other deployment callbacks running.
+        return None
+
     async def async_post_call_success_hook(
         self,
         data: dict,
@@ -4268,7 +4349,7 @@ class RuPIIGuardrail(CustomGuardrail):
         response_supported = isinstance(
             response,
             litellm.ModelResponse,
-        ) or self._is_responses_api_response(response)
+        ) or self._is_responses_api_response(response) or is_anthropic_message(response)
         if data.get("stream") is True and (
             self._streaming_restoration_done(data)
             or not response_supported
@@ -4312,6 +4393,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     targets.extend(self._iter_response_text_targets(message))
             elif self._is_responses_api_response(response):
                 targets = self._iter_responses_api_text_targets(response)
+            elif is_anthropic_message(response):
+                targets = anthropic_message_targets(response)
             else:
                 PII_POST_CALLS.labels(result="unsupported_response").inc()
                 _safe_log(
@@ -4326,14 +4409,21 @@ class RuPIIGuardrail(CustomGuardrail):
             for target, field in targets:
                 original_value = self._get_container_field(target, field)
                 replace = (
-                    restore_arguments
+                    restore_tool_input
+                    if field == "input" and isinstance(original_value, dict)
+                    else restore_arguments
                     if field == "arguments"
                     else self._replace_placeholders
                 )
-                restored_value = replace(
-                    original_value,
-                    mapping,
-                )
+                try:
+                    restored_value = replace(original_value, mapping)
+                except RestorationKeyCollision:
+                    error = ProxyException(
+                        message="Restoring tool arguments would produce duplicate JSON keys.",
+                        type="invalid_provider_response", param=None, code=502,
+                    )
+                    error.status_code = 502
+                    raise error from None
                 if restored_value != original_value:
                     restored_fields += 1
                     self._set_container_field(target, field, restored_value)
@@ -4417,6 +4507,8 @@ class RuPIIGuardrail(CustomGuardrail):
         request_id = self._get_response_request_id(request_data)
         iterator = response.__aiter__()
         restorer = None
+        anthropic = None
+        wire = None
         normalizer = ResponsesStreamNormalizer()
         mapping = {}
         cleanup_mapping = bool(request_id)
@@ -4445,10 +4537,19 @@ class RuPIIGuardrail(CustomGuardrail):
                             request_id=request_id,
                         )
                         self._mark_streaming_restoration_done(request_data)
+            # Validate the native tool protocol even when this request contains
+            # no PII. Otherwise malformed JSON could become an empty tool call.
+            anthropic = AnthropicStreamRestorer(mapping)
+            def process_event(event):
+                event = normalizer.prepare(event)
+                if anthropic.accepts(event):
+                    return anthropic.process(event)
+                return restorer.process(event) if restorer else [event]
+            wire = SSEEventRestorer(process_event)
             async for item in iterator:
                 assert_request_stream_valid(request_data)
-                item = normalizer.prepare(item)
-                for restored_item in restorer.process(item) if restorer else [item]:
+                restored_items = wire.feed(item) if isinstance(item, (bytes, bytearray, str)) else process_event(item)
+                for restored_item in restored_items:
                     normalizer.stamp(restored_item)
                     if self._get_container_field(restored_item, "type") == "response.completed":
                         completed = self._get_container_field(restored_item, "response")
@@ -4463,10 +4564,22 @@ class RuPIIGuardrail(CustomGuardrail):
                         )
                     yield restored_item
             assert_request_stream_valid(request_data)
+            if wire:
+                for item in wire.finish():
+                    yield item
             if restorer:
                 for item in restorer.finish():
                     yield item
+        except RestorationKeyCollision:
+            error = ProxyException(
+                message="Restoring tool arguments would produce duplicate JSON keys.",
+                type="invalid_provider_response", param=None, code=502,
+            )
+            error.status_code = 502
+            raise error from None
         finally:
+            if anthropic:
+                anthropic.finish()
             if restorer:
                 restorer.finish()
                 self._mark_streaming_restoration_done(request_data)
@@ -4480,18 +4593,20 @@ class RuPIIGuardrail(CustomGuardrail):
         if restorer is None:
             return
 
+        terminated = restorer.terminated or anthropic.terminated
+        restored_fields = restorer.restored_fields + anthropic.restored_fields
         result = (
-            "incomplete" if not restorer.terminated
-            else "restored" if restorer.restored_fields else "no_placeholders"
+            "incomplete" if not terminated
+            else "restored" if restored_fields else "no_placeholders"
         )
         PII_POST_CALLS.labels(result=result).inc()
         _safe_log(
             logging.INFO,
-            "pii_guardrail_stream_restored" if restorer.terminated
+            "pii_guardrail_stream_restored" if terminated
             else "pii_guardrail_stream_incomplete",
             request_id=request_id,
             mapping_size=len(restorer.mapping),
-            restored_fields=restorer.restored_fields,
+            restored_fields=restored_fields,
         )
 
     async def _cleanup_stream(self, iterator, request_id, cleanup_mapping):

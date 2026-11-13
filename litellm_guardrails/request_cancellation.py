@@ -1,6 +1,10 @@
 """Forward ASGI events unchanged and cancel only our pre-provider work."""
 
 import asyncio
+import json
+import logging
+
+import anyio
 from collections import deque
 from contextvars import ContextVar
 from typing import Awaitable, Callable, TypeVar
@@ -11,6 +15,37 @@ _DISCONNECTED: ContextVar[asyncio.Event | None] = ContextVar(
     "ru_pii_http_disconnected", default=None,
 )
 _T = TypeVar("_T")
+_REQUEST_MAPPING_CLEANUPS: ContextVar[dict | None] = ContextVar(
+    "ru_pii_request_mapping_cleanups", default=None,
+)
+
+
+def register_request_cleanup(request_id: str, callback) -> None:
+    cleanups = _REQUEST_MAPPING_CLEANUPS.get()
+    if cleanups is not None:
+        cleanups[request_id] = callback
+
+
+def unregister_request_cleanup(request_id: str) -> None:
+    cleanups = _REQUEST_MAPPING_CLEANUPS.get()
+    if cleanups is not None:
+        cleanups.pop(request_id, None)
+
+
+async def _finish_mapping_cleanups(cleanups: dict) -> None:
+    pending = tuple(cleanups.items())
+    cleanups.clear()
+    for request_id, callback in pending:
+        try:
+            with anyio.fail_after(2, shield=True):
+                await callback()
+        except Exception as error:
+            logging.getLogger(__name__).warning(json.dumps({
+                "event": "pii_request_cleanup_failed", "request_id": request_id.rsplit(":", 1)[-1],
+                "operation": request_id.split(":", 1)[0],
+                "error_type": type(error).__name__,
+            }))
+
 
 
 class ClientDisconnected(Exception):
@@ -93,12 +128,20 @@ class RequestCancellationMiddleware:
             return await self.app(scope, receive, send)
         disconnected = asyncio.Event()
         token = _DISCONNECTED.set(disconnected)
+        cleanups = {}
+        cleanup_token = _REQUEST_MAPPING_CLEANUPS.set(cleanups)
         relay = _ReceiveRelay(receive, disconnected)
         reader = asyncio.create_task(relay.pump(), name="ru-pii-asgi-receive")
         try:
             return await self.app(scope, relay.receive, send)
         finally:
             try:
-                await finish_stream_cleanup(_stop_tasks(reader))
+                async def cleanup():
+                    try:
+                        await _stop_tasks(reader)
+                    finally:
+                        await _finish_mapping_cleanups(cleanups)
+                await finish_stream_cleanup(cleanup())
             finally:
+                _REQUEST_MAPPING_CLEANUPS.reset(cleanup_token)
                 _DISCONNECTED.reset(token)

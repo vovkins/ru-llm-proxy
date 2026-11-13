@@ -1084,25 +1084,37 @@ class TritonNERRecognizer:
                     )
                     windows_processed += extra_windows
                     if confirmed is None:
-                        self._raise_unresolved_boundary(
-                            remaining, initial_windows_processed,
-                            recovery_windows_processed + extra_windows, windows_processed,
-                        )
-                    # The confirmed mask fully subsumes the unresolved evidence;
-                    # re-run the normal resolver on every other prediction unchanged.
-                    cluster, = remaining.unresolved_clusters
-                    retained = [p for p in remaining.predictions if p not in cluster.predictions]
-                    try:
-                        entity_predictions, boundary_results = self._resolve_boundary_values(
-                            normalized, retained, (), boundary_context,
-                            cancellation_event=cancellation_event,
-                        )
-                    except NERWindowBoundaryError:
-                        self._raise_unresolved_boundary(
-                            remaining, initial_windows_processed,
-                            recovery_windows_processed + extra_windows, windows_processed,
-                        )
-                    boundary_results.append(confirmed)
+                        # Native field proof is a final fallback. Keep the
+                        # existing PERSON control first, including its wider
+                        # confirmed masks on all previously successful paths.
+                        try:
+                            entity_predictions, boundary_results = self._resolve_boundary_values(
+                                normalized, remaining.predictions, (),
+                                boundary_context or BoundaryContext(BoundaryValues(text)),
+                                cancellation_event=cancellation_event,
+                                allow_typed_fields=True,
+                            )
+                        except NERWindowBoundaryError:
+                            self._raise_unresolved_boundary(
+                                remaining, initial_windows_processed,
+                                recovery_windows_processed + extra_windows, windows_processed,
+                            )
+                    else:
+                        # The confirmed mask fully subsumes the unresolved evidence;
+                        # re-run the normal resolver on every other prediction unchanged.
+                        cluster, = remaining.unresolved_clusters
+                        retained = [p for p in remaining.predictions if p not in cluster.predictions]
+                        try:
+                            entity_predictions, boundary_results = self._resolve_boundary_values(
+                                normalized, retained, (), boundary_context,
+                                cancellation_event=cancellation_event,
+                            )
+                        except NERWindowBoundaryError:
+                            self._raise_unresolved_boundary(
+                                remaining, initial_windows_processed,
+                                recovery_windows_processed + extra_windows, windows_processed,
+                            )
+                        boundary_results.append(confirmed)
                 except (NERInferenceCancelled, NERBackendError):
                     raise
                 except Exception as recovery_error:
@@ -1218,7 +1230,7 @@ class TritonNERRecognizer:
         ) from exc
 
     def _resolve_boundary_values(self, normalized, predictions, recovery, context,
-                                 *, cancellation_event=None):
+                                 *, cancellation_event=None, allow_typed_fields=False):
         combined = list(dict.fromkeys([*predictions, *recovery]))
         try:
             return merge_window_predictions(combined), []
@@ -1234,7 +1246,10 @@ class TritonNERRecognizer:
             right = max(p.entity.end for p in cluster.predictions)
             start, end = normalized.to_original_span(left, right)
             start, end = context.offset + start, context.offset + end
-            bounds = context.values.resolve(start, end, entity_type=cluster.entity_type)
+            if allow_typed_fields and isinstance(context.values, BoundaryValues):
+                bounds = context.values.resolve(start,end,entity_type=cluster.entity_type,allow_typed_fields=True)
+            else:
+                bounds = context.values.resolve(start,end,entity_type=cluster.entity_type)
             _raise_if_cancelled(cancellation_event)
             # The final merge checks the emitted masks. Check the original
             # envelope here, before replacing its initial and shifted evidence.
@@ -1244,7 +1259,7 @@ class TritonNERRecognizer:
                 continue
             removed.update(cluster.predictions)
             results.append(RecognizerResult(
-                entity_type=cluster.entity_type,
+                entity_type=getattr(bounds, "entity_type", cluster.entity_type),
                 start=bounds[0] - context.offset, end=bounds[1] - context.offset,
                 score=min(p.entity.score for p in cluster.predictions),
                 recognition_metadata={DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,
