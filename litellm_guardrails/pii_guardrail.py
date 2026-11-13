@@ -203,6 +203,7 @@ ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYZER_BUDGET_HEADER = "X-Ru-LLM-Analysis-Budget-Seconds"
 _ANALYSIS_DEADLINE: ContextVar[Optional[float]] = ContextVar("pii_analysis_deadline", default=None)
 _DICTIONARY_RESERVED_PLACEHOLDERS = ContextVar('dictionary_reserved_placeholders', default=frozenset())
+_DICTIONARY_REQUEST_PLAN = ContextVar('dictionary_request_plan', default=None)
 _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int, bool]]] = ContextVar(
     "ru_llm_proxy_analyzer_call_context",
     default=None,
@@ -772,6 +773,7 @@ class RuPIIGuardrail(CustomGuardrail):
         dictionary_substitutions_file: Optional[str] = None,
         dictionary_substitutions_json: Optional[str] = None,
         dictionary_substitutions_failure_mode: Optional[str] = None,
+        dictionary_collision_resolution: str = "reject",
         mapping_ttl_seconds: Optional[int] = None,
         **kwargs,
     ):
@@ -828,6 +830,9 @@ class RuPIIGuardrail(CustomGuardrail):
             dictionary_substitutions_failure_mode
             or DICTIONARY_SUBSTITUTIONS_FAILURE_MODE
         )
+        if dictionary_collision_resolution not in {"reject", "unique_aliases"}:
+            raise ValueError("dictionary_collision_resolution must be reject or unique_aliases")
+        self.dictionary_collision_resolution = dictionary_collision_resolution
         self.dictionary_substitutions_enabled = self._normalize_bool_setting(
             dictionary_substitutions_enabled
             if dictionary_substitutions_enabled is not None
@@ -3138,6 +3143,11 @@ class RuPIIGuardrail(CustomGuardrail):
             or not self.dictionary_substitution_policy.rules
         ):
             return DictionarySubstitutionResult(text, {}, (), {})
+        plan = _DICTIONARY_REQUEST_PLAN.get()
+        if plan is not None:
+            return self.dictionary_substitution_policy.apply(
+                text, existing_mapping, _DICTIONARY_RESERVED_PLACEHOLDERS.get(), request_plan=plan,
+            )
         return self.dictionary_substitution_policy.apply(
             text, existing_mapping, _DICTIONARY_RESERVED_PLACEHOLDERS.get(),
         )
@@ -3930,6 +3940,7 @@ class RuPIIGuardrail(CustomGuardrail):
             for match in re.finditer(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', text)
         }
         dictionary_preflight_done = False
+        dictionary_request_plan = None
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
@@ -3945,18 +3956,25 @@ class RuPIIGuardrail(CustomGuardrail):
             try:
                 if not dictionary_preflight_done:
                     if self.dictionary_substitutions_enabled:
-                        self.dictionary_substitution_policy.validate_request(
-                            (target[field] for target, field in request_targets),
-                            inherited_mapping,
-                            reference_texts=provider_texts,
-                        )
+                        texts = (target[field] for target, field in request_targets)
+                        if self.dictionary_collision_resolution == "unique_aliases":
+                            dictionary_request_plan = self.dictionary_substitution_policy.plan_request(
+                                texts, inherited_mapping, reference_texts=provider_texts,
+                            )
+                            reserved_placeholders.update(dictionary_request_plan.aliases.values())
+                        else:
+                            self.dictionary_substitution_policy.validate_request(
+                                texts, inherited_mapping, reference_texts=provider_texts,
+                            )
                     dictionary_preflight_done = True
                 reserved_token = _DICTIONARY_RESERVED_PLACEHOLDERS.set(reserved_placeholders)
+                plan_token = _DICTIONARY_REQUEST_PLAN.set(dictionary_request_plan)
                 try:
                     dictionary_result = self._apply_dictionary_substitutions(
                         content, {**full_mapping, **dictionary_mapping, **pii_mapping},
                     )
                 finally:
+                    _DICTIONARY_REQUEST_PLAN.reset(plan_token)
                     _DICTIONARY_RESERVED_PLACEHOLDERS.reset(reserved_token)
                 provider_content = dictionary_result.text
                 if dictionary_result.rule_counts:
