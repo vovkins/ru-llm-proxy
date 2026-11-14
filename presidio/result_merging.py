@@ -487,6 +487,8 @@ def merge_results(
     requested_entities: Iterable[str] | None = None,
     score_threshold: float = 0.0,
     sentence_starts: Iterable[int] = (),
+    public_identifiers: frozenset[str] = frozenset(),
+    public_names: frozenset[str] = frozenset(),
 ) -> MergeOutcome:
     """Merge overlapping results using source and entity specificity."""
     if requested_entities is not None:
@@ -541,6 +543,9 @@ def merge_results(
     code_identifiers = None
     module_references = None
     code_path_suffixes = None
+    public_spans = None
+    name_spans = None
+    name_views = None
     for result in results:
         source = detection_source(result)
         if not _valid_span(result, len(text)):
@@ -552,6 +557,55 @@ def merge_results(
             if result.score >= score_threshold:
                 valid_results.append(result)
             continue
+        if public_names and source == SOURCE_NER and result.entity_type in {"ORGANIZATION", "LOGIN"}:
+            from ner.public_names import PUBLIC_NAME_NER_TYPES, finding_fits_public_name, public_name_spans
+            if name_spans is None:
+                name_spans = public_name_spans(text, public_names)
+                # Use the same ordinary ORG boundary normalization as the later
+                # merge stage. A removable company prefix is not wider evidence.
+                name_views = {
+                    id(r): (_trim_model_organization(text, r)
+                            if r.entity_type == "ORGANIZATION" and detection_source(r) == SOURCE_NER
+                            and not is_boundary_container(r) and _valid_span(r, len(text)) else r)
+                    for r in results
+                }
+            candidate = name_views[id(result)]
+            name_span = next((span for span in name_spans
+                              if candidate is not None and finding_fits_public_name(
+                                  text, candidate.start, candidate.end, span)), None)
+            if name_span is not None and not any(
+                _spans_overlap(other.start, other.end, *name_span)
+                for other in name_views.values()
+                if other is not None and (detection_source(other) != SOURCE_NER
+                    or other.entity_type not in PUBLIC_NAME_NER_TYPES
+                    or is_boundary_container(other)
+                    or not finding_fits_public_name(text, other.start, other.end, name_span))
+            ):
+                decisions.append(MergeDecision("ner_public_name_suppressed", SOURCE_NONE, SOURCE_NER))
+                continue
+        if public_identifiers and source == SOURCE_NER and result.entity_type == "ORGANIZATION":
+            if public_spans is None:
+                from ner.public_identifiers import public_identifier_spans
+                public_spans = public_identifier_spans(text, strings, public_identifiers)
+            from ner.public_identifiers import allows_whole_technical_reference
+            public_span = next((span for span in public_spans
+                                if span[0] <= result.start < result.end <= span[1]
+                                and (span != (result.start, result.end)
+                                     or allows_whole_technical_reference(text, *span))), None)
+            whole_allowed = public_span is not None and allows_whole_technical_reference(text, *public_span)
+            if public_span is not None and not any(
+                _spans_overlap(other.start, other.end, *public_span)
+                for other in results
+                if other is not result and (
+                    other.entity_type != "ORGANIZATION" or detection_source(other) != SOURCE_NER
+                    or is_boundary_container(other)
+                    or not (public_span[0] <= other.start < other.end <= public_span[1])
+                    or ((other.start, other.end) == public_span and not whole_allowed))
+            ):
+                reason = ("ner_public_technology_reference_suppressed" if whole_allowed
+                          else "ner_public_identifier_fragment_suppressed")
+                decisions.append(MergeDecision(reason, SOURCE_NONE, SOURCE_NER))
+                continue
         if result.entity_type in _JOINED_NAME_TYPES:
             trimmed = result if strings.at(result.start) else _skip_escape_letter(text, result)
             if trimmed is None:

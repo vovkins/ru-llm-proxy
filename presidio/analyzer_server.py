@@ -36,6 +36,8 @@ from ner.boundary_values import BoundaryContext, BoundaryValues, PersonWindowBud
 from recognizers.organization_fields import add_organization_field_coverage
 from recognizers.numbered_name_fields import add_numbered_name_field_coverage
 from ner.source_layout import project_numbered_person_layout
+from ner.public_identifiers import parse_public_identifiers
+from ner.public_names import parse_public_names
 from onnx_artifact import EXPORT_MANIFEST_PATH
 from text_chunking import TextChunk, plan_text_chunks
 from ner import (
@@ -287,6 +289,14 @@ ANALYSIS_SIGNATURE_ENV_NAMES = (
     "PRESIDIO_ANALYZER_DETECT_PUBLIC_IPS",
     "PRESIDIO_ANALYZER_INTERNAL_DOMAIN_SUFFIXES",
     "PRESIDIO_ANALYZER_BASE64_POLICY",
+    "PRESIDIO_ANALYZER_PUBLIC_IDENTIFIERS_JSON",
+    "PRESIDIO_ANALYZER_PUBLIC_NAMES_JSON",
+)
+PUBLIC_IDENTIFIERS = parse_public_identifiers(
+    os.getenv("PRESIDIO_ANALYZER_PUBLIC_IDENTIFIERS_JSON", "[]")
+)
+PUBLIC_NAMES = parse_public_names(
+    os.getenv("PRESIDIO_ANALYZER_PUBLIC_NAMES_JSON", "[]")
 )
 ANALYSIS_SIGNATURE_DISTRIBUTIONS = (
     "presidio-analyzer",
@@ -1021,7 +1031,8 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         # 3. Merge overlaps using source-specific confidence contracts.
         merge_started_at = time.perf_counter()
         merge_kwargs = dict(requested_entities=request.entities,
-                            score_threshold=request.score_threshold, sentence_starts=sentence_starts)
+                            score_threshold=request.score_threshold, sentence_starts=sentence_starts,
+                            public_identifiers=PUBLIC_IDENTIFIERS, public_names=PUBLIC_NAMES)
         try:
             merge_outcome = merge_results(request.text, results, **merge_kwargs)
             if person_window is not None and person_window.used:
