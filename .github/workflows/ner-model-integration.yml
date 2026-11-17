@@ -117,9 +117,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  real-model-integration:
+  ner-suites:
+    name: Tiny2 - ${{ matrix.variant }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [standard, logistic]
 
     steps:
       - name: Check out repository
@@ -134,10 +139,11 @@ jobs:
         run: python -m pip install pyyaml
 
       - name: Check isolated SYN fixture capability controls
+        if: matrix.variant == 'standard'
         run: python tests/e2e/syn_capability_check.py --report tmp/syn-capability-ab.json
 
       - name: Save bounded SYN capability report
-        if: always()
+        if: always() && matrix.variant == 'standard'
         uses: actions/upload-artifact@v7.0.2
         with:
           name: syn-capability-${{ github.run_id }}-${{ github.run_attempt }}
@@ -172,7 +178,7 @@ jobs:
           load: true
           tags: ru-llm-proxy-ner-tests:analyzer
           cache-from: type=gha,scope=presidio-analyzer
-          cache-to: type=gha,mode=max,scope=presidio-analyzer
+          cache-to: ${{ matrix.variant == 'standard' && 'type=gha,mode=max,scope=presidio-analyzer' || '' }}
 
       - name: Build matching Triton image
         uses: docker/build-push-action@v7
@@ -185,14 +191,26 @@ jobs:
           cache-from: type=gha,scope=presidio-analyzer
 
       - name: Run fixed model on isolated internal network
+        if: matrix.variant == 'standard'
         run: make test-hf-model-run
 
       - name: Run real Analyzer proxy flow
-        id: proxy
+        if: matrix.variant == 'standard'
         run: make test-ner-proxy
 
+      - name: Build LiteLLM for logistic Base64
+        if: matrix.variant == 'logistic'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./litellm/Dockerfile
+          load: true
+          tags: ru-llm-proxy-ner-tests:litellm
+          cache-from: type=gha,scope=ner-integration-litellm
+          cache-to: type=gha,mode=max,scope=ner-integration-litellm
+
       - name: Run real Analyzer proxy flow with logistic Base64
-        if: ${{ !cancelled() && steps.proxy.outcome != 'skipped' }}
+        if: matrix.variant == 'logistic'
         env:
           PRESIDIO_ANALYZER_BASE64_POLICY: logistic
           NER_TEST_REPORT_DIR: tmp/ner-integration
@@ -203,7 +221,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: ner-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ner-integration-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: tmp/ner-integration/*.json
           if-no-files-found: warn
           retention-days: 7
@@ -217,3 +235,16 @@ jobs:
           for kind in network volume; do
             docker "$kind" ls --format '{{.Name}}' | grep -E '^(ru-ner-|ru-llm-proxy-ner-|topology-gate-)' | xargs -r docker "$kind" rm || true
           done
+
+  real-model-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [ner-suites]
+    if: always()
+    steps:
+      - name: Require both Tiny2 suites to pass
+        env:
+          NER_SUITES_RESULT: ${{ needs.ner-suites.result }}
+        run: |
+          printf 'Tiny2 suites: %s\n' "$NER_SUITES_RESULT"
+          test "$NER_SUITES_RESULT" = success

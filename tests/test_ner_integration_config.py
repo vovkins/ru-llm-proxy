@@ -51,15 +51,18 @@ def test_makefile_exposes_separate_real_model_and_proxy_gates():
 
 def test_real_model_workflow_is_cached_bounded_and_secret_free():
     workflow = _read(WORKFLOW)
-    yaml.safe_load(workflow)
+    suite = yaml.safe_load(workflow)["jobs"]["ner-suites"]
+    analyzer = next(step["with"] for step in suite["steps"] if step["name"] == "Build pinned Analyzer image")
 
     assert "docker/setup-buildx-action@v4" in workflow
     assert "docker/build-push-action@v7" in workflow
     assert "target: analyzer" in workflow
     assert "load: true" in workflow
     assert "cache-from: type=gha,scope=presidio-analyzer" in workflow
-    assert "cache-to: type=gha,mode=max,scope=presidio-analyzer" in workflow
-    assert "timeout-minutes: 60" in workflow
+    assert analyzer["cache-to"] == (
+        "${{ matrix.variant == 'standard' && 'type=gha,mode=max,scope=presidio-analyzer' || '' }}"
+    )
+    assert suite["timeout-minutes"] == 60
     assert "run: make test-hf-model-run" in workflow
     assert "run: make test-ner-proxy" in workflow
     assert "workflow_dispatch:" in workflow
@@ -104,12 +107,17 @@ def test_proxy_compose_uses_real_analyzer_and_both_pii_modes():
 
 def test_logistic_policy_runs_full_proxy_gate_in_ci():
     workflow = yaml.safe_load(_read(WORKFLOW))
-    steps = workflow["jobs"]["real-model-integration"]["steps"]
-    assert any(
-        step.get("env", {}).get("PRESIDIO_ANALYZER_BASE64_POLICY") == "logistic"
-        and step.get("run") == "bash tests/e2e/test_ner_proxy_flow.sh"
-        for step in steps
-    )
+    steps = workflow["jobs"]["ner-suites"]["steps"]
+    names = [step["name"] for step in steps]
+    build = steps[names.index("Build LiteLLM for logistic Base64")]
+    smoke = steps[names.index("Run real Analyzer proxy flow with logistic Base64")]
+    assert names.index(build["name"]) < names.index(smoke["name"])
+    assert build["if"] == smoke["if"] == "matrix.variant == 'logistic'"
+    assert build["with"]["file"] == "./litellm/Dockerfile"
+    assert build["with"]["load"] is True
+    assert build["with"]["tags"] == smoke["env"]["LITELLM_IMAGE"]
+    assert smoke["env"]["PRESIDIO_ANALYZER_BASE64_POLICY"] == "logistic"
+    assert smoke["run"] == "bash tests/e2e/test_ner_proxy_flow.sh"
     assert "PRESIDIO_ANALYZER_BASE64_POLICY=${PRESIDIO_ANALYZER_BASE64_POLICY:-content}" in _read(COMPOSE)
 
 
