@@ -6,6 +6,7 @@ import re
 from typing import Any, Hashable
 
 from litellm.types.utils import Delta
+from litellm_guardrails.restoration_mapping import RestorationKeyCollision
 from openai.types.responses import (
     ResponseFunctionCallArgumentsDeltaEvent,
     ResponseIncompleteEvent,
@@ -252,6 +253,12 @@ class _StreamingJSONRestorer:
 
     def __init__(self, mapping: dict[str, str]):
         self._mapping = mapping
+        # Keys are restored only when this request actually masked a data key.
+        # Schema/protocol keys without that provenance retain existing behavior.
+        keys = getattr(mapping, 'json_keys', ())
+        values = mapping.argument_values() if keys else {}
+        self._key_mapping = {key: values[key] for key in keys}
+        self._key_buffer = []
         self._numbers = getattr(mapping, 'json_numbers', ())
         self._number_prefixes = _number_prefixes(self._numbers)
         self._number_candidate = None
@@ -321,13 +328,13 @@ class _StreamingJSONRestorer:
                 if char == '"':
                     self._in_string = True
                     self._is_key = bool(
-                        self._containers and self._containers[-1] == ["{", True]
+                        self._containers and self._containers[-1][:2] == ["{", True]
                     )
                     if self._numbers and not self._is_key:
                         self._number_candidate = ''
                         continue
                 elif char in "{[":
-                    self._containers.append([char, char == "{"])
+                    self._containers.append([char, char == "{", set()])
                 elif char in "}]":
                     if self._containers:
                         self._containers.pop()
@@ -341,6 +348,24 @@ class _StreamingJSONRestorer:
                 continue
 
             if self._is_key:
+                if self._key_mapping:
+                    if char == '"' and not self._escape:
+                        key = json.loads('"' + ''.join(self._key_buffer) + '"')
+                        restored = restore_text(key, self._key_mapping)
+                        seen = self._containers[-1][2]
+                        if restored in seen:
+                            raise RestorationKeyCollision('Duplicate JSON key after restoration')
+                        seen.add(restored)
+                        output.append(self._encode(restored) + '"')
+                        self._key_buffer.clear()
+                        self._in_string = False
+                    else:
+                        self._key_buffer.append(char)
+                    if self._escape:
+                        self._escape = ''
+                    elif char == '\\':
+                        self._escape = '\\'
+                    continue
                 output.append(char)
                 if self._escape:
                     self._escape = ""

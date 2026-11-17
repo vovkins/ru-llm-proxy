@@ -33,6 +33,9 @@ from result_merging import (
     NER_PERSON_CONTROL_KEY, span_coverage_preserved,
 )
 from ner.boundary_values import BoundaryContext, BoundaryValues, PersonWindowBudget
+from recognizers.organization_fields import add_organization_field_coverage
+from recognizers.numbered_name_fields import add_numbered_name_field_coverage
+from ner.source_layout import project_numbered_person_layout
 from onnx_artifact import EXPORT_MANIFEST_PATH
 from text_chunking import TextChunk, plan_text_chunks
 from ner import (
@@ -293,6 +296,9 @@ ANALYSIS_SIGNATURE_DISTRIBUTIONS = (
     "spacy",
     "tokenizers",
     "numpy",
+    "tree-sitter",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
 )
 _ANALYZER_CORRELATION_CONTEXT: ContextVar[dict[str, str | int]] = ContextVar(
     "ru_llm_proxy_analyzer_correlation",
@@ -880,6 +886,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             {"PERSON", "ORGANIZATION"}.intersection(request.entities)
         )
         ner_entities = request.entities
+        requested_entities = frozenset(request.entities) if request.entities else None
         boundary_values = BoundaryValues(request.text)
         person_window = (
             PersonWindowBudget() if request.input_kind == "text"
@@ -898,7 +905,9 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 entities=ner_entities,
                 telemetry_callback=capture_ner_telemetry,
                 cancellation_event=cancellation_event,
-                boundary_context=BoundaryContext(boundaries, chunk.start, person_window),
+                boundary_context=BoundaryContext(
+                    boundaries, chunk.start, person_window, requested_entities=requested_entities,
+                ),
             )
             if recheck_enabled:
                 ner_kwargs["protected_spans"] = protected
@@ -1046,7 +1055,27 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         ):
             raise NERProcessingError(phase="postprocessing",
                                      failure_class="span_postprocessing_failed")
+        source_evidence = results
         results = merge_outcome.results
+        # Independent structural evidence is additive and runs only after every
+        # required backend/boundary check succeeded. It cannot hide a NER error.
+        results, organization_decisions = add_organization_field_coverage(
+            request.text, results, requested_entities=request.entities,
+            score_threshold=request.score_threshold, check=check,
+        )
+        _record_merge_metrics(organization_decisions)
+        results, numbered_decisions = add_numbered_name_field_coverage(
+            request.text, results, requested_entities=request.entities,
+            score_threshold=request.score_threshold, check=check,
+        )
+        _record_merge_metrics(numbered_decisions)
+        # Required positive-evidence checks above use the original ranges.
+        # Raw numbered-source records have display syntax outside their values,
+        # analogous to JSON syntax removed by argument_view.project below.
+        if argument_view is None:
+            results, _layout_proof = project_numbered_person_layout(
+                request.text, results, source_evidence=source_evidence, check=check,
+            )
 
         projected = []
         for result in results:

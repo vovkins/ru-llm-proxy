@@ -965,13 +965,15 @@ def test_syn_capability_ab_is_sequential_bounded_and_never_accepts_unrelated_fai
 
 def test_syn_ab_precedes_model_build_and_saves_only_bounded_report():
     workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
-    steps = workflow["jobs"]["real-model-integration"]["steps"]
+    steps = workflow["jobs"]["ner-suites"]["steps"]
     names = [step["name"] for step in steps]
     assert names.index("Check isolated SYN fixture capability controls") < names.index("Build pinned Analyzer image")
     step = steps[names.index("Check isolated SYN fixture capability controls")]
+    assert step["if"] == "matrix.variant == 'standard'"
     assert not step.get("continue-on-error")
     saved = steps[names.index("Save bounded SYN capability report")]
-    assert saved["if"] == "always()" and saved["with"]["path"] == "tmp/syn-capability-ab.json"
+    assert saved["if"] == "always() && matrix.variant == 'standard'"
+    assert saved["with"]["path"] == "tmp/syn-capability-ab.json"
     assert saved["with"]["retention-days"] == 7
 
 
@@ -1325,14 +1327,41 @@ def test_dkb_failure_does_not_skip_base64_boundary_checks(monkeypatch, tmp_path)
     assert [item["status"] for item in report["checks"]] == ["failed", "passed", "passed"]
 
 
-def test_logistic_ci_step_is_not_hidden_by_a_proxy_test_failure():
+def test_ner_ci_suites_are_independent_without_relaxing_either_gate():
     workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
-    steps = workflow["jobs"]["real-model-integration"]["steps"]
-    assert any(step.get("id") == "proxy" for step in steps)
-    logistic = next(step for step in steps if step.get("env", {}).get("PRESIDIO_ANALYZER_BASE64_POLICY") == "logistic")
-    assert "!cancelled()" in logistic["if"]
-    assert "steps.proxy.outcome != 'skipped'" in logistic["if"]
-    assert not logistic.get("continue-on-error")
+    suites = workflow["jobs"]["ner-suites"]
+    assert suites["strategy"] == {"fail-fast": False, "matrix": {"variant": ["standard", "logistic"]}}
+    assert not suites.get("needs") and not suites.get("continue-on-error")
+    steps = {step["name"]: step for step in suites["steps"]}
+    for name in ("Build pinned Analyzer image", "Build matching Triton image"):
+        assert not steps[name].get("if")
+    for name, variant, command in (
+        ("Run fixed model on isolated internal network", "standard", "make test-hf-model-run"),
+        ("Run real Analyzer proxy flow", "standard", "make test-ner-proxy"),
+        ("Run real Analyzer proxy flow with logistic Base64", "logistic", "bash tests/e2e/test_ner_proxy_flow.sh"),
+    ):
+        assert steps[name]["if"] == f"matrix.variant == '{variant}'"
+        assert steps[name]["run"] == command
+        assert not steps[name].get("continue-on-error")
+    report = steps["Save bounded test reports without credentials"]
+    assert report["if"] == "always()"
+    assert "${{ matrix.variant }}" in report["with"]["name"]
+    assert report["with"]["path"] == "tmp/ner-integration/*.json"
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("success", 0), ("failure", 1), ("cancelled", 1), ("skipped", 1), ("", 1),
+])
+def test_ner_ci_preserves_required_gate_and_only_passes_success(status, expected):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ner-model-integration.yml").read_text())
+    aggregate = workflow["jobs"]["real-model-integration"]
+    assert aggregate["needs"] == ["ner-suites"]
+    assert aggregate["if"] == "always()"
+    step, = aggregate["steps"]
+    assert step["env"] == {"NER_SUITES_RESULT": "${{ needs.ner-suites.result }}"}
+    result = subprocess.run(["bash", "-c", step["run"]],
+                            env={**os.environ, "NER_SUITES_RESULT": status}, capture_output=True)
+    assert result.returncode == expected
 
 
 @pytest.mark.parametrize("target,suite,build", [

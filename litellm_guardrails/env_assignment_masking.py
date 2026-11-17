@@ -241,6 +241,12 @@ def _known_value_visible(text, state):
 class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
     """Opt-in alternative retaining the ordinary post-call and streaming hooks."""
 
+    # LiteLLM discovers these capabilities in the registered leaf class's
+    # __dict__, so ordinary Python inheritance alone silently skips them.
+    # Bind the original methods directly to preserve their cleanup lifecycle.
+    async_pre_call_hook = base.RuPIIGuardrail.async_pre_call_hook
+    async_post_call_streaming_iterator_hook = base.RuPIIGuardrail.async_post_call_streaming_iterator_hook
+
     @classmethod
     def _classify_pre_egress_policy_text(cls, text):
         return _scan_env_rule(text, super()._classify_pre_egress_policy_text)

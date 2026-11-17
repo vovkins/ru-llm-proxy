@@ -19,6 +19,7 @@ from litellm.integrations.custom_logger import CustomLogger
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, get_default_headers, get_ssl_configuration
 
 from litellm_guardrails.metrics import UPSTREAM_STREAMS, UPSTREAM_STREAM_CLEANUP_ERRORS
+from litellm_guardrails.anthropic_restoration import is_messages_route, messages_chat_response
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream, verified_response
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup
 
@@ -77,13 +78,14 @@ class _Pool:
 
 
 class RequestHTTPClient(httpx.AsyncClient):
-    def __init__(self, pool, api, choices, key, timeout):
+    def __init__(self, pool, api, choices, key, timeout, messages_route=False):
         super().__init__(verify=pool.verify, trust_env=False, timeout=timeout,
                          transport=httpx.MockTransport(_unused_transport),
                          cookies=CookieJar(policy=_NoCookies()), follow_redirects=True)
         self.headers["Accept-Encoding"] = "gzip, deflate"
         self.pool, self.api, self.choices, self.key = pool, api, choices, key
         self.responses = []
+        self.messages_route = messages_route
         self.released = False
         self.has_stream = False
         self.stream_failure = None
@@ -114,8 +116,18 @@ class RequestHTTPClient(httpx.AsyncClient):
             api = "responses" if request.url.path.rstrip("/").endswith("/responses") else "chat"
             self.api = api
             response = verified_response(response, api, self.choices, self.observe)
+            if api == "chat" and self.messages_route:
+                response = messages_chat_response(response, self._messages_stream_failure)
             self.responses[-1] = response
         return response
+
+    def _messages_stream_failure(self, reason):
+        # Some SDK adapters synthesize a finish after swallowing iterator errors.
+        # Retain evidence before control returns to that adapter.
+        if self.stream_failure != reason:
+            self.stream_failure = reason
+            _log("upstream_messages_tool_stream_failed", api=self.api,
+                 request_id=self.key, reason=reason)
 
     async def aclose(self):
         async with self.close_lock:
@@ -182,7 +194,8 @@ class StreamManager:
                     pool = self.pools.pop(idle)
                     await self._close_pool(pool)
                 self.pools[pool_key] = _Pool(verify, cert, self.transport)
-            client = RequestHTTPClient(self.pools[pool_key], api, choices, key, kwargs.get("timeout", 600))
+            client = RequestHTTPClient(self.pools[pool_key], api, choices, key, kwargs.get("timeout", 600),
+                                       messages_route=is_messages_route(kwargs))
             self.requests.setdefault(key, []).append(client)
             if self.watcher is None:
                 self.watcher = asyncio.create_task(self._watch(), name="ru-upstream-http-pool")
@@ -265,6 +278,15 @@ class UpstreamStreamAdapter(CustomLogger):
     async def async_pre_call_deployment_hook(self, kwargs, call_type):
         kind = getattr(call_type, "value", call_type)
         openai_route = kwargs.get("custom_llm_provider") == "openai" or str(kwargs.get("model", "")).startswith("openai/")
+        if kind in {"acompletion", "aresponses"} and openai_route and is_messages_route(kwargs):
+            # Both stock Messages adapters omit this native option. Read only
+            # the bool from the server's original request; never forward its body.
+            original_request = kwargs.get("proxy_server_request")
+            body = original_request.get("body") if isinstance(original_request, dict) else None
+            choice = body.get("tool_choice") if isinstance(body, dict) else None
+            disable_parallel = choice.get("disable_parallel_tool_use") if isinstance(choice, dict) else None
+            if type(disable_parallel) is bool:
+                kwargs["parallel_tool_calls"] = not disable_parallel
         bridge = kind == "aresponses" and openai_route and (
             bool(kwargs.get("use_chat_completions_api"))
             or str(kwargs.get("model", "")).startswith("openai/chat_completions/")
@@ -276,9 +298,26 @@ class UpstreamStreamAdapter(CustomLogger):
                 param = "previous_response_id"
                 message = "The Responses-to-Chat bridge requires full visible history without previous_response_id."
             elif kwargs.get("stream") and isinstance(kwargs.get("tool_choice"), dict) and kwargs["tool_choice"].get("type") == "function":
-                code = "responses_chat_bridge_named_tool_unsupported"
-                param = "tool_choice"
-                message = "Named tool selection is unsupported by the streaming Responses-to-Chat bridge. Use Chat Completions, non-streaming Responses, or required with a single tool."
+                if is_messages_route(kwargs):
+                    # The SDK builds its Responses stream snapshot with a Chat
+                    # named-choice object, which the Responses schema rejects.
+                    # Required + exactly the selected function preserves the
+                    # named-call constraint while using its supported path.
+                    name = kwargs["tool_choice"].get("name")
+                    tools = kwargs.get("tools")
+                    selected = [tool for tool in tools if isinstance(tool, dict)
+                                and tool.get("type") == "function" and tool.get("name") == name] if isinstance(tools, list) else []
+                    if isinstance(name, str) and name and len(selected) == 1:
+                        kwargs["tools"] = [copy.deepcopy(selected[0])]
+                        kwargs["tool_choice"] = "required"
+                    else:
+                        code = "messages_named_tool_invalid"
+                        param = "tool_choice"
+                        message = "Named tool selection requires exactly one matching function definition."
+                else:
+                    code = "responses_chat_bridge_named_tool_unsupported"
+                    param = "tool_choice"
+                    message = "Named tool selection is unsupported by the streaming Responses-to-Chat bridge. Use Chat Completions, non-streaming Responses, or required with a single tool."
             if code:
                 _log("upstream_responses_bridge_rejected", reason=code, request_id=transport_request_id(kwargs))
                 raise litellm.BadRequestError(

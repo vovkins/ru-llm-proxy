@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import re
+from types import MappingProxyType
 from typing import Any
 
 
@@ -15,6 +16,45 @@ class DictionaryPolicyConfigError(ValueError):
 
 class DictionaryPolicyAmbiguousRequestError(ValueError):
     """Raised when a request cannot be restored deterministically."""
+
+
+class DictionaryOutputCollisionError(DictionaryPolicyAmbiguousRequestError):
+    """Raised when sending the transformed request would change its meaning."""
+
+
+def aliases_collide_with_irreversible_output(alias: str, outputs: frozenset[str]) -> bool:
+    # Restoration also replaces aliases inside larger strings.
+    folded = alias.casefold()
+    return any(folded in output.casefold() for output in outputs)
+
+
+def irreversible_outputs(matches_by_text) -> frozenset[str]:
+    return frozenset(
+        match.rule.replacement for matches in matches_by_text for match in matches
+        if not match.rule.restore
+    )
+
+
+def verify_unique_argument_keys(text: str) -> None:
+    """Reject duplicate keys in transformed JSON arguments, at any nesting depth."""
+    if not text.lstrip().startswith(("{", "[")):
+        return
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise DictionaryOutputCollisionError("Duplicate JSON key after masking")
+            result[key] = value
+        return result
+
+    try:
+        json.loads(text, object_pairs_hook=unique_object)
+    except DictionaryOutputCollisionError:
+        raise
+    except (ValueError, RecursionError):
+        # Do not impose a JSON-only contract on existing string arguments.
+        pass
 
 
 @dataclass(frozen=True)
@@ -49,6 +89,7 @@ class DictionarySubstitutionResult:
     mapping: dict[str, str]
     replacement_spans: tuple[tuple[int, int], ...]
     rule_counts: dict[str, int]
+    irreversible_spans: tuple[tuple[int, int], ...] = ()
 
     @property
     def substitution_count(self) -> int:
@@ -164,22 +205,71 @@ class DictionarySubstitutionPolicy:
             ) from exc
         return cls.from_json_text(raw_config)
 
+    def _request_matches(self, texts):
+        # Only exact source strings can share offsets. This is not a persistent cache.
+        return MappingProxyType({
+            text: tuple(self._select_matches(text)) for text in dict.fromkeys(texts)
+        })
+
+    def validate_request(self, texts, existing_mapping=None, *, reference_texts=None,
+                         reserved_placeholders=()):
+        """Check ambiguity across fields before any request mutation."""
+        from .dictionary_request_plan import DictionaryRequestPlan, validate_fixed_output
+
+        texts = tuple(texts)
+        reference_texts = texts if reference_texts is None else tuple(reference_texts)
+        selected = self._request_matches(texts)
+        matched_rules = {match.rule.rule_id for matches in selected.values() for match in matches}
+        irreversible = irreversible_outputs(selected.values())
+        for alias in (existing_mapping or {}):
+            if aliases_collide_with_irreversible_output(alias, irreversible):
+                raise DictionaryOutputCollisionError("Irreversible output contains an inherited alias")
+        for rule in self.rules:
+            if not rule.restore or rule.rule_id not in matched_rules:
+                continue
+            if aliases_collide_with_irreversible_output(rule.replacement, irreversible):
+                raise DictionaryOutputCollisionError("Irreversible output contains a reversible alias")
+            if (rule.replacement not in (existing_mapping or {})
+                    and any(rule.replacement in text for text in reference_texts)):
+                raise DictionaryPolicyAmbiguousRequestError(
+                    f"replacement already present for rule {rule.rule_id}"
+                )
+        plan = DictionaryRequestPlan(self, None, irreversible, selected)
+        if irreversible:
+            assembled = validate_fixed_output(plan, texts, existing_mapping, reserved_placeholders)
+            plan = replace(plan, assembled_placeholders=assembled)
+        return plan
+
+    def plan_request(self, texts, existing_mapping=None, *, reference_texts=None):
+        """Allocate unambiguous aliases without interpreting pre-existing literals."""
+        from .dictionary_request_plan import build_request_plan
+        return build_request_plan(self, texts, existing_mapping, reference_texts=reference_texts)
+
     def apply(
         self, text: str, existing_mapping: dict[str, str] | None = None,
+        reserved_placeholders=(), *, request_plan=None,
     ) -> DictionarySubstitutionResult:
         """Return substituted text, restore mapping, and replacement spans."""
         if not text or not self.rules:
             return DictionarySubstitutionResult(text, {}, (), {})
 
-        matches = self._select_matches(text)
+        if request_plan is None:
+            matches = self._select_matches(text)
+        else:
+            if request_plan.policy is not self:
+                raise DictionaryPolicyAmbiguousRequestError('Dictionary plan belongs to another policy')
+            matches = request_plan.matches_for(text)
         if not matches:
             return DictionarySubstitutionResult(text, {}, (), {})
 
-        self._raise_if_ambiguous_original_replacement(text, matches, existing_mapping)
+        planned_aliases = request_plan is not None and request_plan.aliases is not None
+        if not planned_aliases:
+            self._raise_if_ambiguous_original_replacement(text, matches, existing_mapping)
 
         parts: list[str] = []
         mapping: dict[str, str] = {}
         replacement_spans: list[tuple[int, int]] = []
+        irreversible_spans: list[tuple[int, int]] = []
         rule_counts: dict[str, int] = {}
         last_end = 0
         output_length = 0
@@ -191,12 +281,17 @@ class DictionarySubstitutionPolicy:
             output_length += len(unchanged)
             replacement_start = output_length
             replacement = match.rule.replacement
-            if match.rule.restore and existing_mapping is not None:
+            if match.rule.restore and planned_aliases:
+                replacement = request_plan.replacement(match.rule, match.original)
                 if replacement in occupied and occupied[replacement] != match.original:
+                    raise DictionaryPolicyAmbiguousRequestError('Dictionary planned binding conflict')
+            if match.rule.restore:
+                if not planned_aliases and replacement in occupied and occupied[replacement] != match.original:
                     rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
                     index = 1
                     replacement = f"<DICT_{rule_name}_{index}>"
-                    while replacement in occupied or replacement in text:
+                    while (replacement in occupied or replacement in text
+                           or replacement in reserved_placeholders):
                         index += 1
                         replacement = f"<DICT_{rule_name}_{index}>"
                 occupied[replacement] = match.original
@@ -207,6 +302,8 @@ class DictionarySubstitutionPolicy:
 
             if match.rule.restore:
                 mapping[replacement] = match.original
+            else:
+                irreversible_spans.append((replacement_start, replacement_end))
             rule_counts[match.rule.rule_id] = rule_counts.get(match.rule.rule_id, 0) + 1
             last_end = match.end
 
@@ -216,6 +313,7 @@ class DictionarySubstitutionPolicy:
             mapping=mapping,
             replacement_spans=tuple(replacement_spans),
             rule_counts=rule_counts,
+            irreversible_spans=tuple(irreversible_spans),
         )
 
     def _select_matches(self, text: str) -> list[_RuleMatch]:

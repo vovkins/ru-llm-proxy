@@ -433,8 +433,10 @@ fi
 expect_safe_block_body "$messages_tool_use_body" "$CANARY"
 messages_tool_use_capture="$tmp_dir/messages-tool-use-canary-capture.json"
 capture_counts "$messages_tool_use_capture"
-expect_json_value "$messages_tool_use_capture" analyzer_requests 0
-expect_json_value "$messages_tool_use_capture" analyzer_saw_canary false
+# Native tool input is now analyzed before the final provider-bound check.
+# This mock Analyzer deliberately leaves the canary unmasked; egress must block.
+expect_json_value "$messages_tool_use_capture" analyzer_requests 1
+expect_json_value "$messages_tool_use_capture" analyzer_saw_canary true
 expect_no_provider_posts "$messages_tool_use_capture"
 expect_json_value "$messages_tool_use_capture" provider_saw_canary false
 
@@ -450,7 +452,9 @@ fi
 expect_safe_block_body "$messages_tool_use_name_body" "$CANARY"
 messages_tool_use_name_capture="$tmp_dir/messages-tool-use-name-canary-capture.json"
 capture_counts "$messages_tool_use_name_capture"
-expect_json_value "$messages_tool_use_name_capture" analyzer_requests 0
+# The clean input is analyzed; the tool name remains an opaque field checked
+# by the final leak policy, so it must not appear in the Analyzer request.
+expect_json_value "$messages_tool_use_name_capture" analyzer_requests 1
 expect_json_value "$messages_tool_use_name_capture" analyzer_saw_canary false
 expect_no_provider_posts "$messages_tool_use_name_capture"
 expect_json_value "$messages_tool_use_name_capture" provider_saw_canary false

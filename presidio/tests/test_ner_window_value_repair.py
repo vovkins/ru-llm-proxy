@@ -12,6 +12,7 @@ from presidio.ner.triton_recognizer import (
     EntityPrediction, NERInferenceCancelled, NERProcessingError,
     NERWindowAnalysis, NERWindowBoundaryError, WindowEntityPrediction,
 )
+from presidio.ner.boundary_values import BoundaryContext, BoundaryValues
 from presidio.ner.text_processing import normalize_for_ner
 from presidio.ner.span_postprocessing import ValueSpanExpansion, expand_value_spans_with_evidence
 from presidio.ner.work_budget import work_scope
@@ -34,6 +35,22 @@ def recognizer(monkeypatch, initial, recovery, *, windows=2, recovery_windows=1)
         return recovery, recovery_windows
     monkeypatch.setattr(instance, "_recover_window_boundaries", recheck)
     return instance, model, calls
+
+
+@pytest.mark.parametrize("requested,expected", [
+    (frozenset({"PERSON"}), "PERSON"),
+    (frozenset({"PERSON", "ORGANIZATION"}), "ORGANIZATION"),
+])
+def test_confirmed_field_preserves_coverage_when_new_class_is_disabled(monkeypatch, requested, expected):
+    value = "Лесной Исток"
+    source = "материал " * 100 + f"Исполнитель: ООО {value}.\n" + "описание " * 100
+    right = source.index(value) + len(value)
+    instance, _, _ = recognizer(monkeypatch, [prediction("PERSON", right - 1, right, right=True)], [])
+    context = BoundaryContext(BoundaryValues(source), requested_entities=requested)
+    results = instance.analyze(source, entities=["PERSON", "ORGANIZATION"], boundary_context=context)
+    result, = results
+    assert result.entity_type == expected
+    assert source[result.start:result.end] == value
 
 
 def captured_history():
