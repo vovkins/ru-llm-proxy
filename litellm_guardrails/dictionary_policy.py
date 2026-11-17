@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import re
@@ -89,6 +89,7 @@ class DictionarySubstitutionResult:
     mapping: dict[str, str]
     replacement_spans: tuple[tuple[int, int], ...]
     rule_counts: dict[str, int]
+    irreversible_spans: tuple[tuple[int, int], ...] = ()
 
     @property
     def substitution_count(self) -> int:
@@ -210,9 +211,10 @@ class DictionarySubstitutionPolicy:
             text: tuple(self._select_matches(text)) for text in dict.fromkeys(texts)
         })
 
-    def validate_request(self, texts, existing_mapping=None, *, reference_texts=None):
+    def validate_request(self, texts, existing_mapping=None, *, reference_texts=None,
+                         reserved_placeholders=()):
         """Check ambiguity across fields before any request mutation."""
-        from .dictionary_request_plan import DictionaryRequestPlan
+        from .dictionary_request_plan import DictionaryRequestPlan, validate_fixed_output
 
         texts = tuple(texts)
         reference_texts = texts if reference_texts is None else tuple(reference_texts)
@@ -232,7 +234,11 @@ class DictionarySubstitutionPolicy:
                 raise DictionaryPolicyAmbiguousRequestError(
                     f"replacement already present for rule {rule.rule_id}"
                 )
-        return DictionaryRequestPlan(self, None, irreversible, selected)
+        plan = DictionaryRequestPlan(self, None, irreversible, selected)
+        if irreversible:
+            assembled = validate_fixed_output(plan, texts, existing_mapping, reserved_placeholders)
+            plan = replace(plan, assembled_placeholders=assembled)
+        return plan
 
     def plan_request(self, texts, existing_mapping=None, *, reference_texts=None):
         """Allocate unambiguous aliases without interpreting pre-existing literals."""
@@ -263,6 +269,7 @@ class DictionarySubstitutionPolicy:
         parts: list[str] = []
         mapping: dict[str, str] = {}
         replacement_spans: list[tuple[int, int]] = []
+        irreversible_spans: list[tuple[int, int]] = []
         rule_counts: dict[str, int] = {}
         last_end = 0
         output_length = 0
@@ -295,6 +302,8 @@ class DictionarySubstitutionPolicy:
 
             if match.rule.restore:
                 mapping[replacement] = match.original
+            else:
+                irreversible_spans.append((replacement_start, replacement_end))
             rule_counts[match.rule.rule_id] = rule_counts.get(match.rule.rule_id, 0) + 1
             last_end = match.end
 
@@ -304,6 +313,7 @@ class DictionarySubstitutionPolicy:
             mapping=mapping,
             replacement_spans=tuple(replacement_spans),
             rule_counts=rule_counts,
+            irreversible_spans=tuple(irreversible_spans),
         )
 
     def _select_matches(self, text: str) -> list[_RuleMatch]:

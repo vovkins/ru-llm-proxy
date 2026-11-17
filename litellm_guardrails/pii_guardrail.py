@@ -3976,11 +3976,9 @@ class RuPIIGuardrail(CustomGuardrail):
                         else:
                             dictionary_request_plan = self.dictionary_substitution_policy.validate_request(
                                 texts, inherited_mapping, reference_texts=provider_texts,
+                                reserved_placeholders=reserved_placeholders,
                             )
-                        reserved_placeholders.update(
-                            match.group() for value in dictionary_request_plan.irreversible_outputs
-                            for match in re.finditer(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', value)
-                        )
+                        reserved_placeholders.update(dictionary_request_plan.irreversible_placeholders())
                     dictionary_preflight_done = True
                 reserved_token = _DICTIONARY_RESERVED_PLACEHOLDERS.set(reserved_placeholders)
                 plan_token = _DICTIONARY_REQUEST_PLAN.set(dictionary_request_plan)

@@ -71,6 +71,144 @@ async def test_irreversible_output_is_never_decoded_as_another_original(monkeypa
     assert json.loads(restore_arguments(arguments(), mapping)) == expected
 
 
+_BOUNDARY_RULES = [
+    {'id': 'reversible', 'source': 'private-account', 'replacement': 'masked-account'},
+    {'id': 'prefix', 'source': 'private-host', 'replacement': 'masked', 'restore': False},
+    {'id': 'suffix', 'source': 'private-suffix', 'replacement': 'account', 'restore': False},
+]
+
+
+@pytest.mark.parametrize('call_type', ['acompletion', 'aresponses', 'anthropic_messages'])
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.parametrize('second', [
+    'private-host-account', 'masked-private-suffix', 'private-host-private-suffix',
+    r'private-host-\u0061ccount',
+])
+@pytest.mark.asyncio
+async def test_irreversible_alias_formed_at_output_boundary(monkeypatch, call_type, mode, second):
+    g = _collision_guard(monkeypatch, mode, _BOUNDARY_RULES)
+    g.dictionary_substitutions_failure_mode = 'fail_open'
+    original = '{"first":"private-account","second":"' + second + '"}'
+    data, arguments = _collision_request(call_type, original)
+    if mode == 'reject':
+        with pytest.raises(Exception) as error:
+            await g.async_pre_call_hook(AUTH, None, data, call_type)
+        assert error.value.status_code == (409 if call_type == 'aresponses' else 422)
+        assert json.loads(arguments()) == json.loads(original)
+        assert not g._redis.values
+        g._analyze_text.assert_not_awaited()
+        return
+    await g.async_pre_call_hook(AUTH, None, data, call_type)
+    wire = json.loads(arguments())
+    assert wire['second'] == 'masked-account'
+    mapping = decode_mapping(next(iter(g._redis.values.values())))
+    assert mapping == {wire['first']: 'private-account'}
+    assert wire['first'] != wire['second'] and 'private-' not in arguments()
+    assert json.loads(restore_arguments(arguments(), mapping)) == {
+        'first': 'private-account', 'second': 'masked-account',
+    }
+
+
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.parametrize('new_value, blocked', [
+    ('private-host-account', True),
+    ('private-host-archive', False),
+])
+@pytest.mark.asyncio
+async def test_inherited_alias_is_immutable_at_output_boundary(monkeypatch, mode, new_value, blocked):
+    g = _collision_guard(monkeypatch, mode, _BOUNDARY_RULES)
+    saved = RestorationMapping({'masked-account': 'private-account'})
+    store = await g._responses_state_store()
+    store.load = AsyncMock(return_value=saved)
+    original = json.dumps({'trusted': 'masked-account', 'new': new_value})
+    data, arguments = _collision_request('aresponses', original)
+    data['previous_response_id'] = 'resp-synthetic'
+    if blocked:
+        with pytest.raises(Exception) as error:
+            await g.async_pre_call_hook(AUTH, None, data, 'aresponses')
+        assert error.value.status_code == 409
+        assert arguments() == original
+        assert not g._redis.values
+        g._analyze_text.assert_not_awaited()
+    else:
+        await g.async_pre_call_hook(AUTH, None, data, 'aresponses')
+        assert json.loads(arguments()) == {'trusted': 'masked-account', 'new': 'masked-archive'}
+        assert decode_mapping(next(iter(g._redis.values.values()))) == saved
+    store.load.assert_awaited_once_with('test-owner', 'mock', 'resp-synthetic')
+    assert saved == {'masked-account': 'private-account'}
+
+
+def test_move_new_alias_that_helps_form_an_inherited_alias():
+    policy = DictionarySubstitutionPolicy.from_config(_BOUNDARY_RULES + [
+        {'id': 'move', 'source': 'private-mark', 'replacement': 'temporary'},
+        {'id': 'keep', 'source': 'private-other', 'replacement': 'untouched'},
+    ])
+    inherited = {'masked-temporary': 'previous-value'}
+    texts = ['private-host-private-mark', 'private-other']
+    plan = policy.plan_request(texts, inherited)
+    first, second = (policy.apply(text, inherited, request_plan=plan) for text in texts)
+    assert first.text != 'masked-temporary'
+    assert restore_text(first.text, {**inherited, **first.mapping}) == 'masked-private-mark'
+    assert second.text == 'untouched'
+    assert inherited == {'masked-temporary': 'previous-value'}
+
+
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+def test_boundary_check_does_not_research_or_join_fields(mode):
+    policy = DictionarySubstitutionPolicy.from_config(_BOUNDARY_RULES)
+    policy._select_matches = Mock(wraps=policy._select_matches)
+    fields = ('private-host', '-account', 'private-account', 'private-host')
+    plan = (policy.plan_request if mode == 'unique_aliases' else policy.validate_request)(fields)
+    assert [policy.apply(text, request_plan=plan).text for text in fields] == [
+        'masked', '-account', 'masked-account', 'masked',
+    ]
+    assert [call.args[0] for call in policy._select_matches.call_args_list] == list(dict.fromkeys(fields))
+
+
+def test_casefold_does_not_shift_irreversible_output_offsets():
+    policy = DictionarySubstitutionPolicy.from_config([
+        {'id': 'fixed', 'source': 'sourceValue', 'replacement': 'mask-strasse'},
+        {'id': 'once', 'source': 'otherValue', 'replacement': 'Stra\u00dfe', 'restore': False},
+    ])
+    texts = ('sourceValue', 'Fu\u00df: mask-otherValue')
+    plan = policy.plan_request(texts)
+    result = policy.apply(texts[1], request_plan=plan)
+    assert plan.aliases['fixed', 'sourceValue'] != 'mask-strasse'
+    assert result.text == 'Fu\u00df: mask-Stra\u00dfe'
+
+
+@pytest.mark.parametrize('call_type', ['acompletion', 'aresponses', 'anthropic_messages'])
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.parametrize('closing', ['>', r'\u003e'])
+@pytest.mark.asyncio
+async def test_native_marker_formed_by_later_dictionary_replacement_is_reserved(
+    monkeypatch, call_type, mode, closing,
+):
+    g = _collision_guard(monkeypatch, mode, [{
+        'id': 'slot', 'source': 'slot-fragment', 'replacement': 'ADDRESS_1', 'restore': False,
+        'match': {'whole_phrase': False},
+    }])
+    email = 'native-marker@example.test'
+
+    async def analyze(text, *_):
+        start = text.find(email)
+        if start < 0:
+            return []
+        return [{'start': start, 'end': start + len(email), 'entity_type': 'EMAIL_ADDRESS', 'score': 1.0}]
+
+    g._analyze_text = AsyncMock(side_effect=analyze)
+    data, arguments = _collision_request(call_type, '{"value":"<EMAIL_slot-fragment' + closing + '"}')
+    fields = data['input'] if call_type == 'aresponses' else data['messages']
+    fields.insert(0, {'role': 'user', 'content': email})
+    await g.async_pre_call_hook(AUTH, None, data, call_type)
+    masked = fields[0]['content']
+    literal = {'value': '<EMAIL_ADDRESS_1>'}
+    mapping = decode_mapping(next(iter(g._redis.values.values())))
+    assert masked == '<EMAIL_ADDRESS_2>' and mapping == {masked: email}
+    assert json.loads(arguments()) == json.loads(restore_arguments(arguments(), mapping)) == literal
+    assert restore_text(masked, mapping) == email
+
+
 @pytest.mark.parametrize('call_type', ['acompletion', 'aresponses', 'anthropic_messages'])
 @pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
 @pytest.mark.asyncio
