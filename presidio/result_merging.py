@@ -632,7 +632,8 @@ def merge_results(
             owned = next(((a,b,c) for a,b,c in code_path_suffixes if a <= result.start < result.end <= c),None)
             if owned is not None and not any(
                 _spans_overlap(other.start,other.end,owned[0],owned[2]) for other in results
-                if other.entity_type != "ORGANIZATION" or detection_source(other) != SOURCE_NER
+                if (other.start, other.end, other.entity_type, detection_source(other))
+                    != (result.start, result.end, result.entity_type, source)
             ) and result.end > owned[1]:
                 if result.start >= owned[1]:
                     decisions.append(MergeDecision("ner_code_path_suffix_suppressed",SOURCE_NONE,SOURCE_NER))

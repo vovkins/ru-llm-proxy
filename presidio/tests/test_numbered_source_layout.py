@@ -31,6 +31,16 @@ def test_wrapped_real_person_name_keeps_all_letters_covered():
     out,proof=project_numbered_person_layout(text,(original,))
     assert [text[r.start:r.end] for r in out]==['Иван','Петров']
 
+
+@pytest.mark.parametrize("kind,native", [("PERSON", False), ("ORGANIZATION", False), ("AUTH_TOKEN", True)])
+def test_evidence_removed_by_merging_can_still_veto_projection(kind, native):
+    text = '1: Intro\n2:\n3: Иван\n4: Петров\n5:\n'
+    original = evidence(text, 'Иван\n4: Петров')
+    independent = evidence(text, '4:', kind, native=native, control=False)
+    output, _ = project_numbered_person_layout(text, (original,), source_evidence=(original, independent))
+    assert covered((independent,)) <= covered(output)
+    assert all(text.index(name) in covered(output) for name in ('Иван', 'Петров'))
+
 def test_real_boundary_container_without_person_control_flag_is_projected():
     text='1: Intro\n2:\n3: overline\n4: Android: references\n5:\n'
     original=evidence(text,'overline\n4: Android:')

@@ -53,6 +53,13 @@ def test_extension_only_organization_is_removed_but_no_name_is_touched(fragment)
     text=json.dumps({'path':'a.ts','content':'const value = 1;'})
     assert not merge_results(text,[finding(text,fragment)]).results
 
+
+def test_independent_organization_fragment_blocks_file_suffix_exemption():
+    text = json.dumps({'path': 'src/PrivateCompany.ts', 'content': 'const value = 1;'})
+    original = finding(text, 'src/PrivateCompany.ts')
+    other = finding(text, 'Company.ts')
+    assert covered(original, merge_results(text, [original, other]).results)
+
 @pytest.mark.parametrize('kind',sorted(SUPPORTED_ENTITY_TYPES))
 def test_independent_native_path_evidence_keeps_the_entire_original_mask(kind):
     text=json.dumps({'path':'src/company.ts','content':'const value = 1;'})

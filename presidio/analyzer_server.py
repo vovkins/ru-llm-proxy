@@ -886,6 +886,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             {"PERSON", "ORGANIZATION"}.intersection(request.entities)
         )
         ner_entities = request.entities
+        requested_entities = frozenset(request.entities) if request.entities else None
         boundary_values = BoundaryValues(request.text)
         person_window = (
             PersonWindowBudget() if request.input_kind == "text"
@@ -904,7 +905,9 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 entities=ner_entities,
                 telemetry_callback=capture_ner_telemetry,
                 cancellation_event=cancellation_event,
-                boundary_context=BoundaryContext(boundaries, chunk.start, person_window),
+                boundary_context=BoundaryContext(
+                    boundaries, chunk.start, person_window, requested_entities=requested_entities,
+                ),
             )
             if recheck_enabled:
                 ner_kwargs["protected_spans"] = protected
@@ -1052,6 +1055,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         ):
             raise NERProcessingError(phase="postprocessing",
                                      failure_class="span_postprocessing_failed")
+        source_evidence = results
         results = merge_outcome.results
         # Independent structural evidence is additive and runs only after every
         # required backend/boundary check succeeded. It cannot hide a NER error.
@@ -1070,7 +1074,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
         # analogous to JSON syntax removed by argument_view.project below.
         if argument_view is None:
             results, _layout_proof = project_numbered_person_layout(
-                request.text, results, check=check,
+                request.text, results, source_evidence=source_evidence, check=check,
             )
 
         projected = []

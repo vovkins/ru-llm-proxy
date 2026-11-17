@@ -13,6 +13,7 @@ from result_merging import (
     SOURCE_NER,
     _copy_name,
     detection_source,
+    span_coverage_preserved,
 )
 
 
@@ -55,19 +56,20 @@ def _syntax(text, check):
     yield from finish(run)
 
 
-def project_numbered_person_layout(text, results, *, check=lambda: None):
+def _layout_candidate(result):
+    metadata = result.recognition_metadata or {}
+    return (result.entity_type == "PERSON" and detection_source(result) == SOURCE_NER
+            and (metadata.get(NER_PERSON_CONTROL_KEY) is True
+                 or metadata.get(NER_BOUNDARY_CONTAINER_KEY) is True))
+
+
+def project_numbered_person_layout(text, results, *, source_evidence=(), check=lambda: None):
     """Subtract proven display syntax after required positive-evidence checks.
 
     Strings, fences, inline/reference markup and unknown ownership stay opaque.
     Ordinary NER findings and native findings do not receive this projection.
     """
-    eligible_ids = set()
-    for result in results:
-        metadata = result.recognition_metadata or {}
-        if (result.entity_type == "PERSON" and detection_source(result) == SOURCE_NER
-                and (metadata.get(NER_PERSON_CONTROL_KEY) is True
-                     or metadata.get(NER_BOUNDARY_CONTAINER_KEY) is True)):
-            eligible_ids.add(id(result))
+    eligible_ids = {id(result) for result in results if _layout_candidate(result)}
     if not eligible_ids:
         return results, ()
 
@@ -77,14 +79,15 @@ def project_numbered_person_layout(text, results, *, check=lambda: None):
     values._prepare()
     inline, unknown = values._markup()
     opaque = (values.string_owners, values.fences, inline, values.references)
-    native = [result for result in results if detection_source(result) != SOURCE_NER]
+    independent = [result for result in chain(source_evidence, results)
+                   if not _layout_candidate(result)]
     syntax = tuple(
         (left, right) for left, right in _syntax(text, check)
         if left < right <= unknown
         and not any(index.intersects(left, right) for index in opaque)
-        and not any(result.start < right and left < result.end for result in native)
+        and not any(result.start < right and left < result.end for result in independent)
     )
-    output, proof = [], []
+    output, removed_syntax, proof = [], [], []
     for result in results:
         check()
         if id(result) not in eligible_ids:
@@ -115,8 +118,11 @@ def project_numbered_person_layout(text, results, *, check=lambda: None):
             item = _copy_name(result, start=left, end=right)
             item.recognition_metadata["numbered_source_layout_projected"] = True
             output.append(item)
+        removed_syntax.extend(_copy_name(result, start=left, end=right) for left, right in merged)
         proof.append({
             "entity_type": result.entity_type, "original": [result.start, result.end],
             "syntax": merged, "values": pieces,
         })
+    if proof and not span_coverage_preserved(results, chain(output, removed_syntax)):
+        return results, ()
     return tuple(sorted(output, key=lambda item: (item.start, item.end, item.entity_type))), tuple(proof)

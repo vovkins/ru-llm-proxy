@@ -1093,6 +1093,7 @@ class TritonNERRecognizer:
                                 boundary_context or BoundaryContext(BoundaryValues(text)),
                                 cancellation_event=cancellation_event,
                                 allow_typed_fields=True,
+                                requested_entities=requested_entities,
                             )
                         except NERWindowBoundaryError:
                             self._raise_unresolved_boundary(
@@ -1230,7 +1231,8 @@ class TritonNERRecognizer:
         ) from exc
 
     def _resolve_boundary_values(self, normalized, predictions, recovery, context,
-                                 *, cancellation_event=None, allow_typed_fields=False):
+                                 *, cancellation_event=None, allow_typed_fields=False,
+                                 requested_entities=None):
         combined = list(dict.fromkeys([*predictions, *recovery]))
         try:
             return merge_window_predictions(combined), []
@@ -1257,9 +1259,13 @@ class TritonNERRecognizer:
                                       <= len(context.values.text)):
                 unresolved.append(cluster)
                 continue
+            entity_type = getattr(bounds, "entity_type", cluster.entity_type)
+            output_entities = context.requested_entities or requested_entities
+            if output_entities and entity_type not in output_entities:
+                entity_type = cluster.entity_type
             removed.update(cluster.predictions)
             results.append(RecognizerResult(
-                entity_type=getattr(bounds, "entity_type", cluster.entity_type),
+                entity_type=entity_type,
                 start=bounds[0] - context.offset, end=bounds[1] - context.offset,
                 score=min(p.entity.score for p in cluster.predictions),
                 recognition_metadata={DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,

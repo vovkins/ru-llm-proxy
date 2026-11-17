@@ -671,3 +671,4 @@ class BoundaryContext:
     values: BoundaryValues
     offset: int = 0
     person_window: PersonWindowBudget | None = None
+    requested_entities: frozenset[str] | None = None
