@@ -25,14 +25,17 @@ from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
 from litellm_guardrails.dictionary_policy import (
+    DictionaryOutputCollisionError,
     DictionaryPolicyAmbiguousRequestError,
     DictionaryPolicyConfigError,
     DictionarySubstitutionPolicy,
     DictionarySubstitutionResult,
+    verify_unique_argument_keys,
 )
 from litellm_guardrails.anthropic_restoration import (
     AnthropicStreamRestorer, AnthropicToolInputTarget, SSEEventRestorer, is_anthropic_message,
-    message_targets as anthropic_message_targets, restore_tool_input, normalize_messages_bridge_output,
+    is_messages_route, message_targets as anthropic_message_targets, messages_stream_error,
+    restore_tool_input, normalize_messages_bridge_output,
 )
 from litellm_guardrails.restoration_mapping import (
     RestorationMapping, decode_mapping, encode_mapping, json_atom_spans, json_escape_spans, json_key_spans,
@@ -46,6 +49,7 @@ from litellm_guardrails.streaming_restoration import (
     restore_text,
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
+from litellm_guardrails.sse_integrity import IncompleteUpstreamStream
 from litellm_guardrails.request_cancellation import (
     ClientDisconnected, until_client_disconnect, register_request_cleanup, unregister_request_cleanup,
 )
@@ -1258,20 +1262,21 @@ class RuPIIGuardrail(CustomGuardrail):
     ) -> dict:
         """Apply dictionary substitution failure behavior."""
         operation_label = operation.replace(" ", "_")
-        if self.dictionary_substitutions_failure_mode == "fail_closed":
+        closed = (isinstance(error, DictionaryOutputCollisionError)
+                  or self.dictionary_substitutions_failure_mode == "fail_closed")
+        if closed:
             PII_FAIL_CLOSED.labels(operation=f"dictionary_{operation_label}").inc()
         else:
             PII_FAIL_OPEN.labels(operation=f"dictionary_{operation_label}").inc()
         _safe_log(
             logging.ERROR,
-            "dictionary_substitution_failed_open"
-            if self.dictionary_substitutions_failure_mode == "fail_open"
-            else "dictionary_substitution_failed_closed",
+            "dictionary_substitution_failed_closed" if closed
+            else "dictionary_substitution_failed_open",
             operation=operation_label,
-            failure_mode=self.dictionary_substitutions_failure_mode,
+            failure_mode="fail_closed" if closed else "fail_open",
             error_type=type(error).__name__,
         )
-        if self.dictionary_substitutions_failure_mode == "fail_closed":
+        if closed:
             if operation == "ambiguous request":
                 error = {
                     "message": "Request contains conflicting original terms and dictionary aliases. Start a clean history or remove the ambiguous alias text.",
@@ -3944,6 +3949,12 @@ class RuPIIGuardrail(CustomGuardrail):
         blocked_entity_counts: dict[str, int] = {}
         synthetic_allowlist_findings: list[dict[str, str]] = []
         pending_updates = []
+
+        def queue_update(target, field, original, masked):
+            if field == "arguments":
+                verify_unique_argument_keys(masked)
+            pending_updates.append((target, field, original, masked))
+
         analyzer_call_index = 0
         analysis_cache_context: Optional[dict[str, str]] = None
         analysis_cache_context_prepared = False
@@ -3963,9 +3974,13 @@ class RuPIIGuardrail(CustomGuardrail):
                             )
                             reserved_placeholders.update(dictionary_request_plan.aliases.values())
                         else:
-                            self.dictionary_substitution_policy.validate_request(
+                            dictionary_request_plan = self.dictionary_substitution_policy.validate_request(
                                 texts, inherited_mapping, reference_texts=provider_texts,
                             )
+                        reserved_placeholders.update(
+                            match.group() for value in dictionary_request_plan.irreversible_outputs
+                            for match in re.finditer(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', value)
+                        )
                     dictionary_preflight_done = True
                 reserved_token = _DICTIONARY_RESERVED_PLACEHOLDERS.set(reserved_placeholders)
                 plan_token = _DICTIONARY_REQUEST_PLAN.set(dictionary_request_plan)
@@ -3989,7 +4004,9 @@ class RuPIIGuardrail(CustomGuardrail):
                     for left, right in dictionary_result.replacement_spans:
                         key_index = bisect_right(key_starts, left) - 1
                         if key_index >= 0 and right <= key_spans[key_index][1]:
-                            current_dictionary_mapping.json_keys.add(provider_content[left:right])
+                            alias = provider_content[left:right]
+                            if alias in current_dictionary_mapping:
+                                current_dictionary_mapping.json_keys.add(alias)
                     current_dictionary_mapping.json_keys.update(
                         (dictionary_mapping.json_keys | full_mapping.json_keys)
                         & current_dictionary_mapping.keys()
@@ -4027,7 +4044,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     _ANALYZER_CALL_CONTEXT.reset(analyzer_context_token)
                 if not entities:
                     if provider_content != content:
-                        pending_updates.append((target, field, content, provider_content))
+                        queue_update(target, field, content, provider_content)
                     continue
 
                 (
@@ -4040,7 +4057,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 synthetic_allowlist_findings.extend(current_allowlist_findings)
                 if not entities:
                     if provider_content != content:
-                        pending_updates.append((target, field, content, provider_content))
+                        queue_update(target, field, content, provider_content)
                     continue
 
                 if self.pii_mode == "block":
@@ -4059,7 +4076,7 @@ class RuPIIGuardrail(CustomGuardrail):
                             blocked_entity_counts.get(entity_type, 0) + count
                         )
                     if provider_content != content:
-                        pending_updates.append((target, field, content, provider_content))
+                        queue_update(target, field, content, provider_content)
                     continue
 
                 masked_text, mapping = self._mask_text(
@@ -4072,9 +4089,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 if mapping:
                     pii_mapping.update(mapping)
-                    pending_updates.append((target, field, content, masked_text))
+                    queue_update(target, field, content, masked_text)
                 elif provider_content != content:
-                    pending_updates.append((target, field, content, provider_content))
+                    queue_update(target, field, content, provider_content)
 
             except DictionaryPolicyAmbiguousRequestError as e:
                 if stateful:
@@ -4082,19 +4099,17 @@ class RuPIIGuardrail(CustomGuardrail):
                         "pii_history_ambiguous", 409,
                         "Ambiguous dictionary substitution. Start a new request with the full history.",
                     ))
+                closed = (isinstance(e, DictionaryOutputCollisionError)
+                          or self.dictionary_substitutions_failure_mode == "fail_closed")
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
                     data=data,
                     started_at=started_at,
-                    status="blocked"
-                    if self.dictionary_substitutions_failure_mode == "fail_closed"
-                    else "allowed",
-                    policy_result=self.dictionary_substitutions_failure_mode,
+                    status="blocked" if closed else "allowed",
+                    policy_result="fail_closed" if closed else "fail_open",
                     call_type=call_type,
-                    block_reason="dictionary_substitution_ambiguous"
-                    if self.dictionary_substitutions_failure_mode == "fail_closed"
-                    else None,
+                    block_reason="dictionary_substitution_ambiguous" if closed else None,
                     error_code="dictionary_substitution_ambiguous",
                     failure_operation="dictionary_substitution",
                     error_type=type(e).__name__,
@@ -4530,6 +4545,8 @@ class RuPIIGuardrail(CustomGuardrail):
         normalizer = ResponsesStreamNormalizer()
         mapping = {}
         cleanup_mapping = bool(request_id)
+        messages_route = is_messages_route(request_data)
+        messages_error = None
         try:
             if not request_id:
                 PII_POST_CALLS.labels(result="skipped").inc()
@@ -4560,7 +4577,7 @@ class RuPIIGuardrail(CustomGuardrail):
             anthropic = AnthropicStreamRestorer(mapping)
             def process_event(event):
                 event = normalizer.prepare(event)
-                if anthropic.accepts(event):
+                if anthropic.accepts(event, expected=messages_route):
                     return anthropic.process(event)
                 return restorer.process(event) if restorer else [event]
             wire = SSEEventRestorer(process_event)
@@ -4585,9 +4602,19 @@ class RuPIIGuardrail(CustomGuardrail):
             if wire:
                 for item in wire.finish():
                     yield item
+            anthropic.verify_completion(expected=messages_route)
             if restorer:
                 for item in restorer.finish():
                     yield item
+        except IncompleteUpstreamStream as error:
+            if not messages_route:
+                raise
+            PII_POST_CALLS.labels(result="error").inc()
+            _safe_log(
+                logging.WARNING, "pii_guardrail_messages_stream_incomplete",
+                request_id=request_id, stream_failure=error.reason,
+            )
+            messages_error = messages_stream_error()
         except RestorationKeyCollision:
             error = ProxyException(
                 message="Restoring tool arguments would produce duplicate JSON keys.",
@@ -4607,6 +4634,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 finally:
                     await self._cleanup_stream(iterator, request_id, cleanup_mapping)
             await _finish_stream_cleanup(cleanup())
+
+        if messages_error is not None:
+            yield messages_error
+            return
 
         if restorer is None:
             return

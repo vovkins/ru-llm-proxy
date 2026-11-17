@@ -400,3 +400,69 @@ async def test_native_stream_without_mapping_keeps_valid_data_and_rejects_bad_js
     else:
         await run();assert collect(output)==('ordinary text',{'content':'ordinary code'})
     assert not g._redis.values
+
+
+@pytest.mark.asyncio
+async def test_typed_text_and_arguments_match_nonstream_in_native_messages():
+    mapping = RestorationMapping()
+    mapping.add_number('<RU_PASSPORT_1>', '42')
+    mapping.add_string('<PERSON_1>', r'Mira\nMeadow')
+    arguments = {'number': '<RU_PASSPORT_1>', 'person': '<PERSON_1>'}
+    text = json.dumps(arguments, separators=(',', ':'))
+    request = {'metadata': {'pii_request_id': 'local'}}
+    g = guard(mapping)
+    reply = message(text, copy.deepcopy(arguments))
+    await g.async_post_call_success_hook(request, AUTH, reply)
+    g = guard(mapping)
+    frames = events(text, arguments, split=1)
+    output = [event async for event in g.async_post_call_streaming_iterator_hook(
+        AUTH, chunks(frames), {**request, 'stream': True},
+    )]
+    actual_text, actual_args = collect(output)
+    assert actual_text == reply['content'][0]['text']
+    assert json.loads(actual_text)['number'] == 42
+    assert actual_args == reply['content'][1]['input'] == {'number': 42, 'person': 'Mira\nMeadow'}
+    assert not g._redis.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['eof', 'wrong_delta', 'empty', 'provider_error'])
+@pytest.mark.parametrize('transport', ['objects', 'bytes'])
+async def test_messages_terminal_error_uses_stock_http_sse_serializer(failure, transport):
+    from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+    g = guard() if failure == 'wrong_delta' else guard({'unusedAlias': 'privateOriginal'})
+    request = {'stream': True, 'metadata': {'pii_request_id': 'local'},
+               'litellm_metadata': {'endpoint': 'http://proxy/v1/messages'}}
+    provider_error = {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Busy'}}
+    frames = events('ordinary', {'content': 'ordinary'}, split=100)
+    if failure == 'eof':
+        frames.pop()
+    elif failure == 'empty':
+        frames = []
+    elif failure == 'provider_error':
+        frames = [provider_error]
+    else:
+        bad = next(e for e in frames if e['type'] == 'content_block_delta' and e['index'] == 1)
+        bad['delta'] = {'type': 'text_delta', 'text': 'misplaced'}
+    if transport == 'bytes':
+        frames = [sse([e]).encode() for e in frames]
+    proxy_logger = SimpleNamespace(
+        async_post_call_streaming_iterator_hook=g.async_post_call_streaming_iterator_hook,
+        async_post_call_streaming_hook=AsyncMock(side_effect=lambda **kw: kw['response']),
+    )
+    generator = ProxyBaseLLMRequestProcessing.async_sse_data_generator(
+        response=chunks(frames), user_api_key_dict=AUTH, request_data=request,
+        proxy_logging_obj=proxy_logger,
+    )
+    output = ''.join([x.decode() if isinstance(x, bytes) else x async for x in generator])
+    decoded = decode_sse(output)
+    assert [item['type'] for item in decoded].count('error') == 1
+    assert decoded[-1]['type'] == 'error'
+    assert not any(item['type'] == 'message_stop' for item in decoded)
+    if failure == 'provider_error':
+        assert decoded[-1] == provider_error
+    else:
+        assert 'event: error\n' in output
+        assert decoded[-1]['error']['type'] == 'api_error'
+    assert not g._redis.values

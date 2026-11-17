@@ -92,6 +92,32 @@ def check_chat_edge(payload, expected, reasoning, finish):
     assert actual_reasoning == reasoning, (actual_reasoning, reasoning)
 
 
+def check_messages_tool_only(client):
+    value = "stateresponses-messages-bridge@example.test"
+    payload = {
+        "model": "mock-chat-bridge", "stream": False, "max_tokens": 50,
+        "messages": [{"role": "user", "content": "STOCK_BRIDGE_ECHO " + value}],
+        "tools": [{
+            "name": TOOLS[0]["name"], "description": TOOLS[0]["description"],
+            "input_schema": TOOLS[0]["parameters"],
+        }],
+    }
+    req = urllib.request.Request(
+        "http://localhost:4000/v1/messages", data=json.dumps(payload).encode(),
+        headers={"Authorization": "Bearer sk-test-master", "Content-Type": "application/json",
+                 "Anthropic-Version": "2023-06-01"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as result:
+        assert result.status == 200
+        body = json.load(result)
+    assert body["stop_reason"] == "tool_use"
+    assert [block["type"] for block in body["content"]] == ["tool_use"]
+    tool = body["content"][0]
+    assert (tool["id"], tool["name"]) == ("call_bridge", TOOLS[0]["name"])
+    assert tool["input"] == {"values": [value]}, "Messages tool arguments were not restored"
+    assert not client.keys("pii_mapping:*"), "Messages retained a request mapping"
+
+
 def run():
     SEQUENCE_FAILURES.clear()
     client = redis.Redis.from_url("redis://redis:6379")
@@ -221,12 +247,15 @@ def run():
                 assert not client.keys("pii_mapping:*"), "Clean Chat request retained a mapping"
                 chat_count += 1
                 provider_calls += 1
+    check_messages_tool_only(client)
+    provider_calls += 1
     result = capture()
     assert result["provider_requests"] == before + provider_calls, result
     assert result["provider_request_paths"][before:] == ["/v1/chat/completions"] * provider_calls, result
     assert result["provider_saw_pii_placeholder"], result
     assert not result["provider_saw_synthetic_marker"], result
     print(json.dumps({"responses_chat_bridge_checks": count, "chat_edge_checks": chat_count,
+                      "messages_tool_only_checks": 1,
                       "sequence_failures": SEQUENCE_FAILURES,
                       "passed": not SEQUENCE_FAILURES}), flush=True)
     assert not SEQUENCE_FAILURES, "Responses bridge event numbering violated strict ordering"

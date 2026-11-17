@@ -7,7 +7,7 @@ import re
 import httpx
 
 from litellm_guardrails.streaming_restoration import (
-    _StreamingJSONRestorer, _StreamingPlaceholderReplacer,
+    _StreamingJSONRestorer, _StreamingPlaceholderReplacer, _StreamingTypedTextRestorer,
     get_field, set_field, restore_arguments, restore_text,
 )
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream, MAX_SSE_EVENT_BYTES
@@ -17,6 +17,21 @@ _NATIVE_EVENTS = frozenset({
     'message_start', 'content_block_start', 'content_block_delta',
     'content_block_stop', 'message_delta', 'message_stop',
 })
+_TOOL_BLOCKS = frozenset({'tool_use', 'server_tool_use'})
+_DELTA_BLOCKS = {
+    'text_delta': {'text'},
+    'input_json_delta': _TOOL_BLOCKS,
+    'thinking_delta': {'thinking'},
+    'signature_delta': {'thinking'},
+    'citations_delta': {'text'},
+}
+
+
+def messages_stream_error():
+    payload = {'type': 'error', 'error': {
+        'type': 'api_error', 'message': 'The upstream Messages stream did not complete correctly.',
+    }}
+    return 'event: error\ndata: ' + json.dumps(payload) + '\n\n'
 
 
 class AnthropicToolInputTarget(dict):
@@ -72,14 +87,31 @@ class AnthropicStreamRestorer:
     def __init__(self, mapping):
         self.mapping = mapping
         self.text = _StreamingPlaceholderReplacer(mapping)
+        self.typed_text = {}
         self.blocks = {}
+        self.started = False
+        self.closed_indices = set()
+        self.final_delta = False
         self.seen = False
         self.terminated = False
         self.restored_fields = 0
 
-    def accepts(self, event):
+    def accepts(self, event, *, expected=False):
         kind = get_field(event, 'type')
-        return kind in _NATIVE_EVENTS or (self.seen and kind in {'error', 'ping'})
+        return isinstance(kind, str) and (
+            kind in _NATIVE_EVENTS or ((self.seen or expected) and kind == 'error')
+        )
+
+    def _push_text(self, index, value):
+        if not getattr(self.mapping, 'json_numbers', ()):
+            return self.text.push(index, value)
+        if index not in self.typed_text:
+            self.typed_text[index] = _StreamingTypedTextRestorer(self.mapping)
+        return self.typed_text[index].push(value)
+
+    def _flush_text(self, index):
+        typed = self.typed_text.pop(index, None)
+        return typed.flush() if typed is not None else self.text.flush(index)
 
     def _restore_message(self, message):
         for target, field in message_targets(message):
@@ -94,38 +126,48 @@ class AnthropicStreamRestorer:
         if self.terminated and kind != 'ping':
             raise IncompleteUpstreamStream('anthropic_data_after_terminal')
         self.seen = True
+        if kind not in {'message_start', 'error'} and not self.started:
+            raise IncompleteUpstreamStream('anthropic_event_before_message_start')
         if kind == 'message_start':
+            if self.started:
+                raise IncompleteUpstreamStream('anthropic_duplicate_message_start')
+            self.started = True
             self._restore_message(get_field(event, 'message'))
         elif kind == 'content_block_start':
             index = get_field(event, 'index')
-            if type(index) is not int or index < 0 or index in self.blocks:
+            if (self.final_delta or type(index) is not int or index < 0
+                    or index in self.blocks or index in self.closed_indices):
                 raise IncompleteUpstreamStream('anthropic_invalid_block_start')
             block = get_field(event, 'content_block')
             block_type = get_field(block, 'type')
+            if not isinstance(block_type, str):
+                raise IncompleteUpstreamStream('anthropic_invalid_block_type')
             self.blocks[index] = {'type': block_type, 'json': None, 'raw': [], 'size': 0}
             if block_type == 'text':
                 value = get_field(block, 'text')
                 if isinstance(value, str):
-                    restored = self.text.push(index, value)
+                    restored = self._push_text(index, value)
                     self.restored_fields += int(restored != value)
                     set_field(block, 'text', restored)
-            elif block_type in {'tool_use', 'server_tool_use'}:
+            elif block_type in _TOOL_BLOCKS:
                 self._restore_message({'content': [block]})
         elif kind == 'content_block_delta':
             index = get_field(event, 'index')
-            if index not in self.blocks:
+            if type(index) is not int or index not in self.blocks:
                 raise IncompleteUpstreamStream('anthropic_delta_without_block')
             state = self.blocks[index]
             delta = get_field(event, 'delta')
             delta_type = get_field(delta, 'type')
-            if delta_type == 'text_delta' and state['type'] == 'text':
+            if isinstance(delta_type, str) and delta_type in _DELTA_BLOCKS and state['type'] not in _DELTA_BLOCKS[delta_type]:
+                raise IncompleteUpstreamStream('anthropic_delta_incompatible_with_block')
+            if delta_type == 'text_delta':
                 value = get_field(delta, 'text')
                 if not isinstance(value, str):
                     raise IncompleteUpstreamStream('anthropic_invalid_text_delta')
-                restored = self.text.push(index, value)
+                restored = self._push_text(index, value)
                 self.restored_fields += int(restored != value)
                 set_field(delta, 'text', restored)
-            elif delta_type == 'input_json_delta' and state['type'] in {'tool_use', 'server_tool_use'}:
+            elif delta_type == 'input_json_delta':
                 value = get_field(delta, 'partial_json')
                 if not isinstance(value, str):
                     raise IncompleteUpstreamStream('anthropic_invalid_input_delta')
@@ -140,9 +182,10 @@ class AnthropicStreamRestorer:
                 set_field(delta, 'partial_json', restored)
         elif kind == 'content_block_stop':
             index = get_field(event, 'index')
-            if index not in self.blocks:
+            if type(index) is not int or index not in self.blocks:
                 raise IncompleteUpstreamStream('anthropic_stop_without_block')
             state = self.blocks.pop(index)
+            self.closed_indices.add(index)
             if state['json'] is not None:
                 try:
                     value = json.loads(''.join(state['raw']))
@@ -153,11 +196,15 @@ class AnthropicStreamRestorer:
                 tail = state['json'].flush()
                 delta = {'type': 'input_json_delta', 'partial_json': tail}
             else:
-                tail = self.text.flush(index) if state['type'] == 'text' else ''
+                tail = self._flush_text(index) if state['type'] == 'text' else ''
                 delta = {'type': 'text_delta', 'text': tail}
             if tail:
                 self.restored_fields += 1
                 return [{'type': 'content_block_delta', 'index': index, 'delta': delta}, event]
+        elif kind == 'message_delta':
+            if self.blocks:
+                raise IncompleteUpstreamStream('anthropic_message_delta_with_open_blocks')
+            self.final_delta = True
         elif kind == 'message_stop':
             if self.blocks:
                 raise IncompleteUpstreamStream('anthropic_terminal_with_open_blocks')
@@ -167,9 +214,15 @@ class AnthropicStreamRestorer:
             self.finish()
         return [event]
 
+    def verify_completion(self, *, expected=False):
+        if (self.seen or expected) and not self.terminated:
+            raise IncompleteUpstreamStream('anthropic_missing_message_stop')
+
     def finish(self):
         # No success event or buffered suffix is invented on EOF/cancellation.
         self.blocks.clear()
+        self.closed_indices.clear()
+        self.typed_text.clear()
         self.text._pending.clear()
 
 
@@ -278,10 +331,11 @@ def normalize_messages_bridge_output(request_data, response, call_type):
     LiteLLM 1.98's chat bridge emits GenericResponseOutputItem objects, while
     its Messages adapter recognizes OpenAI SDK items or dictionaries. Normalize
     only this proxy route, via the public deployment callback, before conversion.
-    No originals are restored here; the serialized payload stays identical.
+    No originals are restored here.
     """
     from urllib.parse import urlsplit
     from openai.types.responses import ResponseOutputMessage, ResponseFunctionToolCall
+    from litellm.types.responses.main import GenericResponseOutputItem
 
     kind = getattr(call_type, 'value', call_type)
     if kind not in {'aresponses', 'acompletion'}:
@@ -320,6 +374,12 @@ def normalize_messages_bridge_output(request_data, response, call_type):
     output = getattr(response, 'output', None)
     if not isinstance(output, list):
         return
+    chat_bridge_tool_reply = (
+        not request_data.get('stream')
+        and (request_data.get('use_chat_completions_api') is True
+             or str(request_data.get('model', '')).startswith('openai/chat_completions/'))
+        and any(isinstance(item, ResponseFunctionToolCall) and item.arguments for item in output)
+    )
     normalized = []
     changed = False
     for item in output:
@@ -328,9 +388,14 @@ def normalize_messages_bridge_output(request_data, response, call_type):
             validate_arguments(get_field(item, 'arguments'))
         target = {'message': ResponseOutputMessage, 'function_call': ResponseFunctionToolCall}.get(kind)
         if target is not None and not isinstance(item, (dict, target)) and hasattr(item, 'model_dump'):
-            # Validate the exact provider payload; do not fabricate missing text.
             try:
                 payload = item.model_dump(mode='json')
+                if (chat_bridge_tool_reply and kind == 'message'
+                        and isinstance(item, GenericResponseOutputItem)
+                        and payload.get('role') == 'assistant' and payload.get('status') == 'completed'
+                        and payload.get('content') == [{'type': 'output_text', 'text': None, 'annotations': []}]):
+                    # Chat has no text in a tool-only reply. Drop only its synthetic null part.
+                    payload['content'] = []
                 target.model_validate(payload)
                 # The adapter explicitly supports dictionaries. Keep the exact
                 # serialized fields instead of adding SDK default/null fields.

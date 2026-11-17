@@ -10,9 +10,11 @@ import pytest
 from litellm.types.llms.openai import ResponsesAPIResponse
 from litellm.types.responses.main import GenericResponseOutputItem, OutputText
 from litellm.llms.anthropic.experimental_pass_through.responses_adapters.transformation import LiteLLMAnthropicToResponsesAPIAdapter
+from litellm.responses.litellm_completion_transformation.transformation import LiteLLMCompletionResponsesConfig
 from litellm_guardrails.anthropic_restoration import normalize_messages_bridge_output
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
 from litellm_guardrails.request_cancellation import RequestCancellationMiddleware
+from litellm_guardrails.sse_integrity import IncompleteUpstreamStream
 from litellm_guardrails.tests.test_pii_guardrail import _MemoryRedis
 
 
@@ -109,6 +111,75 @@ def test_generic_bridge_function_call_keeps_json_and_fields():
     assert response.model_dump_json()==before
     tool=LiteLLMAnthropicToResponsesAPIAdapter().translate_response(response)['content'][1]
     assert tool['type']=='tool_use' and tool['input']=={'path':'a.ts'}
+
+
+def stock_chat_bridge_reply(text, arguments):
+    message = {'role': 'assistant', 'content': text}
+    if arguments is not None:
+        message['tool_calls'] = [{
+            'id': 'call-local', 'type': 'function',
+            'function': {'name': 'Write', 'arguments': arguments},
+        }]
+    chat_reply = {
+        'id': 'chatcmpl-local', 'object': 'chat.completion', 'created': 1, 'model': 'mock',
+        'choices': [{'index': 0, 'message': message, 'finish_reason': 'tool_calls' if arguments is not None else 'stop'}],
+    }
+    return LiteLLMCompletionResponsesConfig.transform_chat_completion_response_to_responses_api_response(
+        'synthetic', {}, chat_reply,
+    )
+
+
+def messages_chat_bridge_request(**overrides):
+    return {
+        'litellm_metadata': {'endpoint': 'http://proxy/v1/messages'},
+        'use_chat_completions_api': True, 'stream': False, **overrides,
+    }
+
+
+@pytest.mark.parametrize('text,with_tool', [(None, True), ('visible', False), ('visible', True)])
+def test_stock_chat_bridge_keeps_text_and_tool_without_null_placeholder(text, with_tool):
+    arguments = '{"path":"a.ts","lines":[1,2]}' if with_tool else None
+    response = stock_chat_bridge_reply(text, arguments)
+    first = response.output[0].model_dump(mode='json')
+    original_tool = response.output[1] if with_tool else None
+    normalize_messages_bridge_output(messages_chat_bridge_request(), response, 'aresponses')
+
+    assert response.output[0] == ({**first, 'content': []} if text is None else first)
+    if with_tool:
+        assert response.output[1] is original_tool and original_tool.arguments == arguments
+    reply = LiteLLMAnthropicToResponsesAPIAdapter().translate_response(response)
+    types = (['text'] if text is not None else []) + (['tool_use'] if with_tool else [])
+    assert [block['type'] for block in reply['content']] == types
+    if text is not None:
+        assert reply['content'][0]['text'] == text
+    if with_tool:
+        tool = reply['content'][-1]
+        assert (tool['id'], tool['name'], tool['input']) == ('call-local', 'Write', json.loads(arguments))
+        assert reply['stop_reason'] == 'tool_use'
+
+
+@pytest.mark.parametrize('case', ['no_tool', 'annotated', 'native_responses', 'stream'])
+def test_null_text_outside_exact_tool_only_chat_bridge_still_fails(case):
+    response = stock_chat_bridge_reply(None, None if case == 'no_tool' else '{}')
+    request = messages_chat_bridge_request(
+        stream=case == 'stream', use_chat_completions_api=case != 'native_responses',
+    )
+    if case == 'annotated':
+        response.output[0].content[0].annotations = [{'type': 'url_citation', 'title': 'reference'}]
+    original = response.output[0]
+    with pytest.raises(IncompleteUpstreamStream, match='invalid_messages_bridge_output'):
+        normalize_messages_bridge_output(request, response, 'aresponses')
+    assert response.output[0] is original
+
+
+@pytest.mark.parametrize('bad_arguments', ['{unfinished', '[]'])
+def test_empty_bridge_placeholder_does_not_hide_invalid_arguments(bad_arguments):
+    response = stock_chat_bridge_reply(None, bad_arguments)
+    original = response.output[0]
+    with pytest.raises(litellm.APIError) as caught:
+        normalize_messages_bridge_output(messages_chat_bridge_request(), response, 'aresponses')
+    assert caught.value.status_code == 502
+    assert response.output[0] is original
 
 
 def test_parallel_messages_chat_tools_are_separated_without_changing_arguments_or_usage():

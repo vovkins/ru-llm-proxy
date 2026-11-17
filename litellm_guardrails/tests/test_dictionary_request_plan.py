@@ -3,15 +3,16 @@ import asyncio
 import copy
 import json
 import re
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from litellm_guardrails.dictionary_policy import DictionarySubstitutionPolicy, DictionaryPolicyAmbiguousRequestError
 from litellm_guardrails import pii_guardrail as module
 from litellm_guardrails.pii_guardrail import RuPIIGuardrail
-from litellm_guardrails.restoration_mapping import RestorationMapping
-from litellm_guardrails.streaming_restoration import restore_text
+from litellm_guardrails.restoration_mapping import RestorationMapping, decode_mapping
+from litellm_guardrails.streaming_restoration import restore_arguments, restore_text
 from litellm_guardrails.tests.test_anthropic_restoration import AUTH, RULES, guard, message, events, chunks, collect
 from presidio.entity_types import SUPPORTED_ENTITY_TYPES
 
@@ -20,6 +21,92 @@ def enabled():
     g = guard()
     g.dictionary_collision_resolution = 'unique_aliases'
     return g
+
+
+def _collision_request(call_type, argument):
+    if call_type == 'aresponses':
+        arguments = {'type': 'function_call', 'call_id': 'old', 'name': 'Write', 'arguments': argument}
+        return {'model': 'mock', 'input': [arguments]}, lambda: arguments['arguments']
+    if call_type == 'acompletion':
+        arguments = {'name': 'Write', 'arguments': argument}
+        return {'messages': [{'role': 'assistant', 'tool_calls': [
+            {'id': 'old', 'type': 'function', 'function': arguments},
+        ]}]}, lambda: arguments['arguments']
+    block = {'type': 'tool_use', 'id': 'old', 'name': 'Write', 'input': json.loads(argument)}
+    return {'messages': [{'role': 'assistant', 'content': [block]}]}, lambda: json.dumps(block['input'])
+
+
+def _collision_guard(monkeypatch, mode, rules):
+    g = guard()
+    g.dictionary_collision_resolution = mode
+    g.dictionary_substitution_policy = DictionarySubstitutionPolicy.from_config({'substitutions': rules})
+    g._responses_state_store = AsyncMock(return_value=SimpleNamespace(owner=lambda _: 'test-owner'))
+    monkeypatch.setattr(module, 'LITELLM_SALT_KEY', 'test-salt')
+    return g
+
+
+@pytest.mark.parametrize('call_type', ['acompletion', 'aresponses', 'anthropic_messages'])
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.parametrize('same_object', [False, True])
+@pytest.mark.asyncio
+async def test_irreversible_output_is_never_decoded_as_another_original(monkeypatch, call_type, mode, same_object):
+    g = _collision_guard(monkeypatch, mode, [
+        {'id': 'a', 'source': 'privateAlpha', 'replacement': 'publicValue'},
+        {'id': 'b', 'source': 'privateBeta', 'replacement': 'publicValue', 'restore': False},
+    ])
+    original = '{"privateAlpha":1,"privateBeta":2}' if same_object else '{"privateAlpha":{"privateBeta":2}}'
+    data, arguments = _collision_request(call_type, original)
+    if mode == 'reject':
+        with pytest.raises(Exception) as error:
+            await g.async_pre_call_hook(AUTH, None, data, call_type)
+        assert error.value.status_code == (409 if call_type == 'aresponses' else 422)
+        assert json.loads(arguments()) == json.loads(original)
+        assert not g._redis.values
+        return
+    await g.async_pre_call_hook(AUTH, None, data, call_type)
+    assert 'privateAlpha' not in arguments() and 'privateBeta' not in arguments()
+    mapping = decode_mapping(next(iter(g._redis.values.values())))
+    assert 'publicValue' not in mapping and list(mapping.values()) == ['privateAlpha']
+    expected = {'privateAlpha': 1, 'publicValue': 2} if same_object else {'privateAlpha': {'publicValue': 2}}
+    assert json.loads(restore_arguments(arguments(), mapping)) == expected
+
+
+@pytest.mark.parametrize('call_type', ['acompletion', 'aresponses', 'anthropic_messages'])
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.asyncio
+async def test_unresolvable_nested_json_key_collision_blocks_before_mutation(monkeypatch, call_type, mode):
+    g = _collision_guard(monkeypatch, mode, [
+        {'id': 'a', 'source': 'privateAlpha', 'replacement': 'publicValue', 'restore': False},
+        {'id': 'b', 'source': 'privateBeta', 'replacement': 'publicValue', 'restore': False},
+    ])
+    g.dictionary_substitutions_failure_mode = 'fail_open'
+    original = '{"earlier":"privateAlpha","nested":{"privateAlpha":1,"privateBeta":2}}'
+    data, arguments = _collision_request(call_type, original)
+    with pytest.raises(Exception) as error:
+        await g.async_pre_call_hook(AUTH, None, data, call_type)
+    assert error.value.status_code == (409 if call_type == 'aresponses' else 422)
+    assert json.loads(arguments()) == json.loads(original)
+    assert not g._redis.values
+
+
+@pytest.mark.parametrize('mode', ['reject', 'unique_aliases'])
+@pytest.mark.asyncio
+async def test_select_matches_once_without_changing_overlap_priority(monkeypatch, mode):
+    g = _collision_guard(monkeypatch, mode, [
+        {'id': 'a', 'source': 'LLC North', 'replacement': 'ShortAlias'},
+        {'id': 'b', 'source': 'North Grove', 'replacement': 'LongAlias'},
+    ])
+    policy = g.dictionary_substitution_policy
+    select = Mock(wraps=policy._select_matches)
+    monkeypatch.setattr(policy, '_select_matches', select)
+    texts = ['LLC North Grove', 'no alias here', 'LLC North Grove', 'another North Grove']
+    data = {'messages': [{'role': 'user', 'content': value} for value in texts]}
+    await g.async_pre_call_hook(AUTH, None, data, 'acompletion')
+    assert [call.args[0] for call in select.call_args_list] == list(dict.fromkeys(texts))
+    outbound = [m['content'] for m in data['messages']]
+    assert outbound == ['LLC LongAlias', 'no alias here', 'LLC LongAlias', 'another LongAlias']
+    mapping = decode_mapping(next(iter(g._redis.values.values())))
+    assert [restore_text(text, mapping) for text in outbound] == texts
 
 
 @pytest.mark.parametrize('values', [

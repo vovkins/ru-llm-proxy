@@ -6,7 +6,10 @@ import json
 import re
 from types import MappingProxyType
 
-from .dictionary_policy import DictionaryPolicyAmbiguousRequestError
+from .dictionary_policy import (
+    DictionaryOutputCollisionError, DictionaryPolicyAmbiguousRequestError,
+    aliases_collide_with_irreversible_output, irreversible_outputs,
+)
 
 MAX_REFERENCE_CHARACTERS = 8 * 1024 * 1024
 MAX_PLANNED_ORIGINALS = 10000
@@ -17,7 +20,15 @@ _NATIVE_MASK = re.compile(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>\Z')
 @dataclass(frozen=True, repr=False)
 class DictionaryRequestPlan:
     policy: object
-    aliases: object
+    aliases: object | None
+    irreversible_outputs: frozenset[str]
+    matches_by_text: object
+
+    def matches_for(self, text):
+        try:
+            return self.matches_by_text[text]
+        except KeyError:
+            raise DictionaryPolicyAmbiguousRequestError('Unplanned dictionary field') from None
 
     def replacement(self, rule, original):
         try:
@@ -60,20 +71,26 @@ def build_request_plan(policy, texts, existing_mapping=None, *, reference_texts=
     texts = tuple(texts)
     if any(not isinstance(text, str) for text in texts):
         raise DictionaryPolicyAmbiguousRequestError('Invalid dictionary planning input')
-    matches_by_text = tuple(policy._select_matches(text) for text in texts)
+    selected = policy._request_matches(texts)
+    matches_by_text = selected.values()
+    irreversible = irreversible_outputs(matches_by_text)
+    inherited = existing_mapping or {}
+    if any(aliases_collide_with_irreversible_output(alias, irreversible) for alias in inherited):
+        raise DictionaryOutputCollisionError('Irreversible output contains an inherited alias')
     if not any(match.rule.restore for matches in matches_by_text for match in matches):
-        return DictionaryRequestPlan(policy, MappingProxyType({}))
+        return DictionaryRequestPlan(policy, MappingProxyType({}), irreversible, selected)
     reference_texts = texts if reference_texts is None else tuple(reference_texts)
     if any(not isinstance(text, str) for text in reference_texts):
         raise DictionaryPolicyAmbiguousRequestError('Invalid dictionary planning reference')
     references = tuple(text.casefold() for text in _reference_spellings(reference_texts))
-    inherited = existing_mapping or {}
     occupied = dict(inherited)
     aliases = {}
     counter = 0
 
     def conflicts(candidate, original, *, trusted=False):
         folded = candidate.casefold()
+        if aliases_collide_with_irreversible_output(candidate, irreversible):
+            return True
         if any(key.casefold() == folded and value != original for key, value in occupied.items()):
             return True
         if not trusted and any(folded in text for text in references):
@@ -112,4 +129,4 @@ def build_request_plan(policy, texts, existing_mapping=None, *, reference_texts=
                         break
             aliases[key] = replacement
             occupied[replacement] = match.original
-    return DictionaryRequestPlan(policy, MappingProxyType(aliases))
+    return DictionaryRequestPlan(policy, MappingProxyType(aliases), irreversible, selected)
