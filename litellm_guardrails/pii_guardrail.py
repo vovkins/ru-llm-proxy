@@ -245,6 +245,7 @@ ANALYZER_FAILURE_CLASSES = frozenset(
         "tokenizer_failed",
         "window_planning_failed",
         "window_boundary_unresolved",
+        "boundary_positive_coverage_failed",
         "forward_pass_failed",
         "bio_decoding_failed",
         "offset_mapping_failed",
@@ -2443,6 +2444,8 @@ class RuPIIGuardrail(CustomGuardrail):
             "scope": context["scope"],
             "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
         }
+        if getattr(self,"_boundary_coverage_enabled",False):
+            contract["boundary_coverage_version"] = 1
         call_context = _ANALYZER_CALL_CONTEXT.get()
         if call_context is not None and call_context[2]:
             contract["input_kind"] = "json_arguments"
@@ -2759,7 +2762,8 @@ class RuPIIGuardrail(CustomGuardrail):
 
         flight.waiters += 1
         try:
-            return list(await asyncio.shield(flight.task))
+            from .guard_boundary import clone_result
+            return clone_result(await asyncio.shield(flight.task))
         finally:
             flight.waiters -= 1
             if flight.waiters == 0 and not flight.task.done():
@@ -2779,6 +2783,8 @@ class RuPIIGuardrail(CustomGuardrail):
             client = _get_shared_analyzer_http_client()
             headers = {}
             payload = {"text": text, "language": "ru", "score_threshold": 0.35}
+            if getattr(self,"_boundary_coverage_enabled",False):
+                payload["boundary_coverage_version"] = 1
             analyzer_call_context = _ANALYZER_CALL_CONTEXT.get()
             if analyzer_call_context is not None:
                 request_id, text_field_index, json_arguments = analyzer_call_context
@@ -2851,6 +2857,9 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
             response.raise_for_status()
             data = response.json()
+            if getattr(self,"_boundary_coverage_enabled",False):
+                from .guard_boundary import decode_response
+                return decode_response(text,data,"json_arguments" if analyzer_call_context is not None and analyzer_call_context[2] else "text",AnalyzerUnavailableError)
             return data.get("entities", [])
         except (AnalyzerOverloadedError, AnalyzerUnavailableError, TimeoutError):
             raise
@@ -2890,6 +2899,8 @@ class RuPIIGuardrail(CustomGuardrail):
 
         parts = []
         mapping = RestorationMapping()
+        if getattr(self,"_boundary_coverage_enabled",False):
+            mapping.boundary_mask_ranges=[]
         last_end = 0
         numbers, strings = json_atom_spans(text)
         string_starts = [start for start, _end in strings]
@@ -2926,6 +2937,8 @@ class RuPIIGuardrail(CustomGuardrail):
             if start < last_end:
                 # Separate findings inside one numeric literal share one mask.
                 continue
+            if hasattr(mapping,"boundary_mask_ranges"):
+                mapping.boundary_mask_ranges.append((start,end))
             placeholder = self._next_placeholder(entity_type, entity_counts)
             while placeholder in reserved_placeholders:
                 placeholder = self._next_placeholder(entity_type, entity_counts)
@@ -4045,6 +4058,7 @@ class RuPIIGuardrail(CustomGuardrail):
                         queue_update(target, field, content, provider_content)
                     continue
 
+                boundary_original_result = entities
                 (
                     entities,
                     current_allowlist_findings,
@@ -4052,6 +4066,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     provider_content,
                     entities,
                 )
+                from .guard_boundary import retain_result
+                entities=retain_result(boundary_original_result,entities)
                 synthetic_allowlist_findings.extend(current_allowlist_findings)
                 if not entities:
                     if provider_content != content:
@@ -4064,6 +4080,9 @@ class RuPIIGuardrail(CustomGuardrail):
                         entities,
                         exclusion_spans=dictionary_result.replacement_spans,
                     )
+                    if getattr(self,"_boundary_coverage_enabled",False):
+                        from .guard_boundary import check_result
+                        check_result(provider_content,entities,[(a,b) for a,b,_ in normalized_entities],dictionary_result.replacement_spans)
                     entity_counts_for_block = (
                         self._entity_counts_from_normalized_entities(
                             normalized_entities
@@ -4133,6 +4152,13 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 self._raise_analyzer_overloaded(e)
             except AnalyzerUnavailableError as e:
+                bad_cache_key=getattr(e,"boundary_cache_key",None)
+                if bad_cache_key is not None:
+                    try:
+                        redis=await self._get_redis()
+                        await redis.delete(bad_cache_key)
+                    except Exception:
+                        pass
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
@@ -4690,3 +4716,7 @@ class RuPIIGuardrail(CustomGuardrail):
     def _replace_placeholders(text: str, mapping: dict[str, str]) -> str:
         """Restore known keys once without rewriting an inserted original value."""
         return restore_text(text, mapping)
+
+
+from .guard_boundary import install as _install_boundary_client
+_install_boundary_client(RuPIIGuardrail)

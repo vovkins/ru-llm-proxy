@@ -18,11 +18,12 @@ from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_serializer
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import SpacyRecognizer
 
+from boundary_contract import Coverage, MAX_SPANS
 from capacity import CapacityRejected, build_limiter_from_env
 from entity_types import NER_ENTITY_TYPES
 from recognizers import ALL_RECOGNIZERS
@@ -330,6 +331,7 @@ def _analysis_source_files() -> tuple[Path, ...]:
         root / "text_chunking.py",
         root / "model_contract.py",
         root / "onnx_artifact.py",
+        root / "boundary_contract.py",
     ]
     for directory in (root / "ner", root / "recognizers"):
         files.extend(sorted(directory.glob("*.py")))
@@ -507,11 +509,20 @@ class AnalyzeRequest(BaseModel):
     entities: list[str] | None = None
     score_threshold: float = 0.35
     input_kind: Literal["text", "json_arguments"] = "text"
+    boundary_coverage_version: Literal[1] | None = None
 
 
 class AnalyzeResponse(BaseModel):
     text: str
     entities: list[dict]
+    boundary_coverage: dict | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize_boundary_optional(self, handler):
+        result=handler(self)
+        if self.boundary_coverage is None:
+            result.pop("boundary_coverage",None)
+        return result
 
 
 def _validate_analyzer_correlation(
@@ -830,6 +841,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             _raise_if_cancelled(cancellation_event)
 
         source_text = request.text
+        boundary_proof_items = []
         argument_view = (
             JsonArgumentView.parse(source_text, check)
             if request.input_kind == "json_arguments" else None
@@ -898,7 +910,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 dict.fromkeys([*request.entities, "PERSON", "ORGANIZATION"])
             )
 
-        def analyze_ner_chunk(chunk_text, chunk, source_length, boundaries, protected):
+        def analyze_ner_chunk(chunk_text, chunk, source_length, boundaries, protected, proof_project=None):
             check()
             ner_kwargs = dict(
                 score_threshold=request.score_threshold,
@@ -912,6 +924,16 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             if recheck_enabled:
                 ner_kwargs["protected_spans"] = protected
             ner_results = ner_recognizer.analyze(chunk_text, **ner_kwargs)
+            for result in ner_results:
+                for a,b,kind,score in (result.recognition_metadata or {}).get("boundary_required_spans_v1",()):
+                    if not 0 <= a < b <= len(chunk_text):
+                        raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
+                    a,b=a+chunk.start,b+chunk.start
+                    if proof_project is not None:
+                        a,b=proof_project(a,b)
+                    boundary_proof_items.append((a,b,kind,score))
+                    if len(boundary_proof_items)>MAX_SPANS:
+                        raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
             check()
             return (
                 _shift_recognizer_result(result, chunk.start)
@@ -1006,6 +1028,7 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                     )
                     for result in analyze_ner_chunk(
                         value[chunk.start:chunk.end], chunk, len(value), boundaries, chunk_spans,
+                        proof_project=lambda a,b,offsets=offsets:(offsets[a],offsets[b]),
                     ):
                         if not 0 <= result.start < result.end <= len(value):
                             raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed")
@@ -1108,6 +1131,18 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
              "score": result.score, "text": source_text[start:end]}
             for start, end, result in projected
         ]
+        if boundary_proof_items and request.boundary_coverage_version != 1:
+            raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
+        if request.boundary_coverage_version == 1:
+            required=[]
+            for a,b,kind,score in boundary_proof_items:
+                for left,right in (argument_view.project(a,b) if argument_view is not None else ((a,b),)):
+                    required.append((left,right,kind,score))
+            try:
+                proof=Coverage.create(source_text,required,request.score_threshold,request.input_kind,ANALYSIS_SIGNATURE)
+            except (ValueError,TypeError,OverflowError):
+                raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed") from None
+            return AnalyzeResponse(text=source_text,entities=entities,boundary_coverage=proof.wire())
         return AnalyzeResponse(text=source_text, entities=entities)
     except NERBackendError as error:
         ner_telemetry = _aggregate_ner_telemetry(ner_telemetries)

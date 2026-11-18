@@ -1077,7 +1077,7 @@ class TritonNERRecognizer:
                         cancellation_event=cancellation_event,
                     )
                 except NERWindowBoundaryError as remaining:
-                    confirmed, extra_windows = self._confirm_boundary_person(
+                    confirmed, extra_windows, usable_control_response = self._confirm_boundary_person(
                         normalized, remaining, boundary_context,
                         getattr(window_analysis, "window_input", None),
                         score_threshold, cancellation_event,
@@ -1094,6 +1094,11 @@ class TritonNERRecognizer:
                                 cancellation_event=cancellation_event,
                                 allow_typed_fields=True,
                                 requested_entities=requested_entities,
+                                checked_person_cluster=(
+                                    remaining.unresolved_clusters[0]
+                                    if usable_control_response
+                                    else None
+                                ),
                             )
                         except NERWindowBoundaryError:
                             self._raise_unresolved_boundary(
@@ -1277,75 +1282,76 @@ class TritonNERRecognizer:
         return merge_window_predictions([p for p in combined if p not in removed]), results
 
     def _confirm_boundary_person(self, normalized, error, context, window_input,
-                                 score_threshold, cancellation_event):
+                                 score_threshold, cancellation_event) -> tuple[RecognizerResult | None, int, bool]:
+        """Return the confirmation, attempted window count and response validity."""
         budget = context.person_window if context is not None else None
         if (budget is None or budget.used or window_input is None
                 or len(error.unresolved_clusters) != 1):
-            return None, 0
+            return None, 0, False
         cluster, = error.unresolved_clusters
         if cluster.entity_type != "PERSON":
-            return None, 0
+            return None, 0, False
         start = min(p.entity.start for p in cluster.predictions)
         end = max(p.entity.end for p in cluster.predictions)
         left, right = normalized.to_original_span(start, end)
         if not context.values.is_plain_text_span(context.offset + left, context.offset + right):
-            return None, 0
+            return None, 0, False
 
         _raise_if_cancelled(cancellation_event)
         ids, offsets, windows = window_input
         width = PERSON_CONTROL_WINDOW_TOKENS
         relevant = [i for i, (a, b) in enumerate(offsets) if a < end and start < b]
         if len(ids) < width or not relevant:
-            return None, 0
+            return None, 0, False
         first, last = relevant[0], relevant[-1]
         lo = min(max(0, (first + last) // 2 - width // 2), len(ids) - width)
         hi = lo + width
         margin = PERSON_CONTROL_MARGIN_TOKENS
         if (first - lo < margin or hi - 1 - last < margin
                 or any((w.start_token, w.end_token) == (lo, hi) for w in windows)):
-            return None, 0
+            return None, 0, False
         view = offsets[lo:hi]
         if (any(not 0 <= a < b <= len(normalized.text) for a, b in view)
                 or any(a < x or b < y for (x, y), (a, b) in zip(view, view[1:]))):
-            return None, 0
+            return None, 0, False
         cursor = start
         for a, b in offsets[first:last + 1]:
             if a > cursor and not normalized.text[cursor:a].isspace():
-                return None, 0
+                return None, 0, False
             cursor = max(cursor, b)
         if cursor < end and not normalized.text[cursor:end].isspace():
-            return None, 0
+            return None, 0, False
 
         _raise_if_cancelled(cancellation_event)
         remaining = remaining_seconds()
         if remaining is not None and remaining < PERSON_CONTROL_MIN_BUDGET_SECONDS:
-            return None, 0
+            return None, 0, False
         budget.used = True
         try:
             batch = self._infer_window_batch([ids[lo:hi]], [view])
         except (NERBackendError, NERConfigurationError, TimeoutError):
             _raise_if_cancelled(cancellation_event)
-            return None, 1
+            return None, 1, False
         _raise_if_cancelled(cancellation_event)
         if len(batch) != 1 or [(p.start, p.end) for p in batch[0]] != view:
-            return None, 1
+            return None, 1, False
         overlap = [e for e in decode_bio_predictions(batch[0]) if e.start < end and start < e.end]
         if len(overlap) != 1:
-            return None, 1
+            return None, 1, True
         entity, = overlap
         if (entity.entity_type != "PERSON" or not score_threshold <= entity.score <= 1
                 or not view[0][0] < entity.start <= start < end <= entity.end < view[-1][1]):
-            return None, 1
+            return None, 1, True
         left, right = normalized.to_original_span(entity.start, entity.end)
         complete = complete_word_edges(
             normalized.original, left, right,
             *normalized.to_original_span(view[0][0], view[-1][1]),
         )
         if complete is None:
-            return None, 1
+            return None, 1, True
         left, right = complete
         if not context.values.is_plain_text_span(context.offset + left, context.offset + right):
-            return None, 1
+            return None, 1, True
         return RecognizerResult(
             entity_type="PERSON", start=left, end=right, score=entity.score,
             recognition_metadata={
@@ -1354,7 +1360,7 @@ class TritonNERRecognizer:
                 NER_BOUNDARY_CONTAINER_KEY: True,
                 NER_PERSON_CONTROL_KEY: True,
             },
-        ), 1
+        ), 1, True
 
     def _tokenize_content(
         self,
@@ -1742,3 +1748,6 @@ def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
     check_work()
     if cancellation_event is not None and cancellation_event.is_set():
         raise NERInferenceCancelled("NER inference was cancelled")
+
+from .boundary_runtime import install as _install_boundary_runtime
+_install_boundary_runtime(TritonNERRecognizer)
