@@ -7,6 +7,7 @@ import pytest
 from presidio.entity_types import SUPPORTED_ENTITY_TYPES
 from presidio.ner.boundary_values import BoundaryContext, BoundaryValues, MAX_INLINE_VALUE_CHARS
 from presidio.ner.text_processing import normalize_for_ner
+from presidio.ner.triton_recognizer import merge_window_predictions
 from presidio.tests.test_ner_window_value_repair import prediction, recognizer
 
 
@@ -21,12 +22,15 @@ def test_recovery_keeps_all_positive_evidence_inside_the_whole_closed_value(monk
     instance,_,calls=recognizer(monkeypatch,[prediction(kind,at+left,at+right,left=left_cut,right=right_cut)],[])
     # Exercise the unresolved-only stage. Earlier credential syntax repair may
     # already return a word; this patch deliberately leaves that success intact.
-    predictions, output=instance._resolve_boundary_values(
+    output, remaining=instance._resolve_boundary_values(
         normalize_for_ner(source),
-        [prediction(kind,at+left,at+right,left=left_cut,right=right_cut)], [],
+        merge_window_predictions(
+            [prediction(kind,at+left,at+right,left=left_cut,right=right_cut)],
+        ).cut,
         BoundaryContext(BoundaryValues(source)),
+        cancellation_event=None,
     )
-    assert predictions==[] and len(output)==1
+    assert remaining==[] and len(output)==1
     result=output[0]
     assert source[result.start:result.end]==value
     assert result.entity_type==kind

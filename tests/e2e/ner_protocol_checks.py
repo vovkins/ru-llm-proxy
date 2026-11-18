@@ -21,7 +21,7 @@ CONTEXT_TEXT = "Адрес: москва, проспект вернадског�
 EMAIL_TEXT = "марина.кузнецова@inbox.ru"
 PASSPORT_FRAGMENT_TEXT = "Номер паспорта: 847291"
 # The missing ')' leaves the candidate open. Keep the token count at 385
-# so the negative case still reaches the unresolved Tiny2 boundary.
+# so the unclosed case still reaches a cut Tiny2 boundary.
 WINDOW_NUMBERED_INSERT = ("сведения " * 279 + "Сводка [12] о задании. "
                           + ("пример " * 54).rstrip() + ".\n"
                           "1: Начало.\n2:\n"
@@ -93,6 +93,52 @@ def assert_capture(url, *, calls=1):
     assert not state["provider_saw_e9_raw_phone"], state
     if calls:
         assert state["provider_saw_pii_placeholder"], state
+
+
+def check_window_fallbacks(proxy, blocked, provider):
+    counts = {}
+    for case, text in (("window_numbered_unclosed", WINDOW_NUMBERED_UNCLOSED),
+                       ("window_person_control_unconfirmed", WINDOW_PERSON_CONTROL_UNCONFIRMED)):
+        counts[case + "_mask"] = counts[case + "_block"] = 0
+        for api in ("chat/completions", "responses", "messages"):
+            for stream in (False, True):
+                if api == "messages":
+                    payload = {"model": "mock-chat-bridge", "stream": stream, "max_tokens": 128,
+                               "messages": [{"role": "user", "content": text}]}
+                else:
+                    payload = payload_for(text, api, stream, False)
+                reset(provider)
+                body = _request(proxy, "/v1/" + api, payload, stream=stream)
+                if api != "messages":
+                    restored = _restored_text(body, api, stream)
+                elif stream:
+                    events = [event for event in body if isinstance(event, dict)]
+                    kinds = [event.get("type") for event in events]
+                    assert kinds.count("message_stop") == 1 and "error" not in kinds, kinds
+                    restored = "".join(
+                        event["delta"]["text"] for event in events
+                        if event.get("type") == "content_block_delta"
+                        and event["delta"].get("type") == "text_delta"
+                    )
+                else:
+                    restored = "".join(part["text"] for part in body["content"] if part["type"] == "text")
+                assert restored == text, (case, api, stream, "restoration")
+                state = capture(provider)
+                assert state["provider_requests"] == 1 and state["provider_saw_pii_placeholder"], state
+                if api == "messages":
+                    assert state["provider_request_paths"] == ["/v1/chat/completions"], state
+                assert not state["provider_saw_canary"], (case, api, stream, "value reached provider")
+                counts[case + "_mask"] += 1
+                reset(provider)
+                try:
+                    _request(blocked, "/v1/" + api, payload, stream=stream)
+                except urllib.error.HTTPError as exc:
+                    assert exc.code == 422, (case, api, stream, exc.code)
+                else:
+                    raise AssertionError((case, api, stream, "Finding was not blocked"))
+                assert capture(provider)["provider_requests"] == 0
+                counts[case + "_block"] += 1
+    return counts
 
 
 def check_punctuation_passwords(proxy, blocked, provider):
@@ -310,22 +356,7 @@ def check(proxy, blocked, provider):
                 assert capture(provider)["provider_requests"] == 0
                 counts[case + "_block"] += 1
 
-    for case, text in (("window_numbered_unclosed", WINDOW_NUMBERED_UNCLOSED),
-                       ("window_person_control_unconfirmed", WINDOW_PERSON_CONTROL_UNCONFIRMED)):
-        counts[case + "_no_egress"] = 0
-        for api in ("chat/completions", "responses"):
-            for stream in (False, True):
-                payload = payload_for(text, api, stream, False)
-                reset(provider)
-                try:
-                    _request(proxy, "/v1/" + api, payload, stream=stream)
-                except urllib.error.HTTPError as exc:
-                    assert exc.code == 503, (case, api, stream, exc.code)
-                    assert "window_boundary_unresolved" in exc.read().decode()
-                else:
-                    raise AssertionError((case, api, stream, "Unconfirmed boundary reached the provider"))
-                assert capture(provider)["provider_requests"] == 0
-                counts[case + "_no_egress"] += 1
+    counts.update(check_window_fallbacks(proxy, blocked, provider))
 
     for api in ("chat/completions", "responses"):
         for stream in (False, True):

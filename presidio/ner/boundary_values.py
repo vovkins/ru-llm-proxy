@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from string_spans import StringSpans
 from .initial_names import initial_person_ranges
+from .text_processing import close_source_word_edges
 
 
 _REFERENCES = re.compile(
@@ -454,6 +455,36 @@ class BoundaryValues:
         self._inline_values = None
         self._legal_organization_values = None
         self._organization_field_names = None
+        self._fallback_json = None
+
+    def _json_view(self, check):
+        if self.confirmed_value:
+            return None
+        if self._fallback_json is None:
+            from recognizers.json_strings import JsonArgumentView
+
+            self._fallback_json = JsonArgumentView.parse(self.text, check) or False
+        return self._fallback_json or None
+
+    def json_boolean_overlaps(self, start, end, check):
+        view = self._json_view(check)
+        return view is not None and any(
+            scalar.is_boolean for scalar in view.source_scalars_overlapping(start, end, check)
+        )
+
+    def fallback_ranges(self, start, end, check):
+        if not 0 <= start < end <= len(self.text):
+            raise ValueError("Invalid source evidence range")
+        if not self.confirmed_value:
+            view = self._json_view(check)
+            if view is not None:
+                return view.project_window_evidence(start, end, check)
+
+            if self.is_plain_text_span(start, end):
+                bounds = close_source_word_edges(self.text, start, end, check)
+                if self._not_document(bounds) and self.is_plain_text_span(*bounds):
+                    return (bounds,)
+        return ((start, end),)
 
     def _prepare(self):
         if self._prepared:

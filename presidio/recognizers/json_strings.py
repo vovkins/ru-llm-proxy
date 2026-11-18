@@ -6,6 +6,7 @@ from array import array
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from functools import cached_property
 
 from presidio_analyzer import EntityRecognizer, RecognizerResult
 
@@ -66,6 +67,7 @@ class JsonArgumentScalar:
     key: str | None = None
     is_key: bool = False
     is_number: bool = False
+    is_boolean: bool = False
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,7 @@ class JsonArgumentView:
                 scalar = JsonArgumentScalar(
                     None, range(compact_start, compact_start + len(token) + 1),
                     range(start, end + 1), is_number=token[0] in "-0123456789",
+                    is_boolean=token in ("true", "false"),
                 )
             scalars.append(scalar)
             parts.append(compact)
@@ -121,6 +124,35 @@ class JsonArgumentView:
             cursor = end
         parts.append(source[cursor:])
         return cls("".join(parts), tuple(scalars), tuple(s.compact_offsets[0] for s in scalars))
+
+    @cached_property
+    def source_starts(self) -> tuple[int, ...]:
+        return tuple(scalar.source_offsets[0] for scalar in self.scalars)
+
+    def project_window_evidence(self, start, end, check):
+        """Cover every touched data scalar in source coordinates, except booleans."""
+        ranges = []
+        touched_boolean = False
+        for scalar in self.source_scalars_overlapping(start, end, check):
+            if scalar.is_boolean:
+                touched_boolean = True
+            elif scalar.decoded is not None or scalar.is_number:
+                ranges.append((scalar.source_offsets[0], scalar.source_offsets[-1]))
+            else:
+                raise ValueError("Unsupported JSON literal matched")
+        if not ranges and not touched_boolean:
+            raise ValueError("JSON evidence has no scalar coverage")
+        return tuple(ranges)
+
+    def source_scalars_overlapping(self, start, end, check):
+        index = max(0, bisect_right(self.source_starts, start) - 1)
+        while index < len(self.scalars) and self.source_starts[index] < end:
+            check()
+            scalar = self.scalars[index]
+            left, right = scalar.source_offsets[0], scalar.source_offsets[-1]
+            if left < right and start < right:
+                yield scalar
+            index += 1
 
     def project(self, start: int, end: int) -> Iterator[tuple[int, int]]:
         """Keep every touched scalar, never JSON delimiters or half an escape."""

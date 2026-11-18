@@ -75,6 +75,8 @@ def _word_continuation(char: str) -> bool:
 
 
 def _confirmed_word_edge(text: str, edge: int) -> bool:
+    if edge == 0 or edge == len(text):
+        return True
     left, right = text[edge - 1], text[edge]
     if _word_continuation(left) and _word_continuation(right):
         return False
@@ -104,6 +106,24 @@ def complete_word_edges(
             or not _confirmed_word_edge(text, start) or not _confirmed_word_edge(text, end)):
         return None
     return start, end
+
+
+def close_source_word_edges(text, start, end, check):
+    def walk(edge, step):
+        cursor = edge
+        while not _confirmed_word_edge(text, cursor):
+            cursor += step
+            if abs(cursor - edge) % 1024 == 0:
+                check()
+        return cursor
+
+    left, right = walk(start, -1), walk(end, 1)
+    if left < start and not _LETTER_WORD.fullmatch(text, left, walk(start, 1)):
+        return start, end
+    if right > end and not _LETTER_WORD.fullmatch(text, walk(end, -1), right):
+        return start, end
+    check()
+    return left, right
 
 
 def _validate_token_offsets(

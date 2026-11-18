@@ -74,10 +74,9 @@ def confirmed_prompt_edges(
         return confirmed, processed
     for cluster in clusters:
         check_cancelled()
-        if cluster.entity_type not in CREDENTIAL_TYPES:
+        if cluster.envelope.entity_type not in CREDENTIAL_TYPES:
             continue
-        start = min(p.entity.start for p in cluster.predictions)
-        end = max(p.entity.end for p in cluster.predictions)
+        start, end = cluster.envelope.start, cluster.envelope.end
         if checked >= 4 or not eligible_prompt(normalized.text, start, end):
             continue
         if any(p.entity.start < end and start < p.entity.end for p in positive_recovery):

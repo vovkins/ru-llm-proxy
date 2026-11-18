@@ -327,14 +327,11 @@ LiteLLM, а `ru_presidio_analyzer_latency_seconds_*` — обработку в A
 Отслеживайте коды отдельно от общей доли 5xx и согласуйте повтор POST-запроса с
 семантикой клиента, чтобы не дублировать уже начатую операцию у провайдера.
 
-`window_boundary_unresolved` в `ru_presidio_analyzer_ner_failures_total`
-означает безопасный отказ одного запроса после повторной проверки границы;
-проверка состояния NER остаётся `ready`. Это не признак заполненной очереди.
-Analyzer и защитный слой сохраняют 503, но возвращают `retryable=false`
-без `Retry-After`; слепой повтор одинакового входа может повторить отказ.
-Событие `presidio_ner_window_boundary_unresolved` содержит `entity_types`,
-`cluster_count`, `initial_windows_processed`, `recovery_windows_processed`
-и `windows_processed_total`, без исходных значений и смещений.
+`presidio_ner_boundary_fallback` сообщает число пограничных кластеров, которым
+потребовалось резервное правило после повторной проверки. Это событие не
+означает отказ или заполненную очередь и не содержит исходного текста и
+смещений. Код 503 `window_boundary_unresolved` с `retryable=false` без
+`Retry-After` относится к Analyzer версии v0.7.3 и более ранним версиям.
 Ошибки загрузки, прогрева и контракта
 не позволяют объявить модель готовой. После временного сетевого отказа
 Analyzer проверяет тот же комплект и контрольное вычисление; критическую ошибку
@@ -390,7 +387,7 @@ Analyzer проверяет тот же комплект и контрольно
 | --- | --- | --- |
 | `analyzer_overloaded`, `queue_full` | Все места ожидания этого процесса заняты | Снизить всплеск или повторить с задержкой; проверить размер новых полей и распределение по репликам |
 | `analyzer_overloaded`, `queue_timeout` | Место выполнения не освободилось вовремя | Сопоставить ожидание с длительностью анализа; одна длинная очередь не добавляет CPU |
-| `window_boundary_unresolved` | Не подтверждена граница сущности во входном тексте; NER может оставаться ready | Сохранить класс и счётчики события `presidio_ner_window_boundary_unresolved`; не повторять слепо и не лечить только увеличением очереди |
+| `window_boundary_unresolved` | Analyzer v0.7.3 или старше не подтвердил границу сущности | Проверить версии Analyzer; на старой версии сохранить счётчики события без текста запроса и не повторять вслепую |
 | В Analyzer `required_ner_unavailable`, у клиента `analyzer_unavailable` | Отказ обязательной NER; подробность в `failure_class` | Проверить каждый Triton и внутренний маршрут Nginx через `make health` |
 | `triton_unavailable` / `triton_overloaded` | Сетевой отказ или отказ очереди Triton | Проверить готовность, очередь, ресурсы модели; соблюдать `Retry-After` |
 | `triton_contract_invalid` | Не совпал доверенный комплект или формат тензоров | Исправить поставку и перезапустить; слепые повторы бесполезны |
@@ -525,7 +522,7 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 | `pii_guardrail_failed_open`, `pii_guardrail_failed_closed` | `ERROR` | Ошибка зависимости |
 | `pii_guardrail_analyzer_overloaded` | `ERROR` | Перегрузка Analyzer |
 | `presidio_analyzer_request`, `presidio_analyzer_phase`, `presidio_ner_inference` | `INFO` | Обработка и этапы Analyzer |
-| `presidio_ner_window_boundary_unresolved` | `WARNING` | Классы оставшихся спорных сущностей и число окон/кластеров; без текста и смещений |
+| `presidio_ner_boundary_fallback` | `INFO` | Число пограничных кластеров, потребовавших резервной обработки; без текста и смещений |
 | `presidio_ner_startup_failed` | `CRITICAL` | Модель не готова |
 
 Во всех событиях запрещены исходный запрос, найденные значения, смещения,

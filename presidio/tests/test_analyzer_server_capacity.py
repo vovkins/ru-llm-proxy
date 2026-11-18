@@ -1328,7 +1328,7 @@ def test_control_window_requires_both_prior_and_new_mask_coverage(monkeypatch, d
     if drop:
         with pytest.raises(analyzer_server.NERProcessingError) as failure:
             analyzer_server._analyze_sync(request)
-        assert failure.value.failure_class == "window_boundary_unresolved"
+        assert failure.value.failure_class == "span_postprocessing_failed"
     else:
         assert [(r["start"], r["end"]) for r in analyzer_server._analyze_sync(request).entities] == [
             (0, 18), (19, 30),

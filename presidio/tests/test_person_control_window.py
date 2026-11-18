@@ -78,10 +78,10 @@ def test_complete_window_preserves_other_findings_and_counts_work(monkeypatch):
     assert len(calls) == 1 and len(calls[0][0][0]) == 320 and shifted == [True]
     assert events[0].windows_processed == 4
     # The same shared budget is passed to every chunk.
-    with pytest.raises(ner.NERProcessingError, match="backend is unavailable") as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 3 and len(calls) == 1
+    events.clear()
+    fallback, _ = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert SOURCE[fallback.start:fallback.end] == "Meadow"
+    assert events[0].windows_processed == 3 and len(calls) == 1
 
 
 @pytest.mark.parametrize("fragment", ["\u0438\u0447", "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432"])
@@ -89,9 +89,8 @@ def test_control_masks_the_whole_split_word(monkeypatch, fragment):
     surname = "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432\u0438\u0447"
     source = SOURCE.replace(VALUE, surname)
     instance, context, calls, _ = setup(monkeypatch, source=source, value=surname, fragment=fragment)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(source, boundary_context=BoundaryContext(context.values))
-    assert failure.value.failure_class == "window_boundary_unresolved"
+    fallback, *_ = instance.analyze(source, boundary_context=BoundaryContext(context.values))
+    assert source[fallback.start:fallback.end] == surname
     findings = instance.analyze(source, boundary_context=context)
     merged = merge_results(source, findings, score_threshold=.35).results
     assert [source[r.start:r.end] for r in merged if r.entity_type == "PERSON"] == [surname]
@@ -124,12 +123,11 @@ def test_control_closes_source_words_without_masking_neighbours(monkeypatch, val
     ("Meadow42", "Meadow"),
     ("Mid\u200dnight", "night"),
 ])
-def test_ambiguous_word_edge_keeps_503(monkeypatch, value, fragment):
+def test_ambiguous_word_edge_keeps_only_original_evidence(monkeypatch, value, fragment):
     source = SOURCE.replace(VALUE, value)
     instance, context, calls, _ = setup(monkeypatch, source=source, value=value, fragment=fragment)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(source, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
+    fallback, _ = instance.analyze(source, boundary_context=context)
+    assert source[fallback.start:fallback.end] == fragment
     assert len(calls) == 1
 
 
@@ -148,10 +146,10 @@ def test_word_completion_does_not_reach_the_window_edge(fragment, first, last):
 @pytest.mark.parametrize("vote", ["o", "partial", "edge", "weak", "other", "malformed", "timeout"])
 def test_inconclusive_control_does_not_remove_evidence(monkeypatch, vote):
     instance, context, calls, _ = setup(monkeypatch, vote)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 4
+    events = []
+    fallback, _ = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert SOURCE[fallback.start:fallback.end] == "Meadow"
+    assert events[0].windows_processed == 4
     assert len(calls) == 1 and instance.is_ready()
 
 
@@ -174,10 +172,10 @@ def test_ineligible_request_does_not_call_control(monkeypatch, scope):
         monkeypatch.setattr(instance, "_predict_window_entities", clipped)
     if scope == "budget":
         monkeypatch.setattr(ner, "remaining_seconds", lambda: .01)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 3
+    events = []
+    results = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert any(SOURCE[r.start:r.end] == "Meadow" for r in results)
+    assert events[0].windows_processed == 3
     assert calls == []
 
 

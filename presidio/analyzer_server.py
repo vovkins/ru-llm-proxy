@@ -1034,8 +1034,8 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                     prior = merge_results(request.text, [r for r in results if r not in control],
                                           **merge_kwargs).results
                     if not span_coverage_preserved([*prior, *control], merge_outcome.results):
-                        raise NERProcessingError(phase="windowing",
-                                                 failure_class="window_boundary_unresolved")
+                        raise NERProcessingError(phase="postprocessing",
+                                                 failure_class="span_postprocessing_failed")
         except Exception:
             _record_analyzer_phase(
                 "merge",
