@@ -1061,10 +1061,14 @@ class TritonNERRecognizer:
                 )
                 if len(remaining) == 1:
                     cluster, _ = remaining[0]
-                    confirmed, extra_windows = self._confirm_boundary_person(
-                        normalized, cluster.envelope, context, window_input,
-                        score_threshold, cancellation_event,
-                    )
+                    try:
+                        confirmed, extra_windows = self._confirm_boundary_person(
+                            normalized, cluster.envelope, context, window_input,
+                            score_threshold, cancellation_event,
+                        )
+                    except NERBackendError as error:
+                        self._mark_failed_if_service_wide(error)
+                        raise
                     windows_processed += extra_windows
                     if confirmed is not None:
                         boundary_results.append(confirmed)
@@ -1258,13 +1262,22 @@ class TritonNERRecognizer:
         budget.used = True
         try:
             batch = self._infer_window_batch([ids[lo:hi]], [view])
-        except (NERBackendError, NERConfigurationError, TimeoutError):
+        except NERInferenceCancelled:
+            raise
+        except NERBackendError:
             _raise_if_cancelled(cancellation_event)
-            return None, 1
+            raise
+        except Exception as exc:
+            _raise_if_cancelled(cancellation_event)
+            raise NERProcessingError(phase="inference", failure_class="forward_pass_failed") from exc
         _raise_if_cancelled(cancellation_event)
         if len(batch) != 1 or [(p.start, p.end) for p in batch[0]] != view:
-            return None, 1
-        overlap = [e for e in decode_bio_predictions(batch[0]) if e.start < end and start < e.end]
+            raise NERUnavailableError(phase="inference", failure_class="triton_contract_invalid")
+        try:
+            decoded = decode_bio_predictions(batch[0])
+        except Exception as exc:
+            raise NERProcessingError(phase="decoding", failure_class="bio_decoding_failed") from exc
+        overlap = [e for e in decoded if e.start < end and start < e.end]
         if len(overlap) != 1:
             return None, 1
         entity, = overlap
