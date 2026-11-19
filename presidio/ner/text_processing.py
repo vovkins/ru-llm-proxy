@@ -86,6 +86,15 @@ def _confirmed_word_edge(text: str, edge: int) -> bool:
     return True
 
 
+
+def has_complete_word_edges(text: str, start: int, end: int) -> bool:
+    """Check both ends against the full source, including word joiners."""
+    if not 0 <= start < end <= len(text):
+        return False
+    return ((start == 0 or _confirmed_word_edge(text, start))
+            and (end == len(text) or _confirmed_word_edge(text, end)))
+
+
 def complete_word_edges(
     text: str, start: int, end: int, window_start: int, window_end: int,
 ) -> tuple[int, int] | None:

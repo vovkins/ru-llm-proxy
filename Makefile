@@ -141,6 +141,7 @@ test: test-unit test-static
 test-static: test-routing-diagnostics
 	@echo "🧪 Static and lightweight regression tests"
 	$(PYTHON_LOCAL) -m pytest -p no:cacheprovider -q \
+		tests/test_boundary_contract_sync.py \
 		tests/test_analyzer_capacity_config.py \
 		tests/test_air_gapped_config.py \
 		tests/test_analyzer_image_contract.py \

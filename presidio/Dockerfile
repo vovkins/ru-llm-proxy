@@ -117,6 +117,7 @@ ENV HF_HUB_OFFLINE=1 \
 
 COPY --from=runtime-artifact /runtime-models /opt/models
 COPY presidio/analyzer_server.py .
+COPY presidio/boundary_contract.py .
 COPY presidio/capacity.py .
 COPY presidio/entity_types.py .
 COPY presidio/model_artifact.py .
