@@ -1,4 +1,4 @@
-"""Only complete positive evidence may recover a PERSON window failure."""
+"""Distinguish a negative PERSON control result from a failed inference."""
 
 from types import SimpleNamespace
 import threading
@@ -43,8 +43,8 @@ def setup(monkeypatch, vote="positive", *, kind="PERSON", another=False,
 
     def infer(batches, spans):
         calls.append((batches, spans))
-        if vote == "timeout":
-            raise TimeoutError()
+        if isinstance(vote, Exception):
+            raise vote
         if isinstance(vote, threading.Event):
             vote.set()
         raw = []
@@ -78,10 +78,10 @@ def test_complete_window_preserves_other_findings_and_counts_work(monkeypatch):
     assert len(calls) == 1 and len(calls[0][0][0]) == 320 and shifted == [True]
     assert events[0].windows_processed == 4
     # The same shared budget is passed to every chunk.
-    with pytest.raises(ner.NERProcessingError, match="backend is unavailable") as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 3 and len(calls) == 1
+    events.clear()
+    fallback, _ = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert SOURCE[fallback.start:fallback.end] == "Meadow"
+    assert events[0].windows_processed == 3 and len(calls) == 1
 
 
 @pytest.mark.parametrize("fragment", ["\u0438\u0447", "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432"])
@@ -89,9 +89,8 @@ def test_control_masks_the_whole_split_word(monkeypatch, fragment):
     surname = "\u041f\u043e\u043b\u0438\u0432\u0430\u043d\u043e\u0432\u0438\u0447"
     source = SOURCE.replace(VALUE, surname)
     instance, context, calls, _ = setup(monkeypatch, source=source, value=surname, fragment=fragment)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(source, boundary_context=BoundaryContext(context.values))
-    assert failure.value.failure_class == "window_boundary_unresolved"
+    fallback, *_ = instance.analyze(source, boundary_context=BoundaryContext(context.values))
+    assert source[fallback.start:fallback.end] == surname
     findings = instance.analyze(source, boundary_context=context)
     merged = merge_results(source, findings, score_threshold=.35).results
     assert [source[r.start:r.end] for r in merged if r.entity_type == "PERSON"] == [surname]
@@ -124,12 +123,11 @@ def test_control_closes_source_words_without_masking_neighbours(monkeypatch, val
     ("Meadow42", "Meadow"),
     ("Mid\u200dnight", "night"),
 ])
-def test_ambiguous_word_edge_keeps_503(monkeypatch, value, fragment):
+def test_ambiguous_word_edge_keeps_only_original_evidence(monkeypatch, value, fragment):
     source = SOURCE.replace(VALUE, value)
     instance, context, calls, _ = setup(monkeypatch, source=source, value=value, fragment=fragment)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(source, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
+    fallback, _ = instance.analyze(source, boundary_context=context)
+    assert source[fallback.start:fallback.end] == fragment
     assert len(calls) == 1
 
 
@@ -145,14 +143,67 @@ def test_word_completion_does_not_reach_the_window_edge(fragment, first, last):
     assert complete_word_edges(source, start, start + len(fragment), first, last) is None
 
 
-@pytest.mark.parametrize("vote", ["o", "partial", "edge", "weak", "other", "malformed", "timeout"])
+@pytest.mark.parametrize("vote", ["o", "partial", "edge", "weak", "other"])
 def test_inconclusive_control_does_not_remove_evidence(monkeypatch, vote):
     instance, context, calls, _ = setup(monkeypatch, vote)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 4
+    events = []
+    fallback, _ = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert SOURCE[fallback.start:fallback.end] == "Meadow"
+    assert events[0].windows_processed == 4
     assert len(calls) == 1 and instance.is_ready()
+
+
+@pytest.mark.parametrize("failure_class,ready,retry_after", [
+    ("triton_unavailable", False, "5"),
+    ("triton_overloaded", True, "7"),
+    ("triton_contract_invalid", False, None),
+    ("analysis_deadline_exceeded", True, None),
+    ("forward_pass_failed", False, None),
+    ("malformed", False, None),
+])
+def test_failed_control_window_returns_analyzer_503(
+    monkeypatch, caplog, failure_class, ready, retry_after,
+):
+    from fastapi.testclient import TestClient
+    from presidio import analyzer_server as server
+    from presidio.tests import test_ner_window_value_repair
+    from capacity import AnalyzerCapacityLimiter
+    from ner import NERProcessingError, NERUnavailableError
+
+    kind = "triton_contract_invalid" if failure_class == "malformed" else failure_class
+    if failure_class == "forward_pass_failed":
+        vote = TimeoutError("private-control-error")
+    elif failure_class == "malformed":
+        vote = "malformed"
+    elif failure_class == "analysis_deadline_exceeded":
+        vote = NERProcessingError(phase="inference", failure_class=kind)
+    else:
+        vote = NERUnavailableError(phase="inference", failure_class=kind)
+    monkeypatch.setattr(test_ner_window_value_repair, "make_recognizer",
+                        lambda **kwargs: server.TritonNERRecognizer(o_logit_bias=0.0, **kwargs))
+    instance, _, calls, shifted = setup(monkeypatch, vote)
+    monkeypatch.setattr(server, "ner_recognizer", instance)
+    monkeypatch.setattr(server, "capacity_limiter", AnalyzerCapacityLimiter(queue_timeout_seconds=7))
+    monkeypatch.setattr(server.analyzer, "analyze", lambda **kwargs: [])
+    monkeypatch.setattr(server.nlp_engine, "get_supported_languages", lambda: [])
+    events = []
+    monkeypatch.setattr(server, "_record_ner_inference", events.append)
+
+    response = TestClient(server.app).post("/api/v1/analyze", json={"text": SOURCE})
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail["code"] == "required_ner_unavailable"
+    assert detail["failure_class"] == kind and detail["phase"] == "inference"
+    assert response.headers.get("retry-after") == retry_after
+    if kind in {"triton_contract_invalid", "analysis_deadline_exceeded"}:
+        assert detail["retryable"] is False
+    assert instance.is_ready() is ready
+    assert instance.failure_class() == (None if ready else kind)
+    assert len(calls) == 1 and shifted == [True]
+    assert len(events) == 1 and events[0].windows_processed == 3
+    assert events[0].failure_class == kind and events[0].outcome in {"failure", "unavailable"}
+    assert "private-control-error" not in response.text + caplog.text
+    assert VALUE not in response.text + caplog.text
 
 
 @pytest.mark.parametrize("scope", ["other", "multiple", "json", "budget", "margin"])
@@ -174,10 +225,10 @@ def test_ineligible_request_does_not_call_control(monkeypatch, scope):
         monkeypatch.setattr(instance, "_predict_window_entities", clipped)
     if scope == "budget":
         monkeypatch.setattr(ner, "remaining_seconds", lambda: .01)
-    with pytest.raises(ner.NERProcessingError) as failure:
-        instance.analyze(SOURCE, boundary_context=context)
-    assert failure.value.failure_class == "window_boundary_unresolved"
-    assert failure.value.windows_processed == 3
+    events = []
+    results = instance.analyze(SOURCE, boundary_context=context, telemetry_callback=events.append)
+    assert any(SOURCE[r.start:r.end] == "Meadow" for r in results)
+    assert events[0].windows_processed == 3
     assert calls == []
 
 
@@ -194,13 +245,32 @@ def test_structured_source_is_not_plain_text(wrap):
     assert not BoundaryValues(source).is_plain_text_span(at, at + len("Meadow"))
 
 
-def test_expiration_and_cancellation_after_inference_are_not_success(monkeypatch):
+def test_cancellation_after_inference_is_not_success(monkeypatch):
     cancelled = threading.Event()
     instance, context, calls, _ = setup(monkeypatch, cancelled)
     with pytest.raises(ner.NERInferenceCancelled):
         instance.analyze(SOURCE, boundary_context=context, cancellation_event=cancelled)
     assert len(calls) == 1 and instance.is_ready()
 
+
+def test_cancellation_during_failed_control_does_not_change_readiness(monkeypatch):
+    cancelled = threading.Event()
+    instance, context, _, shifted = setup(monkeypatch)
+
+    def fail(*args):
+        cancelled.set()
+        raise ner.NERUnavailableError(phase="inference", failure_class="triton_unavailable")
+
+    monkeypatch.setattr(instance, "_infer_window_batch", fail)
+    events = []
+    with pytest.raises(ner.NERInferenceCancelled):
+        instance.analyze(SOURCE, boundary_context=context, cancellation_event=cancelled,
+                         telemetry_callback=events.append)
+    assert instance.is_ready() and shifted == [True]
+    assert not events
+
+
+def test_expiration_after_inference_is_not_success(monkeypatch):
     from presidio.ner import work_budget
 
     now = [0.]
@@ -217,4 +287,5 @@ def test_expiration_and_cancellation_after_inference_are_not_success(monkeypatch
     with work_scope(seconds=1), pytest.raises(ner.NERProcessingError) as failure:
         instance.analyze(SOURCE, boundary_context=context)
     assert failure.value.failure_class == "analysis_deadline_exceeded"
+    assert failure.value.windows_processed == 3
     assert len(calls) == 1 and instance.is_ready()

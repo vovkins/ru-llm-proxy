@@ -10,7 +10,7 @@ import pytest
 
 from presidio.ner.triton_recognizer import (
     EntityPrediction, NERInferenceCancelled, NERProcessingError,
-    NERWindowAnalysis, NERWindowBoundaryError, WindowEntityPrediction,
+    NERWindowAnalysis, WindowEntityPrediction,
 )
 from presidio.ner.boundary_values import BoundaryContext, BoundaryValues
 from presidio.ner.text_processing import normalize_for_ner
@@ -146,17 +146,15 @@ def test_value_repair_preserves_name_type_and_masks_complete_value(monkeypatch, 
     assert instance.is_ready()
 
 
-@pytest.mark.parametrize("source,start,end", [
-    ('{"a":"abc","b":"def"}', 7, 19),
-    ("abc def", 0, 7),
-    ("abcdef", 0, 6),
+@pytest.mark.parametrize("source,start,end,expected", [
+    ('{"a":"abc","b":"def"}', 7, 19, ["abc", "b", "def"]),
+    ("abc def", 0, 7, ["abc def"]),
+    ("abcdef", 0, 6, ["abcdef"]),
 ])
-def test_no_complete_expanding_value_keeps_request_scoped_refusal(monkeypatch, source, start, end):
+def test_no_complete_expanding_value_keeps_evidence(monkeypatch, source, start, end, expected):
     initial = [prediction("AUTH_TOKEN", start, end, left=True, right=True)]
     instance, _, _ = recognizer(monkeypatch, initial, [])
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(source)
-    assert error.value.failure_class == "window_boundary_unresolved"
+    assert [source[r.start:r.end] for r in instance.analyze(source)] == expected
     monkeypatch.setattr(instance, "_predict_window_entities", lambda *_a, **_kw: ([], 1))
     assert instance.analyze("ok") == []
     assert instance.is_ready()
@@ -168,9 +166,8 @@ def test_recovery_evidence_outside_a_value_cannot_be_lost(monkeypatch):
     initial = [prediction("AUTH_TOKEN", start, start + 1, right=True)]
     recovery = [prediction("AUTH_TOKEN", start, len(source), 2, right=True)]
     instance, _, _ = recognizer(monkeypatch, initial, recovery)
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(source)
-    assert error.value.failure_class == "window_boundary_unresolved"
+    result, = instance.analyze(source)
+    assert result.start <= start < result.end == len(source)
 
 
 @pytest.mark.parametrize("repaired", [
@@ -183,10 +180,10 @@ def test_each_cut_edge_and_original_type_score_are_required(monkeypatch, repaire
     instance, _, _ = recognizer(monkeypatch, [], [])
     monkeypatch.setattr("presidio.ner.triton_recognizer.expand_value_spans_with_evidence",
                         lambda *_: [ValueSpanExpansion(repaired)])
-    with pytest.raises(NERWindowBoundaryError):
-        instance._merge_rechecked_window_predictions("abcdef", [
-            prediction("AUTH_TOKEN", 2, 4, left=True, right=True),
-        ], [])
+    merged = instance._merge_rechecked_window_predictions("abcdef", [
+        prediction("AUTH_TOKEN", 2, 4, left=True, right=True),
+    ])
+    assert merged.complete == [] and len(merged.cut) == 1
 
 
 @pytest.mark.parametrize("selected", [None, ["AUTH_TOKEN"], ["PERSON"]])
@@ -241,7 +238,7 @@ def test_multiple_clusters_share_one_lexical_parse(monkeypatch):
     results = instance._merge_rechecked_window_predictions(source, [
         prediction("PASSWORD", a, a + 3, right=True),
         prediction("SECRET_KEY", b, b + 3, right=True),
-    ], [])
+    ]).complete
     assert [(r.entity_type, source[r.start:r.end]) for r in results] == [
         ("PASSWORD", "abcdef"), ("SECRET_KEY", "uvwxyz"),
     ]
@@ -315,11 +312,7 @@ def test_repair_exception_is_request_scoped_with_accurate_window_count(monkeypat
 def test_remaining_boundary_log_is_bounded_and_does_not_include_source(monkeypatch, caplog):
     source = "private-source-must-not-be-logged"
     instance, _, _ = recognizer(monkeypatch, [prediction("PERSON", 4, 8, left=True)], [])
-    with caplog.at_level("WARNING"), pytest.raises(NERProcessingError):
+    with caplog.at_level("INFO"):
         instance.analyze(source)
-    events = [json.loads(r.getMessage()) for r in caplog.records
-              if r.getMessage().startswith('{"cluster_count"')]
-    assert events == [{"event": "presidio_ner_window_boundary_unresolved", "phase": "windowing",
-        "failure_class": "window_boundary_unresolved", "entity_types": ["PERSON"], "cluster_count": 1,
-        "initial_windows_processed": 2, "recovery_windows_processed": 1, "windows_processed_total": 3}]
+    assert "presidio_ner_boundary_fallback cluster_count=1" in caplog.text
     assert source not in "\n".join(r.getMessage() for r in caplog.records)

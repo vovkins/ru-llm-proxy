@@ -16,6 +16,7 @@ DETECTION_SOURCE_METADATA_KEY = "ru_llm_detection_source"
 NER_MODEL_METADATA_KEY = "ru_llm_ner_model"
 NER_BOUNDARY_CONTAINER_KEY = "ru_llm_ner_boundary_container"
 NER_PERSON_CONTROL_KEY = "ru_llm_ner_person_control"
+NER_BOUNDARY_FALLBACK_KEY = "ru_llm_ner_boundary_fallback"
 NER_LEGAL_ORGANIZATION_COMPLETION_KEY = "ru_llm_ner_legal_organization_completion"
 
 SOURCE_NER = "ner"
@@ -493,6 +494,7 @@ def merge_results(
         requested_entities = tuple(requested_entities)
     decisions = []
     valid_results = []
+    boundary_fallbacks = []
     strings = StringSpans(text)
     contract_evidence = contract_context_evidence(text, _strings=strings)
     reference_spans = []
@@ -500,6 +502,13 @@ def merge_results(
     for result in results:
         if not _valid_span(result, len(text)):
             normalized.append(result)  # Preserve the existing invalid-span decision.
+            continue
+        if (is_boundary_container(result)
+                and result.recognition_metadata.get(NER_BOUNDARY_FALLBACK_KEY)):
+            if result.score >= score_threshold and (
+                not requested_entities or result.entity_type in requested_entities
+            ):
+                boundary_fallbacks.append(result)
             continue
         literal = strings.at(result.start)
         # Existing specialized rules may deliberately cover a concatenated key
@@ -800,6 +809,11 @@ def merge_results(
             declared_containers,
         )
         decisions.extend(added_decisions)
+    if boundary_fallbacks:
+        for fragment in _uncovered_fragments(text, kept, sorted(boundary_fallbacks, key=_priority_key)):
+            kept.append(fragment)
+            decisions.append(MergeDecision("overlap_fragment_kept", SOURCE_NER, SOURCE_NONE))
+        kept.sort(key=lambda result: (result.start, result.end, result.entity_type))
     return MergeOutcome(tuple(kept), tuple(decisions))
 
 
@@ -1119,13 +1133,13 @@ def _uncovered_fragments(
     for result in sorted(overlapped, key=lambda r: (r.start, r.start - r.end)):
         index = result.start
         while index < result.end:
-            if covered[index]:
-                index += 1
-                continue
-            run_end = index
-            while run_end < result.end and not covered[run_end]:
-                run_end += 1
-            start, end = index, run_end
+            start = covered.find(b"\x00", index, result.end)
+            if start == -1:
+                break
+            run_end = covered.find(b"\x01", start + 1, result.end)
+            if run_end == -1:
+                run_end = result.end
+            end = run_end
             if not is_boundary_container(result):
                 while start < end and text[start].isspace():
                     start += 1

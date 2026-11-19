@@ -4,7 +4,6 @@ import pytest
 from presidio.ner.boundary_values import (
     _MAX_PROSE_CONTAINER_CHARS, BoundaryContext, BoundaryValues,
 )
-from presidio.ner.triton_recognizer import NERProcessingError
 from presidio.tests.test_ner_window_value_repair import prediction, recognizer
 
 
@@ -84,6 +83,5 @@ def test_uses_original_pair_across_analyzer_chunks(monkeypatch):
     instance, _, _ = recognizer(monkeypatch, [prediction("PERSON", start, len(local), right=True)], [])
     result, = instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(text)))
     assert (result.start, result.end) == (start, end)
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(local)
-    assert error.value.failure_class == "window_boundary_unresolved"
+    fallback, = instance.analyze(local)
+    assert local[fallback.start:fallback.end] == "Ivan"

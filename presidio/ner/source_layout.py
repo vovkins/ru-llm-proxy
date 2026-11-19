@@ -9,6 +9,7 @@ from itertools import chain
 
 from result_merging import (
     NER_BOUNDARY_CONTAINER_KEY,
+    NER_BOUNDARY_FALLBACK_KEY,
     NER_PERSON_CONTROL_KEY,
     SOURCE_NER,
     _copy_name,
@@ -59,6 +60,7 @@ def _syntax(text, check):
 def _layout_candidate(result):
     metadata = result.recognition_metadata or {}
     return (result.entity_type == "PERSON" and detection_source(result) == SOURCE_NER
+            and not metadata.get(NER_BOUNDARY_FALLBACK_KEY)
             and (metadata.get(NER_PERSON_CONTROL_KEY) is True
                  or metadata.get(NER_BOUNDARY_CONTAINER_KEY) is True))
 

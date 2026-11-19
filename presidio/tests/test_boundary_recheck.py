@@ -9,7 +9,7 @@ from presidio.ner.boundary_recheck import (
 )
 from presidio.ner.text_processing import normalize_for_ner
 from presidio.ner.triton_recognizer import (
-    EntityPrediction, WindowEntityPrediction, UnresolvedWindowEntityCluster,
+    EntityPrediction, WindowEntityPrediction, merge_window_predictions,
     TokenPrediction, NERWindowAnalysis, NER_STATE_READY,
     TritonNERRecognizer, NERInferenceCancelled,
 )
@@ -19,7 +19,7 @@ def setup_case(original=None):
     normalized = normalize_for_ner(original or "x" * 400 + "\nbash-$\n" + "y" * 600)
     start = normalized.text.index("-$")
     p = WindowEntityPrediction(EntityPrediction("PASSWORD", start, start + 2, .7), 0, False, True)
-    cluster = UnresolvedWindowEntityCluster("PASSWORD", (p,))
+    cluster, = merge_window_predictions([p]).cut
     offsets = [(i, i + 1) for i in range(len(normalized.text))]
     return normalized, list(range(len(offsets))), offsets, (cluster,)
 
@@ -88,9 +88,10 @@ def test_work_budget_is_per_call_and_bounded():
     case = setup_case("x" * 400 + "\n" + "bash-$\n" * 5 + "y" * 600)
     normalized, ids, offsets, _ = case
     starts = [i for i in range(len(normalized.text)) if normalized.text.startswith("-$", i)]
-    clusters = tuple(UnresolvedWindowEntityCluster("PASSWORD", (
-        WindowEntityPrediction(EntityPrediction("PASSWORD", a, a + 2, .7), index, False, True),
-    )) for index, a in enumerate(starts))
+    clusters = merge_window_predictions([
+        WindowEntityPrediction(EntityPrediction("PASSWORD", a, a + 2, .7), index, False, True)
+        for index, a in enumerate(starts)
+    ]).cut
     confirmed, processed = confirm((normalized, ids, offsets, clusters))
     assert len(confirmed) == 4
     assert processed == 8
@@ -149,7 +150,7 @@ def test_confirm_does_not_withdraw_a_punctuation_secret_inside_command_arguments
     normalized, ids, offsets, _ = case
     start = normalized.text.index("-$'\n")
     prediction = WindowEntityPrediction(EntityPrediction("PASSWORD", start, start + 2, .7), 0, False, True)
-    cluster = UnresolvedWindowEntityCluster("PASSWORD", (prediction,))
+    cluster, = merge_window_predictions([prediction]).cut
     assert confirm((normalized, ids, offsets, (cluster,))) == (set(), 0)
 
 

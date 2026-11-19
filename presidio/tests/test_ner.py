@@ -27,7 +27,6 @@ from presidio.ner.triton_recognizer import (
     NERInferenceCancelled,
     NERProcessingError,
     NERUnavailableError,
-    NERWindowBoundaryError,
     TokenPrediction,
     WindowEntityPrediction,
     decode_bio_predictions,
@@ -740,7 +739,7 @@ def test_shifted_window_recovers_entity_longer_than_overlap():
     assert recognizer.is_ready() is True
 
 
-def test_unresolved_boundary_is_request_scoped_and_next_request_succeeds():
+def test_unresolved_boundary_keeps_original_coverage_and_next_request_succeeds():
     token_count = 500
     labels = {0: 1, **{index: 2 for index in range(1, token_count)}}
     tokenizer = FakeTokenizer(_character_offsets(token_count))
@@ -748,25 +747,17 @@ def test_unresolved_boundary_is_request_scoped_and_next_request_succeeds():
     recognizer = make_recognizer(tokenizer=tokenizer, model=model)
     events = []
 
-    with pytest.raises(NERProcessingError) as exc_info:
-        recognizer.analyze(
-            "x" * token_count,
-            telemetry_callback=events.append,
-        )
-
-    assert exc_info.value.phase == "windowing"
-    assert exc_info.value.failure_class == "window_boundary_unresolved"
-    assert exc_info.value.windows_processed == 3
+    result, = recognizer.analyze("x" * token_count, telemetry_callback=events.append)
+    assert (result.start, result.end) == (0, token_count)
     assert recognizer.state() == "ready"
     assert recognizer.is_loaded() is True
     assert recognizer.is_warmed_up() is True
     assert recognizer.failure_phase() is None
     assert recognizer.failure_class() is None
     assert len(events) == 1
-    assert events[0].outcome == "failure"
+    assert events[0].outcome == "success"
     assert events[0].windows_processed == 3
-    assert events[0].failure_phase == "windowing"
-    assert events[0].failure_class == "window_boundary_unresolved"
+    assert events[0].failure_class is None
 
     tokenizer.offsets = _character_offsets(2)
     model.labels_by_token = {}
@@ -892,7 +883,7 @@ def test_full_prediction_wins_over_truncated_overlap_fragment():
         ),
     ]
 
-    assert merge_window_predictions(predictions) == [
+    assert merge_window_predictions(predictions).complete == [
         EntityPrediction("PERSON", 10, 18, 0.90)
     ]
 
@@ -907,20 +898,22 @@ def test_duplicate_full_predictions_use_highest_confidence():
         ),
     ]
 
-    assert merge_window_predictions(predictions) == [
+    assert merge_window_predictions(predictions).complete == [
         EntityPrediction("PERSON", 10, 18, 0.95)
     ]
 
 
-def test_boundary_only_prediction_fails_closed():
+def test_boundary_only_prediction_requires_recovery():
     predictions = [
         WindowEntityPrediction(
             EntityPrediction("SECRET_KEY", 10, 18, 0.99), 0, False, True
         )
     ]
 
-    with pytest.raises(NERWindowBoundaryError, match="truncated SECRET_KEY"):
-        merge_window_predictions(predictions)
+    merged = merge_window_predictions(predictions)
+    assert merged.complete == []
+    cluster, = merged.cut
+    assert cluster.envelope == predictions[0].entity
 
 
 @pytest.mark.parametrize(

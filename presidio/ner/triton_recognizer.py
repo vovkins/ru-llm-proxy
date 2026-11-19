@@ -21,6 +21,7 @@ from result_merging import (
     NER_MODEL_METADATA_KEY,
     SOURCE_NER,
     NER_BOUNDARY_CONTAINER_KEY,
+    NER_BOUNDARY_FALLBACK_KEY,
     NER_PERSON_CONTROL_KEY,
     name_context_evidence,
 )
@@ -107,26 +108,6 @@ EXPECTED_ID2LABEL = {
 
 class NERConfigurationError(RuntimeError):
     """Raised when the local model does not match the fixed NER contract."""
-
-
-class NERWindowBoundaryError(RuntimeError):
-    """Raised when overlapping windows cannot establish a complete entity."""
-
-    def __init__(
-        self,
-        unresolved_clusters: tuple["UnresolvedWindowEntityCluster", ...],
-        predictions: tuple["WindowEntityPrediction", ...] = (),
-    ):
-        first_type = (
-            unresolved_clusters[0].entity_type
-            if unresolved_clusters
-            else "unknown"
-        )
-        super().__init__(
-            f"NER produced only truncated {first_type} window predictions"
-        )
-        self.unresolved_clusters = unresolved_clusters
-        self.predictions = predictions
 
 
 class NERInferenceCancelled(RuntimeError):
@@ -295,11 +276,17 @@ class WindowEntityPrediction:
 
 
 @dataclass(frozen=True)
-class UnresolvedWindowEntityCluster:
-    """Same-type predictions which are all truncated by internal windows."""
+class CutWindowCluster:
+    """Overlapping predictions whose union lacks a confirmed boundary."""
 
-    entity_type: str
+    envelope: EntityPrediction
     predictions: tuple[WindowEntityPrediction, ...]
+
+
+@dataclass(frozen=True)
+class WindowMerge:
+    complete: list[EntityPrediction]
+    cut: tuple[CutWindowCluster, ...]
 
 
 @dataclass(frozen=True)
@@ -394,10 +381,6 @@ def decode_bio_predictions(
     return entities
 
 
-def _spans_overlap(first: EntityPrediction, second: EntityPrediction) -> bool:
-    return first.start < second.end and second.start < first.end
-
-
 def _filter_window_predictions(
     predictions: list[WindowEntityPrediction],
     *,
@@ -426,14 +409,14 @@ def _filter_window_predictions(
 
 def merge_window_predictions(
     predictions: list[WindowEntityPrediction],
-) -> list[EntityPrediction]:
-    """Resolve duplicate same-type predictions from overlapping windows."""
+) -> WindowMerge:
+    """Union same-type evidence and retain clusters that need boundary recovery."""
     grouped: dict[str, list[WindowEntityPrediction]] = {}
     for prediction in predictions:
         grouped.setdefault(prediction.entity.entity_type, []).append(prediction)
 
     merged: list[EntityPrediction] = []
-    unresolved_clusters: list[UnresolvedWindowEntityCluster] = []
+    cut: list[CutWindowCluster] = []
     for entity_type in sorted(grouped):
         ordered = sorted(
             grouped[entity_type],
@@ -441,47 +424,44 @@ def merge_window_predictions(
                 item.entity.start,
                 item.entity.end,
                 item.window_index,
+                item.touches_left_boundary,
+                item.touches_right_boundary,
+                item.entity.score,
             ),
         )
         clusters: list[list[WindowEntityPrediction]] = []
+        cluster_end = 0
         for prediction in ordered:
-            if not clusters or not any(
-                _spans_overlap(prediction.entity, existing.entity)
-                for existing in clusters[-1]
-            ):
+            if not clusters or prediction.entity.start >= cluster_end:
                 clusters.append([prediction])
+                cluster_end = prediction.entity.end
             else:
                 clusters[-1].append(prediction)
+                cluster_end = max(cluster_end, prediction.entity.end)
 
         for cluster in clusters:
-            start = min(item.entity.start for item in cluster)
+            start = cluster[0].entity.start
             end = max(item.entity.end for item in cluster)
+            score = min(item.entity.score for item in cluster)
             left_confirmed = any(item.entity.start == start and not item.touches_left_boundary
                                  for item in cluster)
             right_confirmed = any(item.entity.end == end and not item.touches_right_boundary
                                   for item in cluster)
             if (not any(not item.touches_internal_boundary for item in cluster)
                     or not left_confirmed or not right_confirmed):
-                unresolved_clusters.append(
-                    UnresolvedWindowEntityCluster(
-                        entity_type=entity_type,
-                        predictions=tuple(cluster),
-                    )
+                cut.append(
+                    CutWindowCluster(EntityPrediction(entity_type, start, end, score), tuple(cluster))
                 )
             else:
                 complete = [item.entity for item in cluster
                             if not item.touches_internal_boundary
                             and item.entity.start == start and item.entity.end == end]
                 merged.append(EntityPrediction(entity_type, start, end,
-                    max(item.score for item in complete) if complete
-                    else min(item.entity.score for item in cluster)))
+                    max(item.score for item in complete) if complete else score))
 
-    if unresolved_clusters:
-        raise NERWindowBoundaryError(tuple(unresolved_clusters), tuple(predictions))
-
-    return sorted(
-        merged,
-        key=lambda entity: (entity.start, entity.end, entity.entity_type),
+    return WindowMerge(
+        sorted(merged, key=lambda entity: (entity.start, entity.end, entity.entity_type)),
+        tuple(cut),
     )
 
 
@@ -972,10 +952,16 @@ class TritonNERRecognizer:
                 windows_processed=0,
             )
             raise error from exc
+        context = boundary_context or BoundaryContext(BoundaryValues(text))
+        document_edges = (
+            context.offset == 0,
+            context.offset + len(text) == len(context.values.text),
+        )
         try:
             window_analysis = self._predict_window_entities(
                 normalized.text,
                 cancellation_event=cancellation_event,
+                document_edges=document_edges,
             )
             window_predictions, windows_processed = window_analysis
             input_tokens = getattr(window_analysis, "input_tokens", 0)
@@ -1010,140 +996,113 @@ class TritonNERRecognizer:
         )
         boundary_results = []
         try:
-            entity_predictions = merge_window_predictions(filtered_predictions)
-        except NERWindowBoundaryError as unresolved:
-            initial_windows_processed = windows_processed
+            window_merge = merge_window_predictions(filtered_predictions)
+        except Exception as exc:
+            raise NERProcessingError(
+                phase="postprocessing", failure_class="span_postprocessing_failed",
+                windows_processed=windows_processed,
+            ) from exc
+        if window_merge.cut:
             try:
-                recovery_predictions, recovery_windows_processed = (
-                    self._recover_window_boundaries(
-                        normalized.text,
-                        unresolved.unresolved_clusters,
-                        cancellation_event=cancellation_event,
-                    )
+                window_input = getattr(window_analysis, "window_input", None)
+                recovery, extra_windows = self._recover_window_boundaries(
+                    normalized.text, window_merge.cut, window_input=window_input,
+                    cancellation_event=cancellation_event, document_edges=document_edges,
                 )
+            except NERBackendError as error:
+                error.windows_processed += windows_processed
+                self._mark_failed_if_service_wide(error)
+                raise
             except NERInferenceCancelled:
                 raise
-            except NERBackendError as error:
-                combined_error = NERProcessingError(
-                    phase=error.phase,
-                    failure_class=error.failure_class,
-                    windows_processed=windows_processed + error.windows_processed,
-                )
-                self._mark_failed_if_service_wide(combined_error)
-                raise combined_error from error
             except Exception as exc:
                 error = NERProcessingError(
-                    phase="inference",
-                    failure_class="unexpected_failure",
+                    phase="inference", failure_class="unexpected_failure",
                     windows_processed=windows_processed,
                 )
                 self._mark_failed_if_service_wide(error)
                 raise error from exc
-            windows_processed += recovery_windows_processed
-            filtered_recovery_predictions = _filter_window_predictions(
-                recovery_predictions,
+            windows_processed += extra_windows
+            filtered_recovery = _filter_window_predictions(
+                recovery,
                 score_threshold=score_threshold,
                 requested_entities=requested_entities,
                 supporting_name_spans=supporting_name_spans,
             )
-            if self.boundary_recheck_enabled:
-                input_ids, offsets = self._tokenize_content(normalized.text)
-                withdrawn, additional_windows = confirmed_prompt_edges(
-                    normalized, input_ids, offsets, unresolved.unresolved_clusters,
-                    recovery_predictions, protected_spans, self._infer_window_batch,
-                    lambda: _raise_if_cancelled(cancellation_event),
-                )
-                windows_processed += additional_windows
-                filtered_predictions = [p for p in filtered_predictions
-                                        if prediction_key(p) not in withdrawn]
             try:
-                entity_predictions = self._merge_rechecked_window_predictions(
-                    normalized.text,
-                    filtered_predictions + filtered_recovery_predictions,
-                    filtered_recovery_predictions,
-                    cancellation_event=cancellation_event,
-                    document_edges=(
-                        boundary_context is None or boundary_context.offset == 0,
-                        boundary_context is None or boundary_context.offset + len(text)
-                        == len(boundary_context.values.text),
-                    ),
-                )
-            except NERWindowBoundaryError as exc:
-                try:
-                    entity_predictions, boundary_results = self._resolve_boundary_values(
-                        normalized, exc.predictions or filtered_predictions,
-                        filtered_recovery_predictions,
-                        boundary_context or BoundaryContext(BoundaryValues(text)),
-                        cancellation_event=cancellation_event,
+                def crosses_json_boolean(left, right):
+                    start, end = normalized.to_original_span(left, right)
+                    return isinstance(context.values, BoundaryValues) and context.values.json_boolean_overlaps(
+                        context.offset + start, context.offset + end,
+                        lambda: _raise_if_cancelled(cancellation_event),
                     )
-                except NERWindowBoundaryError as remaining:
-                    confirmed, extra_windows = self._confirm_boundary_person(
-                        normalized, remaining, boundary_context,
-                        getattr(window_analysis, "window_input", None),
-                        score_threshold, cancellation_event,
+
+                if self.boundary_recheck_enabled:
+                    input_ids, offsets = (
+                        window_input[:2] if window_input else self._tokenize_content(normalized.text)
+                    )
+                    withdrawn, extra_windows = confirmed_prompt_edges(
+                        normalized, input_ids, offsets, window_merge.cut,
+                        recovery, protected_spans, self._infer_window_batch,
+                        lambda: _raise_if_cancelled(cancellation_event),
                     )
                     windows_processed += extra_windows
-                    if confirmed is None:
-                        # Native field proof is a final fallback. Keep the
-                        # existing PERSON control first, including its wider
-                        # confirmed masks on all previously successful paths.
-                        try:
-                            entity_predictions, boundary_results = self._resolve_boundary_values(
-                                normalized, remaining.predictions, (),
-                                boundary_context or BoundaryContext(BoundaryValues(text)),
-                                cancellation_event=cancellation_event,
-                                allow_typed_fields=True,
-                                requested_entities=requested_entities,
-                            )
-                        except NERWindowBoundaryError:
-                            self._raise_unresolved_boundary(
-                                remaining, initial_windows_processed,
-                                recovery_windows_processed + extra_windows, windows_processed,
-                            )
-                    else:
-                        # The confirmed mask fully subsumes the unresolved evidence;
-                        # re-run the normal resolver on every other prediction unchanged.
-                        cluster, = remaining.unresolved_clusters
-                        retained = [p for p in remaining.predictions if p not in cluster.predictions]
-                        try:
-                            entity_predictions, boundary_results = self._resolve_boundary_values(
-                                normalized, retained, (), boundary_context,
-                                cancellation_event=cancellation_event,
-                            )
-                        except NERWindowBoundaryError:
-                            self._raise_unresolved_boundary(
-                                remaining, initial_windows_processed,
-                                recovery_windows_processed + extra_windows, windows_processed,
-                            )
+                    filtered_predictions = [
+                        p for p in filtered_predictions if prediction_key(p) not in withdrawn
+                    ]
+                window_merge = self._merge_rechecked_window_predictions(
+                    normalized.text, filtered_predictions + filtered_recovery,
+                    cancellation_event=cancellation_event, document_edges=document_edges,
+                    crosses_json_boolean=crosses_json_boolean,
+                )
+                boundary_results, remaining = self._resolve_boundary_values(
+                    normalized, window_merge.cut, context,
+                    cancellation_event=cancellation_event,
+                )
+                if len(remaining) == 1:
+                    cluster, _ = remaining[0]
+                    try:
+                        confirmed, extra_windows = self._confirm_boundary_person(
+                            normalized, cluster.envelope, context, window_input,
+                            score_threshold, cancellation_event,
+                        )
+                    except NERBackendError as error:
+                        self._mark_failed_if_service_wide(error)
+                        raise
+                    windows_processed += extra_windows
+                    if confirmed is not None:
                         boundary_results.append(confirmed)
-                except (NERInferenceCancelled, NERBackendError):
-                    raise
-                except Exception as recovery_error:
-                    raise NERProcessingError(
-                        phase="postprocessing", failure_class="span_postprocessing_failed",
-                        windows_processed=windows_processed,
-                    ) from recovery_error
+                        remaining.clear()
+                if remaining:
+                    typed, remaining = self._resolve_boundary_values(
+                        normalized, [cluster for cluster, _ in remaining], context,
+                        cancellation_event=cancellation_event, allow_typed_fields=True,
+                        requested_entities=requested_entities,
+                    )
+                    boundary_results.extend(typed)
+                for cluster, (start, end) in remaining:
+                    _raise_if_cancelled(cancellation_event)
+                    for left, right in context.values.fallback_ranges(
+                        start, end, lambda: _raise_if_cancelled(cancellation_event),
+                    ):
+                        boundary_results.append(self._boundary_result(
+                            cluster.envelope, left - context.offset, right - context.offset,
+                            additive=True,
+                        ))
+                if remaining:
+                    logger.info("presidio_ner_boundary_fallback cluster_count=%d", len(remaining))
             except NERInferenceCancelled:
                 raise
             except NERBackendError as error:
                 error.windows_processed += windows_processed
                 raise
             except Exception as exc:
-                error = NERProcessingError(
-                    phase="inference",
-                    failure_class="unexpected_failure",
+                raise NERProcessingError(
+                    phase="postprocessing", failure_class="span_postprocessing_failed",
                     windows_processed=windows_processed,
-                )
-                self._mark_failed_if_service_wide(error)
-                raise error from exc
-        except Exception as exc:
-            error = NERProcessingError(
-                phase="inference",
-                failure_class="unexpected_failure",
-                windows_processed=windows_processed,
-            )
-            self._mark_failed_if_service_wide(error)
-            raise error from exc
+                ) from exc
+
+        entity_predictions = window_merge.complete
 
         # Window completeness and thresholds are checked before adding punctuation.
         try:
@@ -1211,82 +1170,62 @@ class TritonNERRecognizer:
             ) from None
         return results, windows_processed, input_tokens
 
-    @staticmethod
-    def _raise_unresolved_boundary(exc, initial_windows_processed,
-                                   recovery_windows_processed, windows_processed):
-        logger.warning(json.dumps({
-            "event": "presidio_ner_window_boundary_unresolved",
-            "phase": "windowing",
-            "failure_class": "window_boundary_unresolved",
-            "entity_types": sorted({c.entity_type for c in exc.unresolved_clusters
-                                    if c.entity_type in NER_ENTITY_TYPES}),
-            "cluster_count": len(exc.unresolved_clusters),
-            "initial_windows_processed": initial_windows_processed,
-            "recovery_windows_processed": recovery_windows_processed,
-            "windows_processed_total": windows_processed,
-        }, sort_keys=True))
-        raise NERProcessingError(
-            phase="windowing", failure_class="window_boundary_unresolved",
-            windows_processed=windows_processed,
-        ) from exc
+    def _boundary_result(self, entity, start, end, *, entity_type=None, additive=False):
+        metadata = {
+            DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,
+            NER_MODEL_METADATA_KEY: self._profile.model_id,
+            NER_BOUNDARY_CONTAINER_KEY: True,
+        }
+        if additive:
+            metadata[NER_BOUNDARY_FALLBACK_KEY] = True
+        return RecognizerResult(entity_type or entity.entity_type, start, end, entity.score,
+                                recognition_metadata=metadata)
 
-    def _resolve_boundary_values(self, normalized, predictions, recovery, context,
-                                 *, cancellation_event=None, allow_typed_fields=False,
+    def _resolve_boundary_values(self, normalized, clusters, context, *,
+                                 cancellation_event, allow_typed_fields=False,
                                  requested_entities=None):
-        combined = list(dict.fromkeys([*predictions, *recovery]))
-        try:
-            return merge_window_predictions(combined), []
-        except NERWindowBoundaryError as error:
-            clusters = error.unresolved_clusters
+        results, remaining = [], []
         original = normalized.original
-        if context.values.text[context.offset:context.offset + len(original)] != original:
+        if clusters and context.values.text[context.offset:context.offset + len(original)] != original:
             raise NERProcessingError(phase="offset_mapping", failure_class="offset_mapping_failed")
-        removed, results, unresolved = set(), [], []
         for cluster in clusters:
             _raise_if_cancelled(cancellation_event)
-            left = min(p.entity.start for p in cluster.predictions)
-            right = max(p.entity.end for p in cluster.predictions)
-            start, end = normalized.to_original_span(left, right)
-            start, end = context.offset + start, context.offset + end
+            entity = cluster.envelope
+            left, right = normalized.to_original_span(entity.start, entity.end)
+            start, end = context.offset + left, context.offset + right
+            check = lambda: _raise_if_cancelled(cancellation_event)
+            if isinstance(context.values, BoundaryValues) and context.values.json_boolean_overlaps(start, end, check):
+                results.extend(
+                    self._boundary_result(entity, left - context.offset, right - context.offset, additive=True)
+                    for left, right in context.values.fallback_ranges(start, end, check)
+                )
+                continue
             if allow_typed_fields and isinstance(context.values, BoundaryValues):
-                bounds = context.values.resolve(start,end,entity_type=cluster.entity_type,allow_typed_fields=True)
+                bounds = context.values.resolve(start, end, entity_type=entity.entity_type,
+                                                allow_typed_fields=True)
             else:
-                bounds = context.values.resolve(start,end,entity_type=cluster.entity_type)
+                bounds = context.values.resolve(start, end, entity_type=entity.entity_type)
             _raise_if_cancelled(cancellation_event)
-            # The final merge checks the emitted masks. Check the original
-            # envelope here, before replacing its initial and shifted evidence.
             if bounds is None or not (0 <= bounds[0] <= start < end <= bounds[1]
                                       <= len(context.values.text)):
-                unresolved.append(cluster)
+                remaining.append((cluster, (start, end)))
                 continue
-            entity_type = getattr(bounds, "entity_type", cluster.entity_type)
+            entity_type = getattr(bounds, "entity_type", entity.entity_type)
             output_entities = context.requested_entities or requested_entities
             if output_entities and entity_type not in output_entities:
-                entity_type = cluster.entity_type
-            removed.update(cluster.predictions)
-            results.append(RecognizerResult(
+                entity_type = entity.entity_type
+            results.append(self._boundary_result(
+                entity, bounds[0] - context.offset, bounds[1] - context.offset,
                 entity_type=entity_type,
-                start=bounds[0] - context.offset, end=bounds[1] - context.offset,
-                score=min(p.entity.score for p in cluster.predictions),
-                recognition_metadata={DETECTION_SOURCE_METADATA_KEY: SOURCE_NER,
-                                      NER_MODEL_METADATA_KEY: self._profile.model_id,
-                                      NER_BOUNDARY_CONTAINER_KEY: True},
             ))
-        if unresolved:
-            raise NERWindowBoundaryError(tuple(unresolved), tuple(combined))
-        return merge_window_predictions([p for p in combined if p not in removed]), results
+        return results, remaining
 
-    def _confirm_boundary_person(self, normalized, error, context, window_input,
+    def _confirm_boundary_person(self, normalized, envelope, context, window_input,
                                  score_threshold, cancellation_event):
-        budget = context.person_window if context is not None else None
-        if (budget is None or budget.used or window_input is None
-                or len(error.unresolved_clusters) != 1):
+        budget = context.person_window
+        if budget is None or budget.used or window_input is None or envelope.entity_type != "PERSON":
             return None, 0
-        cluster, = error.unresolved_clusters
-        if cluster.entity_type != "PERSON":
-            return None, 0
-        start = min(p.entity.start for p in cluster.predictions)
-        end = max(p.entity.end for p in cluster.predictions)
+        start, end = envelope.start, envelope.end
         left, right = normalized.to_original_span(start, end)
         if not context.values.is_plain_text_span(context.offset + left, context.offset + right):
             return None, 0
@@ -1323,13 +1262,22 @@ class TritonNERRecognizer:
         budget.used = True
         try:
             batch = self._infer_window_batch([ids[lo:hi]], [view])
-        except (NERBackendError, NERConfigurationError, TimeoutError):
+        except NERInferenceCancelled:
+            raise
+        except NERBackendError:
             _raise_if_cancelled(cancellation_event)
-            return None, 1
+            raise
+        except Exception as exc:
+            _raise_if_cancelled(cancellation_event)
+            raise NERProcessingError(phase="inference", failure_class="forward_pass_failed") from exc
         _raise_if_cancelled(cancellation_event)
         if len(batch) != 1 or [(p.start, p.end) for p in batch[0]] != view:
-            return None, 1
-        overlap = [e for e in decode_bio_predictions(batch[0]) if e.start < end and start < e.end]
+            raise NERUnavailableError(phase="inference", failure_class="triton_contract_invalid")
+        try:
+            decoded = decode_bio_predictions(batch[0])
+        except Exception as exc:
+            raise NERProcessingError(phase="decoding", failure_class="bio_decoding_failed") from exc
+        overlap = [e for e in decoded if e.start < end and start < e.end]
         if len(overlap) != 1:
             return None, 1
         entity, = overlap
@@ -1390,6 +1338,7 @@ class TritonNERRecognizer:
         normalized_text: str,
         *,
         cancellation_event: threading.Event | None = None,
+        document_edges: tuple[bool, bool] = (True, True),
     ) -> NERWindowAnalysis:
         _raise_if_cancelled(cancellation_event)
         input_ids, offsets, windows = self._prepare_window_input(normalized_text)
@@ -1398,6 +1347,7 @@ class TritonNERRecognizer:
             offsets,
             windows,
             cancellation_event=cancellation_event,
+            document_edges=document_edges,
         )
         return NERWindowAnalysis(
             predictions=predictions,
@@ -1441,6 +1391,7 @@ class TritonNERRecognizer:
         windows: tuple[TokenWindow, ...],
         *,
         cancellation_event: threading.Event | None = None,
+        document_edges: tuple[bool, bool] = (True, True),
     ) -> tuple[list[WindowEntityPrediction], int]:
         predictions: list[WindowEntityPrediction] = []
         windows_processed = 0
@@ -1491,11 +1442,11 @@ class TritonNERRecognizer:
                             entity=entity,
                             window_index=window.index,
                             touches_left_boundary=(
-                                window.start_token > 0
+                                (window.start_token > 0 or not document_edges[0])
                                 and entity.start <= first_start
                             ),
                             touches_right_boundary=(
-                                window.end_token < token_count
+                                (window.end_token < token_count or not document_edges[1])
                                 and entity.end >= last_end
                             ),
                         )
@@ -1506,11 +1457,13 @@ class TritonNERRecognizer:
     def _recover_window_boundaries(
         self,
         normalized_text: str,
-        unresolved_clusters: tuple[UnresolvedWindowEntityCluster, ...],
+        clusters: tuple[CutWindowCluster, ...],
         *,
+        window_input=None,
         cancellation_event: threading.Event | None = None,
+        document_edges: tuple[bool, bool] = (True, True),
     ) -> tuple[list[WindowEntityPrediction], int]:
-        input_ids, offsets, original_windows = self._prepare_window_input(
+        input_ids, offsets, original_windows = window_input or self._prepare_window_input(
             normalized_text
         )
         token_count = len(input_ids)
@@ -1518,7 +1471,7 @@ class TritonNERRecognizer:
             return [], 0
 
         boundary_tokens: set[int] = set()
-        for cluster in unresolved_clusters:
+        for cluster in clusters:
             for prediction in cluster.predictions:
                 if not 0 <= prediction.window_index < len(original_windows):
                     continue
@@ -1563,36 +1516,26 @@ class TritonNERRecognizer:
             offsets,
             recovery_windows,
             cancellation_event=cancellation_event,
+            document_edges=document_edges,
         )
 
     def _merge_rechecked_window_predictions(
         self,
         text: str,
         predictions: list[WindowEntityPrediction],
-        recovery: list[WindowEntityPrediction],
         *,
         cancellation_event: threading.Event | None = None,
         document_edges: tuple[bool, bool] = (True, True),
-    ) -> list[EntityPrediction]:
-        try:
-            return merge_window_predictions(predictions)
-        except NERWindowBoundaryError as unresolved:
-            clusters = unresolved.unresolved_clusters
-
-        candidates = []
-        for cluster in clusters:
-            _raise_if_cancelled(cancellation_event)
-            evidence = list(cluster.predictions) + [
-                p for p in recovery
-                if p.entity.entity_type == cluster.entity_type
-                and any(_spans_overlap(p.entity, original.entity) for original in cluster.predictions)
-            ]
-            candidates.append((
-                min(p.entity.start for p in evidence),
-                max(p.entity.end for p in evidence),
-                cluster.entity_type,
-                min(p.entity.score for p in evidence),
-            ))
+        crosses_json_boolean: Callable[[int, int], bool] | None = None,
+    ) -> WindowMerge:
+        merged = merge_window_predictions(predictions)
+        if not merged.cut:
+            return merged
+        _raise_if_cancelled(cancellation_event)
+        candidates = [
+            (entity.start, entity.end, entity.entity_type, entity.score)
+            for entity in (cluster.envelope for cluster in merged.cut)
+        ]
         # Reuse the existing lexical repair only after shifted inference fails.
         # Every cut edge must expand or have independent syntactic evidence.
         try:
@@ -1600,12 +1543,12 @@ class TritonNERRecognizer:
         except Exception as exc:
             raise NERProcessingError(phase="postprocessing", failure_class="span_postprocessing_failed") from exc
         bounded = []
-        for cluster, candidate, repaired in zip(clusters, candidates, expanded):
+        for cluster, candidate, repaired in zip(merged.cut, candidates, expanded):
             _raise_if_cancelled(cancellation_event)
             start, end, kind, score = repaired.span
-            left, right, _, original_score = candidate
+            left, right, original_kind, original_score = candidate
             if not (0 <= start <= left < right <= end <= len(text)
-                    and kind == cluster.entity_type and score == original_score):
+                    and kind == original_kind and score == original_score):
                 continue
             if ((start == 0 and not document_edges[0])
                     or (end == len(text) and not document_edges[1])
@@ -1617,11 +1560,13 @@ class TritonNERRecognizer:
             if (any(p.touches_right_boundary for p in cluster.predictions)
                     and end <= right and not repaired.right_confirmed):
                 continue
+            if crosses_json_boolean is not None and crosses_json_boolean(start, end):
+                continue
             bounded.append(WindowEntityPrediction(
                 EntityPrediction(kind, start, end, score),
                 min(p.window_index for p in cluster.predictions), False, False,
             ))
-        return merge_window_predictions(predictions + bounded)
+        return merge_window_predictions(predictions + bounded) if bounded else merged
 
     def _infer_window(
         self,

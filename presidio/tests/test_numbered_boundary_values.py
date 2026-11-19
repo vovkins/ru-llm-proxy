@@ -1,7 +1,7 @@
 """Complete numbered source paragraphs, preserving source and old decisions."""
 import pytest
 from presidio.ner.boundary_values import BoundaryValues,BoundaryContext,MAX_NUMBERED_PARAGRAPH_CHARS
-from presidio.ner.triton_recognizer import NERProcessingError, merge_window_predictions
+from presidio.ner.triton_recognizer import merge_window_predictions
 from presidio.tests.test_ner_window_value_repair import prediction,recognizer
 
 def numbered(body='ООО Янтарный\nПеревал',eol='\n'):
@@ -74,4 +74,5 @@ def test_artificial_chunk_end_cannot_close_a_numbered_paragraph(monkeypatch):
     instance,_,_=recognizer(monkeypatch,[prediction('PERSON',a,a+3,right=True)],[])
     result,=instance.analyze(local,boundary_context=BoundaryContext(BoundaryValues(full)))
     assert result.end==full.index('Перевал')+len('Перевал')>len(local)
-    with pytest.raises(NERProcessingError):instance.analyze(local)
+    fallback, = instance.analyze(local)
+    assert local[fallback.start:fallback.end] == local[a:]

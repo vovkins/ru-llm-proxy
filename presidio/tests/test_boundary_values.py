@@ -8,7 +8,7 @@ import pytest
 from presidio_analyzer import RecognizerResult
 
 from presidio.ner.boundary_values import BoundaryContext, BoundaryValues
-from presidio.ner.triton_recognizer import NERProcessingError, NERWindowBoundaryError, merge_window_predictions
+from presidio.ner.triton_recognizer import NERProcessingError, merge_window_predictions
 from presidio.ner.text_processing import normalize_for_ner
 from presidio.result_merging import (
     DETECTION_SOURCE_METADATA_KEY, NER_BOUNDARY_CONTAINER_KEY, SOURCE_NER,
@@ -106,8 +106,8 @@ def test_all_ner_classes_recover_a_container_without_relabelling(monkeypatch, ki
 def test_shorter_complete_prediction_cannot_discard_cut_evidence():
     initial = prediction('PERSON', 10, 25, left=True)
     shorter = prediction('PERSON', 15, 20, 1)
-    with pytest.raises(NERWindowBoundaryError):
-        merge_window_predictions([initial, shorter])
+    cluster, = merge_window_predictions([initial, shorter]).cut
+    assert (cluster.envelope.start, cluster.envelope.end) == (10, 25)
 
 
 def test_boundary_resolver_cannot_shrink_initial_or_shifted_evidence(monkeypatch):
@@ -118,25 +118,89 @@ def test_boundary_resolver_cannot_shrink_initial_or_shifted_evidence(monkeypatch
     shifted = prediction('PERSON', start, end - 2, 2)
     instance, _, _ = recognizer(monkeypatch, [initial], [shifted])
     monkeypatch.setattr(BoundaryValues, 'resolve', lambda *_a, **_kw: (start, end - 2))
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(source)
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    result, = instance.analyze(source)
+    assert source[result.start:result.end] == 'ivanova petrova'
 
 
 def test_absent_shifted_prediction_is_not_a_proof_of_the_name_boundary(monkeypatch):
-    source = 'Only one unstructured paragraph with ivanova petrova and more text'
+    source = 'Lead ' * 12000 + 'ivanova petrova' + ' useful notes' * 10000
     start = source.index('nova')
     instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', start, start + 4, right=True)], [])
-    with pytest.raises(NERProcessingError) as error:
+    result, = instance.analyze(source)
+    assert source[result.start:result.end] == 'ivanova'
+
+
+@pytest.mark.parametrize("word,fragment", [
+    ("Ivanova-Petrova", "nova"), ("O'Connor", "onn"),
+    ("Se\u0301verin", "ver"), ("\u0418\u0432\u0430\u043d\u043e\u0432\u0430", "\u043d\u043e\u0432"),
+])
+def test_fallback_uses_unicode_word_bounds_but_not_external_punctuation(monkeypatch, word, fragment):
+    source = f"prefix\u00a0{word}, keep"
+    start = normalize_for_ner(source).text.index(fragment)
+    instance, _, _ = recognizer(monkeypatch, [
+        prediction("PERSON", start, start + len(fragment), right=True),
+    ], [])
+    result, = instance.analyze(source)
+    assert source[result.start:result.end] == word
+    assert source[result.end:] == ", keep"
+
+
+@pytest.mark.parametrize("second", [False, True])
+def test_newline_does_not_imply_a_second_finding_or_join_independent_masks(monkeypatch, second):
+    source = "head\n\n```text\nreference (Mira\nMeadow) retry\n"
+    start = source.index("Mira")
+    initial = [prediction("PERSON", start, start + 4, right=True)]
+    if second:
+        start = source.index("Meadow")
+        initial.append(prediction("PERSON", start, start + 6, 1))
+    instance, _, _ = recognizer(monkeypatch, initial, [])
+    results = merge_results(source, instance.analyze(source)).results
+    assert [source[r.start:r.end] for r in results] == (["Mira", "Meadow"] if second else ["Mira"])
+    if second:
+        assert source[results[0].end:results[1].start] == "\n"
+
+
+@pytest.mark.parametrize("literal", ["true", "false"])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_only_proven_json_booleans_are_exempt_from_window_coverage(monkeypatch, literal, mixed):
+    source = f'{{"flag":{literal},"neighbor":"{literal}","value":"\\u0418van"}}'
+    start = source.index(literal)
+    end = source.index("van") + 3 if mixed else start + len(literal)
+    instance, _, _ = recognizer(monkeypatch, [
+        prediction("PERSON", start, end, right=True),
+    ], [])
+    results = merge_results(source, instance.analyze(source)).results
+    assert [source[r.start:r.end] for r in results] == (
+        ["neighbor", literal, "value", "\\u0418van"] if mixed else []
+    )
+
+
+def test_json_unsupported_non_boolean_is_not_silently_discarded(monkeypatch):
+    source = '{"flag":null}'
+    start = source.index("null")
+    instance, _, _ = recognizer(monkeypatch, [
+        prediction("PERSON", start, start + 4, right=True),
+    ], [])
+    with pytest.raises(NERProcessingError) as failure:
         instance.analyze(source)
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    assert failure.value.failure_class == "span_postprocessing_failed"
+
+
+@pytest.mark.parametrize("kind", ["PERSON", "PASSWORD"])
+def test_json_boolean_takes_precedence_over_a_paragraph_or_lexical_repair(monkeypatch, kind):
+    source = '[\n\ntrue\n\n, "false"]'
+    start = source.index("true")
+    instance, _, _ = recognizer(monkeypatch, [
+        prediction(kind, start + 1, start + 3, right=True),
+    ], [])
+    assert instance.analyze(source) == []
 
 
 def test_overlapping_complete_predictions_keep_union():
     results = merge_window_predictions([
         prediction('PERSON', 10, 20, score=.9),
         prediction('PERSON', 15, 25, 1, score=.8),
-    ])
+    ]).complete
     assert [(r.start, r.end, r.score) for r in results] == [(10, 25, .8)]
 
 
@@ -178,9 +242,8 @@ def test_artificial_chunk_edge_is_not_a_confirmed_paragraph_end(monkeypatch):
     source = 'Ivan Petrov and more text in the same paragraph'
     local = source[:11]
     instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', 0, 4, right=True)], [])
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(source)))
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    result, = instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(source)))
+    assert source[result.start:result.end] == 'Ivan'
     assert instance.is_ready()
 
 
@@ -222,9 +285,8 @@ def test_coverage_guard_detects_a_lost_boundary_tail():
 
 def test_partial_bare_scalar_cannot_expand_to_the_whole_document(monkeypatch):
     instance, _, _ = recognizer(monkeypatch, [prediction('PASSWORD', 2, 4, right=True)], [])
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze('abcdef')
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    result, = instance.analyze('abcdef')
+    assert (result.start, result.end) == (2, 4)
 
 
 def test_url_escape_inside_json_uses_the_complete_literal():
@@ -241,10 +303,9 @@ def test_window_merge_never_loses_evidence_under_many_offset_combinations():
         predictions = [prediction('PERSON', randomizer.randrange(0, 8), randomizer.randrange(9, 20), i,
                                   left=randomizer.choice([False, True]),
                                   right=randomizer.choice([False, True])) for i in range(4)]
-        try:
-            results = merge_window_predictions(predictions)
-        except NERWindowBoundaryError:
-            continue
+        merged = merge_window_predictions(predictions)
+        results = merged.complete + [cluster.envelope for cluster in merged.cut]
+        assert merge_window_predictions(list(reversed(predictions))) == merged
         for p in predictions:
             assert any(r.start <= p.entity.start < p.entity.end <= r.end for r in results)
 
@@ -321,9 +382,8 @@ def test_wrapped_prose_uses_the_original_parenthesis_across_analyzer_chunks(monk
     result, = instance.analyze(local, boundary_context=BoundaryContext(BoundaryValues(source)))
     assert source[result.start:result.end] == 'Alice\nFable, see'
     assert result.end > len(local)
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(local)
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    fallback, = instance.analyze(local)
+    assert local[fallback.start:fallback.end] == 'Alice'
 
 
 @pytest.mark.parametrize('separator', ['\n', '\r\n', '\r', '\u2028', '\u2029'])
@@ -420,14 +480,13 @@ def test_fenced_container_uses_document_coordinates_across_analyzer_chunks(monke
     assert result.start < 0
 
 
-def test_one_unresolved_cluster_refuses_the_whole_request_without_poisoning_ner(monkeypatch):
+def test_unresolved_cluster_masks_touched_json_scalars_without_refusing_other_results(monkeypatch):
     source = '{"good":"Ivan Petrov","a":"abc","b":"def"}'
     name, start, end = source.index('Ivan'), source.index('abc'), source.index('def') + 3
     instance, _, _ = recognizer(monkeypatch, [prediction('PERSON', name, name + 2, left=True),
                                              prediction('LOCATION', start, end, right=True)], [])
-    with pytest.raises(NERProcessingError) as error:
-        instance.analyze(source)
-    assert error.value.failure_class == 'window_boundary_unresolved'
+    results = instance.analyze(source)
+    assert {source[r.start:r.end] for r in results} == {'Ivan Petrov', 'abc', 'b', 'def'}
     assert instance.is_ready()
     monkeypatch.setattr(instance, '_predict_window_entities', lambda *_a, **_kw: ([], 1))
     assert instance.analyze('control') == []
@@ -462,6 +521,33 @@ def test_analyzer_keeps_document_container_across_both_chunk_edges(monkeypatch):
     assert [(r['entity_type'], r['text']) for r in response.entities] == [('PERSON', 'Ivan Petrov')]
     assert response.entities[0]['start'] == source.index('Ivan')
     assert response.entities[0]['end'] == source.index('\n\nTail')
+
+
+def test_analyzer_prefers_a_full_neighboring_chunk_finding(monkeypatch):
+    from presidio import analyzer_server as server
+    from presidio.ner.triton_recognizer import NERWindowAnalysis
+
+    source = "prefix Ivanova and useful context"
+    start = source.index("Ivanova")
+    chunks = (server.TextChunk(0, 0, start + 4), server.TextChunk(1, 2, len(source)))
+    instance, _, _ = recognizer(monkeypatch, [], [])
+
+    def predict(text, *, document_edges, **kwargs):
+        if document_edges == (True, False):
+            findings = [prediction("PERSON", start, start + 4, right=True)]
+        else:
+            assert document_edges == (False, True)
+            findings = [prediction("PERSON", start - 2, start + 7 - 2, score=.92)]
+        return NERWindowAnalysis(findings, 1, len(text))
+
+    monkeypatch.setattr(instance, "_predict_window_entities", predict)
+    monkeypatch.setattr(server, "ner_recognizer", instance)
+    monkeypatch.setattr(server, "plan_text_chunks", lambda _text: chunks)
+    monkeypatch.setattr(server.analyzer, "analyze", lambda **kwargs: [])
+    response = server._analyze_sync(server.AnalyzeRequest(text=source))
+    assert [(r["entity_type"], r["text"], r["score"]) for r in response.entities] == [
+        ("PERSON", "Ivanova", .92),
+    ]
 
 
 def test_analyzer_rejects_missing_boundary_coverage_after_merge(monkeypatch):

@@ -166,6 +166,11 @@ def _chat_response_content(payload) -> str:
         content = message.get("content")
         if isinstance(content, str):
             return content
+        if isinstance(content, list):
+            text_parts = [part["text"] for part in content if isinstance(part, dict)
+                          and part.get("type") == "text" and isinstance(part.get("text"), str)]
+            if text_parts:
+                return "".join(text_parts)
     return "ok"
 
 
