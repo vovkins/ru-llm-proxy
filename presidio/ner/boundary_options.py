@@ -3,7 +3,6 @@
 import regex
 from string_spans import StringSpans
 
-NAME_TYPES = frozenset(["PERSON", "LOCATION", "ORGANIZATION"])
 JOINERS = "-'\u2010\u2011\u2019"
 WORD = regex.compile(rf"\p{{L}}[\p{{L}}\p{{M}}]*(?:[{JOINERS}]\p{{L}}[\p{{L}}\p{{M}}]*)*\.?")
 SPACE = " \t\u00a0"
@@ -65,9 +64,6 @@ def neighbour(text, edge, direction, limits):
         m = WORD.match(text, at, hi)
     if m is None:
         return None, "other_delimiter"
-    # A token cut in the middle of a word is not proof of a full boundary.
-    if direction < 0 and m.start() < edge < m.end() or direction > 0 and m.start() < edge < m.end():
-        return m, "partial_word"
     return (m, "name_word") if name_form(m.group()) else (None, "non_name_word")
 
 
@@ -98,9 +94,6 @@ def _close_directionally(text, cluster, check):
     new = [a, b]
     reasons = []
     capped = False
-    if kind not in NAME_TYPES and kind != "LOGIN":
-        event["reason"] = "credential_or_contract_keep_legacy_failure"
-        return None, event
     for side, cut in [(0, left), (1, right)]:
         check()
         if not cut:
@@ -116,14 +109,6 @@ def _close_directionally(text, cluster, check):
             else:
                 while new[1] < hi and (text[new[1]].isalpha() or text[new[1]] in JOINERS):
                     new[1] += 1
-        if kind == "LOGIN":
-            if (side == 0 and new[0] > lo and text[new[0] - 1].isspace()) or (
-                side == 1 and new[1] < hi and text[new[1]].isspace()
-            ):
-                reasons.append("login_whitespace")
-                continue
-            event["reason"] = "login_no_whitespace"
-            return None, event
         words = 0
         while True:
             m, why = neighbour(text, new[side], direction, limits)
@@ -183,13 +168,14 @@ def partition(predictions):
 
 def close_cluster(text, cluster, check):
     from . import triton_recognizer as nr
+    if cluster.entity_type != "PERSON":
+        raise ValueError("Boundary closure requires PERSON evidence")
 
     raw_a = min(p.entity.start for p in cluster.predictions)
     raw_b = max(p.entity.end for p in cluster.predictions)
     limits = owner_bounds(text, raw_a, raw_b)
-    # Explicitly approved separately: mixed PERSON identifiers are masked as a whole
-    # non-whitespace token, without changing native types or the other19 policies.
-    if cluster.entity_type == "PERSON" and limits is not None:
+    # Mixed identifiers are protected as whole non-whitespace tokens.
+    if limits is not None:
         lo, hi = limits
         a, b = raw_a, raw_b
         while a > lo and not text[a - 1].isspace():

@@ -69,7 +69,9 @@ PROFILES: dict[str, NERModelProfile] = {
         span_postprocessing=SPAN_POSTPROCESSING_SECRETS_CONTRACTS,
         spacy_disabled_pipes=SPACY_LEMMA_ONLY_DISABLED,
         spacy_sentencizer=True,
-        boundary_fallback_mode='off',
+        # Rollout: upgrade all Analyzers with fallback off, then enable proof
+        # on the guardrails, then enable this profile. Reverse order to roll back.
+        boundary_fallback_mode="off",
     ),
 }
 DEFAULT_PROFILE = "tiny2"
@@ -110,7 +112,7 @@ def resolve_profile(environ: Mapping[str, str] | None = None) -> NERModelProfile
 def resolve_boundary_mode(profile_name: str) -> str:
     if profile_name != "tiny2":
         raise ValueError("Unknown processing bundle")
-    mode=PROFILES[profile_name].boundary_fallback_mode
+    mode = PROFILES[profile_name].boundary_fallback_mode
     if mode not in {"off", "guarded"}:
         raise ValueError("Unknown boundary processing bundle")
     return mode

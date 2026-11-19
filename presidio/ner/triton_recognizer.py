@@ -39,6 +39,7 @@ from .backend_settings import resolve_backend
 from .work_budget import check_work, remaining_seconds, work_scope
 from .text_processing import TokenWindow, complete_word_edges, normalize_for_ner, plan_token_windows
 from .boundary_values import BoundaryContext, BoundaryValues
+from . import boundary_runtime
 
 try:
     from model_artifact import (
@@ -200,6 +201,7 @@ NER_FAILURE_CLASSES = frozenset(
         "tokenizer_failed",
         "window_planning_failed",
         "window_boundary_unresolved",
+        "boundary_positive_coverage_failed",
         "forward_pass_failed",
         "bio_decoding_failed",
         "offset_mapping_failed",
@@ -223,6 +225,7 @@ NER_REQUEST_SCOPED_FAILURE_CLASSES = frozenset(
         "tokenizer_failed",
         "window_planning_failed",
         "window_boundary_unresolved",
+        "boundary_positive_coverage_failed",
         "bio_decoding_failed",
         "offset_mapping_failed",
         "span_postprocessing_failed",
@@ -581,6 +584,9 @@ class TritonNERRecognizer:
         if not 1 <= inference_batch_size <= 32:
             raise ValueError("inference_batch_size must be between 1 and 32")
         self._profile = profile if profile is not None else ACTIVE_PROFILE
+        self.boundary_mode = getattr(self._profile, "boundary_fallback_mode", "off")
+        if self.boundary_mode not in {"off", "guarded"}:
+            raise ValueError("Unknown boundary processing bundle")
         self._boundary_recheck = resolve_recheck(self._profile.name)
         self._backend_settings = resolve_backend()
         self._o_logit_bias = parse_o_logit_bias(
@@ -957,6 +963,38 @@ class TritonNERRecognizer:
         protected_spans: tuple[tuple[int, int], ...] | None = None,
         boundary_context: BoundaryContext | None = None,
     ) -> tuple[list[RecognizerResult], int, int]:
+        kwargs = dict(
+            score_threshold=score_threshold,
+            entities=entities,
+            cancellation_event=cancellation_event,
+            protected_spans=protected_spans,
+            boundary_context=boundary_context,
+        )
+        if getattr(self, "boundary_mode", "off") != "guarded":
+            return self._analyze_tokens(text, **kwargs)
+        requested = (
+            getattr(boundary_context, "requested_entities", None) or
+            _normalize_requested_entities(entities)
+        )
+        evidence = boundary_runtime.BoundaryEvidence(self, score_threshold, requested)
+        token = boundary_runtime.ACTIVE_EVIDENCE.set(evidence)
+        try:
+            output = self._analyze_tokens(text, **kwargs)
+            evidence.attach_proof(output[0])
+            return output
+        finally:
+            boundary_runtime.ACTIVE_EVIDENCE.reset(token)
+
+    def _analyze_tokens(
+        self,
+        text: str,
+        *,
+        score_threshold: float,
+        entities: Optional[list[str]],
+        cancellation_event: threading.Event | None,
+        protected_spans: tuple[tuple[int, int], ...] | None = None,
+        boundary_context: BoundaryContext | None = None,
+    ) -> tuple[list[RecognizerResult], int, int]:
         _raise_if_cancelled(cancellation_event)
         if self._state == NER_STATE_FAILED:
             self.require_ready()
@@ -1235,9 +1273,30 @@ class TritonNERRecognizer:
             windows_processed=windows_processed,
         ) from exc
 
-    def _resolve_boundary_values(self, normalized, predictions, recovery, context,
-                                 *, cancellation_event=None, allow_typed_fields=False,
-                                 requested_entities=None):
+    def _resolve_boundary_values(
+        self, normalized, predictions, recovery, context, *,
+        cancellation_event=None, allow_typed_fields=False,
+        requested_entities=None, checked_person_cluster=None,
+    ):
+        kwargs = dict(
+            cancellation_event=cancellation_event,
+            allow_typed_fields=allow_typed_fields,
+            requested_entities=requested_entities,
+        )
+        try:
+            return self._resolve_values_legacy(normalized, predictions, recovery, context, **kwargs)
+        except NERWindowBoundaryError:
+            evidence = boundary_runtime.evidence_for(self)
+            if (evidence is None or not allow_typed_fields or checked_person_cluster is None):
+                raise
+            return boundary_runtime.resolve_checked_cluster(
+                evidence, self._resolve_values_legacy, normalized,
+                predictions, recovery, context, checked_person_cluster, **kwargs,
+            )
+
+    def _resolve_values_legacy(self, normalized, predictions, recovery, context,
+                               *, cancellation_event=None, allow_typed_fields=False,
+                               requested_entities=None):
         combined = list(dict.fromkeys([*predictions, *recovery]))
         try:
             return merge_window_predictions(combined), []
@@ -1741,6 +1800,11 @@ class TritonNERRecognizer:
                     )
                 )
             prediction_batches.append(predictions)
+        evidence = boundary_runtime.evidence_for(self)
+        if evidence is not None:
+            for tokens in prediction_batches:
+                for finding in decode_bio_predictions(tokens):
+                    evidence.record(finding)
         return prediction_batches
 
 
@@ -1748,6 +1812,3 @@ def _raise_if_cancelled(cancellation_event: threading.Event | None) -> None:
     check_work()
     if cancellation_event is not None and cancellation_event.is_set():
         raise NERInferenceCancelled("NER inference was cancelled")
-
-from .boundary_runtime import install as _install_boundary_runtime
-_install_boundary_runtime(TritonNERRecognizer)

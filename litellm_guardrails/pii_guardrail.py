@@ -24,6 +24,8 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
+from litellm_guardrails import guard_boundary
+from litellm_guardrails.processing_bundle import BOUNDARY_COVERAGE_ENABLED
 from litellm_guardrails.dictionary_policy import (
     DictionaryOutputCollisionError,
     DictionaryPolicyAmbiguousRequestError,
@@ -762,6 +764,8 @@ class RuPIIGuardrail(CustomGuardrail):
        run final provider-bound leak checks before saving mappings
     2. async_post_call_success_hook: unmask PII in responses when mapping exists
     """
+
+    _boundary_coverage_enabled = BOUNDARY_COVERAGE_ENABLED
 
     def __init__(
         self,
@@ -2444,7 +2448,7 @@ class RuPIIGuardrail(CustomGuardrail):
             "scope": context["scope"],
             "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
         }
-        if getattr(self,"_boundary_coverage_enabled",False):
+        if self._boundary_coverage_enabled:
             contract["boundary_coverage_version"] = 1
         call_context = _ANALYZER_CALL_CONTEXT.get()
         if call_context is not None and call_context[2]:
@@ -2463,9 +2467,8 @@ class RuPIIGuardrail(CustomGuardrail):
         ).hexdigest()
         return f"{ANALYSIS_CACHE_KEY_PREFIX}{digest}"
 
-    @classmethod
     def _serialize_analysis_cache_entry(
-        cls,
+        self,
         text: str,
         entities: list[dict],
     ) -> Optional[str]:
@@ -2483,7 +2486,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 score = float(entity["score"])
             except (KeyError, TypeError, ValueError, OverflowError):
                 return None
-            entity_type = cls._normalize_entity_type(
+            entity_type = self._normalize_entity_type(
                 str(entity.get("entity_type") or "PII")
             )
             if (
@@ -2504,12 +2507,19 @@ class RuPIIGuardrail(CustomGuardrail):
                 }
             )
 
+        payload = {
+            "entities": safe_entities,
+            "schema": ANALYSIS_CACHE_SCHEMA_VERSION,
+            "text_length": len(text),
+        }
+        if self._boundary_coverage_enabled:
+            payload = guard_boundary.seal_cache_payload(
+                payload, text, entities, guard_boundary.CACHE_CONTEXT.get()
+            )
+            if payload is None:
+                return None
         serialized = json.dumps(
-            {
-                "entities": safe_entities,
-                "schema": ANALYSIS_CACHE_SCHEMA_VERSION,
-                "text_length": len(text),
-            },
+            payload,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
@@ -2518,8 +2528,8 @@ class RuPIIGuardrail(CustomGuardrail):
             return None
         return serialized
 
-    @staticmethod
     def _deserialize_analysis_cache_entry(
+        self,
         serialized: str,
         text_length: int,
     ) -> Optional[list[dict]]:
@@ -2530,6 +2540,15 @@ class RuPIIGuardrail(CustomGuardrail):
             payload = json.loads(serialized)
         except (TypeError, ValueError):
             return None
+        proof = None
+        context = guard_boundary.CACHE_CONTEXT.get()
+        if self._boundary_coverage_enabled:
+            unpacked = guard_boundary.unseal_cache_payload(
+                payload, text_length, ANALYSIS_CACHE_SCHEMA_VERSION, context
+            )
+            if unpacked is None:
+                return None
+            payload, proof = unpacked
         if (
             not isinstance(payload, dict)
             or set(payload) != {"entities", "schema", "text_length"}
@@ -2578,6 +2597,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     "start": start,
                 }
             )
+        if proof is not None:
+            return guard_boundary.AnalysisEntities(validated, proof, context.key)
         return validated
 
     @staticmethod
@@ -2706,6 +2727,38 @@ class RuPIIGuardrail(CustomGuardrail):
         request_id: str,
         text_field_index: int,
     ) -> list[dict]:
+        """Use the negotiated boundary proof in each cache path."""
+        if not self._boundary_coverage_enabled:
+            return await self._reuse_cached_analysis(text, cache_context, request_id, text_field_index)
+        context = guard_boundary.BoundaryCacheContext(
+            text=text,
+            key=self._analysis_cache_key(text, cache_context) if cache_context is not None else None,
+            secret=self._analysis_cache_secret,
+            expected_signature=cache_context["analyzer_signature"] if cache_context is not None else None,
+        )
+        token = guard_boundary.CACHE_CONTEXT.set(context)
+        try:
+            result = await self._reuse_cached_analysis(text, cache_context, request_id, text_field_index)
+            if not isinstance(result, guard_boundary.AnalysisEntities):
+                guard_boundary.fail(AnalyzerUnavailableError, context.key)
+            result.cache_key = context.key
+            if context.expected_signature is not None and result.coverage.signature != context.expected_signature:
+                guard_boundary.fail(AnalyzerUnavailableError, context.key)
+            try:
+                result.coverage.bind(text)
+            except ValueError:
+                guard_boundary.fail(AnalyzerUnavailableError, context.key)
+            return result
+        finally:
+            guard_boundary.CACHE_CONTEXT.reset(token)
+
+    async def _reuse_cached_analysis(
+        self,
+        text: str,
+        cache_context: Optional[dict[str, str]],
+        request_id: str,
+        text_field_index: int,
+    ) -> list[dict]:
         """Reuse exact per-key results and coalesce identical local misses."""
         if cache_context is None:
             PII_ANALYSIS_CACHE_REQUESTS.labels(result="bypass").inc()
@@ -2762,8 +2815,7 @@ class RuPIIGuardrail(CustomGuardrail):
 
         flight.waiters += 1
         try:
-            from .guard_boundary import clone_result
-            return clone_result(await asyncio.shield(flight.task))
+            return guard_boundary.clone_result(await asyncio.shield(flight.task))
         finally:
             flight.waiters -= 1
             if flight.waiters == 0 and not flight.task.done():
@@ -2782,8 +2834,10 @@ class RuPIIGuardrail(CustomGuardrail):
         try:
             client = _get_shared_analyzer_http_client()
             headers = {}
-            payload = {"text": text, "language": "ru", "score_threshold": 0.35}
-            if getattr(self,"_boundary_coverage_enabled",False):
+            payload = {
+                "text": text, "language": "ru", "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
+            }
+            if self._boundary_coverage_enabled:
                 payload["boundary_coverage_version"] = 1
             analyzer_call_context = _ANALYZER_CALL_CONTEXT.get()
             if analyzer_call_context is not None:
@@ -2857,9 +2911,11 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
             response.raise_for_status()
             data = response.json()
-            if getattr(self,"_boundary_coverage_enabled",False):
-                from .guard_boundary import decode_response
-                return decode_response(text,data,"json_arguments" if analyzer_call_context is not None and analyzer_call_context[2] else "text",AnalyzerUnavailableError)
+            if self._boundary_coverage_enabled:
+                return guard_boundary.decode_response(
+                    text, data, payload.get("input_kind", "text"),
+                    ANALYSIS_CACHE_SCORE_THRESHOLD, AnalyzerUnavailableError,
+                )
             return data.get("entities", [])
         except (AnalyzerOverloadedError, AnalyzerUnavailableError, TimeoutError):
             raise
@@ -2879,9 +2935,25 @@ class RuPIIGuardrail(CustomGuardrail):
         exclusion_spans: Optional[tuple[tuple[int, int], ...]] = None,
         reserved_placeholders=None,
     ) -> tuple[str, dict[str, str]]:
-        """Mask text with unique placeholders and return placeholder mapping."""
+        """Mask text, then check the actual source ranges of emitted placeholders."""
+        check_coverage = (
+            self._boundary_coverage_enabled and isinstance(entities, guard_boundary.AnalysisEntities)
+        )
+        wire, mapping, ranges = self._render_mask_plan(
+            text, entities, entity_counts, exclusion_spans, reserved_placeholders, check_coverage,
+        )
+        if check_coverage:
+            guard_boundary.check_result(
+                text, entities, ranges, exclusion_spans or (), error_type=AnalyzerUnavailableError,
+            )
+        return wire, mapping
+
+    def _render_mask_plan(
+        self, text, entities, entity_counts, exclusion_spans, reserved_placeholders, collect_ranges,
+    ):
+        ranges = []
         if not entities:
-            return text, {}
+            return text, {}, ranges
 
         if entity_counts is None:
             entity_counts = {}
@@ -2895,12 +2967,10 @@ class RuPIIGuardrail(CustomGuardrail):
             exclusion_spans=exclusion_spans,
         )
         if not normalized_entities:
-            return text, {}
+            return text, {}, ranges
 
         parts = []
         mapping = RestorationMapping()
-        if getattr(self,"_boundary_coverage_enabled",False):
-            mapping.boundary_mask_ranges=[]
         last_end = 0
         numbers, strings = json_atom_spans(text)
         string_starts = [start for start, _end in strings]
@@ -2937,8 +3007,8 @@ class RuPIIGuardrail(CustomGuardrail):
             if start < last_end:
                 # Separate findings inside one numeric literal share one mask.
                 continue
-            if hasattr(mapping,"boundary_mask_ranges"):
-                mapping.boundary_mask_ranges.append((start,end))
+            if collect_ranges:
+                ranges.append((start, end))
             placeholder = self._next_placeholder(entity_type, entity_counts)
             while placeholder in reserved_placeholders:
                 placeholder = self._next_placeholder(entity_type, entity_counts)
@@ -2958,7 +3028,7 @@ class RuPIIGuardrail(CustomGuardrail):
             last_end = end
 
         parts.append(text[last_end:])
-        return "".join(parts), mapping
+        return "".join(parts), mapping, ranges
 
     def _normalize_entities(
         self,
@@ -4066,8 +4136,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     provider_content,
                     entities,
                 )
-                from .guard_boundary import retain_result
-                entities=retain_result(boundary_original_result,entities)
+                entities = guard_boundary.retain_result(boundary_original_result, entities)
                 synthetic_allowlist_findings.extend(current_allowlist_findings)
                 if not entities:
                     if provider_content != content:
@@ -4080,9 +4149,11 @@ class RuPIIGuardrail(CustomGuardrail):
                         entities,
                         exclusion_spans=dictionary_result.replacement_spans,
                     )
-                    if getattr(self,"_boundary_coverage_enabled",False):
-                        from .guard_boundary import check_result
-                        check_result(provider_content,entities,[(a,b) for a,b,_ in normalized_entities],dictionary_result.replacement_spans)
+                    if self._boundary_coverage_enabled:
+                        guard_boundary.check_result(
+                            provider_content, entities, [(a, b) for a, b, _ in normalized_entities],
+                            dictionary_result.replacement_spans, error_type=AnalyzerUnavailableError,
+                        )
                     entity_counts_for_block = (
                         self._entity_counts_from_normalized_entities(
                             normalized_entities
@@ -4152,7 +4223,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 self._raise_analyzer_overloaded(e)
             except AnalyzerUnavailableError as e:
-                bad_cache_key=getattr(e,"boundary_cache_key",None)
+                bad_cache_key = getattr(e, "boundary_cache_key", None)
                 if bad_cache_key is not None:
                     try:
                         redis=await self._get_redis()
@@ -4716,7 +4787,3 @@ class RuPIIGuardrail(CustomGuardrail):
     def _replace_placeholders(text: str, mapping: dict[str, str]) -> str:
         """Restore known keys once without rewriting an inserted original value."""
         return restore_text(text, mapping)
-
-
-from .guard_boundary import install as _install_boundary_client
-_install_boundary_client(RuPIIGuardrail)

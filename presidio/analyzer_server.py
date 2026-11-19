@@ -519,9 +519,9 @@ class AnalyzeResponse(BaseModel):
 
     @model_serializer(mode="wrap")
     def _serialize_boundary_optional(self, handler):
-        result=handler(self)
+        result = handler(self)
         if self.boundary_coverage is None:
-            result.pop("boundary_coverage",None)
+            result.pop("boundary_coverage", None)
         return result
 
 
@@ -925,15 +925,21 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
                 ner_kwargs["protected_spans"] = protected
             ner_results = ner_recognizer.analyze(chunk_text, **ner_kwargs)
             for result in ner_results:
-                for a,b,kind,score in (result.recognition_metadata or {}).get("boundary_required_spans_v1",()):
-                    if not 0 <= a < b <= len(chunk_text):
-                        raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
-                    a,b=a+chunk.start,b+chunk.start
+                spans = (result.recognition_metadata or {}).get("boundary_required_spans_v1", ())
+                for start, end, kind, score in spans:
+                    if not 0 <= start < end <= len(chunk_text):
+                        raise NERProcessingError(
+                            phase="postprocessing", failure_class="boundary_positive_coverage_failed",
+                        )
+                    start += chunk.start
+                    end += chunk.start
                     if proof_project is not None:
-                        a,b=proof_project(a,b)
-                    boundary_proof_items.append((a,b,kind,score))
-                    if len(boundary_proof_items)>MAX_SPANS:
-                        raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
+                        start, end = proof_project(start, end)
+                    boundary_proof_items.append((start, end, kind, score))
+                    if len(boundary_proof_items) > MAX_SPANS:
+                        raise NERProcessingError(
+                            phase="postprocessing", failure_class="boundary_positive_coverage_failed",
+                        )
             check()
             return (
                 _shift_recognizer_result(result, chunk.start)
@@ -1132,17 +1138,23 @@ def _analyze_sync(request: AnalyzeRequest) -> AnalyzeResponse:
             for start, end, result in projected
         ]
         if boundary_proof_items and request.boundary_coverage_version != 1:
-            raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed")
+            raise NERProcessingError(
+                phase="postprocessing", failure_class="boundary_positive_coverage_failed",
+            )
         if request.boundary_coverage_version == 1:
-            required=[]
-            for a,b,kind,score in boundary_proof_items:
-                for left,right in (argument_view.project(a,b) if argument_view is not None else ((a,b),)):
-                    required.append((left,right,kind,score))
+            required = []
+            for start, end, kind, score in boundary_proof_items:
+                spans = argument_view.project(start, end) if argument_view is not None else ((start, end),)
+                required.extend((left, right, kind, score) for left, right in spans)
             try:
-                proof=Coverage.create(source_text,required,request.score_threshold,request.input_kind,ANALYSIS_SIGNATURE)
-            except (ValueError,TypeError,OverflowError):
-                raise NERProcessingError(phase="postprocessing",failure_class="boundary_positive_coverage_failed") from None
-            return AnalyzeResponse(text=source_text,entities=entities,boundary_coverage=proof.wire())
+                proof = Coverage.create(
+                    source_text, required, request.score_threshold, request.input_kind, ANALYSIS_SIGNATURE,
+                )
+            except (ValueError, TypeError, OverflowError):
+                raise NERProcessingError(
+                    phase="postprocessing", failure_class="boundary_positive_coverage_failed",
+                ) from None
+            return AnalyzeResponse(text=source_text, entities=entities, boundary_coverage=proof.wire())
         return AnalyzeResponse(text=source_text, entities=entities)
     except NERBackendError as error:
         ner_telemetry = _aggregate_ner_telemetry(ner_telemetries)
