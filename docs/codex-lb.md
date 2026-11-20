@@ -130,8 +130,8 @@ CHAT_MODEL=gpt-6-luna RESPONSES_MODEL=gpt-6-luna \
   make guardrails-smoke STACK=litellm-presidio-codex-lb
 ```
 
-Конфигурация публикует `gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra` и
-`gpt-6.1-sol`; лёгкая модель для примеров и проверок — `gpt-6-luna`.
+Конфигурация публикует `gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6.1-sol`,
+`gpt-6.2-sol` и `gpt-6.2-astra`. В примерах и проверках используется `gpt-6-luna`.
 Доступность зависит от
 подписки и выпуска `codex-lb`; перед изменением списка сверяйтесь с живым
 `GET /v1/models`.

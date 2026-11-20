@@ -82,6 +82,24 @@ model_list:
       id: openai-gpt-6-1-sol-codex-lb
       base_model: gpt-6.1-sol
       access_groups: ["openai", "standard"]
+  - model_name: gpt-6.2-sol
+    litellm_params:
+      model: openai/gpt-6.2-sol
+      api_base: http://codex-lb:2455/v1
+      api_key: os.environ/CODEX_LB_API_KEY
+    model_info:
+      id: openai-gpt-6-2-sol-codex-lb
+      base_model: gpt-6.2-sol
+      access_groups: ["openai", "standard"]
+  - model_name: gpt-6.2-astra
+    litellm_params:
+      model: openai/gpt-6.2-astra
+      api_base: http://codex-lb:2455/v1
+      api_key: os.environ/CODEX_LB_API_KEY
+    model_info:
+      id: openai-gpt-6-2-astra-codex-lb
+      base_model: gpt-6.2-astra
+      access_groups: ["openai", "standard"]
 
 router_settings:
   redis_url: os.environ/REDIS_URL
