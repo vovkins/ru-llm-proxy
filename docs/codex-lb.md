@@ -130,17 +130,25 @@ CHAT_MODEL=gpt-6-luna RESPONSES_MODEL=gpt-6-luna \
   make guardrails-smoke STACK=litellm-presidio-codex-lb
 ```
 
-Конфигурация публикует `gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra` и
-`gpt-6.1-sol`; лёгкая модель для примеров и проверок — `gpt-6-luna`.
-Доступность зависит от
-подписки и выпуска `codex-lb`; перед изменением списка сверяйтесь с живым
-`GET /v1/models`.
+Конфигурация публикует `gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6.1-sol`,
+`gpt-6.2-sol` и `gpt-6.2-astra`. В примерах и проверках используется `gpt-6-luna`.
 
-Для инструментов используйте Responses API. Официальный Chat Completions API
-у Luna/Sol поддерживает инструменты только с `reasoning_effort=none`, а у
-Astra/6.1 Sol — не поддерживает. Прокси не понижает уровень рассуждений
-автоматически. Возможности OAuth-пула проверяются отдельно от платного API
-([совместимость моделей](https://developers.openai.com/api/docs/guides/latest-model)).
+`GET /v1/models` в LiteLLM показывает модели, доступные пользовательскому
+ключу, но не подтверждает их доступность в пуле. Если модель есть в LiteLLM,
+но не отвечает, администратор может сверить каталог самого `codex-lb`:
+`GET http://codex-lb:2455/v1/models` из сети контейнеров со служебным ключом
+`CODEX_LB_API_KEY`. Каталог пула зависит от подписок и версии `codex-lb`;
+наличие модели в нём не заменяет проверку генерации.
+
+Для `gpt-6.2-sol` и `gpt-6.2-astra` через OAuth-пул проверены обычный
+непотоковый чат (`/v1/chat/completions`) и потоковый вызов инструмента
+через `/v1/responses`. Для инструментов используйте Responses API.
+В платном Chat Completions API `gpt-6-luna` и `gpt-6-sol` поддерживают
+инструменты только с `reasoning_effort=none`, а `gpt-6-astra` и `gpt-6.1-sol`
+не поддерживают их. Прокси не понижает уровень рассуждений автоматически.
+Возможности OAuth-пула проверяются отдельно от платного API
+([совместимость GPT-6](https://developers.openai.com/api/docs/guides/deployment-checklist#choose-a-model-for-the-workload),
+[совместимость GPT-6.2](https://developers.openai.com/api/docs/guides/latest-model#update-api-and-model-parameters)).
 
 Старые имена GLM и GPT не перенаправляются на новые. При обновлении замените
 имена в клиентских настройках и явных списках разрешённых моделей ключей;
