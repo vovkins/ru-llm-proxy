@@ -383,6 +383,22 @@ Analyzer проверяет тот же комплект и контрольно
 текст запроса, содержимое Redis или OAuth-файлы. Общего сообщения
 `pii guardrail unavailable` недостаточно для установления причины.
 
+Для отказов guardrail возьмите серверный UUID из HTTP-заголовка
+`X-Ru-Llm-Proxy-Request-Id` и найдите `event=gateway_guardrail_audit` с тем же
+`request_id` и `status=blocked` в журналах LiteLLM. При сбое восстановления
+может быть и более ранняя запись `status=allowed` с тем же ID: исходящий запрос
+уже прошёл проверку, а ошибка возникла при обработке ответа. В обращении к
+администратору достаточно указать UUID, время и HTTP-статус.
+
+Заголовок возвращается для `pii_blocked`, `pre_egress_policy_blocked`,
+`final_payload_leak_check_blocked`, `regulated_topic_policy_blocked`,
+`guardrail_dependency_unavailable`, `analyzer_overloaded`, `analyzer_unavailable`
+и `pii_preprocessing_timeout` в Chat Completions, Responses и Messages. Он не
+добавляется на успешные ответы, ошибки провайдера и другие отказы (например,
+`pii_history_storage_unavailable`). Если SSE уже начался с HTTP 200, последующий
+сбой не может изменить отправленные заголовки. `Retry-After` передаётся по
+прежним правилам каждого API.
+
 | Признак | Что произошло | Действие |
 | --- | --- | --- |
 | `analyzer_overloaded`, `queue_full` | Все места ожидания этого процесса заняты | Снизить всплеск или повторить с задержкой; проверить размер новых полей и распределение по репликам |

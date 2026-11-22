@@ -248,6 +248,7 @@ test-flow:
 test-pre-egress-proxy:
 	@echo "🧪 Pre-egress proxy non-egress smoke"
 	bash tests/e2e/test_pre_egress_proxy_non_egress.sh
+	bash tests/e2e/test_guardrail_request_id.sh
 
 test-final-leak-proxy:
 	@echo "🧪 Final payload leak-check proxy non-egress smoke"

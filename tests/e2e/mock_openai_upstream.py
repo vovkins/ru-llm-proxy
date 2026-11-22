@@ -504,6 +504,17 @@ class Handler(BaseHTTPRequestHandler):
             with CAPTURE_LOCK:
                 CAPTURE["analyzer_requests"] += 1
                 CAPTURE["analyzer_saw_canary"] |= saw_canary
+            for marker, failure_class in (
+                ("REQUEST_ID_NER_UNAVAILABLE", "not_ready"),
+                ("REQUEST_ID_NER_DEADLINE", "analysis_deadline_exceeded"),
+            ):
+                if _text_contains(payload, marker):
+                    self._write_json(503, {"detail": {
+                        "code": "required_ner_unavailable",
+                        "phase": "readiness",
+                        "failure_class": failure_class,
+                    }}, {"Retry-After": "7"})
+                    return
             if ANALYZER_OVERLOAD["reason"] is not None:
                 reason = ANALYZER_OVERLOAD["reason"]
                 retry_after_seconds = ANALYZER_OVERLOAD["retry_after_seconds"]
@@ -524,6 +535,15 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         payload = self._read_json()
+
+        for upstream_status in (422, 503):
+            if _text_contains(payload, f"REQUEST_ID_PROVIDER_ERROR_{upstream_status}"):
+                _record_provider_payload(self.path, payload)
+                self._write_json(upstream_status, {"error": {
+                    "message": "Synthetic provider rejection.",
+                    "type": "upstream_error",
+                }}, {"X-Ru-Llm-Proxy-Request-Id": "provider-owned"})
+                return
 
         if self.path == "/v1/chat/completions":
             _record_provider_payload(self.path, payload)

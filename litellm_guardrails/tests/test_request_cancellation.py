@@ -5,8 +5,8 @@ import asyncio
 import pytest
 
 from litellm_guardrails.request_cancellation import (
-    ClientDisconnected, RequestCancellationMiddleware, _DISCONNECTED,
-    until_client_disconnect,
+    ClientDisconnected, RequestCancellationMiddleware, _AUDIT_RESPONSE, _DISCONNECTED,
+    bind_guardrail_audit_id, mark_guardrail_http_refusal, until_client_disconnect,
 )
 
 SCOPE = {"type": "http", "method": "POST", "path": "/v1/responses"}
@@ -58,6 +58,88 @@ async def test_body_is_forwarded_without_aggregation_and_send_without_buffering(
     await RequestCancellationMiddleware(app)(SCOPE, incoming.get, send)
     assert len(sent) == 3
     assert _DISCONNECTED.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,expected", [(422, True), (503, False), (200, False)])
+async def test_only_matching_guardrail_refusal_owns_audit_header(status, expected):
+    sent = []
+    audit_header = b"x-ru-llm-proxy-request-id"
+    headers = [(b"retry-after", b"5"), (b"X-Ru-LLM-Proxy-Request-Id", b"untrusted")]
+    body = {"type": "http.response.body", "body": b"unchanged"}
+
+    async def app(scope, receive, send):
+        bind_guardrail_audit_id("server-id")
+
+        async def work():
+            mark_guardrail_http_refusal("server-id", 422)
+            mark_guardrail_http_refusal("foreign-id", 503)
+
+        await until_client_disconnect(work)
+        await send({"type": "http.response.start", "status": status, "headers": headers})
+        await send(body)
+
+    async def send(message):
+        sent.append(message)
+
+    await RequestCancellationMiddleware(app)(SCOPE, asyncio.Queue().get, send)
+    assert sent[0]["headers"] == [(b"retry-after", b"5")] + (
+        [(audit_header, b"server-id")] if expected else []
+    )
+    assert sent[1] is body
+    assert headers[1][1] == b"untrusted"
+    assert _AUDIT_RESPONSE.get() is None
+
+
+@pytest.mark.asyncio
+async def test_audit_refusal_after_sse_start_does_not_modify_sent_events():
+    start = {"type": "http.response.start", "status": 200, "headers": [
+        (b"content-type", b"text/event-stream"),
+    ]}
+    body = {"type": "http.response.body", "body": b"data: error\n\n"}
+    sent = []
+
+    async def app(scope, receive, send):
+        bind_guardrail_audit_id("server-id")
+        await send(start)
+        mark_guardrail_http_refusal("server-id", 503)
+        await send(body)
+
+    async def send(message):
+        sent.append(message)
+
+    await RequestCancellationMiddleware(app)(SCOPE, asyncio.Queue().get, send)
+    assert sent[0] is start and sent[1] is body
+
+
+@pytest.mark.asyncio
+async def test_parallel_requests_do_not_share_audit_refusals():
+    both_bound = asyncio.Event()
+    bound = 0
+
+    async def run(request_id, refused):
+        sent = []
+
+        async def app(scope, receive, send):
+            nonlocal bound
+            bind_guardrail_audit_id(request_id)
+            bound += 1
+            if bound == 2:
+                both_bound.set()
+            await both_bound.wait()
+            if refused:
+                mark_guardrail_http_refusal(request_id, 503)
+            await send({"type": "http.response.start", "status": 503, "headers": []})
+
+        async def send(message):
+            sent.append(message)
+
+        await RequestCancellationMiddleware(app)(SCOPE, asyncio.Queue().get, send)
+        return sent[0]["headers"]
+
+    assert await asyncio.gather(run("first", True), run("second", False)) == [
+        [(b"x-ru-llm-proxy-request-id", b"first")], [],
+    ]
 
 
 @pytest.mark.asyncio
