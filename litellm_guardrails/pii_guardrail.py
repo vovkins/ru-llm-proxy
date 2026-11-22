@@ -52,6 +52,7 @@ from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_s
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream
 from litellm_guardrails.request_cancellation import (
     ClientDisconnected, until_client_disconnect, register_request_cleanup, unregister_request_cleanup,
+    bind_guardrail_audit_id, mark_guardrail_http_refusal,
 )
 from litellm_guardrails.responses_state import (
     STATE_METADATA_KEY,
@@ -1232,7 +1233,9 @@ class RuPIIGuardrail(CustomGuardrail):
 
         return rules
 
-    def _handle_failure(self, operation: str, error: Exception, data: dict) -> dict:
+    def _handle_failure(
+        self, operation: str, error: Exception, data: dict, *, request_id: Optional[str] = None,
+    ) -> dict:
         """Apply configured fail-open/fail-closed behavior."""
         operation_label = operation.replace(" ", "_")
         if self.failure_mode == "fail_closed":
@@ -1250,7 +1253,7 @@ class RuPIIGuardrail(CustomGuardrail):
         )
         if self.failure_mode == "fail_closed":
             if operation in {"mapping save", "mapping load", "stream mapping load"}:
-                self._raise_dependency_unavailable(operation, error)
+                self._raise_dependency_unavailable(operation, error, request_id)
             raise RuntimeError(f"PII guardrail {operation} failed") from error
         return data
 
@@ -1259,6 +1262,8 @@ class RuPIIGuardrail(CustomGuardrail):
         operation: str,
         error: Exception,
         data: dict,
+        *,
+        request_id: Optional[str] = None,
     ) -> dict:
         """Apply dictionary substitution failure behavior."""
         operation_label = operation.replace(" ", "_")
@@ -1292,7 +1297,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 exc.status_code = 422
                 raise exc from None
             if operation in {"mapping save", "mapping load", "stream mapping load"}:
-                self._raise_dependency_unavailable(operation, error)
+                self._raise_dependency_unavailable(operation, error, request_id)
             raise RuntimeError(
                 f"Dictionary substitution {operation} failed"
             ) from error
@@ -1302,6 +1307,7 @@ class RuPIIGuardrail(CustomGuardrail):
         self,
         operation: str,
         error: Exception,
+        request_id: Optional[str],
     ) -> None:
         """Expose transient state-store failures as retryable service outages."""
         operation_label = operation.replace(" ", "_")
@@ -1328,7 +1334,30 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
+        mark_guardrail_http_refusal(request_id, 503)
         raise exc from error
+
+    def _handle_mapping_load_failure(
+        self, data: dict, request_id: str, started_at: float, error: Exception, *, stream: bool,
+    ) -> None:
+        PII_POST_CALLS.labels(result="error").inc()
+        if self._responses_state_context(data):
+            self._raise_responses_state_error(unavailable_state())
+        operation = "stream mapping load" if stream else "mapping load"
+        if self.failure_mode == "fail_closed":
+            self._log_gateway_audit(
+                request_id=request_id,
+                data=data,
+                started_at=started_at,
+                status="blocked",
+                policy_result="fail_closed",
+                guardrail_mode="post_call",
+                block_reason="guardrail_failure",
+                error_code="guardrail_dependency_unavailable",
+                failure_operation=operation.replace(" ", "_"),
+                error_type=type(error).__name__,
+            )
+        self._handle_failure(operation, error, data, request_id=request_id)
 
     def _log_gateway_audit(
         self,
@@ -1338,6 +1367,7 @@ class RuPIIGuardrail(CustomGuardrail):
         started_at: float,
         status: str,
         policy_result: str,
+        guardrail_mode: str = "pre_call",
         call_type: Optional[str] = None,
         redaction_count: int = 0,
         entity_counts: Optional[dict[str, int]] = None,
@@ -1359,14 +1389,14 @@ class RuPIIGuardrail(CustomGuardrail):
         failure_operation: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> None:
-        """Emit one safe gateway-level audit event for a pre-call decision."""
+        """Emit a safe gateway-level audit event for a guardrail decision."""
         fields: dict[str, Any] = {
             "request_id": request_id,
             "model": str(data.get("model") or "unknown"),
             "status": status,
             "latency_ms": _latency_ms(started_at),
             "guardrail_name": str(getattr(self, "guardrail_name", None) or "unknown"),
-            "guardrail_mode": "pre_call",
+            "guardrail_mode": guardrail_mode,
             "call_type": str(call_type or "unknown"),
             "policy_mode": self.pii_mode,
             "pre_egress_policy_mode": self.pre_egress_policy_mode,
@@ -1411,7 +1441,7 @@ class RuPIIGuardrail(CustomGuardrail):
 
         _safe_log(logging.INFO, "gateway_guardrail_audit", **fields)
 
-    def _raise_analyzer_overloaded(self, error: AnalyzerOverloadedError) -> None:
+    def _raise_analyzer_overloaded(self, error: AnalyzerOverloadedError, request_id: str) -> None:
         """Fail closed on capacity overload even when other failures fail open."""
         PII_FAIL_CLOSED.labels(operation="analyzer_overloaded").inc()
         _safe_log(
@@ -1444,9 +1474,12 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
+        mark_guardrail_http_refusal(request_id, 503)
         raise exc from error
 
-    def _raise_analyzer_unavailable(self, error: AnalyzerUnavailableError) -> None:
+    def _raise_analyzer_unavailable(
+        self, error: AnalyzerUnavailableError, request_id: Optional[str] = None,
+    ) -> None:
         """Fail closed when the required NER backend cannot protect requests."""
         PII_FAIL_CLOSED.labels(operation="analyzer_unavailable").inc()
         _safe_log(
@@ -1480,6 +1513,7 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
+        mark_guardrail_http_refusal(request_id, 503)
         raise exc from error
 
     async def _get_redis(self):
@@ -3565,6 +3599,7 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields=provider_specific_fields,
         )
         exc.status_code = 422
+        mark_guardrail_http_refusal(request_id, 422)
         raise exc
 
     def _raise_pre_egress_policy_blocked(
@@ -3635,6 +3670,7 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields=provider_specific_fields,
         )
         exc.status_code = 422
+        mark_guardrail_http_refusal(request_id, 422)
         raise exc
 
     def _raise_final_payload_leak_check_blocked(
@@ -3704,6 +3740,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 "http://ru-llm-proxy.local/final-payload-leak-check",
             ),
         )
+        mark_guardrail_http_refusal(request_id, 422)
         raise litellm.UnprocessableEntityError(
             message=FINAL_PAYLOAD_LEAK_CHECK_BLOCKED_MESSAGE,
             model=str(data.get("model") or "unknown"),
@@ -3765,6 +3802,7 @@ class RuPIIGuardrail(CustomGuardrail):
             json=body,
             request=httpx.Request("POST", "http://ru-llm-proxy.local/pii-policy"),
         )
+        mark_guardrail_http_refusal(request_id, 422)
         raise litellm.UnprocessableEntityError(
             message=PII_BLOCKED_MESSAGE,
             model=str(data.get("model") or "unknown"),
@@ -3783,6 +3821,7 @@ class RuPIIGuardrail(CustomGuardrail):
         started_at = time.perf_counter()
         self._clear_inbound_pii_metadata(data)
         request_id = self._get_request_id(data)
+        bind_guardrail_audit_id(request_id)
         request_targets = self._iter_request_text_targets(data)
         originals = [
             (target, field, target[field]) for target, field in request_targets
@@ -3823,6 +3862,7 @@ class RuPIIGuardrail(CustomGuardrail):
                                          "details": {"reason": "time_budget_exceeded", "retryable": False}}},
             )
             exc.status_code = 503
+            mark_guardrail_http_refusal(request_id, 503)
             raise exc from None
         except ClientDisconnected:
             outcome = "cancelled"
@@ -4131,7 +4171,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     failure_operation="analyzer",
                     error_type=type(e).__name__,
                 )
-                self._raise_analyzer_overloaded(e)
+                self._raise_analyzer_overloaded(e, request_id)
             except AnalyzerUnavailableError as e:
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -4146,7 +4186,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     failure_operation="analyzer",
                     error_type=type(e).__name__,
                 )
-                self._raise_analyzer_unavailable(e)
+                self._raise_analyzer_unavailable(e, request_id)
             except Exception as e:
                 if stateful:
                     self._raise_responses_state_error(ResponsesStateError(
@@ -4292,8 +4332,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     ),
                 )
                 if dictionary_mapping:
-                    return self._handle_dictionary_failure("mapping save", e, data)
-                return self._handle_failure("mapping save", e, data)
+                    return self._handle_dictionary_failure("mapping save", e, data, request_id=request_id)
+                return self._handle_failure("mapping save", e, data, request_id=request_id)
 
             # Store internal mapping ID in data for post-call hooks.
             if not isinstance(data.get("metadata"), dict):
@@ -4395,13 +4435,11 @@ class RuPIIGuardrail(CustomGuardrail):
             return
 
         # Load mapping
+        load_started_at = time.perf_counter()
         try:
             mapping = await self._load_mapping(request_id)
         except Exception as e:
-            PII_POST_CALLS.labels(result="error").inc()
-            if self._responses_state_context(data):
-                self._raise_responses_state_error(unavailable_state())
-            self._handle_failure("mapping load", e, data)
+            self._handle_mapping_load_failure(data, request_id, load_started_at, e, stream=False)
             return
 
         if not mapping:
@@ -4549,13 +4587,13 @@ class RuPIIGuardrail(CustomGuardrail):
             if not request_id:
                 PII_POST_CALLS.labels(result="skipped").inc()
             else:
+                load_started_at = time.perf_counter()
                 try:
                     mapping = await self._load_mapping(request_id)
                 except Exception as e:
-                    PII_POST_CALLS.labels(result="error").inc()
-                    if self._responses_state_context(request_data):
-                        self._raise_responses_state_error(unavailable_state())
-                    self._handle_failure("stream mapping load", e, request_data)
+                    self._handle_mapping_load_failure(
+                        request_data, request_id, load_started_at, e, stream=True,
+                    )
                 else:
                     if mapping:
                         restorer = StreamingResponseRestorer(mapping)

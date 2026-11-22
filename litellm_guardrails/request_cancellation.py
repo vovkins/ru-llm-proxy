@@ -1,4 +1,4 @@
-"""Forward ASGI events unchanged and cancel only our pre-provider work."""
+"""Cancel pre-provider work and expose the audit ID of our HTTP refusals."""
 
 import asyncio
 import json
@@ -7,6 +7,7 @@ import logging
 import anyio
 from collections import deque
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Awaitable, Callable, TypeVar
 
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup
@@ -18,6 +19,31 @@ _T = TypeVar("_T")
 _REQUEST_MAPPING_CLEANUPS: ContextVar[dict | None] = ContextVar(
     "ru_pii_request_mapping_cleanups", default=None,
 )
+_AUDIT_ID_HEADER = b"x-ru-llm-proxy-request-id"
+
+
+@dataclass
+class _GuardrailAuditResponse:
+    request_id: str | None = None
+    refusal_status: int | None = None
+
+
+_AUDIT_RESPONSE: ContextVar[_GuardrailAuditResponse | None] = ContextVar(
+    "ru_pii_audit_response", default=None,
+)
+
+
+def bind_guardrail_audit_id(request_id: str) -> None:
+    state = _AUDIT_RESPONSE.get()
+    if state is not None:
+        state.request_id = request_id
+        state.refusal_status = None
+
+
+def mark_guardrail_http_refusal(request_id: str | None, status: int) -> None:
+    state = _AUDIT_RESPONSE.get()
+    if state is not None and request_id is not None and state.request_id == request_id:
+        state.refusal_status = status
 
 
 def register_request_cleanup(request_id: str, callback) -> None:
@@ -130,10 +156,29 @@ class RequestCancellationMiddleware:
         token = _DISCONNECTED.set(disconnected)
         cleanups = {}
         cleanup_token = _REQUEST_MAPPING_CLEANUPS.set(cleanups)
+        audit_response = _GuardrailAuditResponse()
+        audit_token = _AUDIT_RESPONSE.set(audit_response)
         relay = _ReceiveRelay(receive, disconnected)
         reader = asyncio.create_task(relay.pump(), name="ru-pii-asgi-receive")
+
+        async def send_with_audit_id(message):
+            if message["type"] == "http.response.start":
+                headers = message.get("headers", ())
+                request_id = audit_response.request_id
+                # Reserve the header for locally audited refusals, not the provider.
+                publish = (message["status"] in (422, 503)
+                           and message["status"] == audit_response.refusal_status
+                           and request_id is not None)
+                if publish or any(name.lower() == _AUDIT_ID_HEADER for name, _ in headers):
+                    headers = [(name, value) for name, value in headers
+                               if name.lower() != _AUDIT_ID_HEADER]
+                    if publish:
+                        headers.append((_AUDIT_ID_HEADER, request_id.encode("ascii")))
+                    message = {**message, "headers": headers}
+            await send(message)
+
         try:
-            return await self.app(scope, relay.receive, send)
+            return await self.app(scope, relay.receive, send_with_audit_id)
         finally:
             try:
                 async def cleanup():
@@ -143,5 +188,6 @@ class RequestCancellationMiddleware:
                         await _finish_mapping_cleanups(cleanups)
                 await finish_stream_cleanup(cleanup())
             finally:
+                _AUDIT_RESPONSE.reset(audit_token)
                 _REQUEST_MAPPING_CLEANUPS.reset(cleanup_token)
                 _DISCONNECTED.reset(token)

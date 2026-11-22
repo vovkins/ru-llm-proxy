@@ -41,7 +41,7 @@ services:
       - ANTHROPIC_API_KEY=sk-test-anthropic
       - REDIS_URL=redis://redis:6379
       - PRESIDIO_ANALYZER_URL=http://mock-upstream:8080
-      - PII_GUARDRAIL_MODE=mask
+      - PII_GUARDRAIL_MODE=${PRE_EGRESS_PROXY_PII_MODE:-mask}
       - REGULATED_TOPIC_POLICY_MODE=block
       - PRE_EGRESS_POLICY_MODE=block
       - FINAL_PAYLOAD_LEAK_CHECK_MODE=block

@@ -5811,6 +5811,38 @@ class TestPreCallHook:
         assert exc_info.value.type == "guardrail_dependency_unavailable"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_restoration_redis_failure_has_safe_audit_event(stream, caplog):
+    guardrail = RuPIIGuardrail(failure_mode="fail_closed")
+    guardrail._redis = _mock_redis()
+    guardrail._redis.get.side_effect = RuntimeError("RAW_REDIS_ERROR_SENTINEL")
+    data = {"metadata": {"pii_request_id": "server-mapping-id"}, "stream": stream}
+
+    with pytest.raises(ProxyException) as exc:
+        if stream:
+            async def upstream():
+                pytest.fail("must not return unrestored output")
+                yield
+
+            iterator = guardrail.async_post_call_streaming_iterator_hook(
+                MagicMock(), upstream(), data,
+            )
+            await anext(iterator)
+        else:
+            await guardrail.async_post_call_success_hook(data, MagicMock(), MagicMock())
+
+    assert exc.value.status_code == 503
+    assert exc.value.headers == {"Retry-After": "1"}
+    event, = _json_log_events(caplog, "gateway_guardrail_audit")
+    assert event["request_id"] == "server-mapping-id"
+    assert event["status"] == "blocked"
+    assert event["guardrail_mode"] == "post_call"
+    assert event["error_code"] == "guardrail_dependency_unavailable"
+    assert event["failure_operation"] == ("stream_mapping_load" if stream else "mapping_load")
+    assert "RAW_REDIS_ERROR_SENTINEL" not in caplog.text
+
+
 # === async_post_call_success_hook ===
 
 
