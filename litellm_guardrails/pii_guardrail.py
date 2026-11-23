@@ -210,6 +210,7 @@ ANALYZER_REQUEST_ID_HEADER = "X-Ru-LLM-Request-ID"
 ANALYZER_TEXT_FIELD_INDEX_HEADER = "X-Ru-LLM-Text-Field-Index"
 ANALYZER_BUDGET_HEADER = "X-Ru-LLM-Analysis-Budget-Seconds"
 _ANALYSIS_DEADLINE: ContextVar[Optional[float]] = ContextVar("pii_analysis_deadline", default=None)
+_ATTACHMENT_DLP_REQUIRED: ContextVar[bool] = ContextVar("attachment_dlp_required", default=False)
 _DICTIONARY_RESERVED_PLACEHOLDERS = ContextVar('dictionary_reserved_placeholders', default=frozenset())
 _DICTIONARY_REQUEST_PLAN = ContextVar('dictionary_request_plan', default=None)
 _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int, bool]]] = ContextVar(
@@ -2488,6 +2489,9 @@ class RuPIIGuardrail(CustomGuardrail):
             "scope": context["scope"],
             "score_threshold": ANALYSIS_CACHE_SCORE_THRESHOLD,
         }
+        if _ATTACHMENT_DLP_REQUIRED.get():
+            # Older cache entries could treat an incomplete response as empty.
+            contract["attachment_dlp"] = "v1"
         call_context = _ANALYZER_CALL_CONTEXT.get()
         if call_context is not None and call_context[2]:
             contract["input_kind"] = "json_arguments"
@@ -2896,6 +2900,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
             response.raise_for_status()
             data = response.json()
+            if _ATTACHMENT_DLP_REQUIRED.get():
+                return self._attachment_analyzer_entities(data, len(text))
             return data.get("entities", [])
         except (AnalyzerOverloadedError, AnalyzerUnavailableError, TimeoutError):
             raise
@@ -2906,6 +2912,27 @@ class RuPIIGuardrail(CustomGuardrail):
             ) from exc
         finally:
             PII_ANALYZER_LATENCY.observe(time.perf_counter() - started_at)
+
+    @staticmethod
+    def _attachment_analyzer_entities(data: Any, text_length: int) -> list[dict]:
+        """Require a complete Analyzer result before allowing an attachment."""
+        entities = data.get("entities") if isinstance(data, dict) else None
+        if not isinstance(entities, list):
+            raise ValueError("Analyzer response must contain an entities list")
+        for entity in entities:
+            if not isinstance(entity, dict):
+                raise ValueError("Analyzer returned an invalid entity")
+            start, end = entity.get("start"), entity.get("end")
+            entity_type = entity.get("entity_type")
+            if (
+                type(start) is not int
+                or type(end) is not int
+                or not 0 <= start < end <= text_length
+                or not isinstance(entity_type, str)
+                or not entity_type.strip()
+            ):
+                raise ValueError("Analyzer returned an invalid entity")
+        return entities
 
     def _mask_text(
         self,
@@ -3838,10 +3865,12 @@ class RuPIIGuardrail(CustomGuardrail):
             (target, field, target[field]) for target, field in request_targets
         ]
         outcome = "failure"
+        attachment_dlp_token = None
         budget_token = _ANALYSIS_DEADLINE.set(time.monotonic() + PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS)
         try:
             with anyio.fail_after(PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS):
                 attachments = collect_attachment_targets(data)
+                attachment_dlp_token = _ATTACHMENT_DLP_REQUIRED.set(bool(attachments))
                 if attachments:
                     _safe_log(
                         logging.INFO, "gateway_attachment_request_shape",
@@ -3917,6 +3946,8 @@ class RuPIIGuardrail(CustomGuardrail):
             )
             raise
         finally:
+            if attachment_dlp_token is not None:
+                _ATTACHMENT_DLP_REQUIRED.reset(attachment_dlp_token)
             _ANALYSIS_DEADLINE.reset(budget_token)
             PII_PREPROCESSING_LATENCY.labels(outcome=outcome).observe(time.perf_counter() - started_at)
 

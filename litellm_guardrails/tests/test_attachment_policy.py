@@ -9,6 +9,7 @@ import httpx
 import litellm
 import pytest
 
+from litellm_guardrails import pii_guardrail
 from litellm_guardrails.attachment_policy import (
     MAX_ATTACHMENT_BYTES,
     RejectFileUploadsMiddleware,
@@ -163,6 +164,42 @@ async def test_attachment_failures_are_closed_with_fail_open_settings(failure):
     assert error.value.detail["error"]["code"] == "attachment_dlp_unavailable"
     assert request == original
     assert not guard._redis.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("analyzer_body", [
+    {},
+    {"entities": None},
+    {"entities": [{}]},
+    {"entities": [{"start": 0, "end": 500, "entity_type": "EMAIL_ADDRESS"}]},
+])
+async def test_attachment_rejects_malformed_analyzer_success_and_ignores_legacy_cache(monkeypatch, analyzer_body):
+    guard = _guard(failure_mode="fail_open")
+    del guard._analyze_text
+    guard._analysis_cache_secret = b"synthetic-test-cache"
+    context = {"analyzer_signature": "a" * 64, "model": "fixture", "scope": "fixture-key"}
+    guard._prepare_analysis_cache_context = AsyncMock(return_value=context)
+    analyzed_text = f"DemoCobalt {EMAIL}"
+    legacy_key = guard._analysis_cache_key(analyzed_text, context)
+    guard._redis.values[legacy_key] = guard._serialize_analysis_cache_entry(analyzed_text, [])
+    request, _, _ = _request("acompletion", f"DemoQuartz {EMAIL}")
+    original = copy.deepcopy(request)
+    calls = []
+
+    def respond(analyzer_request):
+        calls.append(json.loads(analyzer_request.content)["text"])
+        return httpx.Response(200, json=analyzer_body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(pii_guardrail, "_get_shared_analyzer_http_client", lambda: client)
+        with pytest.raises(HTTPException) as error:
+            await guard.async_pre_call_hook(None, None, request, "acompletion")
+
+    assert error.value.status_code == 503
+    assert error.value.detail["error"]["code"] == "attachment_dlp_unavailable"
+    assert calls == [analyzed_text]
+    assert request == original
+    assert set(guard._redis.values) == {legacy_key}
 
 
 @pytest.mark.asyncio
