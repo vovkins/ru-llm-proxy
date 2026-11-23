@@ -28,6 +28,7 @@ def request(url, payload=None, *, authenticated=False):
             "Authorization": "Bearer sk-test-master",
             "anthropic-version": "2023-06-01",
             HEADER: "caller-owned",
+            "Retry-After": "999",
             "x-litellm-call-id": "caller-call-id",
         })
     req = Request(url, None if payload is None else json.dumps(payload).encode(), headers=headers)
@@ -66,7 +67,8 @@ def check(base, route, text, stream, status, audit_code, retry_after):
     ids = headers.get_all(HEADER, [])
     assert len(ids) == 1 and UUID(ids[0]).version == 4, (case, ids)
     assert ids[0].encode() not in body, (case, "ID leaked into body")
-    assert headers.get("Retry-After") == (None if route == "messages" else retry_after), case
+    expected_retry = [] if retry_after is None else [retry_after]
+    assert headers.get_all("Retry-After", []) == expected_retry, case
     assert isinstance(json.loads(body)["error"], dict), case
     return ids[0], body
 
@@ -89,9 +91,12 @@ def negative_controls():
     for base, route in product(TARGETS, ROUTES):
         status, headers, _ = send(base, route, "Summarize the deployment plan.", False)
         assert status == 200 and HEADER not in headers, (base, route, status)
+        assert "Retry-After" not in headers, (base, route, status)
         for expected in (422, 503):
             status, headers, _ = send(base, route, f"REQUEST_ID_PROVIDER_ERROR_{expected}", False)
             assert status == expected and HEADER not in headers, (base, route, status)
+            if route == "messages":
+                assert "Retry-After" not in headers, (base, route, status)
 
     # Both requests use the same key, same supplied IDs, and same payload.
     def run(base):
@@ -103,6 +108,24 @@ def negative_controls():
     assert len(set(ids)) == len(ids)
     for request_id in ids:
         print(json.dumps({"request_id": request_id, "audit_code": "pre_egress_policy_blocked"}))
+
+
+def parallel_messages_retry_after():
+    cases = (
+        (TARGETS[0], "Synthetic capacity check.", "analyzer_overloaded", "2"),
+        (TARGETS[1], "REQUEST_ID_NER_UNAVAILABLE", "required_ner_unavailable", "7"),
+    )
+
+    def run(case):
+        base, source, code, delay = case
+        request_id, _ = check(base, "messages", source, True, 503, code, delay)
+        return {"request_id": request_id, "audit_code": code}
+
+    before = mock("/capture")["provider_requests"]
+    with ThreadPoolExecutor() as pool:
+        for receipt in pool.map(run, cases):
+            print(json.dumps(receipt))
+    assert mock("/capture")["provider_requests"] == before
 
 
 def verify_audit(receipt_file, audit_file):
@@ -140,6 +163,8 @@ def main(mode):
             mock("/analyzer/overload", {"reason": reason, "retry_after_seconds": int(delay)})
             try:
                 matrix("Synthetic capacity check.", 503, "analyzer_overloaded", delay)
+                if reason == "queue_full":
+                    parallel_messages_retry_after()
             finally:
                 mock("/analyzer/recover", {})
         matrix("REQUEST_ID_NER_UNAVAILABLE", 503, "required_ner_unavailable", "7")

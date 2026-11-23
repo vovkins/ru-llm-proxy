@@ -10,6 +10,7 @@ from litellm_guardrails.request_cancellation import (
 )
 
 SCOPE = {"type": "http", "method": "POST", "path": "/v1/responses"}
+MESSAGES_SCOPE = {**SCOPE, "path": "/v1/messages"}
 
 
 @pytest.mark.asyncio
@@ -92,6 +93,39 @@ async def test_only_matching_guardrail_refusal_owns_audit_header(status, expecte
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path,refusal_status,status,existing,expected", [
+    ("/v1/messages", 503, 503, None, (b"retry-after", b"7")),
+    ("/v1/messages", 503, 503, (b"Retry-After", b"13"), (b"Retry-After", b"13")),
+    ("/v1/chat/completions", 503, 503, None, None),
+    ("/v1/responses", 503, 503, None, None),
+    ("/v1/messages/count_tokens", 503, 503, None, None),
+    ("/v1/messages", 422, 422, None, None),
+    ("/v1/messages", 503, 429, None, None),
+    ("/v1/messages", None, 503, None, None),
+    ("/v1/messages", None, 429, (b"retry-after", b"9"), (b"retry-after", b"9")),
+])
+async def test_retry_after_only_fills_missing_local_messages_503(path, refusal_status, status, existing, expected):
+    headers = [existing] if existing else []
+    sent = []
+
+    async def app(scope, receive, send):
+        bind_guardrail_audit_id("server-id")
+        if refusal_status is not None:
+            mark_guardrail_http_refusal("server-id", refusal_status, retry_after_seconds=7)
+        mark_guardrail_http_refusal("foreign-id", 503, retry_after_seconds=31)
+        await send({"type": "http.response.start", "status": status, "headers": headers})
+
+    async def send(message):
+        sent.append(message)
+
+    await RequestCancellationMiddleware(app)({**SCOPE, "path": path}, asyncio.Queue().get, send)
+    assert [header for header in sent[0]["headers"] if header[0].lower() == b"retry-after"] == (
+        [expected] if expected else []
+    )
+    assert headers == ([existing] if existing else [])
+
+
+@pytest.mark.asyncio
 async def test_audit_refusal_after_sse_start_does_not_modify_sent_events():
     start = {"type": "http.response.start", "status": 200, "headers": [
         (b"content-type", b"text/event-stream"),
@@ -102,13 +136,13 @@ async def test_audit_refusal_after_sse_start_does_not_modify_sent_events():
     async def app(scope, receive, send):
         bind_guardrail_audit_id("server-id")
         await send(start)
-        mark_guardrail_http_refusal("server-id", 503)
+        mark_guardrail_http_refusal("server-id", 503, retry_after_seconds=7)
         await send(body)
 
     async def send(message):
         sent.append(message)
 
-    await RequestCancellationMiddleware(app)(SCOPE, asyncio.Queue().get, send)
+    await RequestCancellationMiddleware(app)(MESSAGES_SCOPE, asyncio.Queue().get, send)
     assert sent[0] is start and sent[1] is body
 
 
@@ -117,28 +151,32 @@ async def test_parallel_requests_do_not_share_audit_refusals():
     both_bound = asyncio.Event()
     bound = 0
 
-    async def run(request_id, refused):
+    async def run(request_id, refused, delay=None):
         sent = []
 
         async def app(scope, receive, send):
             nonlocal bound
             bind_guardrail_audit_id(request_id)
             bound += 1
-            if bound == 2:
+            if bound == 4:
                 both_bound.set()
             await both_bound.wait()
             if refused:
-                mark_guardrail_http_refusal(request_id, 503)
+                mark_guardrail_http_refusal(request_id, 503, retry_after_seconds=delay)
             await send({"type": "http.response.start", "status": 503, "headers": []})
 
         async def send(message):
             sent.append(message)
 
-        await RequestCancellationMiddleware(app)(SCOPE, asyncio.Queue().get, send)
+        await RequestCancellationMiddleware(app)(MESSAGES_SCOPE, asyncio.Queue().get, send)
         return sent[0]["headers"]
 
-    assert await asyncio.gather(run("first", True), run("second", False)) == [
-        [(b"x-ru-llm-proxy-request-id", b"first")], [],
+    assert await asyncio.gather(
+        run("first", True, 2), run("second", True, 7), run("third", True), run("fourth", False),
+    ) == [
+        [(b"x-ru-llm-proxy-request-id", b"first"), (b"retry-after", b"2")],
+        [(b"x-ru-llm-proxy-request-id", b"second"), (b"retry-after", b"7")],
+        [(b"x-ru-llm-proxy-request-id", b"third")], [],
     ]
 
 

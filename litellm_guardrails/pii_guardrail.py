@@ -1334,7 +1334,9 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
-        mark_guardrail_http_refusal(request_id, 503)
+        mark_guardrail_http_refusal(
+            request_id, 503, retry_after_seconds=DEFAULT_DEPENDENCY_RETRY_AFTER_SECONDS,
+        )
         raise exc from error
 
     def _handle_mapping_load_failure(
@@ -1474,13 +1476,14 @@ class RuPIIGuardrail(CustomGuardrail):
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
-        mark_guardrail_http_refusal(request_id, 503)
+        mark_guardrail_http_refusal(request_id, 503, retry_after_seconds=error.retry_after_seconds)
         raise exc from error
 
     def _raise_analyzer_unavailable(
         self, error: AnalyzerUnavailableError, request_id: Optional[str] = None,
     ) -> None:
         """Fail closed when the required NER backend cannot protect requests."""
+        retry_after = error.retry_after_seconds if error.retryable else None
         PII_FAIL_CLOSED.labels(operation="analyzer_unavailable").inc()
         _safe_log(
             logging.ERROR,
@@ -1496,7 +1499,7 @@ class RuPIIGuardrail(CustomGuardrail):
             "details": {
                 "phase": error.phase,
                 "failure_class": error.failure_class,
-                **({"retry_after_seconds": error.retry_after_seconds} if error.retryable else {"retryable": False}),
+                **({"retry_after_seconds": retry_after} if retry_after is not None else {"retryable": False}),
             },
         }
         exc = ProxyException(
@@ -1509,11 +1512,11 @@ class RuPIIGuardrail(CustomGuardrail):
                 }
             },
             code=503,
-            headers={"Retry-After": str(error.retry_after_seconds)} if error.retryable else {},
+            headers={"Retry-After": str(retry_after)} if retry_after is not None else {},
             provider_specific_fields={"error": structured_error},
         )
         exc.status_code = 503
-        mark_guardrail_http_refusal(request_id, 503)
+        mark_guardrail_http_refusal(request_id, 503, retry_after_seconds=retry_after)
         raise exc from error
 
     async def _get_redis(self):
