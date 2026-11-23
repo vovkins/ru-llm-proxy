@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -64,6 +66,7 @@ CAPTURE = {
     "analyzer_requests": 0,
     "provider_requests": 0,
     "provider_request_paths": [],
+    "provider_attachment_hashes": [],
     "analyzer_saw_canary": False,
     "provider_saw_canary": False,
     "provider_saw_question_mark": False,
@@ -222,6 +225,39 @@ def _analyzer_entities(payload):
     return entities
 
 
+def _provider_attachment_bytes(value):
+    if isinstance(value, list):
+        for child in value:
+            yield from _provider_attachment_bytes(child)
+    elif isinstance(value, dict):
+        source = value.get("source")
+        if value.get("type") == "document" and isinstance(source, dict):
+            data = source.get("data")
+            if source.get("type") == "text" and isinstance(data, str):
+                yield data.encode("utf-8")
+            elif source.get("type") == "base64" and isinstance(data, str):
+                try:
+                    yield base64.b64decode(data, validate=True)
+                except (binascii.Error, ValueError):
+                    pass
+        for key, child in value.items():
+            if key == "file_data" and isinstance(child, str):
+                encoded = child.split(",", 1)[1] if child.startswith("data:") and "," in child else child
+                try:
+                    yield base64.b64decode(encoded, validate=True)
+                except (binascii.Error, ValueError):
+                    pass
+            elif isinstance(child, (dict, list)):
+                yield from _provider_attachment_bytes(child)
+
+
+def _attachment_fixture_echo(payload):
+    for data in _provider_attachment_bytes(payload):
+        if b"ATTACHMENT_SMOKE_FIXTURE" in data:
+            return data.decode("utf-8")
+    return None
+
+
 def _record_provider_payload(path, payload):
     saw_canary = _text_contains_canary(payload)
     saw_private_key = _text_contains(payload, PRIVATE_KEY_MARKER)
@@ -244,6 +280,9 @@ def _record_provider_payload(path, payload):
     with CAPTURE_LOCK:
         CAPTURE["provider_requests"] += 1
         CAPTURE["provider_request_paths"].append(path)
+        CAPTURE["provider_attachment_hashes"].extend(
+            hashlib.sha256(data).hexdigest() for data in _provider_attachment_bytes(payload)
+        )
         CAPTURE["provider_saw_canary"] |= saw_canary
         CAPTURE["provider_saw_question_mark"] |= _text_contains(payload, "?")
         CAPTURE["provider_saw_dkb_canary"] |= saw_dkb_canary
@@ -586,7 +625,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if failure_mode == "timeout":
                 time.sleep(FAILURE_DELAY_SECONDS)
-            response_content = _chat_response_content(payload)
+            response_content = _attachment_fixture_echo(payload) or _chat_response_content(payload)
             if RESPONSE_DELAY_SECONDS > 0:
                 time.sleep(RESPONSE_DELAY_SECONDS)
             if payload.get("stream") is True:
@@ -721,7 +760,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if failure_mode == "timeout":
                 time.sleep(FAILURE_DELAY_SECONDS)
-            response_content = _responses_response_content(payload)
+            response_content = _attachment_fixture_echo(payload) or _responses_response_content(payload)
             if _text_contains(payload, 'JSON_NUMBER_ECHO'):
                 response_content = next(_native_argument_strings(payload))
             response_id = "resp_" + uuid.uuid4().hex
@@ -852,7 +891,7 @@ class Handler(BaseHTTPRequestHandler):
                     "type": "message",
                     "role": "assistant",
                     "model": "mock-claude",
-                    "content": [{"type": "text", "text": "ok"}],
+                    "content": [{"type": "text", "text": _attachment_fixture_echo(payload) or "ok"}],
                     "stop_reason": "end_turn",
                     "stop_sequence": None,
                     "usage": {

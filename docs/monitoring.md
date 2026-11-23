@@ -506,6 +506,12 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 сопоставляется с итоговым `gateway_guardrail_audit` и позволяет отделить время
 защитной обработки от проблем следующего компонента.
 
+Для встроенных текстовых вложений `gateway_attachment_request_shape` содержит
+`request_id`, `attachment_count` и `attachment_bytes`. Ошибки разбора,
+лимитов и обязательных зависимостей видны в `gateway_guardrail_audit` по
+коду `attachment_*`. Для блокировок содержимого действуют коды соответствующих
+политик. Имена файлов и их содержимое в события не включаются.
+
 Основной итоговый контракт решения на уровне шлюза — `gateway_guardrail_audit`.
 Он содержит `request_id`, `model`, `status`, `latency_ms`, `guardrail_mode`,
 `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`,
@@ -525,6 +531,7 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 | Событие | Уровень | Назначение |
 | --- | --- | --- |
 | `gateway_guardrail_request_shape` | `INFO` | Безопасные размеры и форма запроса до обращения к Analyzer |
+| `gateway_attachment_request_shape` | `INFO` | Число и суммарный декодированный размер принятых текстовых вложений |
 | `gateway_guardrail_audit` | `INFO` | Одно безопасное решение до вызова модели |
 | `pii_analysis_cache` | `INFO`/`WARNING` | Попадание, промах, обход, объединение или ошибка кэша без текста и HMAC |
 | `pii_guardrail_masked`, `pii_guardrail_blocked` | `INFO` | Маскирование или блокировка PII |

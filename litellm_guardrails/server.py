@@ -3,10 +3,12 @@
 if __name__ in {"__main__", "__mp_main__"}:
     from litellm.proxy.proxy_server import app
 
+    from litellm_guardrails.attachment_policy import RejectFileUploadsMiddleware
     from litellm_guardrails.request_cancellation import RequestCancellationMiddleware
 
     # Spawned Uvicorn workers also import the main module before loading app.
     app.add_middleware(RequestCancellationMiddleware)
+    app.add_middleware(RejectFileUploadsMiddleware)
 
 if __name__ == "__main__":
     from litellm import run_server

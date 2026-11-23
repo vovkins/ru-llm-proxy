@@ -4825,14 +4825,17 @@ class TestPreCallHook:
                                 {"type": "text", "text": "Clean prompt"},
                                 {
                                     "type": "file",
-                                    "file": {"file_id": "RU_PROXY_FINAL_CANARY"},
+                                    "file": {
+                                        "filename": "RU_PROXY_FINAL_CANARY.txt",
+                                        "file_data": "data:text/plain;base64,Q2xlYW4gZmlsZQ==",
+                                    },
                                 },
                             ],
                         }
                     ],
                 },
                 None,
-                ["Clean prompt"],
+                ["Clean prompt", "Clean file"],
             ),
             (
                 {
@@ -4924,7 +4927,7 @@ class TestPreCallHook:
         ],
         ids=[
             "chat-image-url",
-            "chat-file-id",
+            "chat-filename",
             "chat-tool-call-id",
             "responses-call-id",
             "responses-input-image-url",
