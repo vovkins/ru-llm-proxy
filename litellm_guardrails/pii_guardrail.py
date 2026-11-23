@@ -50,6 +50,9 @@ from litellm_guardrails.streaming_restoration import (
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream
+from litellm_guardrails.attachment_policy import (
+    AttachmentPolicyError, AttachmentTextTarget, collect_attachment_targets,
+)
 from litellm_guardrails.request_cancellation import (
     ClientDisconnected, until_client_disconnect, register_request_cleanup, unregister_request_cleanup,
     bind_guardrail_audit_id, mark_guardrail_http_refusal,
@@ -1264,10 +1267,11 @@ class RuPIIGuardrail(CustomGuardrail):
         data: dict,
         *,
         request_id: Optional[str] = None,
+        force_closed: bool = False,
     ) -> dict:
         """Apply dictionary substitution failure behavior."""
         operation_label = operation.replace(" ", "_")
-        closed = (isinstance(error, DictionaryOutputCollisionError)
+        closed = (force_closed or isinstance(error, DictionaryOutputCollisionError)
                   or self.dictionary_substitutions_failure_mode == "fail_closed")
         if closed:
             PII_FAIL_CLOSED.labels(operation=f"dictionary_{operation_label}").inc()
@@ -2274,6 +2278,10 @@ class RuPIIGuardrail(CustomGuardrail):
             return
 
         final_texts = self._iter_provider_bound_final_payload_texts(data)
+        final_texts.extend(
+            target[field] for target, field in request_targets
+            if isinstance(target, AttachmentTextTarget)
+        )
         final_leak_findings = self._classify_final_payload_leak_check_texts(
             final_texts
         )
@@ -3833,6 +3841,22 @@ class RuPIIGuardrail(CustomGuardrail):
         budget_token = _ANALYSIS_DEADLINE.set(time.monotonic() + PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS)
         try:
             with anyio.fail_after(PII_GUARDRAIL_ANALYZER_TIMEOUT_SECONDS):
+                attachments = collect_attachment_targets(data)
+                if attachments:
+                    _safe_log(
+                        logging.INFO, "gateway_attachment_request_shape",
+                        request_id=request_id, attachment_count=len(attachments),
+                        attachment_bytes=sum(target.byte_count for target in attachments),
+                    )
+                    if (
+                        self.pre_egress_policy_mode != "block"
+                        or self.final_payload_leak_check_mode != "block"
+                        or not self.dictionary_substitution_policy.rules
+                    ):
+                        raise AttachmentPolicyError("attachment_dlp_unavailable")
+                    for target in attachments:
+                        request_targets.append((target, target.field))
+                        originals.append((target, target.field, target.original_text))
                 result = await until_client_disconnect(
                     lambda: self._pre_call_with_budget(
                         user_api_key_dict, cache, data, call_type, started_at,
@@ -3844,6 +3868,18 @@ class RuPIIGuardrail(CustomGuardrail):
                     raise TimeoutError
             outcome = "success"
             return result
+        except AttachmentPolicyError as error:
+            PII_PRE_CALLS.labels(result="blocked").inc()
+            self._log_gateway_audit(
+                request_id=request_id, data=data, started_at=started_at, status="blocked",
+                policy_result=error.code, call_type=call_type, block_reason=error.code,
+                error_code=error.code,
+            )
+            mark_guardrail_http_refusal(request_id, error.status)
+            raise HTTPException(
+                status_code=error.status,
+                detail={"error": {"message": str(error), "type": error.code, "code": error.code}},
+            ) from None
         except TimeoutError:
             outcome = "timeout"
             await _finish_stream_cleanup(
@@ -3909,6 +3945,9 @@ class RuPIIGuardrail(CustomGuardrail):
         except ResponsesStateError as error:
             self._raise_responses_state_error(error)
         stateful = self._responses_state_context(data) is not None
+        attachments = [
+            target for target, _ in request_targets if isinstance(target, AttachmentTextTarget)
+        ]
         if data.get("stream") is True:
             if not isinstance(data.get("litellm_metadata"), dict):
                 data["litellm_metadata"] = {}
@@ -3965,7 +4004,15 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
 
         if self.pre_egress_policy_mode == "block":
-            policy_findings = self._classify_pre_egress_policy_targets(request_targets)
+            policy_targets = [
+                (target, field) for target, field in request_targets
+                if not isinstance(target, AttachmentTextTarget)
+            ]
+            policy_targets.extend(
+                ({"text": text}, "text") for attachment in attachments
+                for text in attachment.policy_texts
+            )
+            policy_findings = self._classify_pre_egress_policy_targets(policy_targets)
             if policy_findings:
                 self._raise_pre_egress_policy_blocked(
                     data,
@@ -3983,6 +4030,9 @@ class RuPIIGuardrail(CustomGuardrail):
         # Reserve literal masks in every field, without parsing attacker-sized
         # integer suffixes. Inherited masks still keep their saved meaning.
         provider_texts = self._iter_provider_bound_final_payload_texts(data)
+        provider_texts.extend(
+            text for attachment in attachments for text in attachment.policy_texts
+        )
         reserved_placeholders = {
             match.group() for text in provider_texts
             for match in re.finditer(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>', text)
@@ -3994,7 +4044,9 @@ class RuPIIGuardrail(CustomGuardrail):
         pending_updates = []
 
         def queue_update(target, field, original, masked):
-            if field == "arguments":
+            if isinstance(target, AttachmentTextTarget):
+                target.validate_update(masked)
+            elif field == "arguments":
                 verify_unique_argument_keys(masked)
             pending_updates.append((target, field, original, masked))
 
@@ -4060,8 +4112,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 analyzer_call_index += 1
                 # The Analyzer validates the whole document before using the hint.
                 json_arguments = (
-                    field == "arguments"
-                    and provider_content.lstrip(" \t\r\n").startswith(("{", "["))
+                    field == "arguments" and (
+                        isinstance(target, AttachmentTextTarget)
+                        or provider_content.lstrip(" \t\r\n").startswith(("{", "["))
+                    )
                 )
                 analyzer_context_token = _ANALYZER_CALL_CONTEXT.set(
                     (request_id, analyzer_call_index, json_arguments)
@@ -4140,7 +4194,7 @@ class RuPIIGuardrail(CustomGuardrail):
                         "pii_history_ambiguous", 409,
                         "Ambiguous dictionary substitution. Start a new request with the full history.",
                     ))
-                closed = (isinstance(e, DictionaryOutputCollisionError)
+                closed = (bool(attachments) or isinstance(e, DictionaryOutputCollisionError)
                           or self.dictionary_substitutions_failure_mode == "fail_closed")
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
@@ -4159,6 +4213,8 @@ class RuPIIGuardrail(CustomGuardrail):
                     "ambiguous request",
                     e,
                     data,
+                    request_id=request_id,
+                    force_closed=bool(attachments),
                 )
             except AnalyzerOverloadedError as e:
                 PII_PRE_CALLS.labels(result="error").inc()
@@ -4190,7 +4246,11 @@ class RuPIIGuardrail(CustomGuardrail):
                     error_type=type(e).__name__,
                 )
                 self._raise_analyzer_unavailable(e, request_id)
+            except AttachmentPolicyError:
+                raise
             except Exception as e:
+                if attachments:
+                    raise AttachmentPolicyError("attachment_dlp_unavailable") from None
                 if stateful:
                     self._raise_responses_state_error(ResponsesStateError(
                         "pii_history_processing_failed", 503,
@@ -4293,6 +4353,9 @@ class RuPIIGuardrail(CustomGuardrail):
             except Exception as e:
                 for target, field, original_text, _ in pending_updates:
                     target[field] = original_text
+                if attachments:
+                    await _finish_stream_cleanup(self._abort_preprocessing(data, [], request_id))
+                    raise AttachmentPolicyError("attachment_dlp_unavailable") from None
                 if stateful:
                     self._raise_responses_state_error(unavailable_state())
                 self._run_final_payload_leak_check(

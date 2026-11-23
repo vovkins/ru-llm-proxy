@@ -10,11 +10,12 @@ import signal
 import subprocess
 import sys
 from types import ModuleType
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 import litellm
 
+from litellm_guardrails.attachment_policy import RejectFileUploadsMiddleware
 from litellm_guardrails.request_cancellation import RequestCancellationMiddleware
 
 
@@ -29,7 +30,10 @@ def test_native_cli_and_spawned_workers(monkeypatch, run_name, invoked):
     argv = ["litellm", "--config", "/app/config.yaml", "--num_workers", "2"]
     monkeypatch.setattr(sys, "argv", argv)
     runpy.run_module("litellm_guardrails.server", run_name=run_name)
-    server.app.add_middleware.assert_called_once_with(RequestCancellationMiddleware)
+    assert server.app.add_middleware.call_args_list == [
+        call(RequestCancellationMiddleware),
+        call(RejectFileUploadsMiddleware),
+    ]
     assert cli.run_server.call_count == int(invoked)
     assert sys.argv == argv
 

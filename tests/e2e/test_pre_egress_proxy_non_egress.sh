@@ -579,4 +579,7 @@ reset_capture
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T litellm \
     python /workspace/tests/e2e/check_responses_chat_bridge.py
 
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T mock-upstream \
+    python /workspace/tests/e2e/check_attachment_dlp.py
+
 echo "pre-egress proxy non-egress smoke passed"
