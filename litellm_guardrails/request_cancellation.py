@@ -1,4 +1,4 @@
-"""Cancel pre-provider work and expose the audit ID of our HTTP refusals."""
+"""Cancel pre-provider work and preserve headers on our HTTP refusals."""
 
 import asyncio
 import json
@@ -20,12 +20,14 @@ _REQUEST_MAPPING_CLEANUPS: ContextVar[dict | None] = ContextVar(
     "ru_pii_request_mapping_cleanups", default=None,
 )
 _AUDIT_ID_HEADER = b"x-ru-llm-proxy-request-id"
+_RETRY_AFTER_HEADER = b"retry-after"
 
 
 @dataclass
 class _GuardrailAuditResponse:
     request_id: str | None = None
     refusal_status: int | None = None
+    retry_after_seconds: int | None = None
 
 
 _AUDIT_RESPONSE: ContextVar[_GuardrailAuditResponse | None] = ContextVar(
@@ -38,12 +40,16 @@ def bind_guardrail_audit_id(request_id: str) -> None:
     if state is not None:
         state.request_id = request_id
         state.refusal_status = None
+        state.retry_after_seconds = None
 
 
-def mark_guardrail_http_refusal(request_id: str | None, status: int) -> None:
+def mark_guardrail_http_refusal(
+    request_id: str | None, status: int, *, retry_after_seconds: int | None = None,
+) -> None:
     state = _AUDIT_RESPONSE.get()
     if state is not None and request_id is not None and state.request_id == request_id:
         state.refusal_status = status
+        state.retry_after_seconds = retry_after_seconds
 
 
 def register_request_cleanup(request_id: str, callback) -> None:
@@ -158,10 +164,11 @@ class RequestCancellationMiddleware:
         cleanup_token = _REQUEST_MAPPING_CLEANUPS.set(cleanups)
         audit_response = _GuardrailAuditResponse()
         audit_token = _AUDIT_RESPONSE.set(audit_response)
+        is_messages = scope.get("path") == "/v1/messages"
         relay = _ReceiveRelay(receive, disconnected)
         reader = asyncio.create_task(relay.pump(), name="ru-pii-asgi-receive")
 
-        async def send_with_audit_id(message):
+        async def send_with_guardrail_headers(message):
             if message["type"] == "http.response.start":
                 headers = message.get("headers", ())
                 request_id = audit_response.request_id
@@ -174,11 +181,18 @@ class RequestCancellationMiddleware:
                                if name.lower() != _AUDIT_ID_HEADER]
                     if publish:
                         headers.append((_AUDIT_ID_HEADER, request_id.encode("ascii")))
+                        retry_after = audit_response.retry_after_seconds
+                        # LiteLLM's Messages endpoint can discard the exception headers.
+                        if (
+                            is_messages and message["status"] == 503 and retry_after is not None
+                            and not any(name.lower() == _RETRY_AFTER_HEADER for name, _ in headers)
+                        ):
+                            headers.append((_RETRY_AFTER_HEADER, str(retry_after).encode("ascii")))
                     message = {**message, "headers": headers}
             await send(message)
 
         try:
-            return await self.app(scope, relay.receive, send_with_audit_id)
+            return await self.app(scope, relay.receive, send_with_guardrail_headers)
         finally:
             try:
                 async def cleanup():
