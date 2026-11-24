@@ -398,8 +398,8 @@ async def test_dictionary_conflict_is_versioned_without_rewriting_parent(harness
         {"id": "company", "source": "Company Alpha", "replacement": "<COMPANY>", "restore": True},
     ])
     await complete(harness, "Company Alpha", "parent", "<COMPANY>")
-    captured, output, _ = await complete(harness, "COMPANY ALPHA", "child", "<COMPANY> / <DICT_COMPANY_1>", previous="parent")
-    assert captured == "<DICT_COMPANY_1>"
+    captured, output, _ = await complete(harness, "COMPANY ALPHA", "child", "<COMPANY> / <DICT_1>", previous="parent")
+    assert captured == "<DICT_1>"
     assert output == "Company Alpha / COMPANY ALPHA"
     assert len(store.snapshots) == 2
 

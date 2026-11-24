@@ -287,13 +287,14 @@ class DictionarySubstitutionPolicy:
                     raise DictionaryPolicyAmbiguousRequestError('Dictionary planned binding conflict')
             if match.rule.restore:
                 if not planned_aliases and replacement in occupied and occupied[replacement] != match.original:
-                    rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
                     index = 1
-                    replacement = f"<DICT_{rule_name}_{index}>"
+                    # Rule IDs may themselves contain protected business names.
+                    # Only a request-local counter belongs in provider-bound tags.
+                    replacement = f"<DICT_{index}>"
                     while (replacement in occupied or replacement in text
                            or replacement in reserved_placeholders):
                         index += 1
-                        replacement = f"<DICT_{rule_name}_{index}>"
+                        replacement = f"<DICT_{index}>"
                 occupied[replacement] = match.original
             parts.append(replacement)
             replacement_end = replacement_start + len(replacement)
