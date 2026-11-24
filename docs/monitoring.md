@@ -517,6 +517,34 @@ sum(rate(ru_final_payload_leak_check_blocked_total[5m])) > 0
 `call_type`, `policy_mode`, `policy_result`, `redaction_count`, `entity_counts`,
 а при ошибке — `block_reason`, `error_code` и ограниченные правила/категории.
 
+В поставляемом образе LiteLLM откройте **Logs → запрос → Evaluation Details**
+и раскройте нужную pre-call или post-call карточку `ru-llm-proxy`. При
+`store_prompts_in_spend_logs: false` в PostgreSQL поле `guardrail_response`
+остаётся `REDACTED_BY_LITELM`. Раздел **Raw Guardrail Response** показывает
+вместо маркера безопасную сводку: например, `pre_egress_policy_blocked`,
+правило `env_secret_assignment` и число его срабатываний; при сбое —
+код и операцию, например `fail_closed` / `mapping_load`. Идентификаторы
+правил видны оператору: используйте служебные ID без исходных значений.
+
+**Masked Entities** выводится и для заблокированного запроса. Например,
+при `pii_blocked` он может показать «Обнаружено до блокировки: PERSON: 1,
+PASSWORD: 1, ORGANIZATION: 1». Для допущенного запроса показываются фактические
+замены («Замаскировано»). Отказ до анализа, незавершённый анализ и завершённый
+анализ без находок различаются. Post-call карточка восстановления не повторяет
+pre-call счётчики. В старых записях без счётчиков показано «Нет данных в этой
+записи»; пересчитывать историю не требуется.
+
+Эти данные передаются в стандартной записи LiteLLM: `guardrail_action`,
+`masked_entity_count` и версионированная сводка `ru_guardrail_report`.
+Последняя содержит только состояние анализа, агрегаты и идентификаторы.
+Компонент карточки в `litellm/dashboard/` устанавливается при сборке
+в статический dashboard версии 1.98.0 без загрузки npm-пакетов. При смене
+версии проверка хеша остановит сборку до сверки компонента с новым UI.
+Для сквозной проверки используйте `make test-guardrail-ui` (Docker, Node 20+,
+доступный Node-модуль `playwright` и Chromium, либо `CHROME_CHANNEL=chrome`).
+Тест создаёт отдельный PostgreSQL и проверяет БД, Logs API и обе секции
+карточек в браузере на синтетических запросах.
+
 Каждое обращение к Analyzer получает тот же серверный `request_id` и порядковый
 `text_field_index`. Analyzer проверяет формат этих заголовков и не принимает в
 журнал произвольные значения клиента. `presidio_analyzer_request` содержит

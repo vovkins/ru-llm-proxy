@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 
 from litellm_guardrails import pii_guardrail as base
+from litellm_guardrails import guardrail_reporting as reporting
 from litellm_guardrails.dictionary_policy import DictionarySubstitutionResult
 from litellm_guardrails.restoration_mapping import RestorationMapping, json_atom_spans
 
@@ -68,9 +69,17 @@ class _MaskState:
     views: dict[str, str] = field(default_factory=dict)
     known: re.Pattern | None = None
     saved: bool = False
+    password_count: int = 0
 
 
 _STATE: ContextVar[_MaskState | None] = ContextVar("env_assignment_masks_v1", default=None)
+
+# These are the reviewed password assignments, not dictionary rule IDs. Each
+# plan item is a distinct occurrence, even when several values are identical.
+_PASSWORD_NAMES = frozenset({
+    "PASSWORD", "PASS", "PWD", "PGPASSWORD", "MYSQL_PWD", "DB_PASSWORD",
+    "DB_PASS", "DB_PWD", "DATABASE_PASSWORD", "LDAP_PASSWORD", "SSH_PASSWORD", "DB_PASS_1",
+})
 
 
 def _check_budget():
@@ -81,7 +90,13 @@ def _check_budget():
 
 def _check_limit(count, size):
     if count > MAX_ENV_ASSIGNMENTS or size > MAX_ENV_VALUE_BYTES:
-        raise base.HTTPException(status_code=413, detail={"code": "env_mask_limit_exceeded"})
+        raise _refusal(413, "env_mask_limit_exceeded")
+
+
+def _refusal(status, code):
+    reporting.set_decision(code, error_code=code, failure_operation="env_mask",
+                          status="guardrail_intervened" if status < 500 else reporting.FAILED)
+    return base.HTTPException(status_code=status, detail={"code": code})
 
 
 def _byte_length(text):
@@ -196,9 +211,9 @@ def _verified_views(targets, state):
             try:
                 shape = _json_shape(text)
             except (ValueError, RecursionError):
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"}) from None
+                raise _refusal(422, "env_mask_json_structure") from None
             if shape != state.json_shapes[key]:
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
+                raise _refusal(422, "env_mask_json_structure")
         if not aliases:
             continue
         expected = set(aliases)
@@ -211,7 +226,7 @@ def _verified_views(targets, state):
             # Neutralize the key only, leaving comments and all other content visible.
             replacements.append((item.key_start, item.key_end, "RU_MASKED_VALUE"))
         if expected:
-            raise base.HTTPException(status_code=422, detail={"code": "env_mask_assignment_structure"})
+            raise _refusal(422, "env_mask_assignment_structure")
         views[text] = _replace_spans(text, replacements)
     return views
 
@@ -266,7 +281,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
             if (_known_value_visible(text, state) or any(
                 _known_value_visible(value, state) for value in _decoded_json_strings(text)
             )):
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_uncovered_value"})
+                raise _refusal(422, "env_mask_uncovered_value")
 
     def _apply_dictionary_substitutions(self, text, existing_mapping=None):
         result = super()._apply_dictionary_substitutions(text, existing_mapping)
@@ -276,7 +291,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
         before = [match.group() for match in _ENV_ALIAS.finditer(text)]
         after = list(_ENV_ALIAS.finditer(result.text))
         if before != [match.group() for match in after]:
-            raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+            raise _refusal(422, "env_mask_alias_collision")
         combined = RestorationMapping(result.mapping)
         ranges = list(result.replacement_spans)
         substitutions = iter(result.replacement_spans)
@@ -287,7 +302,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
                 while current is not None and current[1] <= match.start():
                     current = next(substitutions, None)
                 if alias in combined or (current is not None and current[0] < match.end()):
-                    raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+                    raise _refusal(422, "env_mask_alias_collision")
                 if alias in state.mapping.json_strings:
                     combined.add_string(alias, state.mapping[alias])
                 else:
@@ -302,7 +317,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
         if state is not None and state.mapping:
             if (any(mapping.get(key) != value for key, value in state.mapping.items())
                     or not state.mapping.json_strings <= getattr(mapping, "json_strings", set())):
-                raise base.HTTPException(status_code=503, detail={"code": "env_mask_mapping_required"})
+                raise _refusal(503, "env_mask_mapping_required")
         await super()._save_mapping(request_id, mapping)
         if state is not None:
             state.saved = True
@@ -320,7 +335,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
         for text in self._iter_provider_bound_final_payload_texts(data):
             _check_budget()
             if collision.search(text) or any(collision.search(value) for value in _decoded_json_strings(text)):
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_alias_collision"})
+                raise _refusal(422, "env_mask_alias_collision")
         known = set(previous.values())
         typed = getattr(inherited, "json_strings", ())
         for alias, value in previous.items():
@@ -345,7 +360,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
             field_key = (id(target), field)
             aliases = state.fields.setdefault(field_key, {})
             if _is_json_container(text) and field_key not in state.json_shapes:
-                raise base.HTTPException(status_code=422, detail={"code": "env_mask_json_structure"})
+                raise _refusal(422, "env_mask_json_structure")
             replacements = []
             for item in assignments:
                 index += 1
@@ -363,8 +378,11 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
                     elif item.syntax == "bare":
                         known.add(re.sub(r"\\(.)", r"\1", value))
                 aliases[alias] = item.name
+                if item.name in _PASSWORD_NAMES:
+                    state.password_count += 1
                 replacements.append((item.start, item.end, alias))
             target[field] = _replace_spans(text, replacements)
+        reporting.note_detections({"PASSWORD": state.password_count})
         known.discard("")
         if known:
             state.known = re.compile("|".join(re.escape(value) for value in sorted(known)))
@@ -401,7 +419,7 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
             if other_blocks or topic_blocks:
                 return await run_base(user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets)
             if self.pre_egress_policy_mode != "block" or self.final_payload_leak_check_mode != "block":
-                raise base.HTTPException(status_code=503, detail={"code": "env_mask_requires_checks"})
+                raise _refusal(503, "env_mask_requires_checks")
             data = copy.deepcopy(data)
             request_targets = self._iter_request_text_targets(data)
         state = _MaskState([(*request_targets[index], spans) for index, spans in planned], count, size)
@@ -410,7 +428,15 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
             result = await run_base(user_api_key_dict, cache, data, call_type, started_at, request_id, request_targets)
             if planned:
                 if not state.saved or not isinstance(result, dict) or not self._get_response_request_id(result):
-                    raise base.HTTPException(status_code=503, detail={"code": "env_mask_mapping_required"})
+                    raise _refusal(503, "env_mask_mapping_required")
+                decision = reporting.current.get()
+                if decision is not None:
+                    masked = dict(decision.get("entity_counts", {}))
+                    if state.password_count:
+                        masked["PASSWORD"] = masked.get("PASSWORD", 0) + state.password_count
+                    rule_counts = decision.get("rule_counts", {})
+                    reporting.set_decision("masked_and_dictionary_substituted" if rule_counts else "masked",
+                                           entity_counts=masked, rules=rule_counts, rule_counts=rule_counts)
                 base._safe_log(logging.INFO, "env_assignment_masked", request_id=request_id,
                                name_count=len({name for aliases in state.fields.values() for name in aliases.values()}),
                                value_count=len(state.mapping), policy_version="env54-v1")

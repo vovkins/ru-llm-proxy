@@ -6,6 +6,7 @@ on:
       - ".github/workflows/air-gapped-ca.yml"
       - "certs/**"
       - "litellm/Dockerfile"
+      - "litellm/dashboard/**"
       - "codex-lb/Dockerfile"
       - "presidio/Dockerfile"
       - "tests/Dockerfile.guardrails"

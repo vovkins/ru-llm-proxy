@@ -214,6 +214,9 @@ def _analyzer_entities(payload):
         {"entity_type": "EMAIL_ADDRESS", "start": match.start(), "end": match.end(), "score": 1.0}
         for match in SYNTHETIC_MARKER_PATTERN.finditer(text)
     ]
+    for kind in ("PERSON", "PASSWORD", "ORGANIZATION"):
+        for match in re.finditer(f"UI_FIXTURE_{kind}_VALUE", text):
+            entities.append({"entity_type": kind, "start": match.start(), "end": match.end(), "score": 1.0})
     if RAW_PHONE in text:
         start = text.index(RAW_PHONE)
         entities.append({
@@ -700,7 +703,7 @@ class Handler(BaseHTTPRequestHandler):
             self._write_json(
                 200,
                 {
-                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                    "id": f"chatcmpl-{uuid.uuid4() if os.getenv('MOCK_UNIQUE_CHAT_IDS') == 'true' else DEPLOYMENT_ID}",
                     "object": "chat.completion",
                     "created": int(time.time()),
                     "model": "mock-chat",

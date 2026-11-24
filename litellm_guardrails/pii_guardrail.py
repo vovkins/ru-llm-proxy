@@ -1,6 +1,7 @@
 """Custom LiteLLM guardrail for Russian PII masking via Presidio."""
 
 import asyncio
+from contextvars import ContextVar
 import hashlib
 import hmac
 import inspect
@@ -12,7 +13,6 @@ import re
 import time
 import uuid
 from bisect import bisect_right
-from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Union
 from weakref import WeakKeyDictionary
@@ -49,6 +49,7 @@ from litellm_guardrails.streaming_restoration import (
     restore_text,
 )
 from litellm_guardrails.stream_cleanup import finish_stream_cleanup as _finish_stream_cleanup
+from litellm_guardrails import guardrail_reporting as reporting
 from litellm_guardrails.sse_integrity import IncompleteUpstreamStream
 from litellm_guardrails.attachment_policy import (
     AttachmentPolicyError, AttachmentTextTarget, collect_attachment_targets,
@@ -217,6 +218,7 @@ _ANALYZER_CALL_CONTEXT: ContextVar[Optional[tuple[str, int, bool]]] = ContextVar
     "ru_llm_proxy_analyzer_call_context",
     default=None,
 )
+_STANDARD_LOGGING_DECISION = reporting.current
 ANALYZER_FAILURE_PHASES = frozenset(
     {
         "artifact_verification",
@@ -766,6 +768,9 @@ class RuPIIGuardrail(CustomGuardrail):
        run final provider-bound leak checks before saving mappings
     2. async_post_call_success_hook: unmask PII in responses when mapping exists
     """
+
+    _set_logging_decision = staticmethod(reporting.set_decision)
+    _write_guardrail_information = reporting.write_information
 
     def __init__(
         self,
@@ -1346,11 +1351,17 @@ class RuPIIGuardrail(CustomGuardrail):
 
     def _handle_mapping_load_failure(
         self, data: dict, request_id: str, started_at: float, error: Exception, *, stream: bool,
+        decision=None,
     ) -> None:
         PII_POST_CALLS.labels(result="error").inc()
+        operation = "stream mapping load" if stream else "mapping load"
+        self._set_logging_decision(
+            "fail_closed" if self._responses_state_context(data) else self.failure_mode,
+            decision=decision, failure_operation=operation.replace(" ", "_"),
+            error_code="guardrail_dependency_unavailable", error_type=type(error).__name__,
+        )
         if self._responses_state_context(data):
             self._raise_responses_state_error(unavailable_state())
-        operation = "stream mapping load" if stream else "mapping load"
         if self.failure_mode == "fail_closed":
             self._log_gateway_audit(
                 request_id=request_id,
@@ -3351,6 +3362,10 @@ class RuPIIGuardrail(CustomGuardrail):
 
     @staticmethod
     def _raise_responses_state_error(error: ResponsesStateError) -> None:
+        decision = reporting.current.get()
+        if decision is not None and decision.get("status") != reporting.FAILED:
+            reporting.set_decision(error.code, error_code=error.code, failure_operation="responses_state",
+                                  status="guardrail_intervened" if error.status < 500 else reporting.FAILED)
         _safe_log(logging.WARNING, "pii_history_error", code=error.code)
         raise HTTPException(status_code=error.status, detail={
             "error": {"message": str(error), "type": "pii_history_error", "code": error.code},
@@ -3577,6 +3592,9 @@ class RuPIIGuardrail(CustomGuardrail):
         actions = sorted({finding["action"] for finding in findings})
         category_counts = self._category_counts_from_policy_findings(findings)
         rule_counts = self._rule_counts_from_policy_findings(findings)
+        self._set_logging_decision(
+            "regulated_topic_policy_blocked", rules=rules, rule_counts=rule_counts,
+        )
         self._record_regulated_topic_policy_blocks(findings)
         PII_PRE_CALLS.labels(result="regulated_topic_policy_blocked").inc()
         _safe_log(
@@ -3653,6 +3671,10 @@ class RuPIIGuardrail(CustomGuardrail):
         categories = sorted({finding["category"] for finding in findings})
         rules = sorted({finding["rule_id"] for finding in findings})
         category_counts = self._category_counts_from_policy_findings(findings)
+        self._set_logging_decision(
+            "pre_egress_policy_blocked", rules=rules,
+            rule_counts=self._rule_counts_from_policy_findings(findings),
+        )
         self._record_pre_egress_policy_blocks(category_counts)
         PII_PRE_CALLS.labels(result="pre_egress_policy_blocked").inc()
         _safe_log(
@@ -3727,6 +3749,9 @@ class RuPIIGuardrail(CustomGuardrail):
         """Raise a safe client error for confirmed final payload leaks."""
         rules = sorted({finding["rule_id"] for finding in findings})
         rule_counts = self._rule_counts_from_final_leak_findings(findings)
+        self._set_logging_decision(
+            "final_payload_leak_check_blocked", rules=rules, rule_counts=rule_counts,
+        )
         self._record_final_payload_leak_check_blocks(rule_counts)
         PII_PRE_CALLS.labels(result="final_payload_leak_check_blocked").inc()
         _safe_log(
@@ -3799,6 +3824,7 @@ class RuPIIGuardrail(CustomGuardrail):
     ) -> None:
         """Raise a LiteLLM-compatible client error without raw PII."""
         entity_types = sorted(entity_counts)
+        self._set_logging_decision("pii_blocked")
         self._record_blocked_entities(entity_counts)
         PII_PRE_CALLS.labels(result="blocked").inc()
         _safe_log(
@@ -3857,6 +3883,25 @@ class RuPIIGuardrail(CustomGuardrail):
     ) -> Optional[Union[Exception, str, dict]]:
         """Bound all pre-provider work, not just each individual HTTP read."""
         started_at = time.perf_counter()
+        started_wall = time.time()
+        decision: reporting.Decision = {}
+        decision_token = _STANDARD_LOGGING_DECISION.set(decision)
+        report_data = data
+        try:
+            result = await self._run_pre_call(user_api_key_dict, cache, data, call_type, started_at)
+            if isinstance(result, dict):
+                report_data = result
+            return result
+        except Exception as error:
+            if "policy_result" not in decision:
+                self._set_logging_decision("guardrail_error", failure_operation="preprocessing",
+                                           error_type=type(error).__name__)
+            raise
+        finally:
+            _STANDARD_LOGGING_DECISION.reset(decision_token)
+            self._write_guardrail_information(report_data, "pre_call", decision, started_wall, started_at)
+
+    async def _run_pre_call(self, user_api_key_dict, cache, data, call_type, started_at):
         self._clear_inbound_pii_metadata(data)
         request_id = self._get_request_id(data)
         bind_guardrail_audit_id(request_id)
@@ -3898,6 +3943,10 @@ class RuPIIGuardrail(CustomGuardrail):
             outcome = "success"
             return result
         except AttachmentPolicyError as error:
+            self._set_logging_decision(
+                error.code,
+                error_code=error.code, failure_operation="attachment_dlp",
+            )
             PII_PRE_CALLS.labels(result="blocked").inc()
             self._log_gateway_audit(
                 request_id=request_id, data=data, started_at=started_at, status="blocked",
@@ -3910,6 +3959,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 detail={"error": {"message": str(error), "type": error.code, "code": error.code}},
             ) from None
         except TimeoutError:
+            self._set_logging_decision(
+                "preprocessing_timeout", error_code="pii_preprocessing_timeout",
+                failure_operation="preprocessing",
+            )
             outcome = "timeout"
             await _finish_stream_cleanup(
                 self._abort_preprocessing(data, originals, request_id)
@@ -3934,6 +3987,7 @@ class RuPIIGuardrail(CustomGuardrail):
             raise exc from None
         except ClientDisconnected:
             outcome = "cancelled"
+            self._set_logging_decision("client_disconnected", status="guardrail_failed_to_respond")
             await _finish_stream_cleanup(
                 self._abort_preprocessing(data, originals, request_id)
             )
@@ -3941,6 +3995,7 @@ class RuPIIGuardrail(CustomGuardrail):
             raise HTTPException(status_code=499, detail="Client disconnected the request") from None
         except asyncio.CancelledError:
             outcome = "cancelled"
+            self._set_logging_decision("cancelled", status="guardrail_failed_to_respond")
             await _finish_stream_cleanup(
                 self._abort_preprocessing(data, originals, request_id)
             )
@@ -4011,6 +4066,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 call_type=call_type,
             )
             PII_PRE_CALLS.labels(result="skipped").inc()
+            self._set_logging_decision("skipped")
             self._log_gateway_audit(
                 request_id=request_id,
                 data=data,
@@ -4151,6 +4207,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 analyzer_context_token = _ANALYZER_CALL_CONTEXT.set(
                     (request_id, analyzer_call_index, json_arguments)
                 )
+                reporting.note_analysis("partial")
                 try:
                     if not analysis_cache_context_prepared:
                         analysis_cache_context = (
@@ -4201,6 +4258,7 @@ class RuPIIGuardrail(CustomGuardrail):
                         blocked_entity_counts[entity_type] = (
                             blocked_entity_counts.get(entity_type, 0) + count
                         )
+                    reporting.note_detections(entity_counts_for_block)
                     if provider_content != content:
                         queue_update(target, field, content, provider_content)
                     continue
@@ -4214,6 +4272,7 @@ class RuPIIGuardrail(CustomGuardrail):
                                            | dictionary_mapping.keys() | full_mapping.keys()),
                 )
                 if mapping:
+                    reporting.note_detections(self._entity_counts_from_mapping(mapping))
                     pii_mapping.update(mapping)
                     queue_update(target, field, content, masked_text)
                 elif provider_content != content:
@@ -4227,6 +4286,12 @@ class RuPIIGuardrail(CustomGuardrail):
                     ))
                 closed = (bool(attachments) or isinstance(e, DictionaryOutputCollisionError)
                           or self.dictionary_substitutions_failure_mode == "fail_closed")
+                self._set_logging_decision(
+                    "fail_closed" if closed else "fail_open",
+                    error_code="dictionary_substitution_ambiguous",
+                    failure_operation="dictionary_substitution",
+                    error_type=type(e).__name__,
+                )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
@@ -4248,6 +4313,10 @@ class RuPIIGuardrail(CustomGuardrail):
                     force_closed=bool(attachments),
                 )
             except AnalyzerOverloadedError as e:
+                self._set_logging_decision(
+                    "analyzer_overloaded", failure_operation="analyzer",
+                    error_code="analyzer_overloaded", error_type=type(e).__name__,
+                )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
@@ -4263,6 +4332,10 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 self._raise_analyzer_overloaded(e, request_id)
             except AnalyzerUnavailableError as e:
+                self._set_logging_decision(
+                    "analyzer_unavailable", failure_operation="analyzer",
+                    error_code="required_ner_unavailable", error_type=type(e).__name__,
+                )
                 PII_PRE_CALLS.labels(result="error").inc()
                 self._log_gateway_audit(
                     request_id=request_id,
@@ -4307,6 +4380,10 @@ class RuPIIGuardrail(CustomGuardrail):
                     dictionary_rule_counts=dictionary_rule_counts,
                 )
                 PII_PRE_CALLS.labels(result="error").inc()
+                self._set_logging_decision(
+                    self.failure_mode, failure_operation="masking",
+                    error_code=f"guardrail_{self.failure_mode}", error_type=type(e).__name__,
+                )
                 self._log_gateway_audit(
                     request_id=request_id,
                     data=data,
@@ -4331,6 +4408,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
                 return self._handle_failure("masking", e, data)
 
+        if analyzer_call_index:
+            reporting.note_analysis("complete")
         full_mapping.update(dictionary_mapping)
         full_mapping.update(pii_mapping)
         if stateful:
@@ -4404,6 +4483,11 @@ class RuPIIGuardrail(CustomGuardrail):
                     if dictionary_mapping
                     else self.failure_mode
                 )
+                self._set_logging_decision(
+                    mapping_failure_mode, failure_operation="mapping_save",
+                    error_code=f"guardrail_{mapping_failure_mode}",
+                    error_type=type(e).__name__,
+                )
                 self._log_gateway_audit(
                     request_id=request_id,
                     data=data,
@@ -4457,12 +4541,16 @@ class RuPIIGuardrail(CustomGuardrail):
                 )
             policy_result = (
                 "masked_and_dictionary_substituted"
-                if pii_mapping and dictionary_mapping
+                if pii_mapping and dictionary_rule_counts
                 else "masked"
                 if pii_mapping
                 else "dictionary_substituted"
-                if dictionary_mapping
+                if dictionary_rule_counts
                 else "history_inherited"
+            )
+            self._set_logging_decision(
+                policy_result, entity_counts=entity_counts_for_log,
+                rules=dictionary_rule_counts, rule_counts=dictionary_rule_counts,
             )
             PII_PRE_CALLS.labels(result=policy_result).inc()
             self._log_gateway_audit(
@@ -4482,13 +4570,15 @@ class RuPIIGuardrail(CustomGuardrail):
                 ),
             )
         else:
-            PII_PRE_CALLS.labels(result="clean").inc()
+            policy_result = "dictionary_substituted" if dictionary_rule_counts else "clean"
+            PII_PRE_CALLS.labels(result=policy_result).inc()
+            self._set_logging_decision(policy_result, rules=dictionary_rule_counts, rule_counts=dictionary_rule_counts)
             self._log_gateway_audit(
                 request_id=request_id,
                 data=data,
                 started_at=started_at,
                 status="allowed",
-                policy_result="clean",
+                policy_result=policy_result,
                 call_type=call_type,
                 **self._dictionary_substitution_audit_fields(
                     dictionary_rule_counts
@@ -4508,27 +4598,48 @@ class RuPIIGuardrail(CustomGuardrail):
         return None
 
     async def async_post_call_success_hook(
+        self, data: dict, user_api_key_dict: UserAPIKeyAuth, response: Any,
+    ) -> None:
+        """Record the result of a completed non-streaming post-call execution."""
+        if data.get("stream") is True and (
+            self._streaming_restoration_done(data)
+            or not (
+                isinstance(response, litellm.ModelResponse)
+                or self._is_responses_api_response(response)
+                or is_anthropic_message(response)
+            )
+        ):
+            PII_POST_CALLS.labels(result="skipped").inc()
+            return
+        started_perf, started_wall = time.perf_counter(), time.time()
+        decision: reporting.Decision = {}
+        token = _STANDARD_LOGGING_DECISION.set(decision)
+        try:
+            await self._post_call_success_with_logging(data, user_api_key_dict, response)
+        except BaseException as error:
+            if decision.get("status") != reporting.FAILED:
+                self._set_logging_decision(
+                    "post_call_failure", error_type=type(error).__name__, failure_operation="response_restoration",
+                )
+            raise
+        finally:
+            try:
+                self._write_guardrail_information(data, "post_call", decision, started_wall, started_perf)
+            finally:
+                _STANDARD_LOGGING_DECISION.reset(token)
+
+    async def _post_call_success_with_logging(
         self,
         data: dict,
         user_api_key_dict: UserAPIKeyAuth,
         response: Any,
     ) -> None:
         """Unmask PII in response after receiving from LLM."""
-        response_supported = isinstance(
-            response,
-            litellm.ModelResponse,
-        ) or self._is_responses_api_response(response) or is_anthropic_message(response)
-        if data.get("stream") is True and (
-            self._streaming_restoration_done(data)
-            or not response_supported
-        ):
-            PII_POST_CALLS.labels(result="skipped").inc()
-            return
-
         request_id = self._get_response_request_id(data)
         if not request_id:
             await self._publish_responses_state(data, user_api_key_dict, response, {})
             PII_POST_CALLS.labels(result="skipped").inc()
+            self._set_logging_decision("skipped")
             return
 
         # Load mapping
@@ -4543,6 +4654,7 @@ class RuPIIGuardrail(CustomGuardrail):
             if self._responses_state_context(data):
                 self._raise_responses_state_error(unavailable_state())
             PII_POST_CALLS.labels(result="no_mapping").inc()
+            self._set_logging_decision("no_mapping")
             _safe_log(
                 logging.INFO,
                 "pii_guardrail_no_mapping",
@@ -4551,6 +4663,7 @@ class RuPIIGuardrail(CustomGuardrail):
             return
 
         restored_fields = 0
+        cleanup_error_type = None
         try:
             if isinstance(response, litellm.ModelResponse):
                 targets: list[tuple[Any, str]] = []
@@ -4563,6 +4676,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 targets = anthropic_message_targets(response)
             else:
                 PII_POST_CALLS.labels(result="unsupported_response").inc()
+                self._set_logging_decision("unsupported_response")
                 _safe_log(
                     logging.WARNING,
                     "pii_guardrail_unsupported_response",
@@ -4598,6 +4712,7 @@ class RuPIIGuardrail(CustomGuardrail):
             try:
                 await self._delete_mapping(request_id)
             except Exception as e:
+                cleanup_error_type = type(e).__name__
                 PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
                 _safe_log(
                     logging.WARNING,
@@ -4609,6 +4724,12 @@ class RuPIIGuardrail(CustomGuardrail):
         PII_POST_CALLS.labels(
             result="restored" if restored_fields else "no_placeholders"
         ).inc()
+        self._set_logging_decision("restored" if restored_fields else "no_placeholders")
+        if cleanup_error_type is not None:
+            self._set_logging_decision(
+                "fail_open", status="guardrail_failed_to_respond",
+                failure_operation="mapping_delete", error_type=cleanup_error_type,
+            )
         _safe_log(
             logging.INFO,
             "pii_guardrail_restored",
@@ -4664,10 +4785,36 @@ class RuPIIGuardrail(CustomGuardrail):
         return None
 
     async def async_post_call_streaming_iterator_hook(
+        self, user_api_key_dict: UserAPIKeyAuth, response: Any, request_data: dict,
+    ):
+        """Record one post-call result when the stream actually finishes or closes."""
+        started_perf, started_wall = time.perf_counter(), time.time()
+        decision: reporting.Decision = {}
+        iterator = self._stream_response_with_logging(user_api_key_dict, response, request_data, decision)
+        try:
+            async for item in iterator:
+                yield item
+            self._mark_streaming_restoration_done(request_data)
+        except (GeneratorExit, asyncio.CancelledError):
+            reporting.stream_failure(decision, "cancelled", "stream_consumption")
+            raise
+        except Exception as error:
+            reporting.stream_failure(decision, "post_call_failure", "stream_restoration", error)
+            raise
+        finally:
+            try:
+                await iterator.aclose()
+            finally:
+                self._write_guardrail_information(
+                    request_data, "post_call", decision, started_wall, started_perf,
+                )
+
+    async def _stream_response_with_logging(
         self,
         user_api_key_dict: UserAPIKeyAuth,
         response: Any,
         request_data: dict,
+        decision: dict,
     ):
         """Unmask placeholders in streaming response chunks."""
         request_id = self._get_response_request_id(request_data)
@@ -4683,13 +4830,14 @@ class RuPIIGuardrail(CustomGuardrail):
         try:
             if not request_id:
                 PII_POST_CALLS.labels(result="skipped").inc()
+                self._set_logging_decision("skipped", decision=decision)
             else:
                 load_started_at = time.perf_counter()
                 try:
                     mapping = await self._load_mapping(request_id)
                 except Exception as e:
                     self._handle_mapping_load_failure(
-                        request_data, request_id, load_started_at, e, stream=True,
+                        request_data, request_id, load_started_at, e, stream=True, decision=decision,
                     )
                 else:
                     if mapping:
@@ -4699,6 +4847,7 @@ class RuPIIGuardrail(CustomGuardrail):
                             self._raise_responses_state_error(unavailable_state())
                         cleanup_mapping = False
                         PII_POST_CALLS.labels(result="no_mapping").inc()
+                        self._set_logging_decision("no_mapping", decision=decision)
                         _safe_log(
                             logging.INFO,
                             "pii_guardrail_no_mapping",
@@ -4714,7 +4863,16 @@ class RuPIIGuardrail(CustomGuardrail):
                     return anthropic.process(event)
                 return restorer.process(event) if restorer else [event]
             wire = SSEEventRestorer(process_event)
-            async for item in iterator:
+            while True:
+                try:
+                    item = await anext(iterator)
+                except StopAsyncIteration:
+                    break
+                except IncompleteUpstreamStream:
+                    raise  # classified by the protocol handler below
+                except Exception as error:
+                    reporting.stream_failure(decision, "upstream_failure", "upstream_read", error)
+                    raise
                 assert_request_stream_valid(request_data)
                 restored_items = wire.feed(item) if isinstance(item, (bytes, bytearray, str)) else process_event(item)
                 for restored_item in restored_items:
@@ -4740,6 +4898,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 for item in restorer.finish():
                     yield item
         except IncompleteUpstreamStream as error:
+            reporting.stream_failure(decision, "incomplete", "upstream_protocol", error)
             if not messages_route:
                 raise
             PII_POST_CALLS.labels(result="error").inc()
@@ -4748,13 +4907,20 @@ class RuPIIGuardrail(CustomGuardrail):
                 request_id=request_id, stream_failure=error.reason,
             )
             messages_error = messages_stream_error()
-        except RestorationKeyCollision:
+        except RestorationKeyCollision as collision:
+            reporting.stream_failure(decision, "post_call_failure", "stream_restoration", collision)
             error = ProxyException(
                 message="Restoring tool arguments would produce duplicate JSON keys.",
                 type="invalid_provider_response", param=None, code=502,
             )
             error.status_code = 502
             raise error from None
+        except (GeneratorExit, asyncio.CancelledError):
+            reporting.stream_failure(decision, "cancelled", "stream_consumption")
+            raise
+        except Exception as error:
+            reporting.stream_failure(decision, "post_call_failure", "stream_restoration", error)
+            raise
         finally:
             if anthropic:
                 anthropic.finish()
@@ -4765,7 +4931,7 @@ class RuPIIGuardrail(CustomGuardrail):
                 try:
                     await close_request_streams(request_data)
                 finally:
-                    await self._cleanup_stream(iterator, request_id, cleanup_mapping)
+                    await self._cleanup_stream(iterator, request_id, cleanup_mapping, decision)
             await _finish_stream_cleanup(cleanup())
 
         if messages_error is not None:
@@ -4781,6 +4947,11 @@ class RuPIIGuardrail(CustomGuardrail):
             "incomplete" if not terminated
             else "restored" if restored_fields else "no_placeholders"
         )
+        if decision.get("status") != "guardrail_failed_to_respond":
+            self._set_logging_decision(
+                result, status="guardrail_failed_to_respond" if result == "incomplete" else "success",
+                decision=decision,
+            )
         PII_POST_CALLS.labels(result=result).inc()
         _safe_log(
             logging.INFO,
@@ -4791,7 +4962,7 @@ class RuPIIGuardrail(CustomGuardrail):
             restored_fields=restored_fields,
         )
 
-    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping):
+    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping, decision=None):
         try:
             close = getattr(iterator, "aclose", None)
             if not callable(close):
@@ -4805,6 +4976,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     if inspect.isawaitable(result):
                         await result
         except Exception as e:
+            reporting.stream_failure(decision, "fail_open", "stream_close", e)
             _safe_log(
                 logging.WARNING, "pii_guardrail_stream_close_failed",
                 request_id=request_id, error_type=type(e).__name__,
@@ -4815,6 +4987,7 @@ class RuPIIGuardrail(CustomGuardrail):
                     with anyio.fail_after(2, shield=True):
                         await self._delete_mapping(request_id)
                 except Exception as e:
+                    reporting.stream_failure(decision, "fail_open", "mapping_delete", e)
                     PII_FAIL_OPEN.labels(operation="mapping_delete").inc()
                     _safe_log(
                         logging.WARNING, "pii_guardrail_cleanup_failed",
