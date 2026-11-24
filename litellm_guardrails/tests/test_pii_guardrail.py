@@ -193,6 +193,121 @@ def _json_log_events(caplog, event):
     return events
 
 
+# Shell references that name a secret without containing one. Both proxy
+# stages must let them through unchanged.
+SHELL_REFERENCE_ONLY_PAYLOADS = [
+    'test -n "${JIRA_TOKEN:-}" || unavailable "JIRA_TOKEN is not set"',
+    '  test -n "${CONFLUENCE_TOKEN:-}" || unavailable "CONFLUENCE_TOKEN is not set"',
+    'echo "${JIRA_TOKEN:-""}"',
+    "echo \"${JIRA_TOKEN:-''}\"",
+    'echo "${JIRA_TOKEN:=}"',
+    'echo "${JIRA_TOKEN=}"',
+    'echo "${JIRA_TOKEN:+}"',
+    'echo "${JIRA_TOKEN:?}"',
+    'echo "${JIRA_TOKEN:-$FALLBACK_TOKEN}"',
+    'echo "${JIRA_TOKEN:-${OTHER_TOKEN:-}}"',
+    'echo "${JIRA_TOKEN:0:4}"',
+    'echo "${JIRA_TOKEN: -4}"',
+    'export JIRA_TOKEN="${OTHER_TOKEN}"',
+    "JIRA_TOKEN=$OTHER_TOKEN",
+    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN}",
+    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN}\n  FEATURE: true",
+    'environment: {JIRA_TOKEN: "${JIRA_TOKEN:-}"}',
+    '{"JIRA_TOKEN": "${JIRA_TOKEN}"}',
+]
+
+# Literal values next to secret-like names, including literals hidden inside
+# shell expansions or next to an allowed reference. Both stages must block.
+SHELL_LITERAL_SECRET_PAYLOADS = [
+    'echo "${JIRA_TOKEN:-jira-literal-secret}"',
+    'echo "${JIRA_TOKEN:=jira-literal-secret}"',
+    'echo "${JIRA_TOKEN:+jira-literal-secret}"',
+    'echo "${JIRA_TOKEN=jira-literal-secret}"',
+    ': "${JIRA_TOKEN:?jira-literal-secret}"',
+    'echo "${JIRA_TOKEN:-"jira-literal-secret"}"',
+    'echo "${JIRA_TOKEN:-${OTHER_TOKEN:-jira-literal-secret}}"',
+    'echo "${JIRA_TOKEN:-$OTHER_TOKEN-jira-literal-secret}"',
+    'export JIRA_TOKEN="${OTHER_TOKEN}jira-literal-secret"',
+    'export JIRA_TOKEN="${OTHER_TOKEN} jira-literal-secret"',
+    'export JIRA_TOKEN="$(printf jira-literal-secret)"',
+    "JIRA_TOKEN=${JIRA_TOKEN:-}jira-literal-secret",
+    'JIRA_TOKEN=\\"jira-literal-secret\\"',
+    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN:-jira-literal-secret}",
+    "JIRA_TOKEN=$jira-literal-secret",
+    "PASSWORD: |\n  jira-literal-secret",
+    "PASSWORD: &anchor jira-literal-secret",
+    "PASSWORD: ${OTHER_TOKEN} jira-literal-secret",
+    "PASSWORD: ${OTHER_TOKEN};jira-literal-secret",
+    "environment:\n  PASSWORD: ${OTHER_TOKEN}\n    jira-literal-secret",
+    "environment:\n  PASSWORD: ${OTHER_TOKEN}\n\n    jira-literal-secret",
+    "environment: {JIRA_TOKEN: ${JIRA_TOKEN}, CONFLUENCE_TOKEN: jira-literal-secret}",
+    '{"JIRA_TOKEN": "${JIRA_TOKEN}", "CONFLUENCE_TOKEN": "jira-literal-secret"}',
+]
+
+
+def _request_forms(payload):
+    """Return the same text placed in each provider-bound request shape."""
+    return [
+        (
+            {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]},
+            None,
+        ),
+        (
+            {
+                "model": "glm-5.1",
+                "messages": [
+                    {"role": "user", "content": "Прочитай скрипт"},
+                    {"role": "assistant", "content": payload},
+                    {"role": "user", "content": "Что он делает?"},
+                ],
+            },
+            None,
+        ),
+        (
+            {
+                "model": "glm-5.1",
+                "messages": [
+                    {"role": "user", "content": "Прочитай скрипт"},
+                    {"role": "tool", "tool_call_id": "call_1", "content": payload},
+                ],
+            },
+            None,
+        ),
+        (
+            {
+                "model": "claude-sonnet-4-6",
+                "max_tokens": 16,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_1",
+                                "content": payload,
+                            }
+                        ],
+                    }
+                ],
+            },
+            "messages",
+        ),
+        (
+            {
+                "model": "openai-gpt-5.4-mini",
+                "input": [
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_1",
+                        "output": payload,
+                    }
+                ],
+            },
+            "responses",
+        ),
+    ]
+
+
 @pytest.fixture
 def guardrail():
     """Create a guardrail instance with mocked Redis."""
@@ -4074,6 +4189,135 @@ class TestPreCallHook:
         assert result == data
         analyze_text.assert_awaited_once_with(text)
         guardrail._redis.setex.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", SHELL_REFERENCE_ONLY_PAYLOADS)
+    @pytest.mark.parametrize("form", range(5))
+    async def test_shell_secret_references_pass_both_stages(self, payload, form):
+        guardrail = RuPIIGuardrail()
+        assert guardrail.pre_egress_policy_mode == "block"
+        assert guardrail.final_payload_leak_check_mode == "block"
+        guardrail._redis = _mock_redis()
+        data, call_type = _request_forms(payload)[form]
+        kwargs = {"call_type": call_type} if call_type else {}
+
+        with patch.object(
+            guardrail,
+            "_analyze_text",
+            AsyncMock(return_value=[]),
+        ) as analyze_text:
+            with patch.object(
+                guardrail,
+                "_classify_final_payload_leak_check_texts",
+                wraps=guardrail._classify_final_payload_leak_check_texts,
+            ) as classify_final:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                    **kwargs,
+                )
+
+        assert payload in [call.args[0] for call in analyze_text.await_args_list]
+        classify_final.assert_called()
+        assert payload in classify_final.call_args.args[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", SHELL_LITERAL_SECRET_PAYLOADS)
+    async def test_pre_egress_blocks_literal_secret_in_shell_forms(self, payload):
+        guardrail = RuPIIGuardrail()
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])) as analyze_text:
+            with pytest.raises(PRE_EGRESS_BLOCK_EXCEPTION_TYPES) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        analyze_text.assert_not_awaited()
+        error_body = _error_body_from_exception(exc_info.value)
+        assert error_body["error"]["code"] == "pre_egress_policy_blocked"
+        assert error_body["error"]["details"] == {
+            "categories": ["config"],
+            "rules": ["env_secret_assignment"],
+        }
+        assert "jira-literal-secret" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", SHELL_LITERAL_SECRET_PAYLOADS)
+    async def test_final_leak_check_blocks_literal_secret_in_shell_forms(self, payload):
+        guardrail = RuPIIGuardrail(pre_egress_policy_mode="off")
+        guardrail._redis = _mock_redis()
+        data = {"model": "glm-5.1", "messages": [{"role": "user", "content": payload}]}
+
+        with patch.object(guardrail, "_analyze_text", AsyncMock(return_value=[])):
+            with pytest.raises(litellm.UnprocessableEntityError) as exc_info:
+                await guardrail.async_pre_call_hook(
+                    user_api_key_dict=MagicMock(),
+                    cache=MagicMock(),
+                    data=data,
+                )
+
+        guardrail._redis.setex.assert_not_called()
+        error_body = exc_info.value.response.json()
+        assert error_body["error"]["code"] == "final_payload_leak_check_blocked"
+        assert error_body["error"]["details"] == {"rules": ["env_secret_assignment"]}
+        assert "jira-literal-secret" not in json.dumps(error_body, ensure_ascii=False)
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [(payload, False) for payload in SHELL_REFERENCE_ONLY_PAYLOADS]
+        + [(payload, True) for payload in SHELL_LITERAL_SECRET_PAYLOADS],
+    )
+    def test_both_stages_classify_shell_forms_alike(self, payload, expected):
+        guardrail = RuPIIGuardrail()
+        pre_rules = {
+            finding["rule_id"]
+            for finding in guardrail._classify_pre_egress_policy_text(payload)
+        }
+        final_rules = {
+            finding["rule_id"]
+            for finding in guardrail._classify_final_payload_leak_check_text(payload)
+        }
+
+        assert ("env_secret_assignment" in pre_rules) is expected
+        assert ("env_secret_assignment" in final_rules) is expected
+
+    def test_shell_reference_skip_limit_fails_closed(self):
+        line = 'test -n "${JIRA_TOKEN:-}"'
+        limit = pii_guardrail._ENV_SECRET_REFERENCE_SKIP_LIMIT
+
+        assert not pii_guardrail._env_secret_assignment_present(
+            "\n".join([line] * (limit - 1))
+        )
+        assert pii_guardrail._env_secret_assignment_present(
+            "\n".join([line] * limit)
+        )
+
+    def test_shell_reference_scan_limit_fails_closed(self):
+        references = "${OTHER_TOKEN}" * (pii_guardrail._SHELL_VALUE_SCAN_LIMIT // 14 + 1)
+
+        assert not pii_guardrail._env_secret_assignment_present(
+            'export JIRA_TOKEN="${OTHER_TOKEN}"'
+        )
+        assert pii_guardrail._env_secret_assignment_present(
+            f"export JIRA_TOKEN={references}"
+        )
+
+    def test_shell_reference_skip_limit_applies_across_both_patterns(self):
+        limit = pii_guardrail._ENV_SECRET_REFERENCE_SKIP_LIMIT
+        assignments = ['JIRA_TOKEN=$OTHER_TOKEN'] * (limit // 2)
+        mappings = ['JIRA_TOKEN: ${JIRA_TOKEN}'] * (limit - len(assignments))
+
+        assert not pii_guardrail._env_secret_assignment_present(
+            "\n".join(assignments + mappings[:-1])
+        )
+        assert pii_guardrail._env_secret_assignment_present(
+            "\n".join(assignments + mappings)
+        )
 
     def test_pre_egress_block_metric_increments_once_per_category(self):
         labels = {

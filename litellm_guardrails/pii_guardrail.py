@@ -273,15 +273,196 @@ _ENV_SECRET_KEY_PATTERN = (
     r"PASS|PWD|DSN|URI|CONNECTION_STRING|AUTH_CONFIG"
     r")(?:_[0-9]+)?"
 )
+# These two patterns only find candidates: a secret-like name followed by a
+# non-empty value. _env_secret_assignment_present() then decides whether the
+# value carries literal text. The "brace" group marks a candidate that starts
+# at "{", which after "$" is a shell parameter expansion such as
+# ${JIRA_TOKEN:-}; the "value" group marks the first character of the value.
 _ENV_SECRET_ASSIGNMENT_RE = re.compile(
-    rf"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{{,][ \t]*[\"']?)"
-    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*[\"']?\S+"
+    rf"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?"
+    rf"|(?:(?P<brace>\{{)|[\[,])[ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*(?P<value>\S)"
 )
 _ENV_SECRET_YAML_MAPPING_RE = re.compile(
-    rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
-    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
+    rf"(?m)(?:^(?P<indent>[ \t-]*)[\"']?|(?P<flow>(?P<brace>\{{)|[\[,])[ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*(?P<value>\S)"
 )
 _ENV_SECRET_KEY_RE = re.compile(rf"^(?:{_ENV_SECRET_KEY_PATTERN})$")
+# Shell references name a secret without containing one. A value counts as
+# reference-only when it is made of parameter references and quotes alone:
+#   ${JIRA_TOKEN}  ${JIRA_TOKEN:-}  ${JIRA_TOKEN:=""}  ${JIRA_TOKEN:0:4}
+#   ${JIRA_TOKEN:-$FALLBACK_TOKEN}  JIRA_TOKEN="${OTHER_TOKEN}"
+# Any other character, including a non-empty literal default such as
+# ${JIRA_TOKEN:-ghp_...}, an error message after ":?", command substitution
+# or pattern operators (#, %, /), counts as a literal. So does anything the
+# parser cannot read within its limits: real secrets stay blocked.
+# Unbraced references accept upper-case ENV names only: a literal password
+# such as "$uperS3cret" must not pass as a reference to a variable.
+_SHELL_UNBRACED_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]*|[0-9@*#?$!-]")
+_SHELL_BRACED_NAME_RE = re.compile(
+    r"[#!]?(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)|[@*#?$!-]"
+)
+_SHELL_SUBSTRING_RE = re.compile(r":[ \t]*-?[0-9]+(?::[ \t]*-?[0-9]+)?\}")
+_SHELL_QUOTE_TOKENS = ('\\"', "\\'", '"', "'")
+_SHELL_WORD_TERMINATORS = frozenset(" \t\r\n;&|)")
+_SHELL_FLOW_TERMINATORS = frozenset(",]}")
+_SHELL_FLOW_FOLLOWERS = frozenset(" \t\r\n,]}\"'")
+_SHELL_VALUE_SCAN_LIMIT = 4096
+_SHELL_EXPANSION_MAX_DEPTH = 8
+_ENV_SECRET_REFERENCE_SKIP_LIMIT = 256
+
+
+def _shell_reference_end(
+    text: str,
+    pos: int,
+    limit: int,
+    depth: int,
+) -> Optional[int]:
+    """Return the end of a parameter reference starting at "$", or None."""
+    pos += 1
+    if pos >= limit:
+        return None
+    if text[pos] == "{":
+        return _shell_braced_expansion_end(text, pos + 1, limit, depth + 1)
+    match = _SHELL_UNBRACED_NAME_RE.match(text, pos, limit)
+    return match.end() if match else None
+
+
+def _shell_braced_expansion_end(
+    text: str,
+    pos: int,
+    limit: int,
+    depth: int,
+) -> Optional[int]:
+    """Return the end of a reference-only "${...}" body at pos, or None."""
+    if depth > _SHELL_EXPANSION_MAX_DEPTH:
+        return None
+    match = _SHELL_BRACED_NAME_RE.match(text, pos, limit)
+    if match is None:
+        return None
+    pos = match.end()
+    if pos >= limit:
+        return None
+    char = text[pos]
+    if char == "}":
+        return pos + 1
+    if char == ":":
+        if pos + 1 < limit and text[pos + 1] in "-=+?":
+            return _shell_word_end(text, pos + 2, limit, depth, closing="}")
+        substring = _SHELL_SUBSTRING_RE.match(text, pos, limit)
+        return substring.end() if substring else None
+    if char in "-=+?":
+        return _shell_word_end(text, pos + 1, limit, depth, closing="}")
+    return None
+
+
+def _shell_word_end(
+    text: str,
+    pos: int,
+    limit: int,
+    depth: int,
+    closing: Optional[str] = None,
+) -> Optional[int]:
+    """Return where a quotes-and-references-only word ends, or None.
+
+    With ``closing`` the word is the operand of "${NAME<op>...}" and must end
+    at that character; it may be empty. Without it the word is an assignment
+    or mapping value, which ends at whitespace, a shell separator or a
+    flow-collection edge and must contain at least one reference, so values
+    such as "|", "&anchor" or '""' keep their previous treatment.
+    """
+    quote: Optional[str] = None
+    has_reference = False
+    while pos < limit:
+        char = text[pos]
+        if quote is None:
+            if closing is not None:
+                if char == closing:
+                    return pos + 1
+            elif char in _SHELL_WORD_TERMINATORS or (
+                char in _SHELL_FLOW_TERMINATORS
+                and (pos + 1 >= len(text) or text[pos + 1] in _SHELL_FLOW_FOLLOWERS)
+            ):
+                return pos if has_reference else None
+        for token in _SHELL_QUOTE_TOKENS:
+            if quote in (None, token) and text.startswith(token, pos, limit):
+                quote = None if quote == token else token
+                pos += len(token)
+                break
+        else:
+            if char != "$":
+                return None
+            end = _shell_reference_end(text, pos, limit, depth)
+            if end is None:
+                return None
+            pos = end
+            has_reference = True
+    if closing is None and quote is None and has_reference and pos >= len(text):
+        return pos
+    return None
+
+
+def _yaml_reference_value_complete(
+    text: str,
+    match: re.Match[str],
+    end: int,
+    limit: int,
+) -> bool:
+    """Check the rest of a YAML scalar after parsing its initial shell word."""
+    tail = text[end:limit]
+    if match["flow"] is not None:
+        tail = tail.lstrip(" \t\r\n")
+        if not tail:
+            return limit == len(text)
+        return tail[0] in _SHELL_FLOW_TERMINATORS
+
+    line_end, newline, following = tail.partition("\n")
+    if line_end.strip(" \t\r"):
+        return False
+    if newline:
+        for line in following.split("\n"):
+            content = line.lstrip(" \t")
+            if content and content != "\r" and not content.startswith("#"):
+                # Plain YAML scalars can include more deeply indented lines.
+                return len(line) - len(content) <= len(match["indent"])
+    return limit == len(text)
+
+
+def _env_secret_match_is_reference_only(text: str, match: re.Match[str]) -> bool:
+    """Return whether a secret-name candidate holds shell references only."""
+    brace = match.start("brace")
+    if brace > 0 and text[brace - 1] == "$":
+        limit = min(len(text), brace + 1 + _SHELL_VALUE_SCAN_LIMIT)
+        return _shell_braced_expansion_end(text, brace + 1, limit, 1) is not None
+    value = match.start("value")
+    limit = min(len(text), value + _SHELL_VALUE_SCAN_LIMIT)
+    end = _shell_word_end(text, value, limit, 0)
+    if end is None:
+        return False
+    if match.re is _ENV_SECRET_YAML_MAPPING_RE:
+        return _yaml_reference_value_complete(text, match, end, limit)
+    return True
+
+
+def _env_secret_assignment_present(text: str) -> bool:
+    """Return whether text assigns a literal value to a secret-like ENV name.
+
+    Shared by the pre-egress policy and the final payload leak check so both
+    stages decide the same way. Skipped candidates restart the search one
+    character later, so a reference-only value cannot hide a neighbouring
+    literal assignment; past the skip limit the text is treated as a leak.
+    """
+    skipped = 0
+    for pattern in (_ENV_SECRET_ASSIGNMENT_RE, _ENV_SECRET_YAML_MAPPING_RE):
+        pos = 0
+        while (match := pattern.search(text, pos)) is not None:
+            if not _env_secret_match_is_reference_only(text, match):
+                return True
+            skipped += 1
+            if skipped >= _ENV_SECRET_REFERENCE_SKIP_LIMIT:
+                return True
+            pos = match.start() + 1
+    return False
 _ENV_CREDENTIAL_URL_RE = re.compile(
     r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
     r"[A-Z][A-Z0-9_]*"
@@ -2030,8 +2211,7 @@ class RuPIIGuardrail(CustomGuardrail):
         seen_rules: set[str] = set()
 
         if (
-            _ENV_SECRET_ASSIGNMENT_RE.search(text)
-            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            _env_secret_assignment_present(text)
             or _ENV_CREDENTIAL_URL_RE.search(text)
             or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
         ):
@@ -2163,8 +2343,7 @@ class RuPIIGuardrail(CustomGuardrail):
             )
 
         if (
-            _ENV_SECRET_ASSIGNMENT_RE.search(text)
-            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            _env_secret_assignment_present(text)
             or _ENV_CREDENTIAL_URL_RE.search(text)
             or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
             or _RAW_CREDENTIAL_URL_RE.search(text)

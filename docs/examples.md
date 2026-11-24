@@ -306,6 +306,16 @@ SYNTHETIC_PII_ALLOWLIST_JSON=[{"rule_id":"docs","entity_types":["EMAIL_ADDRESS"]
 }
 ```
 
+Правило `env_secret_assignment` срабатывает на буквальное значение рядом
+с секретным именем. Значение только из ссылок на переменные секретом
+не считается: `test -n "${JIRA_TOKEN:-}"`, `${JIRA_TOKEN:0:4}`,
+`export JIRA_TOKEN="${OTHER_TOKEN}"` и `JIRA_TOKEN: ${JIRA_TOKEN}` проходят.
+`${JIRA_TOKEN:-literal}`, `${JIRA_TOKEN:?message}`, `$(...)` и всё,
+что проверка не может разобрать, блокируются. Для YAML учитывается весь
+скаляр, включая буквальное продолжение на следующей строке. Лимит в 256
+пропущенных совпадений действует на весь текст, включая env и YAML вместе.
+Финальная проверка применяет то же правило.
+
 LiteLLM может вложить тело в `detail.error`,
 `error.provider_specific_fields.error` или `error.param.pre_egress_policy`.
 После изменения режима пересоздайте сервис:
