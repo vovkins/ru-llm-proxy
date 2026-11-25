@@ -16,7 +16,9 @@ from litellm_guardrails.attachment_policy import (
 )
 from litellm_guardrails.pii_guardrail import HTTPException, ProxyException, RuPIIGuardrail
 from litellm_guardrails.tests.test_anthropic_restoration import message
-from litellm_guardrails.tests.test_pii_guardrail import _entity, _MemoryRedis
+from litellm_guardrails.tests.test_pii_guardrail import (
+    BASH_WITH_UNRELATED_YAML, YAML_MULTILINE_SECRET_PAYLOADS, _entity, _MemoryRedis,
+)
 from litellm_guardrails.tests.test_responses_history import response
 
 
@@ -124,6 +126,53 @@ async def test_pre_egress_inspects_original_attachment_before_dictionary_and_ana
     assert response_body["error"]["code"] == "pre_egress_policy_blocked"
     assert request == original
     guard._analyze_text.assert_not_awaited()
+    assert not guard._redis.values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_type", CALL_TYPES)
+@pytest.mark.parametrize("script", [
+    '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\n',
+    BASH_WITH_UNRELATED_YAML,
+])
+async def test_empty_shell_default_in_text_attachment_passes_both_stages(call_type, script):
+    guard = _guard()
+    request, _, outgoing = _request(call_type, script)
+
+    await guard.async_pre_call_hook(None, None, request, call_type)
+
+    guard._analyze_text.assert_awaited_once_with(script)
+    assert outgoing() == script
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_type", CALL_TYPES)
+@pytest.mark.parametrize("stage", ["pre", "final"])
+@pytest.mark.parametrize("script", [
+    '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\nPASSWORD=\'${OTHER_TOKEN:-}\'\n',
+    *YAML_MULTILINE_SECRET_PAYLOADS,
+])
+async def test_text_attachment_keeps_literal_assignment_checks(call_type, stage, script, monkeypatch):
+    guard = _guard()
+    request, _, outgoing = _request(call_type, script)
+
+    if stage == "pre":
+        with pytest.raises(ProxyException) as error:
+            await guard.async_pre_call_hook(None, None, request, call_type)
+        details = error.value.provider_specific_fields["error"]
+        assert details["code"] == "pre_egress_policy_blocked"
+        guard._analyze_text.assert_not_awaited()
+    else:
+        # Attachments require both stages enabled. Isolate the final check
+        # without changing the attachment capability gate.
+        monkeypatch.setattr(guard, "_classify_pre_egress_policy_targets", lambda _: [])
+        with pytest.raises(litellm.UnprocessableEntityError) as error:
+            await guard.async_pre_call_hook(None, None, request, call_type)
+        details = error.value.response.json()["error"]
+        assert details["code"] == "final_payload_leak_check_blocked"
+        guard._analyze_text.assert_awaited_once_with(script)
+    assert "env_secret_assignment" in details["details"]["rules"]
+    assert outgoing() == script
     assert not guard._redis.values
 
 

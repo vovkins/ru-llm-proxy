@@ -234,7 +234,7 @@ class DictionarySubstitutionPolicy:
                 raise DictionaryPolicyAmbiguousRequestError(
                     f"replacement already present for rule {rule.rule_id}"
                 )
-        plan = DictionaryRequestPlan(self, None, irreversible, selected)
+        plan = DictionaryRequestPlan(self, None, irreversible, selected, reference_texts=reference_texts)
         if irreversible:
             assembled = validate_fixed_output(plan, texts, existing_mapping, reserved_placeholders)
             plan = replace(plan, assembled_placeholders=assembled)
@@ -274,6 +274,7 @@ class DictionarySubstitutionPolicy:
         last_end = 0
         output_length = 0
         occupied = dict(existing_mapping or {})
+        reserved_neutral_tags = None
 
         for match in sorted(matches, key=lambda item: item.start):
             unchanged = text[last_end:match.start]
@@ -287,13 +288,21 @@ class DictionarySubstitutionPolicy:
                     raise DictionaryPolicyAmbiguousRequestError('Dictionary planned binding conflict')
             if match.rule.restore:
                 if not planned_aliases and replacement in occupied and occupied[replacement] != match.original:
-                    rule_name = re.sub(r"[^A-Z0-9_]", "_", match.rule.rule_id.upper())
+                    if reserved_neutral_tags is None:
+                        if request_plan is None:
+                            from .dictionary_request_plan import dictionary_literal_placeholders
+                            literal_tags = dictionary_literal_placeholders((text,))
+                        else:
+                            literal_tags = request_plan.literal_dictionary_placeholders
+                        reserved_neutral_tags = set(reserved_placeholders) | literal_tags
                     index = 1
-                    replacement = f"<DICT_{rule_name}_{index}>"
+                    # Rule IDs may themselves contain protected business names.
+                    # Only a request-local counter belongs in provider-bound tags.
+                    replacement = f"<DICT_{index}>"
                     while (replacement in occupied or replacement in text
-                           or replacement in reserved_placeholders):
+                           or replacement in reserved_neutral_tags):
                         index += 1
-                        replacement = f"<DICT_{rule_name}_{index}>"
+                        replacement = f"<DICT_{index}>"
                 occupied[replacement] = match.original
             parts.append(replacement)
             replacement_end = replacement_start + len(replacement)
