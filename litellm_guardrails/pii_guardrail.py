@@ -281,8 +281,23 @@ _ENV_SECRET_YAML_MAPPING_RE = re.compile(
     rf"(?m)(?:^[ \t-]*[\"']?|(?:(?P<brace>\{{)|[\[,])[ \t]*[\"']?)"
     rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*\S"
 )
-_ENV_SECRET_YAML_BLOCK_FIELD_RE = re.compile(
-    rf"(?m)^[ \t-]*[\"']?(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*(?:#[^\r\n]*)?\r?$"
+# A standalone `test` line can be part of a scalar continued from a secret
+# field or an environment-list entry. An explicit key (`?`) can put the key
+# and its value on separate lines, with comments or tags in between.
+_ENV_SECRET_YAML_MULTILINE_CONTEXT_RE = re.compile(
+    rf"(?m)(?:^[ \t-]*|[\[{{,][ \t]*)"
+    rf"(?:[\"']?(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*[:=][ \t]*(?:#[^\r\n]*)?\r?$"
+    rf"|\?(?=[ \t\r\n]|$))"
+)
+# Detect continued values even if masking removed the Bash-looking fragment
+# from the value. The next content line must be indented under the field.
+_YAML_BLANK_OR_COMMENT_LINE = r"[ \t]*(?:#[^\r\n]*)?\r?\n"
+_ENV_SECRET_YAML_MULTILINE_VALUE_RE = re.compile(
+    rf"(?m)^(?P<indent>[ \t]*)"
+    rf"(?:-[ \t]+[\"']?(?:{_ENV_SECRET_KEY_PATTERN})[ \t]*=[ \t]*(?:#[^\r\n]*)?\r?\n"
+    rf"|\?[ \t]+[\"']?(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*(?:#[^\r\n]*)?\r?\n"
+    rf"(?:{_YAML_BLANK_OR_COMMENT_LINE})*(?P=indent):[ \t]*(?:#[^\r\n]*)?\r?\n)"
+    rf"(?:{_YAML_BLANK_OR_COMMENT_LINE})*(?P=indent)[ \t]+[^ \t\r\n#]"
 )
 _ENV_SECRET_KEY_RE = re.compile(rf"^(?:{_ENV_SECRET_KEY_PATTERN})$")
 # Recognize only a whole test command line, optionally with a simple failure
@@ -317,7 +332,7 @@ def _is_empty_default_test_reference(text: str, brace: int) -> bool:
 def _env_secret_assignment_present(text: str) -> bool:
     """Detect secret assignments, ignoring a narrow Bash/YAML syntax overlap."""
     # Real assignments keep their original policy regardless of value spelling.
-    if _ENV_SECRET_ASSIGNMENT_RE.search(text) is not None:
+    if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_SECRET_YAML_MULTILINE_VALUE_RE.search(text):
         return True
 
     for count, match in enumerate(_ENV_SECRET_YAML_MAPPING_RE.finditer(text), 1):
@@ -325,9 +340,9 @@ def _env_secret_assignment_present(text: str) -> bool:
             return True
         if not _is_empty_default_test_reference(text, match.start("brace")):
             return True
-        # A YAML key on its own line can own the apparent shell command as an
-        # indented literal value. Keep blocking when that interpretation is possible.
-        if count == 1 and _ENV_SECRET_YAML_BLOCK_FIELD_RE.search(text) is not None:
+        # Check the whole text once. Line shape alone cannot establish that
+        # the command stands outside a multiline configuration value.
+        if count == 1 and _ENV_SECRET_YAML_MULTILINE_CONTEXT_RE.search(text) is not None:
             return True
     return False
 

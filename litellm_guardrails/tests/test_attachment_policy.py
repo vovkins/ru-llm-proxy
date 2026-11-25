@@ -16,7 +16,9 @@ from litellm_guardrails.attachment_policy import (
 )
 from litellm_guardrails.pii_guardrail import HTTPException, ProxyException, RuPIIGuardrail
 from litellm_guardrails.tests.test_anthropic_restoration import message
-from litellm_guardrails.tests.test_pii_guardrail import _entity, _MemoryRedis
+from litellm_guardrails.tests.test_pii_guardrail import (
+    YAML_MULTILINE_SECRET_PAYLOADS, _entity, _MemoryRedis,
+)
 from litellm_guardrails.tests.test_responses_history import response
 
 
@@ -143,9 +145,12 @@ async def test_empty_shell_default_in_text_attachment_passes_both_stages(call_ty
 @pytest.mark.asyncio
 @pytest.mark.parametrize("call_type", CALL_TYPES)
 @pytest.mark.parametrize("stage", ["pre", "final"])
-async def test_text_attachment_keeps_literal_assignment_checks(call_type, stage, monkeypatch):
+@pytest.mark.parametrize("script", [
+    '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\nPASSWORD=\'${OTHER_TOKEN:-}\'\n',
+    *YAML_MULTILINE_SECRET_PAYLOADS,
+])
+async def test_text_attachment_keeps_literal_assignment_checks(call_type, stage, script, monkeypatch):
     guard = _guard()
-    script = '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\nPASSWORD=\'${OTHER_TOKEN:-}\'\n'
     request, _, outgoing = _request(call_type, script)
 
     if stage == "pre":

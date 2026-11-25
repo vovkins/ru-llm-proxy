@@ -11,6 +11,7 @@ import httpx
 import litellm
 import pytest
 import pytest_asyncio
+import yaml
 
 import litellm_guardrails.pii_guardrail as pii_guardrail
 from litellm_guardrails.pii_guardrail import (
@@ -201,6 +202,32 @@ SHELL_EMPTY_DEFAULT_CHECKS = [
 ]
 
 
+YAML_MULTILINE_SECRET_PAYLOADS = [
+    'environment:\n  - PASSWORD=\n    test -n "${TEST_TOKEN:-}"\n    fixture-literal-secret\n',
+    '? "PASSWORD" # explicit key\r\n: # value below\r\n\r\n'
+    '  test -z "${TEST_TOKEN:-}"\r\n  fixture-literal-secret\r\n',
+]
+
+
+def test_yaml_multiline_secret_payloads_decode_as_literal_values():
+    environment, explicit = map(yaml.safe_load, YAML_MULTILINE_SECRET_PAYLOADS)
+    assert environment["environment"] == [
+        'PASSWORD= test -n "${TEST_TOKEN:-}" fixture-literal-secret',
+    ]
+    assert explicit["PASSWORD"] == 'test -z "${TEST_TOKEN:-}" fixture-literal-secret'
+
+
+@pytest.mark.parametrize("payload", YAML_MULTILINE_SECRET_PAYLOADS)
+def test_final_leak_check_detects_partially_masked_yaml_value(payload):
+    start = payload.index("test -")
+    end = payload.index("${", start) + len("${")
+    masked = payload[:start] + "<PASSWORD_1>" + payload[end:]
+
+    findings = RuPIIGuardrail()._classify_final_payload_leak_check_text(masked)
+
+    assert {finding["rule_id"] for finding in findings} == {"env_secret_assignment"}
+
+
 # The literal-only controls are synthetic and never reach a real provider.
 SHELL_LITERAL_SECRET_PAYLOADS = [
     'test -n "${JIRA_TOKEN:-jira-literal-secret}"',
@@ -228,6 +255,7 @@ SHELL_LITERAL_SECRET_PAYLOADS = [
     'test -n "${JIRA_TOKEN:-}"\nPASSWORD: jira-literal-secret',
     'test -n "${JIRA_TOKEN:-}"\n{"PASSWORD": "${OTHER_TOKEN:-}"}',
     'test -n "${JIRA_TOKEN:-}"\ntest -n "${OTHER_TOKEN:-jira-literal-secret}"',
+    *YAML_MULTILINE_SECRET_PAYLOADS,
 ]
 
 
