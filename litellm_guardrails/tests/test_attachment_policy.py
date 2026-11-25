@@ -128,6 +128,47 @@ async def test_pre_egress_inspects_original_attachment_before_dictionary_and_ana
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("call_type", CALL_TYPES)
+async def test_empty_shell_default_in_text_attachment_passes_both_stages(call_type):
+    guard = _guard()
+    script = '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\n'
+    request, _, outgoing = _request(call_type, script)
+
+    await guard.async_pre_call_hook(None, None, request, call_type)
+
+    guard._analyze_text.assert_awaited_once_with(script)
+    assert outgoing() == script
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_type", CALL_TYPES)
+@pytest.mark.parametrize("stage", ["pre", "final"])
+async def test_text_attachment_keeps_literal_assignment_checks(call_type, stage, monkeypatch):
+    guard = _guard()
+    script = '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\nPASSWORD=\'${OTHER_TOKEN:-}\'\n'
+    request, _, outgoing = _request(call_type, script)
+
+    if stage == "pre":
+        with pytest.raises(ProxyException) as error:
+            await guard.async_pre_call_hook(None, None, request, call_type)
+        details = error.value.provider_specific_fields["error"]
+        assert details["code"] == "pre_egress_policy_blocked"
+        guard._analyze_text.assert_not_awaited()
+    else:
+        # Attachments require both stages enabled. Isolate the final check
+        # without changing the attachment capability gate.
+        monkeypatch.setattr(guard, "_classify_pre_egress_policy_targets", lambda _: [])
+        with pytest.raises(litellm.UnprocessableEntityError) as error:
+            await guard.async_pre_call_hook(None, None, request, call_type)
+        details = error.value.response.json()["error"]
+        assert details["code"] == "final_payload_leak_check_blocked"
+        guard._analyze_text.assert_awaited_once_with(script)
+    assert "env_secret_assignment" in details["details"]["rules"]
+    assert outgoing() == script
+    assert not guard._redis.values
+
+
+@pytest.mark.asyncio
 async def test_final_filter_checks_after_dictionary_inside_base64():
     guard = _guard(final_payload_leak_check_canaries=("DemoCobalt",))
     request, _, _ = _request("acompletion", "DemoQuartz")

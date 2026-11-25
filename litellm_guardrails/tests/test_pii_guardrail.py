@@ -193,55 +193,41 @@ def _json_log_events(caplog, event):
     return events
 
 
-# Shell references that name a secret without containing one. Both proxy
-# stages must let them through unchanged.
-SHELL_REFERENCE_ONLY_PAYLOADS = [
+SHELL_EMPTY_DEFAULT_CHECKS = [
+    'test -n "${JIRA_TOKEN:-}"',
     'test -n "${JIRA_TOKEN:-}" || unavailable "JIRA_TOKEN is not set"',
     '  test -n "${CONFLUENCE_TOKEN:-}" || unavailable "CONFLUENCE_TOKEN is not set"',
-    'echo "${JIRA_TOKEN:-""}"',
-    "echo \"${JIRA_TOKEN:-''}\"",
-    'echo "${JIRA_TOKEN:=}"',
-    'echo "${JIRA_TOKEN=}"',
-    'echo "${JIRA_TOKEN:+}"',
-    'echo "${JIRA_TOKEN:?}"',
-    'echo "${JIRA_TOKEN:-$FALLBACK_TOKEN}"',
-    'echo "${JIRA_TOKEN:-${OTHER_TOKEN:-}}"',
-    'echo "${JIRA_TOKEN:0:4}"',
-    'echo "${JIRA_TOKEN: -4}"',
-    'export JIRA_TOKEN="${OTHER_TOKEN}"',
-    "JIRA_TOKEN=$OTHER_TOKEN",
-    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN}",
-    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN}\n  FEATURE: true",
-    'environment: {JIRA_TOKEN: "${JIRA_TOKEN:-}"}',
-    '{"JIRA_TOKEN": "${JIRA_TOKEN}"}',
+    '\ttest -z "${API_KEY:-}" || exit 1\r\n',
 ]
 
-# Literal values next to secret-like names, including literals hidden inside
-# shell expansions or next to an allowed reference. Both stages must block.
+
+# The literal-only controls are synthetic and never reach a real provider.
 SHELL_LITERAL_SECRET_PAYLOADS = [
-    'echo "${JIRA_TOKEN:-jira-literal-secret}"',
-    'echo "${JIRA_TOKEN:=jira-literal-secret}"',
-    'echo "${JIRA_TOKEN:+jira-literal-secret}"',
-    'echo "${JIRA_TOKEN=jira-literal-secret}"',
-    ': "${JIRA_TOKEN:?jira-literal-secret}"',
-    'echo "${JIRA_TOKEN:-"jira-literal-secret"}"',
-    'echo "${JIRA_TOKEN:-${OTHER_TOKEN:-jira-literal-secret}}"',
-    'echo "${JIRA_TOKEN:-$OTHER_TOKEN-jira-literal-secret}"',
-    'export JIRA_TOKEN="${OTHER_TOKEN}jira-literal-secret"',
-    'export JIRA_TOKEN="${OTHER_TOKEN} jira-literal-secret"',
-    'export JIRA_TOKEN="$(printf jira-literal-secret)"',
-    "JIRA_TOKEN=${JIRA_TOKEN:-}jira-literal-secret",
-    'JIRA_TOKEN=\\"jira-literal-secret\\"',
-    "environment:\n  JIRA_TOKEN: ${JIRA_TOKEN:-jira-literal-secret}",
-    "JIRA_TOKEN=$jira-literal-secret",
-    "PASSWORD: |\n  jira-literal-secret",
-    "PASSWORD: &anchor jira-literal-secret",
-    "PASSWORD: ${OTHER_TOKEN} jira-literal-secret",
-    "PASSWORD: ${OTHER_TOKEN};jira-literal-secret",
-    "environment:\n  PASSWORD: ${OTHER_TOKEN}\n    jira-literal-secret",
-    "environment:\n  PASSWORD: ${OTHER_TOKEN}\n\n    jira-literal-secret",
-    "environment: {JIRA_TOKEN: ${JIRA_TOKEN}, CONFLUENCE_TOKEN: jira-literal-secret}",
-    '{"JIRA_TOKEN": "${JIRA_TOKEN}", "CONFLUENCE_TOKEN": "jira-literal-secret"}',
+    'test -n "${JIRA_TOKEN:-jira-literal-secret}"',
+    'test -n "${JIRA_TOKEN:=}"',
+    'test -n "${JIRA_TOKEN:-${OTHER_TOKEN:-}}"',
+    'test -n "${JIRA_TOKEN:0:4}"',
+    "test -n '${JIRA_TOKEN:-}'",
+    r'test -n "\${JIRA_TOKEN:-}"',
+    'test -n "${JIRA_TOKEN:-}"suffix',
+    'test -n "${JIRA_TOKEN:-}" || PASSWORD="$OTHER_TOKEN"',
+    'printf "%s" \\\ntest -n "${JIRA_TOKEN:-}"',
+    "PASSWORD='$OTHER_TOKEN'",
+    "PASSWORD='${OTHER_TOKEN:-}'",
+    'export JIRA_TOKEN="${OTHER_TOKEN}"',
+    'JIRA_TOKEN=$OTHER_TOKEN',
+    'PASSWORD: "${OTHER_TOKEN:-}"',
+    'PASSWORD: ${OTHER_TOKEN}',
+    '{"PASSWORD": "${OTHER_TOKEN:-}"}',
+    'environment: {PASSWORD: "${OTHER_TOKEN:-}"}',
+    'PASSWORD: |\n  test -n "${JIRA_TOKEN:-}"',
+    'PASSWORD:\n  test -n "${JIRA_TOKEN:-}"',
+    '#!/usr/bin/env bash\nPASSWORD: # value below\n\n  test -n "${JIRA_TOKEN:-}"',
+    'environment:\n  PASSWORD: ${OTHER_TOKEN}\n    jira-literal-secret',
+    'test -n "${JIRA_TOKEN:-}"\nPASSWORD=jira-literal-secret',
+    'test -n "${JIRA_TOKEN:-}"\nPASSWORD: jira-literal-secret',
+    'test -n "${JIRA_TOKEN:-}"\n{"PASSWORD": "${OTHER_TOKEN:-}"}',
+    'test -n "${JIRA_TOKEN:-}"\ntest -n "${OTHER_TOKEN:-jira-literal-secret}"',
 ]
 
 
@@ -4191,7 +4177,7 @@ class TestPreCallHook:
         guardrail._redis.setex.assert_not_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("payload", SHELL_REFERENCE_ONLY_PAYLOADS)
+    @pytest.mark.parametrize("payload", SHELL_EMPTY_DEFAULT_CHECKS)
     @pytest.mark.parametrize("form", range(5))
     async def test_shell_secret_references_pass_both_stages(self, payload, form):
         guardrail = RuPIIGuardrail()
@@ -4269,7 +4255,7 @@ class TestPreCallHook:
 
     @pytest.mark.parametrize(
         ("payload", "expected"),
-        [(payload, False) for payload in SHELL_REFERENCE_ONLY_PAYLOADS]
+        [(payload, False) for payload in SHELL_EMPTY_DEFAULT_CHECKS]
         + [(payload, True) for payload in SHELL_LITERAL_SECRET_PAYLOADS],
     )
     def test_both_stages_classify_shell_forms_alike(self, payload, expected):
@@ -4298,25 +4284,15 @@ class TestPreCallHook:
         )
 
     def test_shell_reference_scan_limit_fails_closed(self):
-        references = "${OTHER_TOKEN}" * (pii_guardrail._SHELL_VALUE_SCAN_LIMIT // 14 + 1)
+        line = 'test -n "${JIRA_TOKEN:-}"'
+        limit = pii_guardrail._SHELL_REFERENCE_LINE_LIMIT
 
+        assert not pii_guardrail._env_secret_assignment_present(line)
         assert not pii_guardrail._env_secret_assignment_present(
-            'export JIRA_TOKEN="${OTHER_TOKEN}"'
+            line.ljust(limit)
         )
         assert pii_guardrail._env_secret_assignment_present(
-            f"export JIRA_TOKEN={references}"
-        )
-
-    def test_shell_reference_skip_limit_applies_across_both_patterns(self):
-        limit = pii_guardrail._ENV_SECRET_REFERENCE_SKIP_LIMIT
-        assignments = ['JIRA_TOKEN=$OTHER_TOKEN'] * (limit // 2)
-        mappings = ['JIRA_TOKEN: ${JIRA_TOKEN}'] * (limit - len(assignments))
-
-        assert not pii_guardrail._env_secret_assignment_present(
-            "\n".join(assignments + mappings[:-1])
-        )
-        assert pii_guardrail._env_secret_assignment_present(
-            "\n".join(assignments + mappings)
+            line.ljust(limit + 1)
         )
 
     def test_pre_egress_block_metric_increments_once_per_category(self):
