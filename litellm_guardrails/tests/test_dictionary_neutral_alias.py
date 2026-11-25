@@ -15,6 +15,10 @@ from litellm_guardrails.streaming_restoration import restore_arguments, restore_
 from litellm_guardrails.tests.test_anthropic_restoration import (
     AUTH, guard, message, chunks, events, collect,
 )
+from litellm_guardrails.tests.test_attachment_policy import (
+    _guard as attachment_guard,
+    _request as attachment_request,
+)
 
 
 RULE = {
@@ -22,6 +26,10 @@ RULE = {
     'replacement': 'Ладога Финанс',
     'match': {'case_sensitive': False, 'whole_phrase': True}, 'restore': True,
 }
+SYNTHETIC_RULE = {
+    'id': 'fableworkshop_fixture', 'source': 'Fable Workshop', 'replacement': 'Cedar Studio',
+}
+ESCAPED_NEUTRAL_TAG = r'\u003cDICT_1\u003e'
 
 
 def policy(*rules):
@@ -74,6 +82,83 @@ def test_neutral_tags_restore_json_data_keys_and_values_without_changing_case():
     mapping = RestorationMapping(result.mapping, json_keys={'<DICT_1>'})
     assert json.loads(restore_arguments(result.text, mapping)) == original
     assert 'ALFABANK' not in result.text
+
+
+def test_direct_dictionary_apply_reserves_an_escaped_json_key():
+    text = '{"Fable Workshop":1,"FABLE WORKSHOP":2,"' + ESCAPED_NEUTRAL_TAG + '":3}'
+    result = policy(SYNTHETIC_RULE).apply(text)
+
+    assert json.loads(result.text) == {'Cedar Studio': 1, '<DICT_2>': 2, '<DICT_1>': 3}
+    mapping = RestorationMapping(result.mapping, json_keys=set(result.mapping))
+    assert json.loads(restore_arguments(result.text, mapping)) == json.loads(text)
+
+
+def test_dictionary_apply_keeps_escape_sequences_in_plain_text():
+    text = 'Fable Workshop / FABLE WORKSHOP ' + ESCAPED_NEUTRAL_TAG
+    result = policy(SYNTHETIC_RULE).apply(text)
+
+    assert result.text == 'Cedar Studio / <DICT_1> ' + ESCAPED_NEUTRAL_TAG
+    assert restore_text(result.text, result.mapping) == text
+
+
+def test_json_reference_budget_only_applies_when_a_neutral_tag_is_needed(monkeypatch):
+    from litellm_guardrails import dictionary_request_plan
+
+    monkeypatch.setattr(dictionary_request_plan, 'MAX_REFERENCE_CHARACTERS', 1)
+    kept = '{"kept":"' + ESCAPED_NEUTRAL_TAG + '"}'
+    substitutions = policy(SYNTHETIC_RULE)
+    ordinary = substitutions.validate_request(['Fable Workshop', kept])
+    assert substitutions.apply('Fable Workshop', request_plan=ordinary).text == 'Cedar Studio'
+
+    ambiguous = 'Fable Workshop / FABLE WORKSHOP'
+    plan = substitutions.validate_request([ambiguous, kept])
+    with pytest.raises(DictionaryPolicyAmbiguousRequestError, match='planning limit'):
+        substitutions.apply(ambiguous, request_plan=plan)
+
+
+@pytest.mark.asyncio
+async def test_json_attachment_reserves_escaped_tag_for_message_text():
+    g = attachment_guard()
+    g.dictionary_substitution_policy = policy(SYNTHETIC_RULE)
+    original = '{"kept":"' + ESCAPED_NEUTRAL_TAG + '"}'
+    request, _, read_attachment = attachment_request('aresponses', original, json_file=True)
+    block = {'type': 'input_text', 'text': 'Fable Workshop / FABLE WORKSHOP'}
+    request['input'][0]['content'].insert(0, block)
+
+    await g.async_pre_call_hook(None, None, request, 'aresponses')
+
+    assert block['text'] == 'Cedar Studio / <DICT_2>'
+    assert json.loads(read_attachment()) == {'kept': '<DICT_1>'}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('api', ['acompletion', 'aresponses'])
+@pytest.mark.parametrize('reverse', [False, True])
+@pytest.mark.parametrize('normalized', [False, True])
+async def test_escaped_literal_reserved_across_native_tool_arguments(api, reverse, normalized):
+    g = guard()
+    g.dictionary_substitution_policy = policy(SYNTHETIC_RULE)
+    g._analyze_text = AsyncMock(return_value=[])
+    arguments = '{"kept":"' + ESCAPED_NEUTRAL_TAG + '"}'
+    text = 'Fable Workshop / FABLE WORKSHOP'
+    if api == 'aresponses':
+        user = {'role': 'user', 'content': text}
+        tool = {'type': 'function_call', 'call_id': 'call-fixture', 'name': 'inspect', 'arguments': arguments}
+        request = {'input': [tool, user] if reverse else [user, tool]}
+    else:
+        user = {'role': 'user', 'content': text}
+        tool = {'role': 'assistant', 'tool_calls': [
+            {'id': 'call-fixture', 'type': 'function', 'function': {'name': 'inspect', 'arguments': arguments}},
+        ]}
+        request = {'messages': [tool, user] if reverse else [user, tool]}
+
+    await g.async_pre_call_hook(None, None, request, api)
+
+    assert user['content'] == 'Cedar Studio / <DICT_2>'
+    mapping = decode_mapping(next(iter(g._redis.values.values())))
+    returned = json.dumps(json.loads(arguments)) if normalized else arguments
+    assert json.loads(restore_arguments(returned, mapping)) == {'kept': '<DICT_1>'}
+    assert restore_text(user['content'], mapping) == text
 
 
 def test_single_spelling_and_dictionary_ambiguity_behavior_are_preserved():
