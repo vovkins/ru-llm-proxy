@@ -2,6 +2,7 @@
 
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from functools import cached_property
 import hashlib
 import json
 import re
@@ -18,6 +19,7 @@ MAX_PLANNED_ORIGINALS = 10000
 MAX_ALLOCATION_ATTEMPTS = 4096
 _NATIVE_MASK = re.compile(r'<[A-Z][A-Z0-9_]*_[1-9][0-9]*>')
 _FOLDED_NATIVE_MASK = re.compile(r'<[a-z][a-z0-9_]*_[1-9][0-9]*>')
+_NEUTRAL_DICTIONARY_MASK = re.compile(r'<DICT_[1-9][0-9]*>')
 
 
 @dataclass(frozen=True, repr=False)
@@ -27,6 +29,11 @@ class DictionaryRequestPlan:
     irreversible_outputs: frozenset[str]
     matches_by_text: object
     assembled_placeholders: frozenset[str] = frozenset()
+    reference_texts: tuple[str, ...] = ()
+
+    @cached_property
+    def literal_dictionary_placeholders(self) -> frozenset[str]:
+        return dictionary_literal_placeholders(self.reference_texts)
 
     def irreversible_placeholders(self):
         return self.assembled_placeholders | {
@@ -74,6 +81,19 @@ def _reference_spellings(texts):
                 stack.extend(item.values())
             elif isinstance(item, list):
                 stack.extend(item)
+
+
+def dictionary_literal_placeholders(texts) -> frozenset[str]:
+    """Reserve neutral tags that can be decoded by the JSON restorer."""
+    # Only Unicode escapes can hide the ASCII characters in a neutral tag.
+    escaped_json = dict.fromkeys(
+        text for text in texts
+        if '\\u' in text and text.lstrip().startswith(('{', '[', '"'))
+    )
+    return frozenset(
+        match.group() for spelling in _reference_spellings(escaped_json)
+        for match in _NEUTRAL_DICTIONARY_MASK.finditer(spelling)
+    )
 
 
 def _fold_output(text, ranges, start, end, escapes=()):

@@ -398,10 +398,37 @@ async def test_dictionary_conflict_is_versioned_without_rewriting_parent(harness
         {"id": "company", "source": "Company Alpha", "replacement": "<COMPANY>", "restore": True},
     ])
     await complete(harness, "Company Alpha", "parent", "<COMPANY>")
-    captured, output, _ = await complete(harness, "COMPANY ALPHA", "child", "<COMPANY> / <DICT_COMPANY_1>", previous="parent")
-    assert captured == "<DICT_COMPANY_1>"
+    captured, output, _ = await complete(harness, "COMPANY ALPHA", "child", "<COMPANY> / <DICT_1>", previous="parent")
+    assert captured == "<DICT_1>"
     assert output == "Company Alpha / COMPANY ALPHA"
     assert len(store.snapshots) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stream', [False, True])
+async def test_child_reserves_escaped_tag_while_restoring_a_legacy_parent(harness, stream):
+    from litellm_guardrails.dictionary_policy import DictionarySubstitutionPolicy
+    from litellm_guardrails.restoration_mapping import RestorationMapping
+
+    guardrail, store, _, auth = harness
+    guardrail.dictionary_substitutions_enabled = True
+    guardrail.dictionary_substitution_policy = DictionarySubstitutionPolicy.from_config([
+        {'id': 'fableworkshop_fixture', 'source': 'Fable Workshop', 'replacement': 'Cedar Studio'},
+    ])
+    legacy = '<DICT_FABLEWORKSHOP_FIXTURE_1>'
+    parent = RestorationMapping({'Cedar Studio': 'Fable Workshop', legacy: 'FABLE WORKSHOP'})
+    owner = store.owner(auth.token)
+    await store.save(owner, 'gpt-6-luna', 'parent', parent)
+    source = r'{"value":"fable workshop","kept":"\u003cDICT_1\u003e"}'
+    echo = json.dumps({'value': '<DICT_2>', 'legacy': legacy, 'kept': '<DICT_1>'})
+
+    captured, result, _ = await complete(
+        harness, source, 'child', echo, previous='parent', stream=stream, arguments=True,
+    )
+
+    assert json.loads(captured) == {'value': '<DICT_2>', 'kept': '<DICT_1>'}
+    assert json.loads(result) == {'value': 'fable workshop', 'legacy': 'FABLE WORKSHOP', 'kept': '<DICT_1>'}
+    assert await store.load(owner, 'gpt-6-luna', 'parent') == parent
 
 
 @pytest.mark.asyncio
