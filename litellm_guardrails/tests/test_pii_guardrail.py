@@ -194,26 +194,40 @@ def _json_log_events(caplog, event):
     return events
 
 
+BASH_WITH_UNRELATED_YAML = (
+    "#!/usr/bin/env bash\ncat <<'CONFIG'\n? example\n: value\nCONFIG\n"
+    'test -n "${TEST_TOKEN:-}" || exit 1\n'
+)
+
 SHELL_EMPTY_DEFAULT_CHECKS = [
     'test -n "${JIRA_TOKEN:-}"',
     'test -n "${JIRA_TOKEN:-}" || unavailable "JIRA_TOKEN is not set"',
     '  test -n "${CONFLUENCE_TOKEN:-}" || unavailable "CONFLUENCE_TOKEN is not set"',
     '\ttest -z "${API_KEY:-}" || exit 1\r\n',
+    BASH_WITH_UNRELATED_YAML,
 ]
 
 
+YAML_ENVIRONMENT_SECRET_PAYLOADS = [
+    'environment:\n  - ' + properties
+    + 'PASSWORD=\n    test -n "${TEST_TOKEN:-}"\n    fixture-literal-secret\n'
+    for properties in ("", "&setting ", "!!str ", "&setting\n    !!str ")
+]
 YAML_MULTILINE_SECRET_PAYLOADS = [
-    'environment:\n  - PASSWORD=\n    test -n "${TEST_TOKEN:-}"\n    fixture-literal-secret\n',
+    *YAML_ENVIRONMENT_SECRET_PAYLOADS,
+    'template: &setting >-\n  PASSWORD=\n  test -n "${TEST_TOKEN:-}"\n  fixture-literal-secret\n'
+    'environment:\n  - *setting\n',
     '? "PASSWORD" # explicit key\r\n: # value below\r\n\r\n'
     '  test -z "${TEST_TOKEN:-}"\r\n  fixture-literal-secret\r\n',
 ]
 
 
 def test_yaml_multiline_secret_payloads_decode_as_literal_values():
-    environment, explicit = map(yaml.safe_load, YAML_MULTILINE_SECRET_PAYLOADS)
-    assert environment["environment"] == [
-        'PASSWORD= test -n "${TEST_TOKEN:-}" fixture-literal-secret',
-    ]
+    *environments, explicit = map(yaml.safe_load, YAML_MULTILINE_SECRET_PAYLOADS)
+    for environment in environments:
+        assert environment["environment"] == [
+            'PASSWORD= test -n "${TEST_TOKEN:-}" fixture-literal-secret',
+        ]
     assert explicit["PASSWORD"] == 'test -z "${TEST_TOKEN:-}" fixture-literal-secret'
 
 

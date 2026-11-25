@@ -17,7 +17,7 @@ from litellm_guardrails.attachment_policy import (
 from litellm_guardrails.pii_guardrail import HTTPException, ProxyException, RuPIIGuardrail
 from litellm_guardrails.tests.test_anthropic_restoration import message
 from litellm_guardrails.tests.test_pii_guardrail import (
-    YAML_MULTILINE_SECRET_PAYLOADS, _entity, _MemoryRedis,
+    BASH_WITH_UNRELATED_YAML, YAML_MULTILINE_SECRET_PAYLOADS, _entity, _MemoryRedis,
 )
 from litellm_guardrails.tests.test_responses_history import response
 
@@ -131,9 +131,12 @@ async def test_pre_egress_inspects_original_attachment_before_dictionary_and_ana
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("call_type", CALL_TYPES)
-async def test_empty_shell_default_in_text_attachment_passes_both_stages(call_type):
+@pytest.mark.parametrize("script", [
+    '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\n',
+    BASH_WITH_UNRELATED_YAML,
+])
+async def test_empty_shell_default_in_text_attachment_passes_both_stages(call_type, script):
     guard = _guard()
-    script = '#!/usr/bin/env bash\ntest -n "${JIRA_TOKEN:-}"\n'
     request, _, outgoing = _request(call_type, script)
 
     await guard.async_pre_call_hook(None, None, request, call_type)
