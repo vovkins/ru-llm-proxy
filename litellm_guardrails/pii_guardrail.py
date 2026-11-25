@@ -20,6 +20,7 @@ from weakref import WeakKeyDictionary
 import anyio
 import httpx
 import litellm
+import yaml
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.caching.caching import DualCache
@@ -275,13 +276,143 @@ _ENV_SECRET_KEY_PATTERN = (
 )
 _ENV_SECRET_ASSIGNMENT_RE = re.compile(
     rf"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{{,][ \t]*[\"']?)"
-    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*[\"']?\S+"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*=[ \t]*\S"
 )
 _ENV_SECRET_YAML_MAPPING_RE = re.compile(
-    rf"(?m)(?:^[ \t-]*[\"']?|[\[{{,][ \t]*[\"']?)"
-    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*[\"']?\S+"
+    rf"(?m)(?:^[ \t-]*[\"']?|(?:(?P<brace>\{{)|[\[,])[ \t]*[\"']?)"
+    rf"(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*:[ \t]*\S"
+)
+# Keep detecting a continued secret in snippets that are not complete YAML
+# documents, including after masking has changed the value's syntax.
+_YAML_BLANK_OR_COMMENT_LINE = r"[ \t]*(?:#[^\r\n]*)?\r?\n"
+_YAML_NODE_PROPERTIES = r"(?:[&!][^ \t\r\n]+(?:[ \t]+|\r?\n[ \t]+))*"
+_YAML_ENV_SECRET_KEY = rf"{_YAML_NODE_PROPERTIES}[\"']?(?:{_ENV_SECRET_KEY_PATTERN})[\"']?"
+_ENV_SECRET_YAML_MULTILINE_VALUE_RE = re.compile(
+    rf"(?m)^(?P<indent>[ \t]*)"
+    rf"(?:-[ \t]+{_YAML_ENV_SECRET_KEY}[ \t]*="
+    rf"|{_YAML_ENV_SECRET_KEY}[ \t]*:"
+    rf"|\?[ \t]+{_YAML_ENV_SECRET_KEY}[ \t]*(?:#[^\r\n]*)?\r?\n"
+    rf"(?:{_YAML_BLANK_OR_COMMENT_LINE})*(?P=indent):)"
+    rf"[ \t]*(?:#[^\r\n]*)?\r?\n"
+    rf"(?:{_YAML_BLANK_OR_COMMENT_LINE})*(?P=indent)[ \t]+[^ \t\r\n#]"
 )
 _ENV_SECRET_KEY_RE = re.compile(rf"^(?:{_ENV_SECRET_KEY_PATTERN})$")
+_YAML_CONTAINER_HINT_RE = re.compile(
+    r"(?m)^[ \t]*(?:[\[{'\"]|[-?](?=[ \t\r\n]|$)|[\w.-]+[ \t]*:(?=[ \t\r\n]|$))"
+)
+_YAML_ENV_SECRET_HINT_RE = re.compile(
+    rf"\benvironment[\"']?[ \t]*:|\b(?:{_ENV_SECRET_KEY_PATTERN})[\"']?[ \t]*[=:]"
+)
+_YAML_EVENT_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_YAML_CONTEXT_CHARACTER_LIMIT = 256 * 1024
+_YAML_CONTEXT_EVENT_LIMIT = 8192
+_YAML_CONTEXT_DEPTH_LIMIT = 64
+# Recognize only a whole test command line, optionally with a simple failure
+# handler. The restricted suffix covers the originating script without skipping
+# a second assignment in an arbitrary shell command on the same line.
+_SHELL_EMPTY_DEFAULT_TEST_RE = re.compile(
+    r'[ \t]*test[ \t]+-[nz][ \t]+"(?P<reference>\$\{[A-Za-z_][A-Za-z0-9_]*:-\})"'
+    r'(?:[ \t]*\|\|[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]+(?:[0-9]+|"[A-Za-z0-9_ ]+"))?'
+    r"[ \t]*\r?\Z"
+)
+_SHELL_REFERENCE_LINE_LIMIT = 4096
+_ENV_SECRET_REFERENCE_SKIP_LIMIT = 256
+
+
+def _is_empty_default_test_reference(text: str, brace: int) -> bool:
+    if brace <= 0 or text[brace - 1] != "$":
+        return False
+
+    line_start = text.rfind("\n", 0, brace) + 1
+    if text[max(0, line_start - 3):line_start].endswith(("\\\n", "\\\r\n")):
+        return False
+    line_end = text.find("\n", line_start, line_start + _SHELL_REFERENCE_LINE_LIMIT + 1)
+    if line_end == -1:
+        line_end = len(text)
+    if line_end - line_start > _SHELL_REFERENCE_LINE_LIMIT:
+        return False
+
+    check = _SHELL_EMPTY_DEFAULT_TEST_RE.match(text, line_start, line_end)
+    return check is not None and check.start("reference") == brace - 1
+
+
+@dataclass
+class _YamlMapping:
+    expects_key: bool = True
+    secret_key: bool = False
+
+
+def _yaml_has_env_secret_value(text: str) -> bool:
+    """Inspect YAML node roles without constructing tagged objects or expanding aliases."""
+    if len(text) > _YAML_CONTEXT_CHARACTER_LIMIT:
+        return True
+    containers: list[_YamlMapping | None] = []
+    scalar_anchors: dict[str, str] = {}
+    try:
+        for count, event in enumerate(yaml.parse(text, Loader=_YAML_EVENT_LOADER), 1):
+            if count > _YAML_CONTEXT_EVENT_LIMIT or len(containers) > _YAML_CONTEXT_DEPTH_LIMIT:
+                return True
+            if isinstance(event, yaml.events.DocumentStartEvent):
+                scalar_anchors.clear()
+            if isinstance(event, (yaml.events.MappingEndEvent, yaml.events.SequenceEndEvent)):
+                containers.pop()
+            if not isinstance(event, yaml.events.NodeEvent):
+                continue
+
+            value = None
+            if isinstance(event, yaml.events.ScalarEvent):
+                value = event.value
+                if event.anchor is not None:
+                    scalar_anchors[event.anchor] = value
+            elif isinstance(event, yaml.events.AliasEvent):
+                value = scalar_anchors.get(event.anchor)
+
+            if containers:
+                parent = containers[-1]
+                if parent is None and value is not None:
+                    key, separator, literal = value.partition("=")
+                    if separator and literal.strip() and _ENV_SECRET_KEY_RE.fullmatch(key.strip()):
+                        return True
+                if parent is not None:
+                    if parent.expects_key:
+                        parent.secret_key = (
+                            value is not None and _ENV_SECRET_KEY_RE.fullmatch(value) is not None
+                        )
+                    elif parent.secret_key and (value is None or value.strip()):
+                        return True
+                    parent.expects_key = not parent.expects_key
+
+            if isinstance(event, yaml.events.MappingStartEvent):
+                containers.append(_YamlMapping())
+            elif isinstance(event, yaml.events.SequenceStartEvent):
+                containers.append(None)
+    except yaml.YAMLError:
+        # Mixed shell/YAML text is common. Confirmed assignments in those
+        # fragments are handled by the scoped lexical checks above.
+        pass
+    return False
+
+
+def _env_secret_assignment_present(text: str) -> bool:
+    """Detect secret assignments, ignoring a narrow Bash/YAML syntax overlap."""
+    # Real assignments keep their original policy regardless of value spelling.
+    if _ENV_SECRET_ASSIGNMENT_RE.search(text) or _ENV_SECRET_YAML_MULTILINE_VALUE_RE.search(text):
+        return True
+
+    shell_reference_seen = False
+    for count, match in enumerate(_ENV_SECRET_YAML_MAPPING_RE.finditer(text), 1):
+        if count >= _ENV_SECRET_REFERENCE_SKIP_LIMIT:
+            return True
+        if not _is_empty_default_test_reference(text, match.start("brace")):
+            return True
+        shell_reference_seen = True
+    if _YAML_CONTAINER_HINT_RE.search(text) is None:
+        return False
+    return (
+        shell_reference_seen or _YAML_ENV_SECRET_HINT_RE.search(text) is not None
+    ) and _yaml_has_env_secret_value(text)
+
+
 _ENV_CREDENTIAL_URL_RE = re.compile(
     r"(?m)(?:^[ \t]*(?:-[ \t]*)?(?:export[ \t]+)?[\"']?|[\[{,][ \t]*[\"']?)"
     r"[A-Z][A-Z0-9_]*"
@@ -2030,8 +2161,7 @@ class RuPIIGuardrail(CustomGuardrail):
         seen_rules: set[str] = set()
 
         if (
-            _ENV_SECRET_ASSIGNMENT_RE.search(text)
-            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            _env_secret_assignment_present(text)
             or _ENV_CREDENTIAL_URL_RE.search(text)
             or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
         ):
@@ -2163,8 +2293,7 @@ class RuPIIGuardrail(CustomGuardrail):
             )
 
         if (
-            _ENV_SECRET_ASSIGNMENT_RE.search(text)
-            or _ENV_SECRET_YAML_MAPPING_RE.search(text)
+            _env_secret_assignment_present(text)
             or _ENV_CREDENTIAL_URL_RE.search(text)
             or _ENV_CREDENTIAL_URL_YAML_MAPPING_RE.search(text)
             or _RAW_CREDENTIAL_URL_RE.search(text)

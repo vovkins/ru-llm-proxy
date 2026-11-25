@@ -81,7 +81,7 @@ async def test_paths_short_passwords_and_escaping(text):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('text', [
-    'PWD=$(get-secret)', 'PWD=${REAL_VALUE}', 'PWD="line1\nline2"',
+    'PWD=$(get-secret)', 'PWD=${REAL_VALUE}', 'PWD=${REAL_VALUE:-literal-secret}', 'PWD="line1\nline2"',
     'PWD=secret; echo other', 'PWD=secret | cat', '{"PWD":1234}',
     "config = {'PWD': 'literal-secret'}", 'PASSWORD: |\n  raw-secret',
     'PASSWORD: >-\n  raw-secret', 'PASSWORD: &anchor',
@@ -100,6 +100,14 @@ async def test_unsupported_or_other_policy_remains_blocked(text):
     with pytest.raises(Exception) as caught: await process(g, text)
     assert getattr(caught.value, 'status_code', None) == 422
     g._analyze_text.assert_not_awaited()
+
+@pytest.mark.asyncio
+async def test_empty_default_check_follows_default_policy():
+    text = 'test -n "${JIRA_TOKEN:-}"'
+    g = guard()
+    data, _ = await process(g, text)
+    assert data['messages'][0]['content'] == text
+    g._analyze_text.assert_awaited_once_with(text)
 
 @pytest.mark.asyncio
 async def test_default_class_unchanged():
