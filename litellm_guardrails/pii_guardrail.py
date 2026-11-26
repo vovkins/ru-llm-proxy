@@ -3608,6 +3608,7 @@ class RuPIIGuardrail(CustomGuardrail):
     @staticmethod
     def _clear_inbound_pii_metadata(data: dict) -> None:
         """Remove caller-supplied guardrail-internal metadata from a new request."""
+        reporting.clear_inbound_information(data)
         transport_metadata = data.get("litellm_metadata")
         if isinstance(transport_metadata, dict):
             transport_metadata.pop(TRANSPORT_ID, None)
@@ -4016,12 +4017,14 @@ class RuPIIGuardrail(CustomGuardrail):
         decision: reporting.Decision = {}
         decision_token = _STANDARD_LOGGING_DECISION.set(decision)
         report_data = data
+        refused = False
         try:
             result = await self._run_pre_call(user_api_key_dict, cache, data, call_type, started_at)
             if isinstance(result, dict):
                 report_data = result
             return result
         except Exception as error:
+            refused = True
             if "policy_result" not in decision:
                 self._set_logging_decision("guardrail_error", failure_operation="preprocessing",
                                            error_type=type(error).__name__)
@@ -4029,6 +4032,8 @@ class RuPIIGuardrail(CustomGuardrail):
         finally:
             _STANDARD_LOGGING_DECISION.reset(decision_token)
             self._write_guardrail_information(report_data, "pre_call", decision, started_wall, started_at)
+            if refused:
+                reporting.reconcile_spend_information(report_data, error=True)
 
     async def _run_pre_call(self, user_api_key_dict, cache, data, call_type, started_at):
         self._clear_inbound_pii_metadata(data)
@@ -4679,7 +4684,7 @@ class RuPIIGuardrail(CustomGuardrail):
             )
             self._set_logging_decision(
                 policy_result, entity_counts=entity_counts_for_log,
-                rules=dictionary_rule_counts, rule_counts=dictionary_rule_counts,
+                dictionary_substitution_count=sum(dictionary_rule_counts.values()),
             )
             PII_PRE_CALLS.labels(result=policy_result).inc()
             self._log_gateway_audit(
@@ -4701,7 +4706,9 @@ class RuPIIGuardrail(CustomGuardrail):
         else:
             policy_result = "dictionary_substituted" if dictionary_rule_counts else "clean"
             PII_PRE_CALLS.labels(result=policy_result).inc()
-            self._set_logging_decision(policy_result, rules=dictionary_rule_counts, rule_counts=dictionary_rule_counts)
+            self._set_logging_decision(
+                policy_result, dictionary_substitution_count=sum(dictionary_rule_counts.values()),
+            )
             self._log_gateway_audit(
                 request_id=request_id,
                 data=data,
@@ -4743,9 +4750,11 @@ class RuPIIGuardrail(CustomGuardrail):
         started_perf, started_wall = time.perf_counter(), time.time()
         decision: reporting.Decision = {}
         token = _STANDARD_LOGGING_DECISION.set(decision)
+        failed = False
         try:
             await self._post_call_success_with_logging(data, user_api_key_dict, response)
         except BaseException as error:
+            failed = True
             if decision.get("status") != reporting.FAILED:
                 self._set_logging_decision(
                     "post_call_failure", error_type=type(error).__name__, failure_operation="response_restoration",
@@ -4754,6 +4763,8 @@ class RuPIIGuardrail(CustomGuardrail):
         finally:
             try:
                 self._write_guardrail_information(data, "post_call", decision, started_wall, started_perf)
+                if failed:
+                    reporting.reconcile_spend_information(data, error=True)
             finally:
                 _STANDARD_LOGGING_DECISION.reset(token)
 
@@ -4937,6 +4948,8 @@ class RuPIIGuardrail(CustomGuardrail):
                 self._write_guardrail_information(
                     request_data, "post_call", decision, started_wall, started_perf,
                 )
+                if "input" in request_data:
+                    reporting.reconcile_spend_information(request_data)
 
     async def _stream_response_with_logging(
         self,
@@ -5026,6 +5039,11 @@ class RuPIIGuardrail(CustomGuardrail):
             if restorer:
                 for item in restorer.finish():
                     yield item
+                # Diagnose a bare EOF before cleanup can report a secondary
+                # close/delete error. Transport adapters may already have
+                # raised IncompleteUpstreamStream; this covers plain iterators.
+                if not (restorer.terminated or anthropic.terminated):
+                    reporting.stream_failure(decision, "incomplete", "upstream_protocol")
         except IncompleteUpstreamStream as error:
             reporting.stream_failure(decision, "incomplete", "upstream_protocol", error)
             if not messages_route:

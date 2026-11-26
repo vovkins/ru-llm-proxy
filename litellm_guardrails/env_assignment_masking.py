@@ -434,9 +434,12 @@ class RuEnvAssignmentGuardrail(base.RuPIIGuardrail):
                     masked = dict(decision.get("entity_counts", {}))
                     if state.password_count:
                         masked["PASSWORD"] = masked.get("PASSWORD", 0) + state.password_count
-                    rule_counts = decision.get("rule_counts", {})
-                    reporting.set_decision("masked_and_dictionary_substituted" if rule_counts else "masked",
-                                           entity_counts=masked, rules=rule_counts, rule_counts=rule_counts)
+                    dictionary_count = decision.get("dictionary_substitution_count", 0)
+                    reporting.set_decision(
+                        "masked_and_dictionary_substituted" if dictionary_count else "masked",
+                        entity_counts=masked,
+                        dictionary_substitution_count=dictionary_count,
+                    )
                 base._safe_log(logging.INFO, "env_assignment_masked", request_id=request_id,
                                name_count=len({name for aliases in state.fields.values() for name in aliases.values()}),
                                value_count=len(state.mapping), policy_version="env54-v1")

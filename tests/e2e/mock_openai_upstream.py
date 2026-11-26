@@ -633,13 +633,14 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(RESPONSE_DELAY_SECONDS)
             if payload.get("stream") is True:
                 created = int(time.time())
+                stream_id = f"chatcmpl-{uuid.uuid4().hex if os.getenv('MOCK_UNIQUE_CHAT_IDS') == 'true' else DEPLOYMENT_ID}"
                 if failure_mode == "stream_disconnect":
                     self._write_sse(
                         [
                             (
                                 "",
                                 {
-                                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                    "id": stream_id,
                                     "object": "chat.completion.chunk",
                                     "created": created,
                                     "model": "mock-chat",
@@ -663,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                         (
                             "",
                             {
-                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",
@@ -682,7 +683,7 @@ class Handler(BaseHTTPRequestHandler):
                         (
                             "",
                             {
-                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",

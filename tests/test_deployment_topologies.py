@@ -929,3 +929,44 @@ def test_topology_captures_before_cleanup_without_masking_original_failure(topol
     assert gate.result["status"] == "failed"
     if collection_fails:
         assert gate.result["diagnostics"] == {"status": "failed", "error_type": "OSError"}
+
+
+def test_analyzer_startup_diagnosis_only_publishes_known_codes(topology_module):
+    event = {"event": "presidio_ner_startup_failed", "phase": "model_loading",
+             "failure_class": "model_load_failed", "request": "DO_NOT_PRINT"}
+    log = b"unstructured DO_NOT_PRINT\n" + json.dumps(event).encode() + b"\n"
+    assert topology_module.analyzer_startup_diagnosis(log) == {
+        "phase": "model_loading", "failure_class": "model_load_failed",
+    }
+    event["phase"] = "private_value"
+    event["failure_class"] = "DO_NOT_PRINT"
+    assert topology_module.analyzer_startup_diagnosis(json.dumps(event).encode()) == {
+        "phase": "unknown", "failure_class": "unknown",
+    }
+    assert topology_module.analyzer_startup_diagnosis(b"no startup event") is None
+
+
+def test_topology_capture_reports_analyzer_exit_and_safe_failure(topology_module, tmp_path, monkeypatch):
+    gate = make_diagnostic_gate(topology_module, tmp_path, monkeypatch)
+    row = {
+        "Id": "b" * 64, "Name": "/test-presidio-analyzer-1", "Image": "sha256:test",
+        "Config": {"Labels": {"com.docker.compose.service": "presidio-analyzer"}},
+        "State": {"Status": "exited", "ExitCode": 137, "OOMKilled": True},
+        "RestartCount": 1, "NetworkSettings": {"Networks": {}},
+    }
+    gate.last_context = SimpleNamespace(containers=lambda: [row])
+    event = {"event": "presidio_ner_startup_failed", "phase": "triton_loading",
+             "failure_class": "triton_load_failed", "private": "DO_NOT_PRINT"}
+    monkeypatch.setattr(
+        topology_module.subprocess, "run",
+        MagicMock(return_value=subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps(event).encode(), stderr=b"",
+        )),
+    )
+    gate.capture_failure(RuntimeError("DO_NOT_PRINT"))
+    container = gate.result["diagnostics"]["containers"][0]
+    assert container["exit_code"] == 137
+    assert container["startup_failure"] == {
+        "phase": "triton_loading", "failure_class": "triton_load_failed",
+    }
+    assert "DO_NOT_PRINT" not in json.dumps(gate.result)

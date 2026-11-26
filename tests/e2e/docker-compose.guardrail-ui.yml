@@ -3,6 +3,8 @@ services:
   mock-upstream:
     environment:
       MOCK_UNIQUE_CHAT_IDS: "true"
+      MOCK_ECHO_CHAT_CONTENT: "true"
+      MOCK_ECHO_RESPONSES_CONTENT: "true"
   db:
     image: postgres:16-alpine
     environment:
@@ -25,5 +27,6 @@ services:
       UI_USERNAME: smoke
       UI_PASSWORD: smoke-test-only
       STORE_MODEL_IN_DB: "True"
+      STORE_PROMPTS_IN_SPEND_LOGS: "${STORE_PROMPTS_IN_SPEND_LOGS:-false}"
     volumes:
       - ./litellm-config.guardrail-ui.yaml:/app/config.yaml:ro

@@ -5,6 +5,7 @@ const { chromium } = require("playwright");
 
 async function check(base) {
   const headers = {Authorization: "Bearer sk-test-master", "Content-Type": "application/json"};
+  const storePrompts = process.env.STORE_PROMPTS_IN_SPEND_LOGS === "true";
   const text = "UI_FIXTURE_PERSON_VALUE UI_FIXTURE_PASSWORD_VALUE UI_FIXTURE_ORGANIZATION_VALUE";
   const cases = [
     ["test-mask", text, 200, "masked", "Замаскировано"],
@@ -12,7 +13,9 @@ async function check(base) {
     ["test-block", "TOKEN=ui_private_value\nTraceback (most recent call last):", 422,
       "pre_egress_policy_blocked", "Проверка сущностей не выполнялась"],
     ["test-mask", "hello", 200, "clean", "Сущности не обнаружены"],
+    ["test-dictionary", "ui_private_value", 200, "dictionary_substituted", "Сущности не обнаружены"],
   ];
+  const calls = new Map();
   for (const [name, content, status] of cases) {
     const response = await fetch(`${base}/v1/chat/completions`, {
       method: "POST", headers, body: JSON.stringify({
@@ -20,7 +23,14 @@ async function check(base) {
       }),
     });
     assert.equal(response.status, status);
-    await response.text();
+    const callId = response.headers.get("x-litellm-call-id");
+    assert.ok(callId, "missing LiteLLM call ID");
+    calls.set(callId, true);
+    const body = await response.text();
+    if (name === "test-dictionary") {
+      assert.match(body, /NeutralCorp/);
+      assert.doesNotMatch(body, /ui_private_value/);
+    }
   }
   const date = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 19).replace("T", " ");
   const query = new URLSearchParams({start_date: date(-1), end_date: date(1)});
@@ -31,11 +41,13 @@ async function check(base) {
     const res = await fetch(`${base}/spend/logs/ui?${query}`, {headers});
     if (!res.ok) throw new Error(`Logs API returned ${res.status}: ${await res.text()}`);
     for (const row of (await res.json()).data) {
+      if (!calls.has(row.metadata?.litellm_call_id)) continue;
       const cards = row.metadata.guardrail_information || [];
       const pre = cards.filter(e => e.guardrail_mode === "pre_call");
       assert.equal(pre.length, 1);
       const [entry] = pre;
-      assert.equal(entry.guardrail_response, "REDACTED_BY_LITELM");
+      if (storePrompts) assert.equal(typeof entry.guardrail_response, "object");
+      else assert.equal(entry.guardrail_response, "REDACTED_BY_LITELM");
       assert.doesNotMatch(JSON.stringify(cards), /UI_FIXTURE_|ui_private_value/);
       found.set(entry.guardrail_action, row.request_id);
     }
@@ -69,10 +81,14 @@ async function check(base) {
         assert.deepEqual(raw.rules, ["env_secret_assignment", "log_or_stacktrace_payload"]);
         assert.deepEqual(raw.rule_counts, {env_secret_assignment: 1, log_or_stacktrace_payload: 1});
       }
+      if (action === "dictionary_substituted") {
+        assert.equal(raw.dictionary_substitution_count, 1);
+        assert.doesNotMatch(JSON.stringify(raw), /ui_private_value/);
+      }
       console.log(`PASS Logs: ${action}`);
     }
     await page.goto(`${base}/ui/guardrails-monitor/`);
-    for (const name of ["test-block", "test-mask", "test-post"]) {
+    for (const name of ["test-block", "test-mask", "test-dictionary", "test-post", "test-post-secondary"]) {
       await page.getByRole("row").filter({hasText: name}).first().waitFor();
     }
     console.log("PASS Guardrails Monitor");
