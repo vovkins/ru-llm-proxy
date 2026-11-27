@@ -22,7 +22,7 @@ from tests.e2e.ner_model_limits import (
     check_case_result,
     check_login_filter,
 )
-from tests.e2e.ner_test_support import run_checks, write_report
+from tests.e2e.ner_test_support import check_context, run_checks, write_report
 
 CORPUS = DEFAULT_CORPUS_PATH.with_name("instruction_regressions.jsonl")
 NAME_CORPUS = DEFAULT_CORPUS_PATH.with_name("person_organization_regressions.jsonl")
@@ -59,6 +59,10 @@ def _canary_values(cases):
 
 
 def _request(base_url, path, payload, *, stream=False, timeout=60):
+    if stream and path == "/v1/chat/completions":
+        # Keep provider usage visible through LiteLLM's streaming wrapper and
+        # post-call hooks; otherwise its outer aggregation can fall back to BPE.
+        payload = dict(payload, stream_options={**payload.get("stream_options", {}), "include_usage": True})
     request = urllib.request.Request(
         base_url + path,
         data=json.dumps(payload, ensure_ascii=False).encode(),
@@ -70,7 +74,10 @@ def _request(base_url, path, payload, *, stream=False, timeout=60):
     with urllib.request.urlopen(request, timeout=timeout) as response:
         if not stream:
             return json.load(response)
-        assert response.headers.get_content_type() == "text/event-stream"
+        if response.headers.get_content_type() != "text/event-stream":
+            error = AssertionError("sse_content_type")
+            error.code = response.status
+            raise error
         return [
             json.loads(line[5:].strip()) if line[5:].strip() != "[DONE]" else "[DONE]"
             for raw in response
@@ -92,12 +99,12 @@ def _restored_text(response, api, stream):
     events = [event for event in response if isinstance(event, dict)]
     if api == "chat/completions":
         choices = [choice for event in events for choice in event.get("choices", [])]
-        assert "[DONE]" in response
-        assert any(choice.get("finish_reason") == "stop" for choice in choices)
+        assert "[DONE]" in response, "sse_done_missing"
+        assert any(choice.get("finish_reason") == "stop" for choice in choices), "sse_stop_missing"
         return "".join(
             choice.get("delta", {}).get("content") or "" for choice in choices
         )
-    assert any(event.get("type") == "response.completed" for event in events)
+    assert any(event.get("type") == "response.completed" for event in events), "sse_completed_missing"
     return "".join(
         event["delta"]
         for event in events
@@ -313,7 +320,10 @@ def check_names(
         else _context_cases() if context else _name_cases()
     )
     client = AnalyzerClient(analyzer_url, timeout_seconds=60)
-    predictions = {case.case_id: client.analyze(case) for case in cases}
+    predictions = {}
+    for case in cases:
+        with check_context(case.case_id, "analyzer"):
+            predictions[case.case_id] = client.analyze(case)
     metrics = evaluate_predictions(cases, predictions)
     corpus = "name_field_holdout" if field_holdout else (
         "name_context_regressions" if context else "person_organization_regressions")
@@ -325,34 +335,36 @@ def check_names(
         results = predictions[case.case_id]
         name_reference = results
         if context or field_holdout:
-            combined = _request(
-                analyzer_url,
-                "/api/v1/analyze",
-                {
-                    "text": case.text,
-                    "entities": sorted(NAME_TYPES),
-                    "score_threshold": 0.35,
-                },
-            )["entities"]
-            assert combined == [
-                result for result in results if result["entity_type"] in NAME_TYPES
-            ], f"{case.case_id}: combined name filter differs from full scan"
+            with check_context(case.case_id, "entity-filter"):
+                combined = _request(
+                    analyzer_url,
+                    "/api/v1/analyze",
+                    {
+                        "text": case.text,
+                        "entities": sorted(NAME_TYPES),
+                        "score_threshold": 0.35,
+                    },
+                )["entities"]
+                assert combined == [
+                    result for result in results if result["entity_type"] in NAME_TYPES
+                ], f"{case.case_id}: combined name filter differs from full scan"
             filters += 1
         for entity_type in sorted(NAME_TYPES):
-            filtered = _request(
-                analyzer_url,
-                "/api/v1/analyze",
-                {
-                    "text": case.text,
-                    "entities": [entity_type],
-                    "score_threshold": 0.35,
-                },
-            )["entities"]
-            assert filtered == [
-                result
-                for result in name_reference
-                if result["entity_type"] == entity_type
-            ], f"{case.case_id}: filtered analysis differs"
+            with check_context(case.case_id, "entity-filter"):
+                filtered = _request(
+                    analyzer_url,
+                    "/api/v1/analyze",
+                    {
+                        "text": case.text,
+                        "entities": [entity_type],
+                        "score_threshold": 0.35,
+                    },
+                )["entities"]
+                assert filtered == [
+                    result
+                    for result in name_reference
+                    if result["entity_type"] == entity_type
+                ], f"{case.case_id}: filtered analysis differs"
             if case.expected and verdicts[case.case_id]["assessment"] == "accepted_limitation":
                 filter_coverage.append({"case_id": case.case_id, "entities": [entity_type],
                                         "coverage": coverage(case, filtered)["values"]})
@@ -369,41 +381,42 @@ def check_names(
                     payload["messages"] = [{"role": "user", "content": case.text}]
                 else:
                     payload["input"] = case.text
-                _request(capture_url, "/capture/reset", {})
-                response = _request(proxy_url, "/v1/" + api, payload, stream=stream)
-                assert (
-                    _restored_text(response, api, stream) == case.text
-                ), f"{case.case_id}: restoration changed"
-                with urllib.request.urlopen(
-                    capture_url + "/capture", timeout=5
-                ) as captured:
-                    capture = json.load(captured)
-                assert capture["provider_requests"] == 1
-                assert not capture[
-                    "provider_saw_canary"
-                ], f"{case.case_id}: sensitive egress"
                 expected_masked = verdicts[case.case_id]["expected_masked"]
-                assert capture["provider_saw_pii_placeholder"] == expected_masked
+                with check_context(case.case_id, "capture", api=api, stream=stream):
+                    _request(capture_url, "/capture/reset", {})
+                with check_context(case.case_id, "mask", api=api, stream=stream):
+                    response = _request(proxy_url, "/v1/" + api, payload, stream=stream)
+                with check_context(case.case_id, "restoration", api=api, stream=stream):
+                    assert (
+                        _restored_text(response, api, stream) == case.text
+                    ), f"{case.case_id}: restoration changed"
+                with check_context(case.case_id, "capture", api=api, stream=stream):
+                    with urllib.request.urlopen(capture_url + "/capture", timeout=5) as captured:
+                        capture = json.load(captured)
+                    assert capture["provider_requests"] == 1
+                    assert not capture["provider_saw_canary"], f"{case.case_id}: sensitive egress"
+                    assert capture["provider_saw_pii_placeholder"] == expected_masked
                 flows += 1
-                _request(capture_url, "/capture/reset", {})
-                if expected_masked:
-                    try:
-                        _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
-                    except urllib.error.HTTPError as error:
-                        assert error.code == 422, f"{case.case_id}: unexpected block status"
+                with check_context(case.case_id, "capture", api=api, stream=stream):
+                    _request(capture_url, "/capture/reset", {})
+                with check_context(case.case_id, "block", api=api, stream=stream):
+                    if expected_masked:
+                        try:
+                            _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
+                        except urllib.error.HTTPError as error:
+                            assert error.code == 422, f"{case.case_id}: unexpected block status"
+                        else:
+                            raise AssertionError(f"{case.case_id}: sensitive request was not blocked")
+                        blocked += 1
                     else:
-                        raise AssertionError(f"{case.case_id}: sensitive request was not blocked")
-                    blocked += 1
-                else:
-                    response = _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
-                    assert _restored_text(response, api, stream) == case.text
-                    clean_blocked += 1
-                with urllib.request.urlopen(
-                    capture_url + "/capture", timeout=5
-                ) as captured:
-                    capture = json.load(captured)
-                assert capture["provider_requests"] == (0 if expected_masked else 1)
-                assert not capture["provider_saw_canary"]
+                        response = _request(block_proxy_url, "/v1/" + api, payload, stream=stream)
+                        assert _restored_text(response, api, stream) == case.text
+                        clean_blocked += 1
+                with check_context(case.case_id, "capture", api=api, stream=stream):
+                    with urllib.request.urlopen(capture_url + "/capture", timeout=5) as captured:
+                        capture = json.load(captured)
+                    assert capture["provider_requests"] == (0 if expected_masked else 1)
+                    assert not capture["provider_saw_canary"]
     print(
         json.dumps(
             {

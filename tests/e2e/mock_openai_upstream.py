@@ -696,6 +696,23 @@ class Handler(BaseHTTPRequestHandler):
                                 ],
                             },
                         ),
+                        (
+                            "",
+                            {
+                                "id": stream_id,
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": "mock-chat",
+                                "choices": [],
+                                # OpenAI sends usage separately after finish_reason.
+                                # Keep boundary echoes out of local BPE accounting.
+                                "usage": {
+                                    "prompt_tokens": 1,
+                                    "completion_tokens": 1,
+                                    "total_tokens": 2,
+                                },
+                            },
+                        ),
                         ("", "[DONE]"),
                     ],
                     hold_after_first=STREAM_HOLD_SECONDS,

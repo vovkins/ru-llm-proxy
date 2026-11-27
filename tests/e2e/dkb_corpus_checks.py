@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from ner_instruction_checks import _request, _restored_text
-from ner_test_support import run_checks, write_report
+from ner_test_support import check_context, run_checks, write_report
 
 
 CORPUS = Path(__file__).resolve().parents[1] / "fixtures/dkb"
@@ -106,15 +106,16 @@ def check_chunk_boundaries(analyzer_url, proxy_url, block_proxy_url, capture_url
         arguments_text = json.dumps({"ordinary": prefix, key: value})
         encoded_value = json.dumps(value)[1:-1]
         for source, expected_value in ((text, value), (arguments_text, encoded_value)):
-            entities = _request(analyzer_url, "/api/v1/analyze", {
-                "text": source, "score_threshold": 0.35,
-            }, timeout=180)["entities"]
-            start = source.index(expected_value)
-            assert any(
-                r["entity_type"] == entity and r["start"] == start
-                and r["end"] == start + len(expected_value)
-                for r in entities
-            ), (case_id, "complete source span missing")
+            with check_context(case_id, "analyzer", arguments=source == arguments_text):
+                entities = _request(analyzer_url, "/api/v1/analyze", {
+                    "text": source, "score_threshold": 0.35,
+                }, timeout=180)["entities"]
+                start = source.index(expected_value)
+                assert any(
+                    r["entity_type"] == entity and r["start"] == start
+                    and r["end"] == start + len(expected_value)
+                    for r in entities
+                ), (case_id, "complete source span missing")
         for api in ("chat/completions", "responses"):
             for stream in (False, True):
                 for arguments in (False, True):
@@ -125,22 +126,30 @@ def check_chunk_boundaries(analyzer_url, proxy_url, block_proxy_url, capture_url
                             payload["messages"][1]["tool_calls"][0]["function"]["arguments"] = arguments_text
                         else:
                             payload["input"][1]["arguments"] = arguments_text
-                    reset(capture_url)
-                    response = _request(proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
-                    assert _restored_text(response, api, stream) == text, (context, "restoration")
-                    captured = capture(capture_url)
-                    assert captured["provider_requests"] == 1, context
-                    assert captured["provider_saw_pii_placeholder"], context
-                    assert not captured["provider_saw_base64_boundary_value"], (context, "partial or full sensitive egress")
+                    details = dict(api=api, stream=stream, arguments=arguments)
+                    with check_context(case_id, "capture", **details):
+                        reset(capture_url)
+                    with check_context(case_id, "mask", **details):
+                        response = _request(proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
+                    with check_context(case_id, "restoration", **details):
+                        assert _restored_text(response, api, stream) == text, (context, "restoration")
+                    with check_context(case_id, "capture", **details):
+                        captured = capture(capture_url)
+                        assert captured["provider_requests"] == 1, context
+                        assert captured["provider_saw_pii_placeholder"], context
+                        assert not captured["provider_saw_base64_boundary_value"], (context, "partial or full sensitive egress")
                     flows += 1
-                    reset(capture_url)
-                    try:
-                        _request(block_proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
-                    except urllib.error.HTTPError as error:
-                        assert error.code == 422, (context, error.code)
-                    else:
-                        raise AssertionError((context, "block request succeeded"))
-                    assert capture(capture_url)["provider_requests"] == 0, context
+                    with check_context(case_id, "capture", **details):
+                        reset(capture_url)
+                    with check_context(case_id, "block", **details):
+                        try:
+                            _request(block_proxy_url, "/v1/" + api, payload, stream=stream, timeout=180)
+                        except urllib.error.HTTPError as error:
+                            assert error.code == 422, (context, error.code)
+                        else:
+                            raise AssertionError((context, "block request succeeded"))
+                    with check_context(case_id, "capture", **details):
+                        assert capture(capture_url)["provider_requests"] == 0, context
                     blocked += 1
     print(json.dumps({"status": "ok", "base64_boundary_cases": len(cases), "echo_flows": flows, "blocked_flows": blocked}))
 
