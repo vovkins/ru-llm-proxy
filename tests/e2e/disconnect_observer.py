@@ -60,12 +60,12 @@ class ObservedGuardrail(RuPIIGuardrail):
             self._observe_stream(request_id, "deleted_at")
             self._observed_loads.discard(request_id)
 
-    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping):
+    async def _cleanup_stream(self, iterator, request_id, cleanup_mapping, decision=None):
         self._observe_stream(request_id, "close_entered_at")
         self._observe_stream(request_id, "iterator_type", type(iterator).__name__)
         self._observe_stream(request_id, "native_type", type(getattr(iterator, "completion_stream", None)).__name__)
         try:
-            await super()._cleanup_stream(iterator, request_id, cleanup_mapping)
+            await super()._cleanup_stream(iterator, request_id, cleanup_mapping, decision)
         finally:
             self._observe_stream(request_id, "cleanup_returned_at")
 

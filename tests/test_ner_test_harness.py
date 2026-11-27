@@ -684,6 +684,130 @@ def test_known_case_prefix_and_http_code_are_value_free_diagnostics():
     assert "private" not in json.dumps(results)
 
 
+def test_names_timeout_retains_case_and_phase(monkeypatch):
+    import ner_instruction_checks as instructions
+    case = SimpleNamespace(case_id="known_case")
+    monkeypatch.setattr(instructions, "_name_cases", lambda: [case])
+    error = TimeoutError("private response body")
+    monkeypatch.setattr(instructions.AnalyzerClient, "analyze",
+                        lambda *_: (_ for _ in ()).throw(error))
+    results = []
+    with pytest.raises(RuntimeError, match="independent"):
+        support.run_checks([("names", lambda: instructions.check_names(
+            "http://private", "http://private", "http://private", "http://private"))],
+            results, case_ids=[case.case_id])
+    assert results[0]["case_id"] == case.case_id
+    assert results[0]["phase"] == "analyzer"
+    assert results[0]["error_type"] == "TimeoutError"
+    assert results[0]["elapsed_seconds"] >= 0
+    assert "private" not in json.dumps(results)
+
+
+@pytest.mark.parametrize("api,events,reason", [
+    ("chat/completions", [], "sse_done_missing"),
+    ("chat/completions", ["[DONE]"], "sse_stop_missing"),
+    ("responses", [{"type": "response.output_text.delta", "delta": "private"}],
+     "sse_completed_missing"),
+])
+def test_incomplete_stream_diagnostic_preserves_protocol_and_case(api, events, reason):
+    from ner_instruction_checks import _restored_text
+    results = []
+    def check():
+        with support.check_context("long", "restoration", api=api, stream=True, arguments=False):
+            _restored_text(events, api, True)
+    with pytest.raises(RuntimeError):
+        support.run_checks([("chunk-boundaries", check)], results, case_ids=["long"])
+    row = results[0]
+    assert row["case_id"] == "long" and row["phase"] == "restoration"
+    assert row["api"] == api and row["stream"] is True and row["arguments"] is False
+    assert row["reason"] == reason
+    assert "private" not in json.dumps(results)
+
+
+def test_context_preserves_original_exception_and_inner_operation():
+    error = TimeoutError("private")
+    with pytest.raises(TimeoutError) as caught:
+        with support.check_context("known_case", "mask"):
+            with support.check_context("known_case", "capture"):
+                raise error
+    assert caught.value is error
+    assert error._ner_check_context["phase"] == "capture"
+
+
+def test_unexpected_block_status_survives_assertion_without_response_body():
+    from urllib.error import HTTPError
+    results = []
+    def check():
+        with support.check_context("known_case", "block"):
+            try:
+                raise HTTPError("http://private", 503, "private body", {}, None)
+            except HTTPError as error:
+                assert error.code == 422
+    with pytest.raises(RuntimeError):
+        support.run_checks([("names", check)], results, case_ids=["known_case"])
+    assert results[0]["http_status"] == 503
+    assert results[0]["phase"] == "block"
+    assert "private" not in json.dumps(results)
+
+
+def test_unregistered_context_is_not_published(capsys):
+    results = []
+    def check():
+        with support.check_context("private", "mask"):
+            raise TimeoutError("private body")
+    with pytest.raises(RuntimeError):
+        support.run_checks([("names", check)], results, case_ids=["known_case"])
+    assert results == [{"check": "names", "status": "failed", "error_type": "TimeoutError"}]
+    assert "private" not in json.dumps(results) + capsys.readouterr().out
+
+
+def test_stream_content_type_failure_reports_status_without_body(monkeypatch):
+    from email.message import Message
+    import ner_instruction_checks as instructions
+    headers = Message()
+    headers["Content-Type"] = "application/json"
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            pass
+    response = Response()
+    response.headers = headers
+    monkeypatch.setattr(instructions.urllib.request, "urlopen", lambda *a, **k: response)
+    results = []
+    with pytest.raises(RuntimeError):
+        support.run_checks([("stream", lambda: instructions._request(
+            "http://private", "/v1/responses", {"input": "private"}, stream=True))], results)
+    assert results[0]["reason"] == "sse_content_type"
+    assert results[0]["http_status"] == 200
+    assert "private" not in json.dumps(results)
+
+
+@pytest.mark.parametrize("path,stream", [
+    ("/v1/chat/completions", True), ("/v1/chat/completions", False), ("/v1/responses", True),
+])
+def test_ner_client_requests_chat_stream_usage_without_mutating_payload(monkeypatch, path, stream):
+    from email.message import Message
+    from io import BytesIO
+    import ner_instruction_checks as instructions
+    payload = {"stream": stream, "stream_options": {"include_obfuscation": False}}
+    original = json.dumps(payload, sort_keys=True)
+    requests = []
+    def urlopen(request, **kwargs):
+        requests.append(json.loads(request.data))
+        response = BytesIO(b"data: [DONE]\n\n" if stream else b"{}")
+        response.headers = Message()
+        response.headers["Content-Type"] = "text/event-stream"
+        return response
+    monkeypatch.setattr(instructions.urllib.request, "urlopen", urlopen)
+    instructions._request("http://fixture", path, payload, stream=stream)
+    assert json.dumps(payload, sort_keys=True) == original
+    assert requests[0]["stream_options"] == (
+        {"include_obfuscation": False, "include_usage": True}
+        if stream and path == "/v1/chat/completions" else payload["stream_options"])
+
+
 @pytest.mark.parametrize("stderr", [
     "docker: private-token: invalid endpoint settings: user specified IP address is supported only when connecting to networks with user configured subnets private-body",
     b"docker: private-token: invalid endpoint settings: user specified IP address is supported only when connecting to networks with user configured subnets private-body\xff",

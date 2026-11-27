@@ -36,6 +36,7 @@ mkdir -p \
     "${CONTEXT_DIR}/codex-lb" \
     "${CONTEXT_DIR}/certs"
 cp "${ROOT_DIR}/litellm/Dockerfile" "${CONTEXT_DIR}/litellm/Dockerfile"
+cp -R "${ROOT_DIR}/litellm/dashboard" "${CONTEXT_DIR}/litellm/"
 cp "${ROOT_DIR}/presidio/Dockerfile" "${CONTEXT_DIR}/presidio/Dockerfile"
 cp "${ROOT_DIR}/codex-lb/Dockerfile" "${CONTEXT_DIR}/codex-lb/Dockerfile"
 cp "${ROOT_DIR}/certs/README.md" "${CONTEXT_DIR}/certs/README.md"

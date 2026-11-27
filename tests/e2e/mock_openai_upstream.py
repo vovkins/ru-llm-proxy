@@ -214,6 +214,9 @@ def _analyzer_entities(payload):
         {"entity_type": "EMAIL_ADDRESS", "start": match.start(), "end": match.end(), "score": 1.0}
         for match in SYNTHETIC_MARKER_PATTERN.finditer(text)
     ]
+    for kind in ("PERSON", "PASSWORD", "ORGANIZATION"):
+        for match in re.finditer(f"UI_FIXTURE_{kind}_VALUE", text):
+            entities.append({"entity_type": kind, "start": match.start(), "end": match.end(), "score": 1.0})
     if RAW_PHONE in text:
         start = text.index(RAW_PHONE)
         entities.append({
@@ -630,13 +633,14 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(RESPONSE_DELAY_SECONDS)
             if payload.get("stream") is True:
                 created = int(time.time())
+                stream_id = f"chatcmpl-{uuid.uuid4().hex if os.getenv('MOCK_UNIQUE_CHAT_IDS') == 'true' else DEPLOYMENT_ID}"
                 if failure_mode == "stream_disconnect":
                     self._write_sse(
                         [
                             (
                                 "",
                                 {
-                                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                    "id": stream_id,
                                     "object": "chat.completion.chunk",
                                     "created": created,
                                     "model": "mock-chat",
@@ -660,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                         (
                             "",
                             {
-                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",
@@ -679,7 +683,7 @@ class Handler(BaseHTTPRequestHandler):
                         (
                             "",
                             {
-                                "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                                "id": stream_id,
                                 "object": "chat.completion.chunk",
                                 "created": created,
                                 "model": "mock-chat",
@@ -692,6 +696,23 @@ class Handler(BaseHTTPRequestHandler):
                                 ],
                             },
                         ),
+                        (
+                            "",
+                            {
+                                "id": stream_id,
+                                "object": "chat.completion.chunk",
+                                "created": created,
+                                "model": "mock-chat",
+                                "choices": [],
+                                # OpenAI sends usage separately after finish_reason.
+                                # Keep boundary echoes out of local BPE accounting.
+                                "usage": {
+                                    "prompt_tokens": 1,
+                                    "completion_tokens": 1,
+                                    "total_tokens": 2,
+                                },
+                            },
+                        ),
                         ("", "[DONE]"),
                     ],
                     hold_after_first=STREAM_HOLD_SECONDS,
@@ -700,7 +721,7 @@ class Handler(BaseHTTPRequestHandler):
             self._write_json(
                 200,
                 {
-                    "id": f"chatcmpl-{DEPLOYMENT_ID}",
+                    "id": f"chatcmpl-{uuid.uuid4() if os.getenv('MOCK_UNIQUE_CHAT_IDS') == 'true' else DEPLOYMENT_ID}",
                     "object": "chat.completion",
                     "created": int(time.time()),
                     "model": "mock-chat",

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -129,6 +130,35 @@ def write_report(path, result):
                                    ensure_ascii=False, indent=2) + "\n")
 
 
+CHECK_PHASES = frozenset({
+    "analyzer", "entity-filter", "mask", "block", "capture", "restoration",
+})
+CHECK_REASONS = frozenset({
+    "sse_content_type", "sse_done_missing", "sse_stop_missing", "sse_completed_missing",
+})
+
+
+@contextmanager
+def check_context(case_id, phase, *, api=None, stream=None, arguments=None):
+    """Attach bounded context to the original exception, never its request/body."""
+    if phase not in CHECK_PHASES or api not in {None, "chat/completions", "responses"}:
+        raise ValueError("Unknown NER check phase or API")
+    details = {"case_id": case_id, "phase": phase}
+    if api is not None:
+        details["api"] = api
+    for key, value in (("stream", stream), ("arguments", arguments)):
+        if type(value) is bool:
+            details[key] = value
+    started = time.monotonic()
+    try:
+        yield
+    except Exception as exc:
+        # An inner operation has more specific context than its caller.
+        if not hasattr(exc, "_ner_check_context"):
+            exc._ner_check_context = dict(details, elapsed_seconds=round(time.monotonic() - started, 3))
+        raise
+
+
 def run_checks(checks, results, *, case_ids=()):
     """Finish independent groups, but never turn their failure into success."""
     known = frozenset(case_ids)
@@ -139,9 +169,26 @@ def run_checks(checks, results, *, case_ids=()):
             check()
         except Exception as exc:
             result.update(status="failed", error_type=type(exc).__name__)
-            status = getattr(exc, "code", None)
-            if type(status) is int and 100 <= status <= 599:
-                result["http_status"] = status
+            context = getattr(exc, "_ner_check_context", {})
+            if isinstance(context, dict) and context.get("case_id") in known:
+                result["case_id"] = context["case_id"]
+                if context.get("phase") in CHECK_PHASES:
+                    result["phase"] = context["phase"]
+                if context.get("api") in {"chat/completions", "responses"}:
+                    result["api"] = context["api"]
+                for key in ("stream", "arguments"):
+                    if type(context.get(key)) is bool:
+                        result[key] = context[key]
+                elapsed = context.get("elapsed_seconds")
+                if type(elapsed) in (int, float) and 0 <= elapsed <= 86400:
+                    result["elapsed_seconds"] = elapsed
+            if exc.args and isinstance(exc.args[0], str) and exc.args[0] in CHECK_REASONS:
+                result["reason"] = exc.args[0]
+            for error in (exc, exc.__cause__, exc.__context__):
+                status = getattr(error, "code", None)
+                if type(status) is int and 100 <= status <= 599:
+                    result["http_status"] = status
+                    break
             # Only report identifiers supplied by the corpus, not arbitrary
             # exception bodies containing requests or credentials.
             value = exc.args[0] if exc.args else None
@@ -161,6 +208,8 @@ def run_checks(checks, results, *, case_ids=()):
         else:
             result["status"] = "passed"
         print(f"NER CHECK {name}: {result['status']}", flush=True)
+        if result["status"] == "failed":
+            print("NER FAILURE " + json.dumps(result, sort_keys=True), flush=True)
     if any(result["status"] != "passed" for result in results):
         raise RuntimeError("One or more independent NER checks failed")
 

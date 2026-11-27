@@ -38,6 +38,7 @@ jobs:
           bash -n tests/e2e/test_pre_egress_proxy_non_egress.sh
           bash -n tests/e2e/test_final_leak_proxy_non_egress.sh
           bash -n tests/e2e/test_nonstream_disconnect.sh
+          bash -n tests/e2e/test_guardrail_ui.sh
           bash -n tests/load/run.sh
           bash -n tests/load/run_matrix.sh
           bash -n tests/test_litellm_ca_image.sh
@@ -72,6 +73,8 @@ jobs:
               "tests/e2e/litellm-config.pre-egress-proxy.yaml",
               "tests/e2e/docker-compose.pre-egress-proxy.yml",
               "tests/e2e/docker-compose.disconnect.yml",
+              "tests/e2e/docker-compose.guardrail-ui.yml",
+              "tests/e2e/litellm-config.guardrail-ui.yaml",
               "tests/e2e/litellm-config.ner-proxy.yaml",
               "tests/e2e/litellm-config.topologies.yaml",
               "tests/e2e/docker-compose.ner-proxy.yml",
@@ -152,6 +155,20 @@ jobs:
 
       - name: Run deterministic masking and restoration round trips
         run: make test-flow
+
+  guardrail-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify redacted spend records and rendered guardrail cards
+        run: |
+          npm install --prefix "$RUNNER_TEMP/guardrail-ui" --no-audit --no-fund playwright@1.59.1
+          export NODE_PATH="$RUNNER_TEMP/guardrail-ui/node_modules"
+          CHROME_CHANNEL=chrome make test-guardrail-ui
 
   recognizer-api:
     runs-on: ubuntu-latest

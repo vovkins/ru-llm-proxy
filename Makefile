@@ -241,6 +241,10 @@ test-guardrail:
 	@echo "🧪 LiteLLM guardrail unit tests"
 	$(call run-unit,guardrail-tests,litellm_guardrails/tests)
 
+.PHONY: test-guardrail-ui
+test-guardrail-ui:
+	bash tests/e2e/test_guardrail_ui.sh
+
 test-flow:
 	@echo "🧪 Deterministic guardrail-flow test"
 	$(call run-unit,guardrail-tests,tests/e2e/test_guardrail_flow.py tests/test_burst_probe.py)

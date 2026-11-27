@@ -163,7 +163,7 @@ async def test_caller_aliases_not_trusted(where):
 
 @pytest.mark.asyncio
 async def test_history_tools_system_dictionary():
-    g = RuEnvAssignmentGuardrail(dictionary_substitutions_enabled=True,
+    g = RuEnvAssignmentGuardrail(guardrail_name='env', dictionary_substitutions_enabled=True,
         dictionary_substitutions_json=json.dumps({'substitutions': [
             {'id': 'local', 'source': 'ExampleCorp', 'replacement': 'NeutralCorp'}]}))
     g._redis = _MemoryRedis(); g._analysis_cache_secret = None; g._analyze_text = AsyncMock(return_value=[])
@@ -180,6 +180,14 @@ async def test_history_tools_system_dictionary():
     for v in ['/system/path', 'token-one-777', 'pass-two-777', 'pass-three-777', 'ExampleCorp']:
         assert v not in masked
     json.loads(data['messages'][2]['tool_calls'][0]['function']['arguments'])
+    card, = data.get('litellm_metadata', data.get('metadata', {}))[
+        'standard_logging_guardrail_information']
+    assert card['guardrail_action'] == 'masked_and_dictionary_substituted'
+    assert card['masked_entity_count'] == {'PASSWORD': 3}
+    report = card['ru_guardrail_report']
+    assert report['detected_entity_count'] == {'PASSWORD': 3}
+    assert report['dictionary_substitution_count'] == 1
+    assert 'local' not in json.dumps(card)
     assert await echo(g, data, auth, masked) == original
 
 @pytest.mark.asyncio

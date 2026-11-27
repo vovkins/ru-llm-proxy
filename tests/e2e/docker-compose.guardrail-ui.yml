@@ -1,0 +1,32 @@
+# Overlay for docker-compose.pre-egress-proxy.yml. Use a separate project/DB.
+services:
+  mock-upstream:
+    environment:
+      MOCK_UNIQUE_CHAT_IDS: "true"
+      MOCK_ECHO_CHAT_CONTENT: "true"
+      MOCK_ECHO_RESPONSES_CONTENT: "true"
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: test-only
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  litellm:
+    image: ru-llm-proxy-guardrail-ui:test
+    build:
+      context: ../..
+      dockerfile: litellm/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:test-only@db:5432/postgres
+      UI_USERNAME: smoke
+      UI_PASSWORD: smoke-test-only
+      STORE_MODEL_IN_DB: "True"
+      STORE_PROMPTS_IN_SPEND_LOGS: "${STORE_PROMPTS_IN_SPEND_LOGS:-false}"
+    volumes:
+      - ./litellm-config.guardrail-ui.yaml:/app/config.yaml:ro

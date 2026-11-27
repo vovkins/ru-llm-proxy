@@ -34,6 +34,40 @@ PHONE = "+79031234567"
 OTHER_PHONE = "+79031234568"
 DIAGNOSTIC_LOG_BYTES = 256 * 1024
 DIAGNOSTIC_BODY_BYTES = 64 * 1024
+STARTUP_PHASES = frozenset({
+    "artifact_verification", "model_validation", "model_loading", "warmup",
+    "readiness", "startup", "triton_loading", "triton_readiness",
+})
+STARTUP_FAILURE_CLASSES = frozenset({
+    "artifact_invalid", "manifest_contract_invalid", "dependency_import_failed",
+    "tokenizer_load_failed", "model_load_failed", "runtime_contract_invalid",
+    "warmup_failed", "not_ready", "unexpected_failure", "startup_failed",
+    "triton_load_failed", "triton_unavailable", "triton_contract_invalid",
+})
+
+
+def analyzer_startup_diagnosis(log: bytes) -> dict | None:
+    """Extract only fixed diagnostic codes from the Analyzer's structured event."""
+    for line in reversed(log.splitlines()):
+        start = line.find(b"{")
+        if start < 0:
+            continue
+        try:
+            event = json.loads(line[start:])
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if not isinstance(event, dict) or event.get("event") != "presidio_ner_startup_failed":
+            continue
+        phase = event.get("phase")
+        failure_class = event.get("failure_class")
+        return {
+            "phase": phase if isinstance(phase, str) and phase in STARTUP_PHASES else "unknown",
+            "failure_class": (
+                failure_class if isinstance(failure_class, str)
+                and failure_class in STARTUP_FAILURE_CLASSES else "unknown"
+            ),
+        }
+    return None
 
 
 class HTTPStatusFailure(AssertionError):
@@ -559,6 +593,7 @@ class Gate:
             item = {"id": row["Id"], "name": row["Name"].lstrip("/"), "image_id": row["Image"],
                     "service": row["Config"]["Labels"].get("com.docker.compose.service"),
                     "status": row["State"]["Status"], "health": row["State"].get("Health", {}).get("Status"),
+                    "exit_code": row["State"].get("ExitCode"),
                     "oom_killed": row["State"].get("OOMKilled"), "restarts": row["RestartCount"],
                     "addresses": {name: {key: value.get(key) for key in ("IPAddress", "GlobalIPv6Address")}
                                   for name, value in row["NetworkSettings"]["Networks"].items()}}
@@ -568,6 +603,8 @@ class Gate:
                                      capture_output=True, timeout=15)
                 data = log.stdout + log.stderr
                 item.update(log_exit_code=log.returncode, log_truncated=len(data) > DIAGNOSTIC_LOG_BYTES)
+                if item["service"] == "presidio-analyzer":
+                    item["startup_failure"] = analyzer_startup_diagnosis(data[-DIAGNOSTIC_LOG_BYTES:])
                 private_diagnostic_file(directory / (row["Id"][:12] + ".log"), data[-DIAGNOSTIC_LOG_BYTES:])
             except (OSError, subprocess.SubprocessError) as error:
                 report["errors"].append({"operation": "logs", "container_id": row["Id"],
